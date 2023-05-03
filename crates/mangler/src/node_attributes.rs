@@ -1,10 +1,13 @@
-use crate::{output::{Output, OutputSettings}, input::{Input, InputSettings}, create_inputs, create_outputs, value::Value};
+use std::time::Duration;
+
+use crate::{output::{Output, OutputSettings}, input::{Input, InputSettings}, value::Value};
 
 #[derive(Debug)]
 pub struct NodeAttributes {
     pub id: String,
     pub inputs: Vec<Input>,
     pub outputs: Vec<Output>,
+    pub time: Option<Duration>,
 }
 
 impl NodeAttributes {
@@ -27,6 +30,7 @@ impl NodeAttributes {
             id,
             inputs,
             outputs,
+            time: None,
         }
     }
     
@@ -39,6 +43,6 @@ impl NodeAttributes {
     }
 
     pub fn print_output(&self) -> String {
-        format!("{:?}", self.outputs[0].value)
+        format!("{:?} {:.4}ms", self.outputs[0].value, self.time.unwrap().as_nanos() as f64 / 1_000_000.0)
     }
 }

@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::graph::Graph;
 use crate::input::InputSettings;
 use crate::node_attributes::NodeAttributes;
@@ -11,12 +13,12 @@ lazy_static! {
         InputSettings {
             name: "a".to_string(),
             default_value: Value::Decimal { value: 0.0 },
-            valid_types: vec![ValueType::Decimal, ValueType::Integer, ValueType::String],
+            valid_types: vec![ValueType::Decimal, ValueType::Integer],
         },
         InputSettings {
             name: "b".to_string(),
             default_value: Value::Decimal { value: 0.0 },
-            valid_types: vec![ValueType::Decimal, ValueType::Integer, ValueType::String],
+            valid_types: vec![ValueType::Decimal, ValueType::Integer],
         },
     ];
 
@@ -47,7 +49,8 @@ impl Subtract {
 impl Node for Subtract {
 
     fn run(&mut self) {
-        println!("{:?}", self);
+        let start_time = Instant::now();
+
         self.attr.outputs[0].value = match (&self.attr.inputs[0].value, &self.attr.inputs[1].value) {
             (
                 Value::Integer { value: a },
@@ -78,7 +81,9 @@ impl Node for Subtract {
             },
 
             _ => panic!()
-        }
+        };
+
+        self.attr.time = Some(Instant::now().duration_since(start_time));
     }
 
     fn set_intput_value(&mut self, index: usize, value: Value) {

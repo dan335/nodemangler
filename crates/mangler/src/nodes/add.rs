@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::graph::Graph;
 use crate::input::InputSettings;
 use crate::node_attributes::NodeAttributes;
@@ -47,6 +49,8 @@ impl Add {
 
 impl Node for Add {
     fn run(&mut self) {
+        let start_time = Instant::now();
+
         self.attr.outputs[0].value = match (&self.attr.inputs[0].value, &self.attr.inputs[1].value) {
             (
                 Value::Integer { value: a },
@@ -110,7 +114,10 @@ impl Node for Add {
             ) => {
                 Value::String { value: format!("{} {}", *a, *b) }
             },
-        }
+        };
+
+
+        self.attr.time = Some(Instant::now().duration_since(start_time));
     }
 
     fn set_intput_value(&mut self, index: usize, value: Value) {

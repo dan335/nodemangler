@@ -20,27 +20,3 @@ pub struct InputSettings {
     pub default_value: Value,
     pub valid_types: Vec<ValueType>,
 }
-
-
-// #[macro_export] macro_rules! create_inputs {
-//     ($input_settings:expr) => {
-//         $input_settings.iter().map(|settings: &InputSettings| Input {
-//             name: settings.name.to_owned(),
-//             value: settings.default_value.clone(),
-//             connection: None,
-//             valid_types: settings.valid_types.to_vec(),
-//         }).collect::<Vec<Input>>()
-//     };
-// }
-
-#[macro_export]
-macro_rules! create_inputs {
-    ($input_settings:expr) => {
-        $input_settings.iter().map(|settings: &InputSettings| Input {
-            name: settings.name.to_owned(),
-            value: settings.default_value.clone(),
-            connection: None,
-            valid_types: settings.valid_types.to_vec(),
-        }).collect::<Vec<Input>>()
-    };
-}
