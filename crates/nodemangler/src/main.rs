@@ -4,6 +4,7 @@ use mangler::value::Value;
 
 fn main() {
     let mut graph = Graph::new();
+    
     let id = add::Add::new(&mut graph);
 
     if let Some(node) = graph.nodes.get_mut(&id) {
