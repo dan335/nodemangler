@@ -2,7 +2,6 @@ use eframe::egui;
 use egui::Pos2;
 
 use crate::graph::graph_node::GraphNode;
-use crate::WINDOW_HEIGHT;
 
 pub struct GraphEditor {
     position: Pos2,
@@ -15,8 +14,8 @@ impl GraphEditor {
     pub fn new() -> GraphEditor {
         let mut nodes: Vec<GraphNode> = vec![];
 
-        nodes.push(GraphNode::new(Pos2::new(0.0, WINDOW_HEIGHT * 0.6)));
-        nodes.push(GraphNode::new(Pos2::new(0.0, WINDOW_HEIGHT * 0.4)));
+        nodes.push(GraphNode::new(Pos2::new(200.0, 200.0)));
+        nodes.push(GraphNode::new(Pos2::new(200.0, 400.0)));
 
         GraphEditor {
             position: Pos2::ZERO,

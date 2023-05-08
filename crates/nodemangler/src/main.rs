@@ -9,9 +9,10 @@ use mangler::value::Value;
 mod graph;
 use graph::graph_node::GraphNode;
 use graph::graph_editor::GraphEditor;
+use egui::{Pos2, Rect};
 
-pub const WINDOW_WIDTH: f32 = 1280.0;
-pub const WINDOW_HEIGHT: f32 = 800.0;
+pub const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
+pub const DEFAULT_WINDOW_HEIGHT: f32 = 800.0;
 
 
 fn main() -> Result<(), eframe::Error> {
@@ -30,7 +31,7 @@ fn main() -> Result<(), eframe::Error> {
     // }
 
     let options = eframe::NativeOptions {
-        initial_window_size: Some(egui::vec2(WINDOW_WIDTH, WINDOW_HEIGHT)),
+        initial_window_size: Some(egui::vec2(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)),
         ..Default::default()
     };
 
@@ -57,34 +58,64 @@ impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            let app_width = ctx.screen_rect().width();
+            let app_height = ctx.screen_rect().height();
 
-            egui::SidePanel::left("left_panel")
-                .default_width(200.0)
-                .resizable(false)
-                .show_inside(ui, |ui| {
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        if ui.add(egui::Button::new("asdf")).clicked() {
-                            println!("clicked");
-                        }
-                    });
-                });
-
-            egui::TopBottomPanel::bottom("bottom_panel")
-                .resizable(true)
-                //.min_height(50.0)
-                .default_height(WINDOW_HEIGHT / 2.0)
-                .show_inside(ui, |ui| {
-                    self.graph_editor.show(ui);
-                });
-
-            egui::CentralPanel::default().show_inside(ui, |ui| {
+            let left_rect = Rect::from_two_pos(Pos2::new(0.0, 0.0), Pos2::new(200.0, app_width));
+            ui.allocate_ui_at_rect(left_rect, |ui| {
+                ui.painter().add(egui::Shape::rect_filled(
+                    ui.max_rect(),
+                    Rounding::none(),
+                    egui::Color32::from_gray(40),
+                ));
                 ui.vertical_centered(|ui| {
-                    ui.heading("Central Panel");
-                });
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    //lorem_ipsum(ui);
+                    ui.heading("Left Panel");
                 });
             });
+
+            let top_rect = Rect::from_two_pos(Pos2::new(200.0, 0.0), Pos2::new(app_width, app_height / 2.0));
+            ui.allocate_ui_at_rect(top_rect, |ui| {
+                ui.painter().add(egui::Shape::rect_filled(
+                    ui.max_rect(),
+                    Rounding::none(),
+                    egui::Color32::from_gray(30),
+                ));
+                ui.vertical_centered(|ui| {
+                    ui.heading("Top Panel");
+                });
+            });
+
+            let bottom_rect = Rect::from_two_pos(Pos2::new(200.0, app_height / 2.0), Pos2::new(app_width, app_height));
+            ui.allocate_ui_at_rect(bottom_rect, |ui| {
+                self.graph_editor.show(ui);
+            });
+            // egui::SidePanel::left("left_panel")
+            //     .default_width(200.0)
+            //     .resizable(false)
+            //     .show_inside(ui, |ui| {
+            //         egui::ScrollArea::vertical().show(ui, |ui| {
+            //             if ui.add(egui::Button::new("asdf")).clicked() {
+            //                 println!("clicked");
+            //             }
+            //         });
+            //     });
+
+            // egui::TopBottomPanel::top("bottom_panel")
+            //     .resizable(false)
+            //     //.min_height(50.0)
+            //     .default_height(WINDOW_HEIGHT / 2.0)
+            //     .show_inside(ui, |ui| {
+            //         self.graph_editor.show(ui);
+            //     });
+
+            // egui::CentralPanel::default().show_inside(ui, |ui| {
+            //     ui.vertical_centered(|ui| {
+            //         ui.heading("Central Panel");
+            //     });
+            //     egui::ScrollArea::vertical().show(ui, |ui| {
+            //         //lorem_ipsum(ui);
+            //     });
+            // });
         });
     }
 }
