@@ -6,7 +6,6 @@ extern crate lazy_static;
 pub mod nodes;
 pub mod input;
 pub mod output;
-pub mod node;
 pub mod value;
 pub mod graph;
 pub mod node_attributes;

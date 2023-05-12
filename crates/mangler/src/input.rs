@@ -1,10 +1,10 @@
 use crate::value::{Value, ValueType};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Input {
     pub name: String,
     pub value: Value,
-    pub connection: Option<String>,
+    pub connection: Option<(String, usize)>, // id, index of output
     pub valid_types: Vec<ValueType>,
 }
 
@@ -15,8 +15,3 @@ impl Input {
 }
 
 
-pub struct InputSettings {
-    pub name: String,
-    pub default_value: Value,
-    pub valid_types: Vec<ValueType>,
-}

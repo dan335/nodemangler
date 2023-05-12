@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use crate::node::Node;
+use crate::nodes::node::Node;
 
 pub struct Graph {
-    pub nodes: HashMap<String, Box<dyn Node>>,
+    pub nodes: HashMap<String, Node>,
 }
 
 impl Graph {
@@ -13,11 +13,11 @@ impl Graph {
         }
     }
 
-    pub fn add_node(&mut self, id: String, node: Box<dyn Node>) {
+    pub fn add_node(&mut self, id: String, node: Node) {
         self.nodes.insert(id.clone(), node);
     }
 
     pub fn run(&mut self) {
-        self.nodes.values_mut().for_each(|node| node.run());
+        self.nodes.values_mut().for_each(|node| { node.operation.run(&node.inputs, &mut node.outputs); });
     }
 }
