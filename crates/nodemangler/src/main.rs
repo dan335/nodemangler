@@ -2,32 +2,30 @@
 
 use eframe::egui::{self};
 use eframe::epaint::Rounding;
+use eframe::IconData;
+use egui::Vec2;
+use mangler::get_id;
 use mangler::nodes::add::Add;
 use mangler::nodes::node::Node;
 use mangler::nodes::operation::ConnectionSettings;
 use mangler::{graph::Graph, nodes::node_settings::NodeSettings};
-use mangler::get_id;
-use egui::Vec2;
+use std::path::Path;
 
 mod graph;
-mod title_bar;
-mod node_settings;
-mod view;
 mod menu;
-use graph::graph_editor::GraphEditor;
-use egui::{Pos2, Rect};
-use menu::menu_panel::MenuPanel;
-use view::view_panel::ViewPanel;
+mod node_settings;
+mod title_bar;
+mod view;
 use crate::graph::graph_editor::GraphEditorResponse;
+use egui::{Pos2, Rect};
+use graph::graph_editor::GraphEditor;
+use menu::menu_panel::MenuPanel;
 use node_settings::node_settings_panel::NodeSettingsPanel;
-
-
+use view::view_panel::ViewPanel;
 
 pub const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
 pub const DEFAULT_WINDOW_HEIGHT: f32 = 800.0;
 //const ICON: &[u8; 2869] = include_bytes!("..\\assets\\mangler_icon.png");
-
-
 
 fn main() -> Result<(), eframe::Error> {
     //let mut graph = Graph::new();
@@ -43,18 +41,18 @@ fn main() -> Result<(), eframe::Error> {
     // if let Some(v) = graph.nodes.get(&id) {
     //     println!("Hello, world! {:?}", v.print_output());
     // }
+    let mut icon_data: Option<IconData> = None;
+
+    let icon_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/mangler_icon.png");
+    icon_data = Some(load_icon(icon_path.to_str().unwrap()));
 
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)),
-        icon_data: Some(load_icon(".\\crates\\nodemangler\\assets\\mangler_icon.png")),
+        icon_data,
         ..Default::default()
     };
 
-    eframe::run_native(
-        "Mangler",
-        options,
-        Box::new(|_cc| Box::<MyApp>::default()),
-    )
+    eframe::run_native("Mangler", options, Box::new(|_cc| Box::<MyApp>::default()))
 }
 
 // do this without image crate?
@@ -81,7 +79,11 @@ struct MyApp {
     node_settings_panel: NodeSettingsPanel,
     view_panel: ViewPanel,
     menu_panel: MenuPanel,
-    dragging_menu_button: Option<(NodeSettings, Vec<ConnectionSettings>, Vec<ConnectionSettings>)>,
+    dragging_menu_button: Option<(
+        NodeSettings,
+        Vec<ConnectionSettings>,
+        Vec<ConnectionSettings>,
+    )>,
     editing_node_id: Option<String>,
     viewing_node_id: Option<String>,
 }
@@ -103,18 +105,22 @@ impl Default for MyApp {
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        
         egui::CentralPanel::default().show(ctx, |ui| {
-
             let app_rect = ctx.screen_rect();
-            let cursor_position = ui.ctx().input(|i| i.pointer.hover_pos()).unwrap_or(Pos2::ZERO);
+            let cursor_position = ui
+                .ctx()
+                .input(|i| i.pointer.hover_pos())
+                .unwrap_or(Pos2::ZERO);
             let cursor_primary_down: bool = ui.ctx().input(|i| i.pointer.primary_down());
             let cursor_inside = app_rect.contains(cursor_position);
 
             //let mouse_response = ui.allocate_rect(app_rect, Sense::drag());
 
             // menu panel
-            let menu_panel_rect = Rect::from_two_pos(Pos2::new(0.0, 0.0), Pos2::new(200.0, app_rect.height() / 2.0));
+            let menu_panel_rect = Rect::from_two_pos(
+                Pos2::new(0.0, 0.0),
+                Pos2::new(200.0, app_rect.height() / 2.0),
+            );
             ui.allocate_ui_at_rect(menu_panel_rect, |ui| {
                 let menu_result = self.menu_panel.show(ui, cursor_position);
 
@@ -125,29 +131,47 @@ impl eframe::App for MyApp {
             });
 
             // top panel
-            let top_panel_rect = Rect::from_two_pos(Pos2::new(200.0, 0.0), Pos2::new(app_rect.width() - 300.0, app_rect.height() / 2.0));
+            let top_panel_rect = Rect::from_two_pos(
+                Pos2::new(200.0, 0.0),
+                Pos2::new(app_rect.width() - 300.0, app_rect.height() / 2.0),
+            );
             ui.allocate_ui_at_rect(top_panel_rect, |ui| {
                 self.view_panel.show(ui);
             });
 
             // settings panel - top right
-            let settings_panel_rect = Rect::from_two_pos(Pos2::new(app_rect.width() - 300.0, 0.0), Pos2::new(app_rect.width(), app_rect.height() / 2.0));
+            let settings_panel_rect = Rect::from_two_pos(
+                Pos2::new(app_rect.width() - 300.0, 0.0),
+                Pos2::new(app_rect.width(), app_rect.height() / 2.0),
+            );
             ui.allocate_ui_at_rect(settings_panel_rect, |ui| {
                 if let Some(node_id) = &self.viewing_node_id {
                     if let Some(node) = self.graph.nodes.get_mut(node_id) {
-                        self.node_settings_panel.show(ui, Some(&mut node.settings), Some(&mut node.inputs));
+                        self.node_settings_panel.show(
+                            ui,
+                            Some(&mut node.settings),
+                            Some(&mut node.inputs),
+                        );
                     } else {
                         self.node_settings_panel.show(ui, None, None);
                     }
                 } else {
                     self.node_settings_panel.show(ui, None, None);
-                }                
+                }
             });
 
             // bottom graph panel
-            let bottom_panel_rect = Rect::from_two_pos(Pos2::new(0.0, app_rect.height() / 2.0), Pos2::new(app_rect.width(), app_rect.height()));
+            let bottom_panel_rect = Rect::from_two_pos(
+                Pos2::new(0.0, app_rect.height() / 2.0),
+                Pos2::new(app_rect.width(), app_rect.height()),
+            );
             ui.allocate_ui_at_rect(bottom_panel_rect, |ui| {
-                let graph_editor_response: GraphEditorResponse = self.graph_editor.show(ui, cursor_position, &self.graph.nodes, cursor_primary_down);
+                let graph_editor_response: GraphEditorResponse = self.graph_editor.show(
+                    ui,
+                    cursor_position,
+                    &self.graph.nodes,
+                    cursor_primary_down,
+                );
 
                 if graph_editor_response.request_redraw {
                     ctx.request_repaint();
@@ -178,12 +202,16 @@ impl eframe::App for MyApp {
                 if i.pointer.primary_released() {
                     if let Some(dragging_settings) = self.dragging_menu_button.clone() {
                         if bottom_panel_rect.contains(cursor_position) {
-
                             let node_settings = dragging_settings.0.clone();
                             let input_sttings = &dragging_settings.1.clone();
                             let output_settings = &dragging_settings.2.clone();
 
-                            self.add_node(node_settings, input_sttings, &output_settings, cursor_position);
+                            self.add_node(
+                                node_settings,
+                                input_sttings,
+                                &output_settings,
+                                cursor_position,
+                            );
                         }
                     }
 
@@ -195,38 +223,78 @@ impl eframe::App for MyApp {
             // draw shape behind mouse being dragged
             if let Some(_dragging_settings) = self.dragging_menu_button.clone() {
                 let drag_rect = Rect::from_center_size(cursor_position, Vec2::new(80.0, 80.0));
-                ui.painter().add(egui::Shape::rect_filled(drag_rect, Rounding::none(), egui::Color32::from_gray(100)));
+                ui.painter().add(egui::Shape::rect_filled(
+                    drag_rect,
+                    Rounding::none(),
+                    egui::Color32::from_gray(100),
+                ));
             }
 
             // show cpu usage in bototm right corner
             if let Some(cpu_usage) = frame.info().cpu_usage {
                 let pos = Pos2::new(app_rect.right() - 10.0, app_rect.bottom() - 10.0);
                 let txt = format!("{:.3} ms", cpu_usage * 1000.0);
-                ui.painter().text(pos, egui::Align2::RIGHT_BOTTOM, txt, egui::FontId::monospace(8.0), egui::Color32::from_gray(150));
+                ui.painter().text(
+                    pos,
+                    egui::Align2::RIGHT_BOTTOM,
+                    txt,
+                    egui::FontId::monospace(8.0),
+                    egui::Color32::from_gray(150),
+                );
             }
         });
     }
 }
 
-
 impl MyApp {
     pub fn connect_nodes(&mut self, new_connection: NewConnection) {
-        if self.graph.nodes.get_mut(&new_connection.input_node_id).is_some() && self.graph.nodes.get_mut(&new_connection.output_node_id).is_some() {
+        if self
+            .graph
+            .nodes
+            .get_mut(&new_connection.input_node_id)
+            .is_some()
+            && self
+                .graph
+                .nodes
+                .get_mut(&new_connection.output_node_id)
+                .is_some()
+        {
             if let Some(from) = self.graph.nodes.get_mut(&new_connection.output_node_id) {
-                from.set_output_connection(new_connection.output_connection_index, new_connection.input_node_id.clone(), new_connection.input_connection_index);
+                from.set_output_connection(
+                    new_connection.output_connection_index,
+                    new_connection.input_node_id.clone(),
+                    new_connection.input_connection_index,
+                );
             }
 
             if let Some(to) = self.graph.nodes.get_mut(&new_connection.input_node_id) {
-                to.set_input_connection(new_connection.input_connection_index, new_connection.output_node_id, new_connection.output_connection_index);
+                to.set_input_connection(
+                    new_connection.input_connection_index,
+                    new_connection.output_node_id,
+                    new_connection.output_connection_index,
+                );
             }
         }
     }
 
-    pub fn add_node(&mut self, node_settings: NodeSettings, input_settings: &Vec<ConnectionSettings>, output_settings: &Vec<ConnectionSettings>, position: Pos2) -> String {
+    pub fn add_node(
+        &mut self,
+        node_settings: NodeSettings,
+        input_settings: &Vec<ConnectionSettings>,
+        output_settings: &Vec<ConnectionSettings>,
+        position: Pos2,
+    ) -> String {
         let id = get_id();
         let add = Add::default();
-        self.graph_editor.add_node(id.clone(), node_settings.clone(), position);
-        let node = Node::new(id.clone(), node_settings, input_settings, output_settings, Box::new(add));
+        self.graph_editor
+            .add_node(id.clone(), node_settings.clone(), position);
+        let node = Node::new(
+            id.clone(),
+            node_settings,
+            input_settings,
+            output_settings,
+            Box::new(add),
+        );
         self.graph.add_node(id.clone(), node);
         id
     }
@@ -240,7 +308,6 @@ impl MyApp {
     }
 }
 
-
 #[derive(Debug)]
 pub struct NewConnection {
     input_node_id: String,
@@ -250,7 +317,17 @@ pub struct NewConnection {
 }
 
 impl NewConnection {
-    pub fn new(input_node_id: String, input_connection_index: usize, output_node_id: String, output_connection_index: usize,) -> NewConnection {
-        NewConnection { input_node_id, input_connection_index, output_node_id, output_connection_index }
+    pub fn new(
+        input_node_id: String,
+        input_connection_index: usize,
+        output_node_id: String,
+        output_connection_index: usize,
+    ) -> NewConnection {
+        NewConnection {
+            input_node_id,
+            input_connection_index,
+            output_node_id,
+            output_connection_index,
+        }
     }
 }
