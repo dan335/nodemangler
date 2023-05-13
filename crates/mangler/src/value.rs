@@ -1,22 +1,16 @@
 #[derive(Debug, Clone)]
 pub enum Value {
-    Integer {
-        value: usize
-    },
-    Decimal {
-        value: f32
-    },
-    String {
-        value: String
-    }
+    Integer(usize),
+    Decimal(f32),
+    String(String)
 }
 
 impl Value {
     pub fn value_type(self) -> ValueType {
         match self {
-            Self::Decimal {value: _ } => ValueType::Decimal,
-            Self::Integer {value: _ } => ValueType::Integer,
-            Self::String {value: _ } => ValueType::String,
+            Value::Integer(_) => ValueType::Integer,
+            Value::Decimal(_) => ValueType::Decimal,
+            Value::String(_) => ValueType::String,
         }
     }
 }
@@ -27,3 +21,4 @@ pub enum ValueType {
     Decimal,
     String,
 }
+

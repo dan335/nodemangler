@@ -11,6 +11,7 @@ use super::graph_editor::TempConnection;
 pub const NODE_SIZE: Vec2 = Vec2::new(132.0, 132.0);
 const NODE_ROUNDING: f32 = 2.0;
 
+
 #[derive(Clone, Debug)]
 pub struct GraphNode {
     pub id: String,
@@ -49,12 +50,38 @@ impl GraphNode {
         );
 
         if bg_response.clicked() {
-            // clicked on bg
+            self.stop_dragging();
+            // if let Some(last_click) = self.last_click {
+            //     if last_click.elapsed() <= DOUBLE_CLICK_DURATION {
+            //         // is double click
+            //         println!("double click");
+            //         graph_node_response.view_node = true;
+            //         self.last_click = None;
+            //         self.check_for_click = false;
+            //     } else {
+            //         self.check_for_click = true;
+            //         self.last_click = Some(Instant::now());
+            //     }
+            // } else {
+            //     self.check_for_click = true;
+            //     self.last_click = Some(Instant::now());
+            // }
+            graph_node_response.is_click = true;
         } else if bg_response.drag_started() {
             self.start_dragging();
         } else if bg_response.drag_released() {
             self.stop_dragging();
         }
+
+        // if let Some(last_click) = self.last_click {
+        //     println!("{:?}", last_click.elapsed());
+        //     if last_click.elapsed() > DOUBLE_CLICK_DURATION {
+        //         // is click
+        //         println!("click");
+        //         graph_node_response.edit_node = true;
+        //         self.last_click = None;
+        //     }
+        // }
 
         if self.is_dragging {
             if let Some(last_drag_position) = self.last_drag_position {
@@ -135,6 +162,10 @@ impl GraphNode {
             self.last_drag_position = None;
     }
 
+    fn select(&mut self) {
+
+    }
+
 
     pub fn get_input_position(&self, index: usize, graph_position: Pos2) -> Pos2 {
         let rect = self.get_rect(graph_position);
@@ -162,6 +193,9 @@ pub struct GraphNodeResponse {
     pub temp_connection: Option<TempConnection>,
     pub has_stopped_creating_connection: bool,
     pub connection_to_position: Pos2,
+    pub edit_node: bool,
+    pub view_node: bool,
+    pub is_click: bool,
 }
 
 impl GraphNodeResponse {
@@ -170,6 +204,9 @@ impl GraphNodeResponse {
             temp_connection: None,
             has_stopped_creating_connection: false,
             connection_to_position: Pos2::ZERO,
+            edit_node: false,
+            view_node: false,
+            is_click: false,
         }
     }
 }

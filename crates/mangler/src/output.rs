@@ -4,7 +4,7 @@ use crate::value::Value;
 pub struct Output {
     pub name: String,
     pub value: Value,
-    pub connection: Option<Vec<(String, usize)>>,     // id of input, index of input
+    pub connection: Option<Vec<(String, usize)>>,     // id of input node, index of input
 }
 
 impl Output {

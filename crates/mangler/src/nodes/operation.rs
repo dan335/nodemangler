@@ -26,4 +26,13 @@ pub struct ConnectionSettings {
     pub name: String,
     pub default_value: Value,
     pub valid_types: Vec<ValueType>,
+    pub ui_type: Option<UiType>,    // for output connections it's none
+}
+
+#[derive(Debug, Clone)]
+pub enum UiType {
+    DragValue,
+    Checkbox,
+    Slider,
+    TextEdit,
 }

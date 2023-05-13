@@ -6,22 +6,27 @@ use mangler::nodes::add::Add;
 use mangler::nodes::node::Node;
 use mangler::nodes::operation::ConnectionSettings;
 use mangler::{graph::Graph, nodes::node_settings::NodeSettings};
-use mangler::{nodes::*, get_id};
+use mangler::get_id;
 use egui::Vec2;
 
 mod graph;
-mod menu;
-mod menu_button;
 mod title_bar;
+mod node_settings;
+mod view;
+mod menu;
 use graph::graph_editor::GraphEditor;
-use egui::{Pos2, Rect, Sense};
-use menu::Menu;
+use egui::{Pos2, Rect};
+use menu::menu_panel::MenuPanel;
+use view::view_panel::ViewPanel;
 use crate::graph::graph_editor::GraphEditorResponse;
+use node_settings::node_settings_panel::NodeSettingsPanel;
 
 
 
 pub const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
 pub const DEFAULT_WINDOW_HEIGHT: f32 = 800.0;
+//const ICON: &[u8; 2869] = include_bytes!("..\\assets\\mangler_icon.png");
+
 
 
 fn main() -> Result<(), eframe::Error> {
@@ -41,21 +46,44 @@ fn main() -> Result<(), eframe::Error> {
 
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)),
+        icon_data: Some(load_icon(".\\crates\\nodemangler\\assets\\mangler_icon.png")),
         ..Default::default()
     };
 
     eframe::run_native(
-        "Node Mangler",
+        "Mangler",
         options,
         Box::new(|_cc| Box::<MyApp>::default()),
     )
 }
 
+// do this without image crate?
+fn load_icon(path: &str) -> eframe::IconData {
+    let (icon_rgba, icon_width, icon_height) = {
+        let image = image::open(path)
+            .expect("Failed to open icon path")
+            .into_rgba8();
+        let (width, height) = image.dimensions();
+        let rgba = image.into_raw();
+        (rgba, width, height)
+    };
+
+    eframe::IconData {
+        rgba: icon_rgba,
+        width: icon_width,
+        height: icon_height,
+    }
+}
+
 struct MyApp {
     pub graph: Graph,
     graph_editor: GraphEditor,
-    menu: Menu,
-    dragging_menu_button: Option<NodeSettings>,
+    node_settings_panel: NodeSettingsPanel,
+    view_panel: ViewPanel,
+    menu_panel: MenuPanel,
+    dragging_menu_button: Option<(NodeSettings, Vec<ConnectionSettings>, Vec<ConnectionSettings>)>,
+    editing_node_id: Option<String>,
+    viewing_node_id: Option<String>,
 }
 
 impl Default for MyApp {
@@ -63,15 +91,19 @@ impl Default for MyApp {
         Self {
             graph: Graph::new(),
             graph_editor: GraphEditor::new(),
-            menu: Menu::new(),
+            node_settings_panel: NodeSettingsPanel::new(),
+            view_panel: ViewPanel::new(),
+            menu_panel: MenuPanel::new(),
             dragging_menu_button: None,
+            editing_node_id: None,
+            viewing_node_id: None,
         }
     }
 }
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-
+        
         egui::CentralPanel::default().show(ctx, |ui| {
 
             let app_rect = ctx.screen_rect();
@@ -81,44 +113,53 @@ impl eframe::App for MyApp {
 
             //let mouse_response = ui.allocate_rect(app_rect, Sense::drag());
 
-            // sidebar menu
-            let left_rect = Rect::from_two_pos(Pos2::new(0.0, 0.0), Pos2::new(200.0, app_rect.width()));
-            ui.allocate_ui_at_rect(left_rect, |ui| {
-
-                // sidebar bg
-                ui.painter().add(egui::Shape::rect_filled(
-                    ui.max_rect(),
-                    Rounding::none(),
-                    egui::Color32::from_gray(40),
-                ));
-
-                // show menu
-                let menu_result = self.menu.show(ui, cursor_position);
+            // menu panel
+            let menu_panel_rect = Rect::from_two_pos(Pos2::new(0.0, 0.0), Pos2::new(200.0, app_rect.height() / 2.0));
+            ui.allocate_ui_at_rect(menu_panel_rect, |ui| {
+                let menu_result = self.menu_panel.show(ui, cursor_position);
 
                 // dragging from menu
                 if menu_result.dragging_menu_button.is_some() {
                     self.dragging_menu_button = menu_result.dragging_menu_button.clone();
                 }
-                
             });
 
             // top panel
-            let top_rect = Rect::from_two_pos(Pos2::new(200.0, 0.0), Pos2::new(app_rect.width(), app_rect.height() / 2.0));
-            ui.allocate_ui_at_rect(top_rect, |ui| {
-                ui.painter().add(egui::Shape::rect_filled(
-                    ui.max_rect(),
-                    Rounding::none(),
-                    egui::Color32::from_gray(30),
-                ));
-                ui.vertical_centered(|ui| {
-                    ui.heading("Top Panel");
-                });
+            let top_panel_rect = Rect::from_two_pos(Pos2::new(200.0, 0.0), Pos2::new(app_rect.width() - 300.0, app_rect.height() / 2.0));
+            ui.allocate_ui_at_rect(top_panel_rect, |ui| {
+                self.view_panel.show(ui);
+            });
+
+            // settings panel - top right
+            let settings_panel_rect = Rect::from_two_pos(Pos2::new(app_rect.width() - 300.0, 0.0), Pos2::new(app_rect.width(), app_rect.height() / 2.0));
+            ui.allocate_ui_at_rect(settings_panel_rect, |ui| {
+                if let Some(node_id) = &self.viewing_node_id {
+                    if let Some(node) = self.graph.nodes.get_mut(node_id) {
+                        self.node_settings_panel.show(ui, Some(&mut node.settings), Some(&mut node.inputs));
+                    } else {
+                        self.node_settings_panel.show(ui, None, None);
+                    }
+                } else {
+                    self.node_settings_panel.show(ui, None, None);
+                }                
             });
 
             // bottom graph panel
-            let bottom_rect = Rect::from_two_pos(Pos2::new(200.0, app_rect.height() / 2.0), Pos2::new(app_rect.width(), app_rect.height()));
-            ui.allocate_ui_at_rect(bottom_rect, |ui| {
+            let bottom_panel_rect = Rect::from_two_pos(Pos2::new(0.0, app_rect.height() / 2.0), Pos2::new(app_rect.width(), app_rect.height()));
+            ui.allocate_ui_at_rect(bottom_panel_rect, |ui| {
                 let graph_editor_response: GraphEditorResponse = self.graph_editor.show(ui, cursor_position, &self.graph.nodes, cursor_primary_down);
+
+                if graph_editor_response.request_redraw {
+                    ctx.request_repaint();
+                }
+
+                if let Some(editing_node_id) = graph_editor_response.editing_node_id {
+                    self.edit_node(editing_node_id);
+                }
+
+                if let Some(viewing_node_id) = graph_editor_response.viewing_node_id {
+                    self.view_node(viewing_node_id);
+                }
 
                 if let Some(new_connection) = graph_editor_response.new_connection {
                     self.connect_nodes(new_connection);
@@ -136,11 +177,11 @@ impl eframe::App for MyApp {
             ui.input(|i| {
                 if i.pointer.primary_released() {
                     if let Some(dragging_settings) = self.dragging_menu_button.clone() {
-                        if bottom_rect.contains(cursor_position) {
+                        if bottom_panel_rect.contains(cursor_position) {
 
-                            let node_settings = add::SETTINGS.clone();
-                            let input_sttings = &add::INPUT_SETTINGS. clone();
-                            let output_settings = &add::OUTPUT_SETTINGS.clone();
+                            let node_settings = dragging_settings.0.clone();
+                            let input_sttings = &dragging_settings.1.clone();
+                            let output_settings = &dragging_settings.2.clone();
 
                             self.add_node(node_settings, input_sttings, &output_settings, cursor_position);
                         }
@@ -152,7 +193,7 @@ impl eframe::App for MyApp {
 
             // dragging node from menu
             // draw shape behind mouse being dragged
-            if let Some(dragging_settings) = self.dragging_menu_button.clone() {
+            if let Some(_dragging_settings) = self.dragging_menu_button.clone() {
                 let drag_rect = Rect::from_center_size(cursor_position, Vec2::new(80.0, 80.0));
                 ui.painter().add(egui::Shape::rect_filled(drag_rect, Rounding::none(), egui::Color32::from_gray(100)));
             }
@@ -171,13 +212,12 @@ impl eframe::App for MyApp {
 impl MyApp {
     pub fn connect_nodes(&mut self, new_connection: NewConnection) {
         if self.graph.nodes.get_mut(&new_connection.input_node_id).is_some() && self.graph.nodes.get_mut(&new_connection.output_node_id).is_some() {
-
-            if let Some(from) = self.graph.nodes.get_mut(&new_connection.input_node_id) {
-                from.set_output_connection(new_connection.output_connection_index, new_connection.input_node_id);
+            if let Some(from) = self.graph.nodes.get_mut(&new_connection.output_node_id) {
+                from.set_output_connection(new_connection.output_connection_index, new_connection.input_node_id.clone(), new_connection.input_connection_index);
             }
 
-            if let Some(to) = self.graph.nodes.get_mut(&new_connection.output_node_id) {
-                to.set_input_connection(new_connection.input_connection_index, new_connection.output_node_id);
+            if let Some(to) = self.graph.nodes.get_mut(&new_connection.input_node_id) {
+                to.set_input_connection(new_connection.input_connection_index, new_connection.output_node_id, new_connection.output_connection_index);
             }
         }
     }
@@ -185,10 +225,18 @@ impl MyApp {
     pub fn add_node(&mut self, node_settings: NodeSettings, input_settings: &Vec<ConnectionSettings>, output_settings: &Vec<ConnectionSettings>, position: Pos2) -> String {
         let id = get_id();
         let add = Add::default();
-        let node = Node::new(id.clone(), input_settings, output_settings, Box::new(add));
+        self.graph_editor.add_node(id.clone(), node_settings.clone(), position);
+        let node = Node::new(id.clone(), node_settings, input_settings, output_settings, Box::new(add));
         self.graph.add_node(id.clone(), node);
-        self.graph_editor.add_node(id.clone(), node_settings, position);
         id
+    }
+
+    pub fn view_node(&mut self, node_id: String) {
+        self.editing_node_id = Some(node_id);
+    }
+
+    pub fn edit_node(&mut self, node_id: String) {
+        self.viewing_node_id = Some(node_id);
     }
 }
 

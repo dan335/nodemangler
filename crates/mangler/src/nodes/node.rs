@@ -2,24 +2,26 @@ use std::time::Duration;
 
 use crate::{input::Input, output::Output, value::Value};
 
-use super::operation::{Operation, ConnectionSettings};
+use super::{operation::{Operation, ConnectionSettings}, node_settings::NodeSettings};
 
 #[derive(Debug, Clone)]
 pub struct Node {
     pub operation: Box<dyn Operation>,
     pub id: String,
+    pub settings: NodeSettings,
     pub inputs: Vec<Input>,
     pub outputs: Vec<Output>,
     pub time: Option<Duration>,
 }
 
 impl Node {
-    pub fn new(id: String, input_settings: &Vec<ConnectionSettings>, output_settings: &Vec<ConnectionSettings>, operation: Box<dyn Operation>) -> Node {
+    pub fn new(id: String, settings: NodeSettings, input_settings: &Vec<ConnectionSettings>, output_settings: &Vec<ConnectionSettings>, operation: Box<dyn Operation>) -> Node {
         let inputs: Vec<Input> = input_settings.iter().map(|settings| Input {
             name: settings.name.to_owned(),
             value: settings.default_value.clone(),
             connection: None,
             valid_types: settings.valid_types.to_vec(),
+            ui_type: settings.ui_type.clone(),
         }).collect();
 
         let outputs: Vec<Output> = output_settings.iter().map(|settings| Output {
@@ -34,6 +36,7 @@ impl Node {
             outputs,
             time: None,
             operation,
+            settings,
         }
     }
 

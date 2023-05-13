@@ -1,11 +1,12 @@
-use eframe::egui::{self, output};
+use eframe::{egui::{self}};
 use egui::Pos2;
 use mangler::{nodes::{node_settings::NodeSettings, node::Node}};
-use std::collections::HashMap;
-
+use std::{collections::HashMap, time::{Instant, Duration}};
+use egui::epaint::{CubicBezierShape};
 use crate::{graph::graph_node::GraphNode, NewConnection};
-
 use super::graph_node::ConnectionType;
+
+const DOUBLE_CLICK_DURATION: Duration = Duration::from_millis(500);
 
 pub struct GraphEditor {
     position: Pos2,
@@ -13,7 +14,10 @@ pub struct GraphEditor {
     last_drag_position: Option<Pos2>,
     pub graph_nodes: HashMap<String, GraphNode>,
     temp_connection: Option<TempConnection>,
-    
+
+    // if a node was clicked on when was it clicked and what is it's node_id
+    // used to check for click or double click
+    last_node_click: Option<(Instant, String)>,    
 }
 
 impl GraphEditor {
@@ -24,6 +28,7 @@ impl GraphEditor {
             last_drag_position: None,
             graph_nodes: HashMap::default(),
             temp_connection: None,
+            last_node_click: None,
         }
     }
 
@@ -62,11 +67,22 @@ impl GraphEditor {
             self.last_drag_position = Some(cursor_position);
         }
 
+        // clicking on nodes
+        // check if click is less than DOUBLE_CLICK_DURATION
+        // but no other click has occured
+        if let Some(last_node_click) = &self.last_node_click {
+            if last_node_click.0.elapsed() > DOUBLE_CLICK_DURATION {
+                // click occured
+                graph_editor_response.editing_node_id = Some(last_node_click.1.clone());
+                self.last_node_click = None;
+            }
+        }
+
         // draw nodes
         let mut has_stopped_creating_connection = false;
-        let mut connection_to_position = Pos2::ZERO;
+        //let mut connection_to_position = Pos2::ZERO;
 
-        for (_, graph_node) in self.graph_nodes.iter_mut() {
+        for (graph_node_id, graph_node) in self.graph_nodes.iter_mut() {
             let graph_node_response = graph_node.show(ui, self.position, cursor_position, &nodes[&graph_node.id]);
 
             // new temp connection
@@ -77,7 +93,35 @@ impl GraphEditor {
             // new connection
             if graph_node_response.has_stopped_creating_connection {
                 has_stopped_creating_connection = true;
-                connection_to_position = graph_node_response.connection_to_position;
+                //connection_to_position = graph_node_response.connection_to_position;
+            }
+
+            // click on node
+            if graph_node_response.is_click {
+                //graph_editor_response.is_click_node_id = Some(graph_node_id.clone());
+                if let Some(last_node_click) = &self.last_node_click {
+                    if &last_node_click.1 == graph_node_id {
+                        // check for double click
+                        if last_node_click.0.elapsed() <= DOUBLE_CLICK_DURATION {
+                            // double click
+                            graph_editor_response.viewing_node_id = Some(graph_node_id.clone());
+                            self.last_node_click = None;
+                        } else {
+                            // previous click is old
+                            // save click
+                            self.last_node_click = Some((Instant::now(), graph_node_id.clone()));
+                        }
+                    } else {
+                        // different node was clicked on
+                        // save click
+                        self.last_node_click = Some((Instant::now(), graph_node_id.clone()));
+                    }
+                    
+                } else {
+                    // no previous click
+                    // save click
+                    self.last_node_click = Some((Instant::now(), graph_node_id.clone()));
+                }
             }
         }
 
@@ -114,24 +158,55 @@ impl GraphEditor {
 
         // temp connection being created
         if let Some(temp_connection) = &self.temp_connection {
-            let mut points: Vec<Pos2> = Vec::with_capacity(2);
-            points.push(temp_connection.from_position);
-            points.push(cursor_position);
-            let stroke = egui::Stroke::new(1.0, egui::Color32::from_gray(150));
-            ui.painter().add(egui::Shape::line(points, stroke));
+            match temp_connection.from_connection_type {
+                ConnectionType::Input => self.draw_connection_line(ui, cursor_position, temp_connection.from_position),
+                ConnectionType::Output => self.draw_connection_line(ui, temp_connection.from_position, cursor_position),
+            }
         }
 
         // connections
         for (node_id, node) in nodes.iter() {
-            for input in node.inputs.iter() {
-                if let Some(connection_id) = &input.connection {
-                    let other_node = &nodes[connection_id];
-                    
+            for (input_index, input) in node.inputs.iter().enumerate() {
+                if let Some((output_node_id, output_connection_index)) = &input.connection {
+                    let input_graph_node = &self.graph_nodes[node_id];
+                    let output_graph_node = &self.graph_nodes[output_node_id];
+
+                    self.draw_connection_line(ui, output_graph_node.get_output_position(output_connection_index.clone(), self.position), input_graph_node.get_input_position(input_index, self.position));
                 }
             }
         }
 
+        if self.last_node_click.is_some() {
+            graph_editor_response.request_redraw = true;
+        }
+
         graph_editor_response
+    }
+
+    pub fn draw_connection_line(&self, ui: &mut egui::Ui, from: Pos2, to: Pos2) {
+        let offset_max = 150.0;
+        let color = egui::Color32::from_gray(150);
+        let stroke = egui::Stroke::new(2.0, color);
+
+        let distance = from.distance(to);
+        let offset = (distance / 2.0).min(offset_max);
+
+        let points = [
+            from,
+            Pos2::new(from.x + offset, from.y),
+            Pos2::new(to.x - offset, to.y),
+            to,
+            ];
+
+        //let curve_shape = CubicBezierShape::from_points_stroke(points, false, color, stroke);
+        let curve_shape = CubicBezierShape {
+            points,
+            closed: false,
+            fill: egui::Color32::from_black_alpha(0),
+            stroke,
+        };
+
+        ui.painter().add(egui::Shape::CubicBezier(curve_shape));
     }
 
     fn start_dragging(&mut self) {
@@ -146,6 +221,14 @@ impl GraphEditor {
     pub fn add_node(&mut self, node_id: String, node_settings: NodeSettings, position: Pos2) {
         let node = GraphNode::new(node_id.clone(), position - self.position.to_vec2(), node_settings);
         self.graph_nodes.insert(node_id, node);
+    }
+
+    pub fn edit_node(&mut self, node_id: String) {
+
+    }
+
+    pub fn view_node(&mut self, node_id: String) {
+
     }
 
     
@@ -166,12 +249,20 @@ pub struct TempConnection {
 
 pub struct GraphEditorResponse {
     pub new_connection: Option<NewConnection>,
+    pub is_click_node_id: Option<String>,   // if a node was clicked on return it's id
+    pub request_redraw: bool,
+    pub editing_node_id: Option<String>,
+    pub viewing_node_id: Option<String>,
 }
 
 impl GraphEditorResponse {
     fn default() -> GraphEditorResponse {
         GraphEditorResponse {
             new_connection: None,
+            is_click_node_id: None,
+            request_redraw: false,
+            editing_node_id: None,
+            viewing_node_id: None,
         }
     }
 }

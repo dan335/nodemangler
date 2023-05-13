@@ -1,17 +1,21 @@
 use eframe::{egui, emath::Align2, epaint::FontId};
-use mangler::nodes::node_settings::NodeSettings;
+use mangler::nodes::{node_settings::NodeSettings, operation::ConnectionSettings};
 use egui::{Rect, Pos2,Rounding, Stroke, Color32};
 
 const BUTTON_HEIGHT: f32 = 36.0;
 
 pub struct MenuButton {
     pub node_settings: NodeSettings,
+    pub input_settings: Vec<ConnectionSettings>,
+    pub output_settings: Vec<ConnectionSettings>,
 }
 
 impl MenuButton {
-    pub fn new(node_settings: NodeSettings) -> MenuButton {
+    pub fn new(node_settings: NodeSettings, input_settings: Vec<ConnectionSettings>, output_settings: Vec<ConnectionSettings>) -> MenuButton {
         MenuButton {
             node_settings,
+            input_settings,
+            output_settings,
         }
     }
 
@@ -27,7 +31,8 @@ impl MenuButton {
         
         let mut is_dragging = false;
 
-        ui.centered(|ui| {
+        ui.centered_and_justified(|ui| {
+        //ui.centered(|ui| {
             
             let rect = Rect::from_min_max(button_rect.min, Pos2::new(button_rect.max.x, button_rect.max.y));
             ui.painter().add(egui::Shape::rect_filled(
