@@ -1,18 +1,15 @@
-use std::print;
-
-use eframe::{egui, emath::Align2};
-use eframe::epaint::Rounding;
-use egui::{Pos2, Vec2, Rect};
-use mangler::nodes::node::Node;
-use mangler::nodes::node_settings::NodeSettings;
 use crate::graph::graph_input::draw_graph_input;
 use crate::graph::graph_output::draw_graph_output;
+use eframe::epaint::Rounding;
+use eframe::{egui, emath::Align2};
+use egui::{Pos2, Rect, Vec2};
+use mangler::nodes::node::Node;
+use mangler::nodes::node_settings::NodeSettings;
 
 use super::graph_editor::TempConnection;
 
 pub const NODE_SIZE: Vec2 = Vec2::new(132.0, 132.0);
 const NODE_ROUNDING: f32 = 2.0;
-
 
 #[derive(Clone, Debug)]
 pub struct GraphNode {
@@ -38,7 +35,13 @@ impl GraphNode {
         Rect::from_center_size(self.position + graph_position.to_vec2(), NODE_SIZE)
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, graph_position: Pos2, cursor_position: Pos2, node: &Node) -> GraphNodeResponse {
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        graph_position: Pos2,
+        cursor_position: Pos2,
+        node: &Node,
+    ) -> GraphNodeResponse {
         let mut graph_node_response = GraphNodeResponse::default();
         //let pos = graph_position + self.position.to_vec2();
         let rounding = Rounding::same(NODE_ROUNDING);
@@ -71,7 +74,7 @@ impl GraphNode {
             self.last_drag_position = Some(cursor_position);
         }
 
-        // bg 
+        // bg
         ui.painter().add(egui::Shape::rect_filled(
             self.get_rect(graph_position),
             rounding,
@@ -80,7 +83,14 @@ impl GraphNode {
 
         // inputs
         for (index, input) in node.inputs.iter().enumerate() {
-            let input_output_response = draw_graph_input(input, self.get_input_position(index, graph_position), self.get_input_rect(index, graph_position), index, self.get_rect(graph_position), ui);
+            let input_output_response = draw_graph_input(
+                input,
+                self.get_input_position(index, graph_position),
+                self.get_input_rect(index, graph_position),
+                index,
+                self.get_rect(graph_position),
+                ui,
+            );
 
             if input_output_response.has_started_creating_connection {
                 graph_node_response.temp_connection = Some(TempConnection {
@@ -93,13 +103,21 @@ impl GraphNode {
 
             if input_output_response.has_stopped_creating_connection {
                 graph_node_response.has_stopped_creating_connection = true;
-                graph_node_response.connection_to_position = input_output_response.connection_to_position;
+                graph_node_response.connection_to_position =
+                    input_output_response.connection_to_position;
             }
         }
 
         // outputs
         for (index, output) in node.outputs.iter().enumerate() {
-            let input_output_response = draw_graph_output(output, self.get_output_position(index, graph_position), self.get_output_rect(index, graph_position), index, self.get_rect(graph_position), ui);
+            let input_output_response = draw_graph_output(
+                output,
+                self.get_output_position(index, graph_position),
+                self.get_output_rect(index, graph_position),
+                index,
+                self.get_rect(graph_position),
+                ui,
+            );
 
             // started dragging from connection
             // create temp connection object
@@ -114,7 +132,8 @@ impl GraphNode {
 
             if input_output_response.has_stopped_creating_connection {
                 graph_node_response.has_stopped_creating_connection = true;
-                graph_node_response.connection_to_position = input_output_response.connection_to_position;
+                graph_node_response.connection_to_position =
+                    input_output_response.connection_to_position;
             }
         }
 
@@ -122,11 +141,14 @@ impl GraphNode {
         if let Some(time) = node.time {
             let pos = self.get_rect(graph_position).right_bottom();
             let text = format!("{:.4} ms", time.as_nanos() as f64 / 1_000_000.0);
-            ui.painter().text(pos, Align2::RIGHT_TOP, text, egui::FontId::monospace(10.0), egui::Color32::from_gray(200));
+            ui.painter().text(
+                pos,
+                Align2::RIGHT_TOP,
+                text,
+                egui::FontId::monospace(10.0),
+                egui::Color32::from_gray(200),
+            );
         }
-        
-
-        
 
         // outline
         // ui.painter().add(egui::Shape::rect_stroke(
@@ -136,8 +158,17 @@ impl GraphNode {
         // ));
 
         // text - name
-        ui.painter().text(Pos2::new(self.get_rect(graph_position).center().x, self.get_rect(graph_position).top() + 4.0), Align2::CENTER_TOP, self.settings.name.clone(), egui::FontId::default(), egui::Color32::from_gray(220));
-        
+        ui.painter().text(
+            Pos2::new(
+                self.get_rect(graph_position).center().x,
+                self.get_rect(graph_position).top() + 4.0,
+            ),
+            Align2::CENTER_TOP,
+            self.settings.name.clone(),
+            egui::FontId::default(),
+            egui::Color32::from_gray(220),
+        );
+
         graph_node_response
     }
 
@@ -147,13 +178,10 @@ impl GraphNode {
 
     fn stop_dragging(&mut self) {
         self.is_dragging = false;
-            self.last_drag_position = None;
+        self.last_drag_position = None;
     }
 
-    fn select(&mut self) {
-
-    }
-
+    fn select(&mut self) {}
 
     pub fn get_input_position(&self, index: usize, graph_position: Pos2) -> Pos2 {
         let rect = self.get_rect(graph_position);
@@ -166,15 +194,19 @@ impl GraphNode {
     }
 
     pub fn get_input_rect(&self, index: usize, graph_position: Pos2) -> Rect {
-        Rect::from_center_size(self.get_input_position(index, graph_position), Vec2::new(12.0, 12.0))
+        Rect::from_center_size(
+            self.get_input_position(index, graph_position),
+            Vec2::new(12.0, 12.0),
+        )
     }
 
     pub fn get_output_rect(&self, index: usize, graph_position: Pos2) -> Rect {
-        Rect::from_center_size(self.get_output_position(index, graph_position), Vec2::new(12.0, 12.0))
+        Rect::from_center_size(
+            self.get_output_position(index, graph_position),
+            Vec2::new(12.0, 12.0),
+        )
     }
 }
-
-
 
 #[derive(Debug)]
 pub struct GraphNodeResponse {
@@ -221,5 +253,6 @@ impl InputOutputResponse {
 
 #[derive(Debug, Clone)]
 pub enum ConnectionType {
-    Input, Output
+    Input,
+    Output,
 }

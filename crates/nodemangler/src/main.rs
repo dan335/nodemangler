@@ -73,23 +73,23 @@ fn load_icon(path: &str) -> eframe::IconData {
     }
 }
 
-struct MyApp {
+struct MyApp<O: Operation> {
     pub graph: Graph,
     graph_editor: GraphEditor,
     node_settings_panel: NodeSettingsPanel,
     view_panel: ViewPanel,
-    menu_panel: MenuPanel,
+    menu_panel: MenuPanel<O>,
     dragging_menu_button: Option<(
         NodeSettings,
         Vec<ConnectionSettings>,
         Vec<ConnectionSettings>,
-        Box<dyn Operation>,
+        O,
     )>,
     editing_node_id: Option<String>,
     viewing_node_id: Option<String>,
 }
 
-impl Default for MyApp {
+impl<O: Operation> Default for MyApp<O> {
     fn default() -> Self {
         Self {
             graph: Graph::new(),
@@ -104,7 +104,7 @@ impl Default for MyApp {
     }
 }
 
-impl eframe::App for MyApp {
+impl<O: Operation> eframe::App for MyApp<O> {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let mut graph_is_dirty = false; // run graph after ui
 
@@ -213,7 +213,7 @@ impl eframe::App for MyApp {
             // release mouse button after dragging menu button
             ui.input(|i| {
                 if i.pointer.primary_released() {
-                    if let Some(dragging_settings) = self.dragging_menu_button.clone() {
+                    if let Some(dragging_settings) = self.dragging_menu_button {
                         if bottom_panel_rect.contains(cursor_position) {
                             let node_settings = dragging_settings.0.clone();
                             let input_sttings = &dragging_settings.1.clone();
@@ -234,7 +234,7 @@ impl eframe::App for MyApp {
 
             // dragging node from menu
             // draw shape behind mouse being dragged
-            if let Some(_dragging_settings) = self.dragging_menu_button.clone() {
+            if let Some(_dragging_settings) = self.dragging_menu_button {
                 let drag_rect = Rect::from_center_size(cursor_position, Vec2::new(80.0, 80.0));
                 ui.painter().add(egui::Shape::rect_filled(
                     drag_rect,
@@ -263,7 +263,7 @@ impl eframe::App for MyApp {
     }
 }
 
-impl MyApp {
+impl<O: Operation> MyApp<O> {
     pub fn connect_nodes(&mut self, new_connection: NewConnection) {
         if self
             .graph
