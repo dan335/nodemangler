@@ -1,4 +1,4 @@
-use crate::value::Value;
+use crate::{value::Value, nodes::operation::UiType};
 
 #[derive(Debug, Clone)]
 pub struct Output {
@@ -8,7 +8,7 @@ pub struct Output {
 }
 
 impl Output {
-    pub fn new(name: String, value: Value) -> Output {
+    pub fn new(name: String, value: Value, ui_type: UiType) -> Output {
         Output { name, value, connection: None }
     }
 }

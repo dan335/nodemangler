@@ -1,38 +1,45 @@
 use eframe::{egui, epaint::Rounding};
 use egui::Pos2;
 
-use mangler::nodes::{node_settings::NodeSettings, operation::ConnectionSettings, self};
+use mangler::nodes::{node_settings::NodeSettings, operation::{ConnectionSettings, Operation}, self};
 
 use super::menu_button::MenuButton;
 
-pub struct MenuPanel {
-    pub buttons: Vec<MenuButton>
+pub struct MenuPanel<T: Operation> {
+    pub buttons: Vec<MenuButton<T>>
 }
 
-impl MenuPanel {
+impl MenuPanel<T: Operation> {
     pub fn new() -> MenuPanel {
-        let mut buttons: Vec<MenuButton> = vec![];
+        let mut buttons: Vec<MenuButton<T>> = vec![];
 
-        buttons.push(MenuButton::new(
-            nodes::float::SETTINGS.clone(),
-            nodes::float::INPUT_SETTINGS.clone(),
-            nodes::float::OUTPUT_SETTINGS.clone(),
-        ));
-        buttons.push(MenuButton::new(
-            nodes::integer::SETTINGS.clone(),
-            nodes::integer::INPUT_SETTINGS.clone(),
-            nodes::integer::OUTPUT_SETTINGS.clone(),
-        ));
-        buttons.push(MenuButton::new(
-            nodes::add::SETTINGS.clone(),
-            nodes::add::INPUT_SETTINGS.clone(),
-            nodes::add::OUTPUT_SETTINGS.clone(),
-        ));
-        buttons.push(MenuButton::new(
-            nodes::subtract::SETTINGS.clone(),
-            nodes::subtract::INPUT_SETTINGS.clone(),
-            nodes::subtract::OUTPUT_SETTINGS.clone(),
-        ));
+        buttons.push(MenuButton {
+            node_settings: nodes::float::SETTINGS,
+            input_settings: nodes::float::INPUT_SETTINGS,
+            output_settings: nodes::float::OUTPUT_SETTINGS,
+            operation: nodes::float::Float{},
+        });
+
+        buttons.push(MenuButton {
+            node_settings: nodes::integer::SETTINGS,
+            input_settings: nodes::integer::INPUT_SETTINGS,
+            output_settings: nodes::integer::OUTPUT_SETTINGS,
+            operation: nodes::integer::Integer{},
+        });
+
+        buttons.push(MenuButton {
+            node_settings: nodes::add::SETTINGS,
+            input_settings: nodes::add::INPUT_SETTINGS,
+            output_settings: nodes::add::OUTPUT_SETTINGS,
+            operation: nodes::add::Add{},
+        });
+
+        buttons.push(MenuButton {
+            node_settings: nodes::subtract::SETTINGS,
+            input_settings: nodes::subtract::INPUT_SETTINGS,
+            output_settings: nodes::subtract::OUTPUT_SETTINGS,
+            operation: nodes::subtract::Subtract{},
+        });
         
         MenuPanel {
             buttons
@@ -47,13 +54,13 @@ impl MenuPanel {
             egui::Color32::from_gray(40),
         ));
         
-        let mut dragging_menu_button: Option<(NodeSettings, Vec<ConnectionSettings>, Vec<ConnectionSettings>)> = None;
+        let mut dragging_menu_button: Option<(NodeSettings, Vec<ConnectionSettings>, Vec<ConnectionSettings>, Box<dyn Operation>)> = None;
 
         for (menu_button_index, menu_button) in self.buttons.iter_mut().enumerate() {
             let menu_button_result = menu_button.show(ui, menu_button_index);
 
             if menu_button_result.is_dragging {
-                dragging_menu_button = Some((menu_button.node_settings.clone(), menu_button.input_settings.clone(), menu_button.output_settings.clone()));
+                dragging_menu_button = Some((menu_button.node_settings.clone(), menu_button.input_settings.clone(), menu_button.output_settings.clone(), menu_button.operation.clone()));
             }
         }
 
@@ -65,5 +72,5 @@ impl MenuPanel {
 
 
 pub struct MenuResult {
-    pub dragging_menu_button: Option<(NodeSettings, Vec<ConnectionSettings>, Vec<ConnectionSettings>)>,
+    pub dragging_menu_button: Option<(NodeSettings, Vec<ConnectionSettings>, Vec<ConnectionSettings>, Box<dyn Operation>)>,
 }

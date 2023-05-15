@@ -7,7 +7,7 @@ use egui::Vec2;
 use mangler::get_id;
 use mangler::nodes::add::Add;
 use mangler::nodes::node::Node;
-use mangler::nodes::operation::ConnectionSettings;
+use mangler::nodes::operation::{ConnectionSettings, Operation};
 use mangler::{graph::Graph, nodes::node_settings::NodeSettings};
 use std::path::Path;
 
@@ -83,6 +83,7 @@ struct MyApp {
         NodeSettings,
         Vec<ConnectionSettings>,
         Vec<ConnectionSettings>,
+        Box<dyn Operation>,
     )>,
     editing_node_id: Option<String>,
     viewing_node_id: Option<String>,
@@ -105,6 +106,8 @@ impl Default for MyApp {
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        let mut graph_is_dirty = false; // run graph after ui
+
         egui::CentralPanel::default().show(ctx, |ui| {
             let app_rect = ctx.screen_rect();
             let cursor_position = ui
@@ -116,6 +119,7 @@ impl eframe::App for MyApp {
 
             //let mouse_response = ui.allocate_rect(app_rect, Sense::drag());
 
+            // -------------------------
             // menu panel
             let menu_panel_rect = Rect::from_two_pos(
                 Pos2::new(0.0, 0.0),
@@ -126,10 +130,11 @@ impl eframe::App for MyApp {
 
                 // dragging from menu
                 if menu_result.dragging_menu_button.is_some() {
-                    self.dragging_menu_button = menu_result.dragging_menu_button.clone();
+                    self.dragging_menu_button = menu_result.dragging_menu_button;
                 }
             });
 
+            // -------------------------
             // top panel
             let top_panel_rect = Rect::from_two_pos(
                 Pos2::new(200.0, 0.0),
@@ -139,6 +144,7 @@ impl eframe::App for MyApp {
                 self.view_panel.show(ui);
             });
 
+            // -------------------------
             // settings panel - top right
             let settings_panel_rect = Rect::from_two_pos(
                 Pos2::new(app_rect.width() - 300.0, 0.0),
@@ -147,19 +153,26 @@ impl eframe::App for MyApp {
             ui.allocate_ui_at_rect(settings_panel_rect, |ui| {
                 if let Some(node_id) = &self.viewing_node_id {
                     if let Some(node) = self.graph.nodes.get_mut(node_id) {
-                        self.node_settings_panel.show(
+                        let settings_response = self.node_settings_panel.show(
                             ui,
                             Some(&mut node.settings),
                             Some(&mut node.inputs),
+                            Some(&node.outputs),
                         );
+
+                        if !settings_response.input_indexes_that_changed.is_empty() {
+                            node.is_dirty = true;
+                            graph_is_dirty = true;
+                        }
                     } else {
-                        self.node_settings_panel.show(ui, None, None);
+                        self.node_settings_panel.show(ui, None, None, None);
                     }
                 } else {
-                    self.node_settings_panel.show(ui, None, None);
+                    self.node_settings_panel.show(ui, None, None, None);
                 }
             });
 
+            // -------------------------
             // bottom graph panel
             let bottom_panel_rect = Rect::from_two_pos(
                 Pos2::new(0.0, app_rect.height() / 2.0),
@@ -243,6 +256,10 @@ impl eframe::App for MyApp {
                 );
             }
         });
+
+        if graph_is_dirty {
+            self.graph.run();
+        }
     }
 }
 

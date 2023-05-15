@@ -97,32 +97,40 @@ impl GraphEditor {
             }
 
             // click on node
-            if graph_node_response.is_click {
-                //graph_editor_response.is_click_node_id = Some(graph_node_id.clone());
-                if let Some(last_node_click) = &self.last_node_click {
-                    if &last_node_click.1 == graph_node_id {
-                        // check for double click
-                        if last_node_click.0.elapsed() <= DOUBLE_CLICK_DURATION {
-                            // double click
-                            graph_editor_response.viewing_node_id = Some(graph_node_id.clone());
-                            self.last_node_click = None;
-                        } else {
-                            // previous click is old
-                            // save click
-                            self.last_node_click = Some((Instant::now(), graph_node_id.clone()));
-                        }
-                    } else {
-                        // different node was clicked on
-                        // save click
-                        self.last_node_click = Some((Instant::now(), graph_node_id.clone()));
-                    }
-                    
-                } else {
-                    // no previous click
-                    // save click
-                    self.last_node_click = Some((Instant::now(), graph_node_id.clone()));
-                }
+            if graph_node_response.is_left_click {
+                graph_editor_response.editing_node_id = Some(graph_node_id.clone());
             }
+
+            if graph_node_response.is_right_click {
+                graph_editor_response.viewing_node_id = Some(graph_node_id.clone());
+            }
+
+            // if graph_node_response.is_click {
+            //     //graph_editor_response.is_click_node_id = Some(graph_node_id.clone());
+            //     if let Some(last_node_click) = &self.last_node_click {
+            //         if &last_node_click.1 == graph_node_id {
+            //             // check for double click
+            //             if last_node_click.0.elapsed() <= DOUBLE_CLICK_DURATION {
+            //                 // double click
+            //                 graph_editor_response.viewing_node_id = Some(graph_node_id.clone());
+            //                 self.last_node_click = None;
+            //             } else {
+            //                 // previous click is old
+            //                 // save click
+            //                 self.last_node_click = Some((Instant::now(), graph_node_id.clone()));
+            //             }
+            //         } else {
+            //             // different node was clicked on
+            //             // save click
+            //             self.last_node_click = Some((Instant::now(), graph_node_id.clone()));
+            //         }
+                    
+            //     } else {
+            //         // no previous click
+            //         // save click
+            //         self.last_node_click = Some((Instant::now(), graph_node_id.clone()));
+            //     }
+            // }
         }
 
         // find if it stopped on a connection
@@ -249,7 +257,8 @@ pub struct TempConnection {
 
 pub struct GraphEditorResponse {
     pub new_connection: Option<NewConnection>,
-    pub is_click_node_id: Option<String>,   // if a node was clicked on return it's id
+    pub is_left_click_node_id: Option<String>,   // if a node was clicked on return it's id
+    pub is_right_click_node_id: Option<String>,
     pub request_redraw: bool,
     pub editing_node_id: Option<String>,
     pub viewing_node_id: Option<String>,
@@ -259,7 +268,8 @@ impl GraphEditorResponse {
     fn default() -> GraphEditorResponse {
         GraphEditorResponse {
             new_connection: None,
-            is_click_node_id: None,
+            is_left_click_node_id: None,
+            is_right_click_node_id: None,
             request_redraw: false,
             editing_node_id: None,
             viewing_node_id: None,

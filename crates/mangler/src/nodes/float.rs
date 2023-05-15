@@ -8,11 +8,11 @@ use crate::nodes::node_settings::NodeSettings;
 use super::operation::Operation;
 
 lazy_static! {
-    pub static ref SETTINGS: NodeSettings = NodeSettings::new("Float".to_string());
+    pub static ref SETTINGS: NodeSettings = NodeSettings::new("Decimal".to_string());
 
     pub static ref INPUT_SETTINGS: Vec<ConnectionSettings> = vec![
         ConnectionSettings {
-            name: "float".to_string(),
+            name: "decimal".to_string(),
             default_value: Value::Decimal(0.0),
             valid_types: vec![ValueType::Decimal, ValueType::Integer, ValueType::String],
             ui_type: Some(UiType::DragValue),
@@ -21,7 +21,7 @@ lazy_static! {
 
     pub static ref OUTPUT_SETTINGS: Vec<ConnectionSettings> = vec![
         ConnectionSettings {
-            name: "float".to_string(),
+            name: "decimal".to_string(),
             default_value: Value::Decimal(0.0),
             valid_types: vec![ValueType::Decimal],
             ui_type: None,

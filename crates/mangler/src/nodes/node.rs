@@ -12,10 +12,17 @@ pub struct Node {
     pub inputs: Vec<Input>,
     pub outputs: Vec<Output>,
     pub time: Option<Duration>,
+    pub is_dirty: bool, // node needs to be re-run
 }
 
 impl Node {
-    pub fn new(id: String, settings: NodeSettings, input_settings: &Vec<ConnectionSettings>, output_settings: &Vec<ConnectionSettings>, operation: Box<dyn Operation>) -> Node {
+    pub fn new(
+        id: String,
+        settings: NodeSettings,
+        input_settings: &Vec<ConnectionSettings>,
+        output_settings: &Vec<ConnectionSettings>,
+        operation: Box<dyn Operation>
+    ) -> Node {
         let inputs: Vec<Input> = input_settings.iter().map(|settings| Input {
             name: settings.name.to_owned(),
             value: settings.default_value.clone(),
@@ -37,6 +44,7 @@ impl Node {
             time: None,
             operation,
             settings,
+            is_dirty: true,
         }
     }
 

@@ -15,9 +15,12 @@ impl Graph {
 
     pub fn add_node(&mut self, id: String, node: Node) {
         self.nodes.insert(id.clone(), node);
+        self.run();
     }
 
     pub fn run(&mut self) {
-        self.nodes.values_mut().for_each(|node| { node.operation.run(&node.inputs, &mut node.outputs); });
+        self.nodes.values_mut().for_each(|node| {
+            node.time = Some(node.operation.run(&node.inputs, &mut node.outputs));
+        });
     }
 }

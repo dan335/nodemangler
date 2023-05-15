@@ -1,23 +1,25 @@
 use eframe::{egui, emath::Align2, epaint::FontId};
-use mangler::nodes::{node_settings::NodeSettings, operation::ConnectionSettings};
+use mangler::nodes::{node_settings::NodeSettings, operation::{ConnectionSettings, Operation}};
 use egui::{Rect, Pos2,Rounding, Stroke, Color32};
 
 const BUTTON_HEIGHT: f32 = 36.0;
 
-pub struct MenuButton {
+pub struct MenuButton<T: Operation> {
     pub node_settings: NodeSettings,
     pub input_settings: Vec<ConnectionSettings>,
     pub output_settings: Vec<ConnectionSettings>,
+    pub operation: T,
 }
 
-impl MenuButton {
-    pub fn new(node_settings: NodeSettings, input_settings: Vec<ConnectionSettings>, output_settings: Vec<ConnectionSettings>) -> MenuButton {
-        MenuButton {
-            node_settings,
-            input_settings,
-            output_settings,
-        }
-    }
+impl<T> MenuButton<T> where T: Operation {
+    // pub fn new(node_settings: NodeSettings, input_settings: Vec<ConnectionSettings>, output_settings: Vec<ConnectionSettings>) -> MenuButton {
+    //     MenuButton {
+    //         node_settings,
+    //         input_settings,
+    //         output_settings,
+    //         T,
+    //     }
+    // }
 
     pub fn show(&mut self, ui: &mut egui::Ui, button_index: usize) -> MenuButtonResult {
 
