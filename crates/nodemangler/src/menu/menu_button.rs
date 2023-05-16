@@ -7,17 +7,14 @@ use mangler::nodes::{
 
 const BUTTON_HEIGHT: f32 = 36.0;
 
-pub struct MenuButton<O: Operation> {
+pub struct MenuButton {
     pub node_settings: NodeSettings,
     pub input_settings: Vec<ConnectionSettings>,
     pub output_settings: Vec<ConnectionSettings>,
-    pub operation: O,
+    pub operation: Box<dyn Operation>,
 }
 
-impl<O> MenuButton<O>
-where
-    O: Operation,
-{
+impl MenuButton {
     // pub fn new(node_settings: NodeSettings, input_settings: Vec<ConnectionSettings>, output_settings: Vec<ConnectionSettings>) -> MenuButton {
     //     MenuButton {
     //         node_settings,

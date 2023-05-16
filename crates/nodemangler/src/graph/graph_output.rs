@@ -2,7 +2,7 @@ use eframe::{epaint::{Pos2, Rect, Shape, Color32}, egui};
 use mangler::output::Output;
 use crate::graph::graph_node::InputOutputResponse;
 
-pub fn draw_graph_output(output: &Output, output_position: Pos2, input_rect: Rect, index: usize, rect: Rect, ui: &mut egui::Ui) -> InputOutputResponse {
+pub fn draw_graph_output(_output: &Output, output_position: Pos2, input_rect: Rect, _index: usize, _rect: Rect, ui: &mut egui::Ui) -> InputOutputResponse {
     let mut response = InputOutputResponse::new();
     let mut color = Color32::from_gray(150);
     let output_response = ui.allocate_rect(input_rect, egui::Sense::drag().union(egui::Sense::hover()));

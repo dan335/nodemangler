@@ -8,7 +8,7 @@ pub struct Output {
 }
 
 impl Output {
-    pub fn new(name: String, value: Value, ui_type: UiType) -> Output {
+    pub fn new(name: String, value: Value) -> Output {
         Output { name, value, connection: None }
     }
 }

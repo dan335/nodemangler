@@ -14,11 +14,11 @@ impl Debug for Box<dyn Operation> {
     }
 }
 
-impl Clone for Box<dyn Operation> {
-    fn clone(&self) -> Self {
-        self.clone()
-    }
-}
+// impl Clone for Box<dyn Operation> {
+//     fn clone(&self) -> Self {
+//         self.clone()
+//     }
+// }
 
 
 #[derive(Debug, Clone)]

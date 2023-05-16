@@ -1,6 +1,4 @@
-use std::{println, default, vec};
-
-use eframe::{egui::{self, Label, style::Spacing, Margin}, epaint::Rounding};
+use eframe::{egui::{self, Label}, epaint::Rounding};
 use mangler::{input::Input, nodes::{operation::UiType, node_settings::NodeSettings}, value::Value, output::Output};
 
 pub struct NodeSettingsPanel {

@@ -181,8 +181,6 @@ impl GraphNode {
         self.last_drag_position = None;
     }
 
-    fn select(&mut self) {}
-
     pub fn get_input_position(&self, index: usize, graph_position: Pos2) -> Pos2 {
         let rect = self.get_rect(graph_position);
         Pos2::new(rect.left() - 14.0, rect.top() + 12.0 + 20.0 * index as f32)

@@ -231,14 +231,6 @@ impl GraphEditor {
         self.graph_nodes.insert(node_id, node);
     }
 
-    pub fn edit_node(&mut self, node_id: String) {
-
-    }
-
-    pub fn view_node(&mut self, node_id: String) {
-
-    }
-
     
 }
 

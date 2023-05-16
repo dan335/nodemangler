@@ -4,7 +4,7 @@ use crate::{input::Input, output::Output, value::Value};
 
 use super::{operation::{Operation, ConnectionSettings}, node_settings::NodeSettings};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Node {
     pub operation: Box<dyn Operation>,
     pub id: String,

@@ -2,7 +2,6 @@
 
 use eframe::egui::{self};
 use eframe::epaint::Rounding;
-use eframe::IconData;
 use egui::Vec2;
 use mangler::get_id;
 use mangler::nodes::add::Add;
@@ -41,14 +40,14 @@ fn main() -> Result<(), eframe::Error> {
     // if let Some(v) = graph.nodes.get(&id) {
     //     println!("Hello, world! {:?}", v.print_output());
     // }
-    let mut icon_data: Option<IconData> = None;
+    //let mut icon_data: Option<IconData> = None;
 
     let icon_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/mangler_icon.png");
-    icon_data = Some(load_icon(icon_path.to_str().unwrap()));
+    //icon_data = Some(load_icon(icon_path.to_str().unwrap()));
 
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)),
-        icon_data,
+        icon_data: Some(load_icon(icon_path.to_str().unwrap())),
         ..Default::default()
     };
 
@@ -73,23 +72,23 @@ fn load_icon(path: &str) -> eframe::IconData {
     }
 }
 
-struct MyApp<O: Operation> {
+struct MyApp {
     pub graph: Graph,
     graph_editor: GraphEditor,
     node_settings_panel: NodeSettingsPanel,
     view_panel: ViewPanel,
-    menu_panel: MenuPanel<O>,
+    menu_panel: MenuPanel,
     dragging_menu_button: Option<(
         NodeSettings,
         Vec<ConnectionSettings>,
         Vec<ConnectionSettings>,
-        O,
+        Box<dyn Operation>,
     )>,
     editing_node_id: Option<String>,
     viewing_node_id: Option<String>,
 }
 
-impl<O: Operation> Default for MyApp<O> {
+impl Default for MyApp {
     fn default() -> Self {
         Self {
             graph: Graph::new(),
@@ -104,7 +103,7 @@ impl<O: Operation> Default for MyApp<O> {
     }
 }
 
-impl<O: Operation> eframe::App for MyApp<O> {
+impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let mut graph_is_dirty = false; // run graph after ui
 
@@ -126,7 +125,7 @@ impl<O: Operation> eframe::App for MyApp<O> {
                 Pos2::new(200.0, app_rect.height() / 2.0),
             );
             ui.allocate_ui_at_rect(menu_panel_rect, |ui| {
-                let menu_result = self.menu_panel.show(ui, cursor_position);
+                let menu_result = self.menu_panel.show(ui);
 
                 // dragging from menu
                 if menu_result.dragging_menu_button.is_some() {
@@ -213,7 +212,7 @@ impl<O: Operation> eframe::App for MyApp<O> {
             // release mouse button after dragging menu button
             ui.input(|i| {
                 if i.pointer.primary_released() {
-                    if let Some(dragging_settings) = self.dragging_menu_button {
+                    if let Some(dragging_settings) = &self.dragging_menu_button {
                         if bottom_panel_rect.contains(cursor_position) {
                             let node_settings = dragging_settings.0.clone();
                             let input_sttings = &dragging_settings.1.clone();
@@ -234,7 +233,7 @@ impl<O: Operation> eframe::App for MyApp<O> {
 
             // dragging node from menu
             // draw shape behind mouse being dragged
-            if let Some(_dragging_settings) = self.dragging_menu_button {
+            if let Some(_dragging_settings) = &self.dragging_menu_button {
                 let drag_rect = Rect::from_center_size(cursor_position, Vec2::new(80.0, 80.0));
                 ui.painter().add(egui::Shape::rect_filled(
                     drag_rect,
@@ -263,7 +262,7 @@ impl<O: Operation> eframe::App for MyApp<O> {
     }
 }
 
-impl<O: Operation> MyApp<O> {
+impl MyApp {
     pub fn connect_nodes(&mut self, new_connection: NewConnection) {
         if self
             .graph
