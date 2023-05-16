@@ -2,7 +2,10 @@ use std::time::Duration;
 
 use crate::{input::Input, output::Output, value::Value};
 
-use super::{operation::{Operation, ConnectionSettings}, node_settings::NodeSettings};
+use super::{
+    node_settings::NodeSettings,
+    operation::{ConnectionSettings, Operation},
+};
 
 #[derive(Debug)]
 pub struct Node {
@@ -21,21 +24,27 @@ impl Node {
         settings: NodeSettings,
         input_settings: &Vec<ConnectionSettings>,
         output_settings: &Vec<ConnectionSettings>,
-        operation: Box<dyn Operation>
+        operation: Box<dyn Operation>,
     ) -> Node {
-        let inputs: Vec<Input> = input_settings.iter().map(|settings| Input {
-            name: settings.name.to_owned(),
-            value: settings.default_value.clone(),
-            connection: None,
-            valid_types: settings.valid_types.to_vec(),
-            ui_type: settings.ui_type.clone(),
-        }).collect();
+        let inputs: Vec<Input> = input_settings
+            .iter()
+            .map(|settings| Input {
+                name: settings.name.to_owned(),
+                value: settings.default_value.clone(),
+                connection: None,
+                valid_types: settings.valid_types.to_vec(),
+                ui_type: settings.ui_type.clone(),
+            })
+            .collect();
 
-        let outputs: Vec<Output> = output_settings.iter().map(|settings| Output {
-            name: settings.name.to_owned(),
-            value: settings.default_value.clone(),
-            connection: None,
-        }).collect();
+        let outputs: Vec<Output> = output_settings
+            .iter()
+            .map(|settings| Output {
+                name: settings.name.to_owned(),
+                value: settings.default_value.clone(),
+                connection: None,
+            })
+            .collect();
 
         Node {
             id,
@@ -56,19 +65,31 @@ impl Node {
         }
     }
 
-    pub fn set_input_connection(&mut self, input_index: usize, output_id: String, output_index: usize) {
+    pub fn set_input_connection(
+        &mut self,
+        input_index: usize,
+        output_id: String,
+        output_index: usize,
+    ) {
         self.inputs[input_index].connection = Some((output_id, output_index));
     }
 
-    pub fn set_output_connection(&mut self, output_index: usize, input_id: String, input_index: usize) {
+    pub fn set_output_connection(
+        &mut self,
+        output_index: usize,
+        input_id: String,
+        input_index: usize,
+    ) {
         if self.outputs[output_index].connection.is_some() {
-            self.outputs[output_index].connection.as_mut().unwrap().push((input_id, input_index));
+            self.outputs[output_index]
+                .connection
+                .as_mut()
+                .unwrap()
+                .push((input_id, input_index));
         } else {
             self.outputs[output_index].connection = Some(vec![(input_id, input_index)]);
         }
     }
 
-    pub fn run(&mut self) {
-
-    }
+    pub fn run(&mut self) {}
 }

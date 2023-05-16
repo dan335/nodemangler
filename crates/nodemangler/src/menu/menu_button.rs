@@ -14,6 +14,14 @@ pub struct MenuButton {
     pub operation: Box<dyn Operation>,
 }
 
+impl Clone for MenuButton {
+    fn clone(&self) -> Self {
+        MenuButton {
+            operation: self.operation.clone(),
+        }
+    }
+}
+
 impl MenuButton {
     // pub fn new(node_settings: NodeSettings, input_settings: Vec<ConnectionSettings>, output_settings: Vec<ConnectionSettings>) -> MenuButton {
     //     MenuButton {

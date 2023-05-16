@@ -80,5 +80,10 @@ impl MenuPanel {
 }
 
 pub struct MenuResult {
-    pub dragging_menu_button: Option<(NodeSettings, Vec<ConnectionSettings>, Vec<ConnectionSettings>, Box<dyn Operation>)>,
+    pub dragging_menu_button: Option<(
+        NodeSettings,
+        Vec<ConnectionSettings>,
+        Vec<ConnectionSettings>,
+        Box<dyn Operation>,
+    )>,
 }
