@@ -5,6 +5,8 @@ pub struct NodeSettings {
 
 impl NodeSettings {
     pub fn new(name: String) -> NodeSettings {
-        NodeSettings { name }
+        NodeSettings {
+            name,
+        }
     }
 }

@@ -37,7 +37,9 @@ impl Float {
                 } else {
                     OUTPUT_SETTINGS[0].default_value.clone()
                 }
-            }
+            },
+
+            _ => panic!("Unable to convert formats to float."),
         };
 
         Instant::now().duration_since(start_time)

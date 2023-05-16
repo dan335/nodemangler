@@ -1,8 +1,9 @@
 use crate::graph::graph_input::draw_graph_input;
 use crate::graph::graph_output::draw_graph_output;
-use eframe::epaint::Rounding;
+use eframe::epaint::{Rounding, FontId, Color32, TextureId};
 use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect, Vec2};
+use image::{ImageBuffer, Rgba};
 use mangler::nodes::node::Node;
 use mangler::nodes::node_settings::NodeSettings;
 
@@ -11,13 +12,15 @@ use super::graph_editor::TempConnection;
 pub const NODE_SIZE: Vec2 = Vec2::new(132.0, 132.0);
 const NODE_ROUNDING: f32 = 2.0;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct GraphNode {
     pub id: String,
     position: egui::Pos2,
     settings: NodeSettings,
     is_dragging: bool,
     last_drag_position: Option<Pos2>,
+    thumbnail: Option<egui::TextureHandle>,
+    pub thumbnail_is_dirty: bool,   // node has updated, thumbnail needs updating
 }
 
 impl GraphNode {
@@ -28,6 +31,8 @@ impl GraphNode {
             settings,
             is_dragging: false,
             last_drag_position: None,
+            thumbnail: None,
+            thumbnail_is_dirty: true,
         }
     }
 
@@ -41,6 +46,8 @@ impl GraphNode {
         graph_position: Pos2,
         cursor_position: Pos2,
         node: &Node,
+        is_editing: bool,
+        is_viewing: bool,
     ) -> GraphNodeResponse {
         let mut graph_node_response = GraphNodeResponse::default();
         //let pos = graph_position + self.position.to_vec2();
@@ -139,7 +146,7 @@ impl GraphNode {
 
         // ms
         if let Some(time) = node.time {
-            let pos = self.get_rect(graph_position).right_bottom();
+            let pos = Pos2 { x: self.get_rect(graph_position).right_bottom().x, y: self.get_rect(graph_position).right_bottom().y + 5.0 };
             let text = format!("{:.4} ms", time.as_nanos() as f64 / 1_000_000.0);
             ui.painter().text(
                 pos,
@@ -150,7 +157,54 @@ impl GraphNode {
             );
         }
 
+        // thumbnail
+        let mut thumbnail = TextureId::default();
+
+        // convert to thumbnail
+        if self.thumbnail_is_dirty {
+            match &node.outputs[0].value {
+                mangler::value::Value::ImageRgba32F(value) => {
+
+                },
+                mangler::value::Value::ImageRgba8(value) => todo!(),
+                mangler::value::Value::ImageGray8(value) => todo!(),
+                _ => {},
+            }
+        }
+
+        if let Some(t) = self.thumbnail {
+            thumbnail = egui::Image::new(t, t.size_vec2());
+        }
+
+        // output
+        match &node.outputs[0].value {
+            mangler::value::Value::Integer(value) | mangler::value::Value::Decimal(value) | mangler::value::Value::String(value) => {
+                ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, value.to_string(), FontId::proportional(20.0), Color32::from_gray(200));
+            },
+            mangler::value::Value::ImageRgba32F(value) => {
+                //let thumbnail = image::imageops::thumbnail(value, self.get_rect(graph_position).width() as u32, self.get_rect(graph_position).height() as u32);
+                ui.painter().image(thumbnail, self.get_rect(graph_position), Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
+            },
+
+            mangler::value::Value::ImageRgba8(value) => {
+                //let thumbnail = image::imageops::thumbnail(value, self.get_rect(graph_position).width() as u32, self.get_rect(graph_position).height() as u32);
+                ui.painter().image(thumbnail, self.get_rect(graph_position), Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
+            },
+
+            mangler::value::Value::ImageGray8(value) => {
+                //let thumbnail = image::imageops::thumbnail(value, self.get_rect(graph_position).width() as u32, self.get_rect(graph_position).height() as u32);
+                ui.painter().image(thumbnail, self.get_rect(graph_position), Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
+            },
+        }
+
         // outline
+        if is_editing {
+            ui.painter().add(egui::Shape::rect_stroke(self.get_rect(graph_position), rounding, egui::Stroke::new(4.0, Color32::from_rgb(30, 150, 90))));
+        }
+
+        if is_viewing {
+            //ui.painter().add(egui::Shape::rect_stroke(self.get_rect(graph_position).expand(10.0), rounding, egui::Stroke::new(2.0, Color32::GREEN)));
+        }
         // ui.painter().add(egui::Shape::rect_stroke(
         //     rect,
         //     rounding,

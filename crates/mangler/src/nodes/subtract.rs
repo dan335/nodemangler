@@ -29,7 +29,7 @@ lazy_static! {
     },];
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Subtract {}
 
 impl Subtract {

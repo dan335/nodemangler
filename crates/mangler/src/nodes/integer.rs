@@ -30,14 +30,16 @@ impl Integer {
 
         outputs[0].value = match &inputs[0].value {
             Value::Integer(a) => Value::Integer(*a),
-            Value::Decimal(a) => Value::Integer(*a as usize),
+            Value::Decimal(a) => Value::Integer(*a as i32),
             Value::String(a) => {
-                if let Ok(n) = a.parse::<usize>() {
+                if let Ok(n) = a.parse::<i32>() {
                     Value::Integer(n)
                 } else {
                     OUTPUT_SETTINGS[0].default_value.clone()
                 }
-            }
+            },
+
+            _ => panic!("Unable to convert formats to integer."),
         };
 
         Instant::now().duration_since(start_time)

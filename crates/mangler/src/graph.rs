@@ -13,7 +13,9 @@ impl Graph {
         self.is_dirty = true;
     }
 
-    pub fn run(&mut self) {
+    // returns a list of node_ids that ran
+    // so that their thumbnails will know to update
+    pub fn run(&mut self) -> HashSet<String> {
         let mut dirty_nodes: HashSet<String> = HashSet::new();
         let mut checked_nodes: HashSet<String> = HashSet::new();
         let mut nodes_to_check: VecDeque<String> = VecDeque::new();
@@ -104,5 +106,7 @@ impl Graph {
 
             sorted_order.push_front(node_id.clone());
         }
+
+        dirty_nodes.clone()
     }
 }

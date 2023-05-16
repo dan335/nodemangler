@@ -47,6 +47,7 @@ fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)),
         icon_data: Some(load_icon(icon_path.to_str().unwrap())),
+        maximized: true,
         ..Default::default()
     };
 
@@ -147,7 +148,7 @@ impl eframe::App for MyApp {
                 Pos2::new(app_rect.width(), app_rect.height() / 2.0),
             );
             ui.allocate_ui_at_rect(settings_panel_rect, |ui| {
-                if let Some(node_id) = &self.viewing_node_id {
+                if let Some(node_id) = &self.editing_node_id {
                     if let Some(node) = self.graph.nodes.get_mut(node_id) {
                         let settings_response = self.node_settings_panel.show(
                             ui,
@@ -180,6 +181,8 @@ impl eframe::App for MyApp {
                     cursor_position,
                     &self.graph.nodes,
                     cursor_primary_down,
+                    &self.editing_node_id,
+                    &self.viewing_node_id,
                 );
 
                 if graph_editor_response.request_redraw {
@@ -255,7 +258,13 @@ impl eframe::App for MyApp {
         });
 
         if self.graph.is_dirty {
-            self.graph.run();
+            let changed_nodes = self.graph.run();
+
+            for node_id in changed_nodes.iter() {
+                if let Some(graph_node) = self.graph_editor.graph_nodes.get(node_id) {
+                    graph_node.thumbnail_is_dirty = true;
+                }
+            }
         }
     }
 }
@@ -322,11 +331,11 @@ impl MyApp {
     }
 
     pub fn view_node(&mut self, node_id: String) {
-        self.editing_node_id = Some(node_id);
+        self.viewing_node_id = Some(node_id);
     }
 
     pub fn edit_node(&mut self, node_id: String) {
-        self.viewing_node_id = Some(node_id);
+        self.editing_node_id = Some(node_id);
     }
 }
 

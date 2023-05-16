@@ -1,5 +1,5 @@
 use super::graph_node::ConnectionType;
-use crate::{graph::graph_node::GraphNode, NewConnection};
+use crate::{graph::graph_node::GraphNode, NewConnection, view};
 use eframe::egui::{self};
 use egui::epaint::CubicBezierShape;
 use egui::Pos2;
@@ -41,6 +41,8 @@ impl GraphEditor {
         cursor_position: Pos2,
         nodes: &HashMap<String, Node>,
         cursor_primary_down: bool,
+        editing_node_id: &Option<String>,
+        viewing_node_id: &Option<String>,
     ) -> GraphEditorResponse {
         let mut graph_editor_response = GraphEditorResponse::default();
 
@@ -90,8 +92,23 @@ impl GraphEditor {
         //let mut connection_to_position = Pos2::ZERO;
 
         for (graph_node_id, graph_node) in self.graph_nodes.iter_mut() {
+            let mut is_editing = false;
+            let mut is_viewing = false;
+
+            if let Some(n) = editing_node_id {
+                if n == graph_node_id {
+                    is_editing = true;
+                }
+            }
+
+            if let Some(n) = viewing_node_id {
+                if n == graph_node_id {
+                    is_viewing = true;
+                }
+            }
+
             let graph_node_response =
-                graph_node.show(ui, self.position, cursor_position, &nodes[&graph_node.id]);
+                graph_node.show(ui, self.position, cursor_position, &nodes[&graph_node.id], is_editing, is_viewing);
 
             // new temp connection
             if let Some(temp_connection) = graph_node_response.temp_connection {

@@ -3,6 +3,7 @@ use crate::nodes::node_settings::NodeSettings;
 use crate::nodes::operation::{ConnectionSettings, UiType};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use core::panic;
 use std::time::{Duration, Instant};
 
 lazy_static! {
@@ -54,6 +55,8 @@ impl Add {
             (Value::String(a), Value::Decimal(b)) => Value::String(format!("{} {}", *a, b)),
 
             (Value::String(a), Value::String(b)) => Value::String(format!("{} {}", *a, *b)),
+
+            _ => panic!("Unable to add formats."),
         };
 
         Instant::now().duration_since(start_time)
