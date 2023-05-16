@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::{input::Input, output::Output, value::Value};
@@ -7,7 +8,7 @@ use super::{
     operation::{ConnectionSettings, Operation},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Node {
     pub operation: Operation,
     pub id: String,
@@ -22,8 +23,8 @@ impl Node {
     pub fn new(
         id: String,
         settings: NodeSettings,
-        input_settings: &Vec<ConnectionSettings>,
-        output_settings: &Vec<ConnectionSettings>,
+        input_settings: &[ConnectionSettings],
+        output_settings: &[ConnectionSettings],
         operation: Operation,
     ) -> Node {
         let inputs: Vec<Input> = input_settings
@@ -53,6 +54,7 @@ impl Node {
             time: None,
             operation,
             settings,
+            //dependencies_are_dirty: true,
             is_dirty: true,
         }
     }
@@ -91,5 +93,13 @@ impl Node {
         }
     }
 
-    pub fn run(&mut self) {}
+    pub fn pass_outputs_to_connections(&self, nodes: &mut HashMap<String, Node>) {
+        for output in &self.outputs {
+            output.pass_value_to_connections(nodes);
+        }
+    }
+
+    pub fn run(&mut self) {
+        self.time = Some(self.operation.run(&self.inputs, &mut self.outputs));
+    }
 }

@@ -5,8 +5,6 @@ use crate::output::Output;
 use crate::value::{Value, ValueType};
 use std::time::{Duration, Instant};
 
-use super::operation::Operation;
-
 lazy_static! {
     pub static ref SETTINGS: NodeSettings = NodeSettings::new("Add".to_string());
     pub static ref INPUT_SETTINGS: Vec<ConnectionSettings> = vec![
@@ -35,7 +33,7 @@ lazy_static! {
 pub struct Add {}
 
 impl Add {
-    pub fn run(&mut self, inputs: &Vec<Input>, outputs: &mut Vec<Output>) -> Duration {
+    pub fn run(&mut self, inputs: &[Input], outputs: &mut [Output]) -> Duration {
         let start_time = Instant::now();
 
         outputs[0].value = match (&inputs[0].value, &inputs[1].value) {
@@ -43,25 +41,17 @@ impl Add {
 
             (Value::Integer(a), Value::Integer(b)) => Value::Integer(*a + *b),
 
-            (Value::Integer(a), Value::String(b)) => {
-                Value::String(format!("{} {}", a.to_string(), *b))
-            }
+            (Value::Integer(a), Value::String(b)) => Value::String(format!("{} {}", a, *b)),
 
             (Value::Decimal(a), Value::Decimal(b)) => Value::Decimal(*a + *b),
 
             (Value::Decimal(a), Value::Integer(b)) => Value::Decimal(*a + *b as f32),
 
-            (Value::Decimal(a), Value::String(b)) => {
-                Value::String(format!("{} {}", a.to_string(), *b))
-            }
+            (Value::Decimal(a), Value::String(b)) => Value::String(format!("{} {}", a, *b)),
 
-            (Value::String(a), Value::Integer(b)) => {
-                Value::String(format!("{} {}", *a, b.to_string()))
-            }
+            (Value::String(a), Value::Integer(b)) => Value::String(format!("{} {}", *a, b)),
 
-            (Value::String(a), Value::Decimal(b)) => {
-                Value::String(format!("{} {}", *a, b.to_string()))
-            }
+            (Value::String(a), Value::Decimal(b)) => Value::String(format!("{} {}", *a, b)),
 
             (Value::String(a), Value::String(b)) => Value::String(format!("{} {}", *a, *b)),
         };

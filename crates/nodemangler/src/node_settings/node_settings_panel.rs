@@ -1,15 +1,19 @@
-use eframe::{egui::{self, Label}, epaint::Rounding};
-use mangler::{input::Input, nodes::{operation::UiType, node_settings::NodeSettings}, value::Value, output::Output};
+use eframe::{
+    egui::{self, Label},
+    epaint::Rounding,
+};
+use mangler::{
+    input::Input,
+    nodes::{node_settings::NodeSettings, operation::UiType},
+    output::Output,
+    value::Value,
+};
 
-pub struct NodeSettingsPanel {
-  
-}
+pub struct NodeSettingsPanel {}
 
 impl NodeSettingsPanel {
     pub fn new() -> NodeSettingsPanel {
-        NodeSettingsPanel {
-
-        }
+        NodeSettingsPanel {}
     }
 
     pub fn show(
@@ -17,7 +21,7 @@ impl NodeSettingsPanel {
         ui: &mut egui::Ui,
         node_settings: Option<&mut NodeSettings>,
         node_inputs: Option<&mut Vec<Input>>,
-        node_outputs: Option<&Vec<Output>>
+        node_outputs: Option<&Vec<Output>>,
     ) -> NodeSettingsPanelResponse {
         let mut response = NodeSettingsPanelResponse::default();
 
@@ -42,9 +46,8 @@ impl NodeSettingsPanel {
             egui::Pos2::new(left_top.x + padding, left_top.y + padding),
             egui::Pos2::new(right_bottom.x - padding, right_bottom.y - padding),
         );
-        
-        ui.allocate_ui_at_rect(ui_rect, |ui| {
 
+        ui.allocate_ui_at_rect(ui_rect, |ui| {
             // name of node
             ui.vertical_centered(|ui| {
                 ui.heading(name);
@@ -62,29 +65,40 @@ impl NodeSettingsPanel {
                                 UiType::DragValue => {
                                     match input.value {
                                         Value::Integer(a) => {
-                                            let mut x = a.clone();
-                                            if ui.add(egui::DragValue::new(&mut x)).changed() {
-                                                input.value = Value::Integer(x);
-                                                response.input_indexes_that_changed.push(input_index);
+                                            if input.connection.is_some() {
+                                                ui.label(a.to_string());
+                                            } else {
+                                                let mut x = a;
+                                                if ui.add(egui::DragValue::new(&mut x)).changed() {
+                                                    input.value = Value::Integer(x);
+                                                    response
+                                                        .input_indexes_that_changed
+                                                        .push(input_index);
+                                                }
                                             }
-                                        },
+                                        }
                                         Value::Decimal(a) => {
-                                            let mut x = a.clone();
-                                            if ui.add(egui::DragValue::new(&mut x)).changed() {
-                                                input.value = Value::Decimal(x);
-                                                response.input_indexes_that_changed.push(input_index);
+                                            if input.connection.is_some() {
+                                                ui.label(a.to_string());
+                                            } else {
+                                                let mut x = a;
+                                                if ui.add(egui::DragValue::new(&mut x)).changed() {
+                                                    input.value = Value::Decimal(x);
+                                                    response
+                                                        .input_indexes_that_changed
+                                                        .push(input_index);
+                                                }
                                             }
-                                        },
+                                        }
                                         Value::String(_) => todo!(),
                                     };
-                                },
+                                }
                                 UiType::Checkbox => todo!(),
                                 UiType::Slider => todo!(),
                                 UiType::TextEdit => todo!(),
                             }
                         }
                     });
-                    
                 }
             }
 
@@ -98,13 +112,13 @@ impl NodeSettingsPanel {
                         match &output.value {
                             Value::Integer(v) => {
                                 ui.add(Label::new(v.to_string()));
-                            },
+                            }
                             Value::Decimal(v) => {
                                 ui.add(Label::new(v.to_string()));
-                            },
+                            }
                             Value::String(v) => {
                                 ui.add(Label::new(v.to_string()));
-                            },
+                            }
                         }
                     });
                 }
@@ -115,7 +129,6 @@ impl NodeSettingsPanel {
     }
 }
 
-
 pub struct NodeSettingsPanelResponse {
     pub input_indexes_that_changed: Vec<usize>,
 }
@@ -123,7 +136,7 @@ pub struct NodeSettingsPanelResponse {
 impl NodeSettingsPanelResponse {
     pub fn default() -> NodeSettingsPanelResponse {
         NodeSettingsPanelResponse {
-            input_indexes_that_changed: vec![]
+            input_indexes_that_changed: vec![],
         }
     }
 }

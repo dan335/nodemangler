@@ -10,8 +10,6 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum Operation {
-    //fn run(&mut self, inputs: &Vec<Input>, outputs: &mut Vec<Output>) -> Duration;
-    //fn clone(&self) -> Self;
     Add(add::Add),
     Subtract(subtract::Subtract),
     Float(float::Float),
@@ -28,34 +26,6 @@ impl Operation {
         }
     }
 }
-
-// impl Debug for dyn Operation {
-//     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
-//         f.write_str("<Operation>")
-//     }
-// }
-
-// impl Clone for Box<dyn Operation> {
-//     fn clone(&self) -> Self {
-//         Self {}
-//     }
-// }
-
-// impl Debug for Box<dyn Operation> {
-//     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-//         write!(f, "Series{{}}")
-//     }
-// }
-
-// impl<T: Clone> Operation for T {
-
-// }
-
-// impl Clone for Box<dyn Operation> {
-//     fn clone(&self) -> Self {
-//         self.clone()
-//     }
-// }
 
 #[derive(Debug, Clone)]
 pub struct ConnectionSettings {

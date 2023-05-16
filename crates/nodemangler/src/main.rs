@@ -4,10 +4,8 @@ use eframe::egui::{self};
 use eframe::epaint::Rounding;
 use egui::Vec2;
 use mangler::get_id;
-use mangler::nodes::add::Add;
 use mangler::nodes::node::Node;
 use mangler::nodes::operation::{ConnectionSettings, Operation};
-use mangler::nodes::*;
 use mangler::{graph::Graph, nodes::node_settings::NodeSettings};
 use std::path::Path;
 
@@ -92,7 +90,7 @@ struct MyApp {
 impl Default for MyApp {
     fn default() -> Self {
         Self {
-            graph: Graph::new(),
+            graph: Graph::default(),
             graph_editor: GraphEditor::new(),
             node_settings_panel: NodeSettingsPanel::new(),
             view_panel: ViewPanel::new(),
@@ -106,8 +104,6 @@ impl Default for MyApp {
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        let mut graph_is_dirty = false; // run graph after ui
-
         egui::CentralPanel::default().show(ctx, |ui| {
             let app_rect = ctx.screen_rect();
             let cursor_position = ui
@@ -162,7 +158,7 @@ impl eframe::App for MyApp {
 
                         if !settings_response.input_indexes_that_changed.is_empty() {
                             node.is_dirty = true;
-                            graph_is_dirty = true;
+                            self.graph.is_dirty = true;
                         }
                     } else {
                         self.node_settings_panel.show(ui, None, None, None);
@@ -222,7 +218,7 @@ impl eframe::App for MyApp {
                             self.add_node(
                                 node_settings,
                                 input_sttings,
-                                &output_settings,
+                                output_settings,
                                 dragging_settings.3.clone(),
                                 cursor_position,
                             );
@@ -258,7 +254,7 @@ impl eframe::App for MyApp {
             }
         });
 
-        if graph_is_dirty {
+        if self.graph.is_dirty {
             self.graph.run();
         }
     }
@@ -266,6 +262,7 @@ impl eframe::App for MyApp {
 
 impl MyApp {
     pub fn connect_nodes(&mut self, new_connection: NewConnection) {
+        // if graph contains both nodes
         if self
             .graph
             .nodes
@@ -277,14 +274,18 @@ impl MyApp {
                 .get_mut(&new_connection.output_node_id)
                 .is_some()
         {
+            // set output connection
             if let Some(from) = self.graph.nodes.get_mut(&new_connection.output_node_id) {
                 from.set_output_connection(
                     new_connection.output_connection_index,
                     new_connection.input_node_id.clone(),
                     new_connection.input_connection_index,
                 );
+
+                from.is_dirty = true;
             }
 
+            // set input connection
             if let Some(to) = self.graph.nodes.get_mut(&new_connection.input_node_id) {
                 to.set_input_connection(
                     new_connection.input_connection_index,
@@ -292,14 +293,17 @@ impl MyApp {
                     new_connection.output_connection_index,
                 );
             }
+
+            // mark graph as dirty
+            self.graph.is_dirty = true;
         }
     }
 
     pub fn add_node(
         &mut self,
         node_settings: NodeSettings,
-        input_settings: &Vec<ConnectionSettings>,
-        output_settings: &Vec<ConnectionSettings>,
+        input_settings: &[ConnectionSettings],
+        output_settings: &[ConnectionSettings],
         operation: Operation,
         position: Pos2,
     ) -> String {

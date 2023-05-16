@@ -1,10 +1,13 @@
-use eframe::{egui::{self}};
-use egui::Pos2;
-use mangler::{nodes::{node_settings::NodeSettings, node::Node}};
-use std::{collections::HashMap, time::{Instant, Duration}};
-use egui::epaint::{CubicBezierShape};
-use crate::{graph::graph_node::GraphNode, NewConnection};
 use super::graph_node::ConnectionType;
+use crate::{graph::graph_node::GraphNode, NewConnection};
+use eframe::egui::{self};
+use egui::epaint::CubicBezierShape;
+use egui::Pos2;
+use mangler::nodes::{node::Node, node_settings::NodeSettings};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 const DOUBLE_CLICK_DURATION: Duration = Duration::from_millis(500);
 
@@ -17,7 +20,7 @@ pub struct GraphEditor {
 
     // if a node was clicked on when was it clicked and what is it's node_id
     // used to check for click or double click
-    last_node_click: Option<(Instant, String)>,    
+    last_node_click: Option<(Instant, String)>,
 }
 
 impl GraphEditor {
@@ -32,7 +35,13 @@ impl GraphEditor {
         }
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, cursor_position: Pos2, nodes: &HashMap<String, Node>, cursor_primary_down: bool) -> GraphEditorResponse {
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        cursor_position: Pos2,
+        nodes: &HashMap<String, Node>,
+        cursor_primary_down: bool,
+    ) -> GraphEditorResponse {
         let mut graph_editor_response = GraphEditorResponse::default();
 
         let editor_rect = ui.max_rect();
@@ -42,10 +51,8 @@ impl GraphEditor {
 
         let cursor_inside = editor_rect.contains(cursor_position);
 
-        let bg_response = ui.allocate_rect(
-            editor_rect,
-            egui::Sense::click().union(egui::Sense::drag()),
-        );
+        let bg_response =
+            ui.allocate_rect(editor_rect, egui::Sense::click().union(egui::Sense::drag()));
 
         if bg_response.clicked() {
             // clicked on bg
@@ -83,7 +90,8 @@ impl GraphEditor {
         //let mut connection_to_position = Pos2::ZERO;
 
         for (graph_node_id, graph_node) in self.graph_nodes.iter_mut() {
-            let graph_node_response = graph_node.show(ui, self.position, cursor_position, &nodes[&graph_node.id]);
+            let graph_node_response =
+                graph_node.show(ui, self.position, cursor_position, &nodes[&graph_node.id]);
 
             // new temp connection
             if let Some(temp_connection) = graph_node_response.temp_connection {
@@ -124,7 +132,7 @@ impl GraphEditor {
             //             // save click
             //             self.last_node_click = Some((Instant::now(), graph_node_id.clone()));
             //         }
-                    
+
             //     } else {
             //         // no previous click
             //         // save click
@@ -143,19 +151,37 @@ impl GraphEditor {
                     match temp_connection.from_connection_type {
                         ConnectionType::Input => {
                             for output_index in 0..other_node.outputs.len() {
-                                if other_graph_node.get_output_rect(output_index, self.position).contains(cursor_position) {
-                                    graph_editor_response.new_connection = Some(NewConnection::new(temp_connection.from_node_id.clone(), temp_connection.from_connection_index, other_node.id.clone(), output_index));
+                                if other_graph_node
+                                    .get_output_rect(output_index, self.position)
+                                    .contains(cursor_position)
+                                {
+                                    graph_editor_response.new_connection =
+                                        Some(NewConnection::new(
+                                            temp_connection.from_node_id.clone(),
+                                            temp_connection.from_connection_index,
+                                            other_node.id.clone(),
+                                            output_index,
+                                        ));
                                 }
                             }
-                        },
+                        }
                         ConnectionType::Output => {
                             for input_index in 0..other_node.inputs.len() {
-                                if other_graph_node.get_input_rect(input_index, self.position).contains(cursor_position) {
-                                    graph_editor_response.new_connection = Some(NewConnection { input_node_id: other_node.id.clone(), input_connection_index: input_index, output_node_id: temp_connection.from_node_id.clone(), output_connection_index: temp_connection.from_connection_index })
+                                if other_graph_node
+                                    .get_input_rect(input_index, self.position)
+                                    .contains(cursor_position)
+                                {
+                                    graph_editor_response.new_connection = Some(NewConnection {
+                                        input_node_id: other_node.id.clone(),
+                                        input_connection_index: input_index,
+                                        output_node_id: temp_connection.from_node_id.clone(),
+                                        output_connection_index: temp_connection
+                                            .from_connection_index,
+                                    })
                                 }
                             }
-                        },
-                    }                    
+                        }
+                    }
                 }
             }
         }
@@ -167,8 +193,12 @@ impl GraphEditor {
         // temp connection being created
         if let Some(temp_connection) = &self.temp_connection {
             match temp_connection.from_connection_type {
-                ConnectionType::Input => self.draw_connection_line(ui, cursor_position, temp_connection.from_position),
-                ConnectionType::Output => self.draw_connection_line(ui, temp_connection.from_position, cursor_position),
+                ConnectionType::Input => {
+                    self.draw_connection_line(ui, cursor_position, temp_connection.from_position)
+                }
+                ConnectionType::Output => {
+                    self.draw_connection_line(ui, temp_connection.from_position, cursor_position)
+                }
             }
         }
 
@@ -179,7 +209,12 @@ impl GraphEditor {
                     let input_graph_node = &self.graph_nodes[node_id];
                     let output_graph_node = &self.graph_nodes[output_node_id];
 
-                    self.draw_connection_line(ui, output_graph_node.get_output_position(output_connection_index.clone(), self.position), input_graph_node.get_input_position(input_index, self.position));
+                    self.draw_connection_line(
+                        ui,
+                        output_graph_node
+                            .get_output_position(*output_connection_index, self.position),
+                        input_graph_node.get_input_position(input_index, self.position),
+                    );
                 }
             }
         }
@@ -204,7 +239,7 @@ impl GraphEditor {
             Pos2::new(from.x + offset, from.y),
             Pos2::new(to.x - offset, to.y),
             to,
-            ];
+        ];
 
         //let curve_shape = CubicBezierShape::from_points_stroke(points, false, color, stroke);
         let curve_shape = CubicBezierShape {
@@ -223,18 +258,18 @@ impl GraphEditor {
 
     fn stop_dragging(&mut self) {
         self.is_dragging = false;
-            self.last_drag_position = None;
+        self.last_drag_position = None;
     }
 
     pub fn add_node(&mut self, node_id: String, node_settings: NodeSettings, position: Pos2) {
-        let node = GraphNode::new(node_id.clone(), position - self.position.to_vec2(), node_settings);
+        let node = GraphNode::new(
+            node_id.clone(),
+            position - self.position.to_vec2(),
+            node_settings,
+        );
         self.graph_nodes.insert(node_id, node);
     }
-
-    
 }
-
-
 
 // connection that is being created
 // goes to cursor_position
@@ -246,10 +281,9 @@ pub struct TempConnection {
     pub from_connection_type: ConnectionType,
 }
 
-
 pub struct GraphEditorResponse {
     pub new_connection: Option<NewConnection>,
-    pub is_left_click_node_id: Option<String>,   // if a node was clicked on return it's id
+    pub is_left_click_node_id: Option<String>, // if a node was clicked on return it's id
     pub is_right_click_node_id: Option<String>,
     pub request_redraw: bool,
     pub editing_node_id: Option<String>,
@@ -268,5 +302,3 @@ impl GraphEditorResponse {
         }
     }
 }
-
-

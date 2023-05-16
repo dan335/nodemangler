@@ -5,8 +5,6 @@ use crate::output::Output;
 use crate::value::{Value, ValueType};
 use std::time::{Duration, Instant};
 
-use super::operation::Operation;
-
 lazy_static! {
     pub static ref SETTINGS: NodeSettings = NodeSettings::new("Integer".to_string());
     pub static ref INPUT_SETTINGS: Vec<ConnectionSettings> = vec![ConnectionSettings {
@@ -27,7 +25,7 @@ lazy_static! {
 pub struct Integer {}
 
 impl Integer {
-    pub fn run(&mut self, inputs: &Vec<Input>, outputs: &mut Vec<Output>) -> Duration {
+    pub fn run(&mut self, inputs: &[Input], outputs: &mut [Output]) -> Duration {
         let start_time = Instant::now();
 
         outputs[0].value = match &inputs[0].value {

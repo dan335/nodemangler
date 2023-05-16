@@ -1,3 +1,5 @@
+use std::vec;
+
 use eframe::{egui, epaint::Rounding};
 use mangler::nodes::{
     self,
@@ -13,35 +15,32 @@ pub struct MenuPanel {
 
 impl MenuPanel {
     pub fn new() -> MenuPanel {
-        let mut buttons: Vec<MenuButton> = vec![];
-
-        buttons.push(MenuButton {
-            node_settings: nodes::float::SETTINGS.clone(),
-            input_settings: nodes::float::INPUT_SETTINGS.clone(),
-            output_settings: nodes::float::OUTPUT_SETTINGS.clone(),
-            operation: Operation::Float(nodes::float::Float {}),
-        });
-
-        buttons.push(MenuButton {
-            node_settings: nodes::integer::SETTINGS.clone(),
-            input_settings: nodes::integer::INPUT_SETTINGS.clone(),
-            output_settings: nodes::integer::OUTPUT_SETTINGS.clone(),
-            operation: Operation::Integer(nodes::integer::Integer {}),
-        });
-
-        buttons.push(MenuButton {
-            node_settings: nodes::add::SETTINGS.clone(),
-            input_settings: nodes::add::INPUT_SETTINGS.clone(),
-            output_settings: nodes::add::OUTPUT_SETTINGS.clone(),
-            operation: Operation::Add(nodes::add::Add {}),
-        });
-
-        buttons.push(MenuButton {
-            node_settings: nodes::subtract::SETTINGS.clone(),
-            input_settings: nodes::subtract::INPUT_SETTINGS.clone(),
-            output_settings: nodes::subtract::OUTPUT_SETTINGS.clone(),
-            operation: Operation::Subtract(nodes::subtract::Subtract {}),
-        });
+        let buttons: Vec<MenuButton> = vec![
+            MenuButton {
+                node_settings: nodes::float::SETTINGS.clone(),
+                input_settings: nodes::float::INPUT_SETTINGS.clone(),
+                output_settings: nodes::float::OUTPUT_SETTINGS.clone(),
+                operation: Operation::Float(nodes::float::Float {}),
+            },
+            MenuButton {
+                node_settings: nodes::integer::SETTINGS.clone(),
+                input_settings: nodes::integer::INPUT_SETTINGS.clone(),
+                output_settings: nodes::integer::OUTPUT_SETTINGS.clone(),
+                operation: Operation::Integer(nodes::integer::Integer {}),
+            },
+            MenuButton {
+                node_settings: nodes::add::SETTINGS.clone(),
+                input_settings: nodes::add::INPUT_SETTINGS.clone(),
+                output_settings: nodes::add::OUTPUT_SETTINGS.clone(),
+                operation: Operation::Add(nodes::add::Add {}),
+            },
+            MenuButton {
+                node_settings: nodes::subtract::SETTINGS.clone(),
+                input_settings: nodes::subtract::INPUT_SETTINGS.clone(),
+                output_settings: nodes::subtract::OUTPUT_SETTINGS.clone(),
+                operation: Operation::Subtract(nodes::subtract::Subtract {}),
+            },
+        ];
 
         MenuPanel { buttons }
     }
