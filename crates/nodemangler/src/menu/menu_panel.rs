@@ -40,6 +40,12 @@ impl MenuPanel {
                 output_settings: nodes::subtract::OUTPUT_SETTINGS.clone(),
                 operation: Operation::Subtract(nodes::subtract::Subtract {}),
             },
+            MenuButton {
+                node_settings: nodes::image_from_url::SETTINGS.clone(),
+                input_settings: nodes::image_from_url::INPUT_SETTINGS.clone(),
+                output_settings: nodes::image_from_url::OUTPUT_SETTINGS.clone(),
+                operation: Operation::ImageFromUrl(nodes::image_from_url::ImageFromUrl {}),
+            },
         ];
 
         MenuPanel { buttons }

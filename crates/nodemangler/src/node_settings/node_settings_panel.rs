@@ -63,7 +63,7 @@ impl NodeSettingsPanel {
                         if let Some(ui_type) = &input.ui_type {
                             match ui_type {
                                 UiType::DragValue => {
-                                    match input.value {
+                                    match input.value.clone() {
                                         Value::Integer(a) => {
                                             if input.connection.is_some() {
                                                 ui.label(a.to_string());
@@ -90,7 +90,20 @@ impl NodeSettingsPanel {
                                                 }
                                             }
                                         }
-                                        Value::String(_) => todo!(),
+                                        Value::String(a) => {
+                                            if input.connection.is_some() {
+                                                ui.label(a);
+                                            } else {
+                                                let mut x = a;
+                                                if ui.text_edit_singleline(&mut x).changed() {
+                                                    input.value = Value::String(x);
+                                                    response.input_indexes_that_changed.push(input_index);
+                                                }
+                                            }
+                                        },
+                                        Value::ImageRgba32F(_) => todo!(),
+                                        Value::ImageRgba8(_) => todo!(),
+                                        Value::ImageGray8(_) => todo!(),
                                     };
                                 }
                                 UiType::Checkbox => todo!(),
@@ -105,6 +118,7 @@ impl NodeSettingsPanel {
             ui.add_space(20.0);
             ui.heading("Outputs");
 
+            // outputs
             if let Some(outputs) = node_outputs {
                 for output in outputs.iter() {
                     ui.horizontal(|ui| {
@@ -119,6 +133,10 @@ impl NodeSettingsPanel {
                             Value::String(v) => {
                                 ui.add(Label::new(v.to_string()));
                             }
+                            // Value::ImageRgba32F(_) => todo!(),
+                            // Value::ImageRgba8(_) => todo!(),
+                            // Value::ImageGray8(_) => todo!(),
+                            _ => {}
                         }
                     });
                 }

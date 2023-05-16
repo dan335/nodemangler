@@ -1,9 +1,11 @@
+use std::println;
+
 use crate::graph::graph_input::draw_graph_input;
 use crate::graph::graph_output::draw_graph_output;
-use eframe::epaint::{Rounding, FontId, Color32, TextureId};
+use eframe::epaint::{Rounding, FontId, Color32, TextureId, ColorImage};
 use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect, Vec2};
-use image::{ImageBuffer, Rgba};
+use image::{ImageBuffer, Rgba, DynamicImage};
 use mangler::nodes::node::Node;
 use mangler::nodes::node_settings::NodeSettings;
 
@@ -158,42 +160,67 @@ impl GraphNode {
         }
 
         // thumbnail
-        let mut thumbnail = TextureId::default();
 
         // convert to thumbnail
+        // https://docs.rs/egui/latest/egui/struct.ColorImage.html#method.from_rgba_unmultiplied
         if self.thumbnail_is_dirty {
-            match &node.outputs[0].value {
+            self.thumbnail_is_dirty = false;
+
+            let color_image = match &node.outputs[0].value {
                 mangler::value::Value::ImageRgba32F(value) => {
-
+                    let image_buffer = DynamicImage::ImageRgba32F(value.clone()).resize(NODE_SIZE.x as u32, NODE_SIZE.y as u32, image::imageops::FilterType::Triangle).to_rgba8();
+                    let pixels = image_buffer.as_flat_samples();
+                    let size = [image_buffer.width() as usize, image_buffer.height() as usize];
+                    Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
                 },
-                mangler::value::Value::ImageRgba8(value) => todo!(),
-                mangler::value::Value::ImageGray8(value) => todo!(),
-                _ => {},
-            }
-        }
+                mangler::value::Value::ImageRgba8(value) => {
+                    let image_buffer = DynamicImage::ImageRgba8(value.clone()).resize(NODE_SIZE.x as u32, NODE_SIZE.y as u32, image::imageops::FilterType::Triangle).to_rgba8();
+                    let pixels = image_buffer.as_flat_samples();
+                    let size = [image_buffer.width() as usize, image_buffer.height() as usize];
+                    Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
+                },
+                mangler::value::Value::ImageGray8(value) => {
+                    let image_buffer = DynamicImage::ImageLuma8(value.clone()).resize(NODE_SIZE.x as u32, NODE_SIZE.y as u32, image::imageops::FilterType::Triangle).to_rgba8();
+                    let pixels = image_buffer.as_flat_samples();
+                    let size = [image_buffer.width() as usize, image_buffer.height() as usize];
+                    Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
+                },
+                _ => None,
+            };
 
-        if let Some(t) = self.thumbnail {
-            thumbnail = egui::Image::new(t, t.size_vec2());
+            if let Some(img) = color_image {
+                self.thumbnail = Some(ui.ctx().load_texture(self.id.clone(), img, Default::default()));
+            }
         }
 
         // output
         match &node.outputs[0].value {
-            mangler::value::Value::Integer(value) | mangler::value::Value::Decimal(value) | mangler::value::Value::String(value) => {
+            mangler::value::Value::Integer(value) => {
                 ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, value.to_string(), FontId::proportional(20.0), Color32::from_gray(200));
             },
-            mangler::value::Value::ImageRgba32F(value) => {
-                //let thumbnail = image::imageops::thumbnail(value, self.get_rect(graph_position).width() as u32, self.get_rect(graph_position).height() as u32);
-                ui.painter().image(thumbnail, self.get_rect(graph_position), Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
+            mangler::value::Value::Decimal(value) => {
+                ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, value.to_string(), FontId::proportional(20.0), Color32::from_gray(200));
+            },
+            mangler::value::Value::String(value) => {
+                ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, value.to_string(), FontId::proportional(20.0), Color32::from_gray(200));
             },
 
-            mangler::value::Value::ImageRgba8(value) => {
-                //let thumbnail = image::imageops::thumbnail(value, self.get_rect(graph_position).width() as u32, self.get_rect(graph_position).height() as u32);
-                ui.painter().image(thumbnail, self.get_rect(graph_position), Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
+            mangler::value::Value::ImageRgba32F(_) => {
+                if let Some(thumb) = &self.thumbnail {
+                    ui.painter().image(thumb.id(), Rect::from_center_size(self.position + graph_position.to_vec2(), thumb.size_vec2()), Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
+                }
             },
 
-            mangler::value::Value::ImageGray8(value) => {
-                //let thumbnail = image::imageops::thumbnail(value, self.get_rect(graph_position).width() as u32, self.get_rect(graph_position).height() as u32);
-                ui.painter().image(thumbnail, self.get_rect(graph_position), Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
+            mangler::value::Value::ImageRgba8(_) => {
+                if let Some(thumb) = &self.thumbnail {
+                    ui.painter().image(thumb.id(), Rect::from_center_size(self.position + graph_position.to_vec2(), thumb.size_vec2()), Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
+                }
+            },
+
+            mangler::value::Value::ImageGray8(_) => {
+                if let Some(thumb) = &self.thumbnail {
+                    ui.painter().image(thumb.id(), Rect::from_center_size(self.position + graph_position.to_vec2(), thumb.size_vec2()), Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
+                }
             },
         }
 
@@ -215,7 +242,7 @@ impl GraphNode {
         ui.painter().text(
             Pos2::new(
                 self.get_rect(graph_position).center().x,
-                self.get_rect(graph_position).top() + 4.0,
+                self.get_rect(graph_position).top() - 20.0,
             ),
             Align2::CENTER_TOP,
             self.settings.name.clone(),

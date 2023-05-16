@@ -14,6 +14,7 @@ pub enum Operation {
     Subtract(subtract::Subtract),
     Float(float::Float),
     Integer(integer::Integer),
+    ImageFromUrl(image_from_url::ImageFromUrl),
 }
 
 impl Operation {
@@ -23,6 +24,7 @@ impl Operation {
             Operation::Integer(operation) => operation.run(inputs, outputs),
             Operation::Add(operation) => operation.run(inputs, outputs),
             Operation::Subtract(operation) => operation.run(inputs, outputs),
+            Operation::ImageFromUrl(operation) => operation.run(inputs, outputs),
         }
     }
 }

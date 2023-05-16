@@ -261,7 +261,7 @@ impl eframe::App for MyApp {
             let changed_nodes = self.graph.run();
 
             for node_id in changed_nodes.iter() {
-                if let Some(graph_node) = self.graph_editor.graph_nodes.get(node_id) {
+                if let Some(graph_node) = self.graph_editor.graph_nodes.get_mut(node_id) {
                     graph_node.thumbnail_is_dirty = true;
                 }
             }
