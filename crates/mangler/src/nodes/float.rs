@@ -1,41 +1,33 @@
-use std::time::{Instant, Duration};
 use crate::input::Input;
+use crate::nodes::node_settings::NodeSettings;
 use crate::nodes::operation::{ConnectionSettings, UiType};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
-use crate::nodes::node_settings::NodeSettings;
+use std::time::{Duration, Instant};
 
 use super::operation::Operation;
 
 lazy_static! {
     pub static ref SETTINGS: NodeSettings = NodeSettings::new("Decimal".to_string());
-
-    pub static ref INPUT_SETTINGS: Vec<ConnectionSettings> = vec![
-        ConnectionSettings {
-            name: "decimal".to_string(),
-            default_value: Value::Decimal(0.0),
-            valid_types: vec![ValueType::Decimal, ValueType::Integer, ValueType::String],
-            ui_type: Some(UiType::DragValue),
-        },
-    ];
-
-    pub static ref OUTPUT_SETTINGS: Vec<ConnectionSettings> = vec![
-        ConnectionSettings {
-            name: "decimal".to_string(),
-            default_value: Value::Decimal(0.0),
-            valid_types: vec![ValueType::Decimal],
-            ui_type: None,
-        },
-    ];
+    pub static ref INPUT_SETTINGS: Vec<ConnectionSettings> = vec![ConnectionSettings {
+        name: "decimal".to_string(),
+        default_value: Value::Decimal(0.0),
+        valid_types: vec![ValueType::Decimal, ValueType::Integer, ValueType::String],
+        ui_type: Some(UiType::DragValue),
+    },];
+    pub static ref OUTPUT_SETTINGS: Vec<ConnectionSettings> = vec![ConnectionSettings {
+        name: "decimal".to_string(),
+        default_value: Value::Decimal(0.0),
+        valid_types: vec![ValueType::Decimal],
+        ui_type: None,
+    },];
 }
-
 
 #[derive(Debug, Clone, Default)]
 pub struct Float {}
 
-
-impl Operation for Float {
-    fn run(&mut self, inputs: &Vec<Input>, outputs: &mut Vec<Output>) -> Duration {
+impl Float {
+    pub fn run(&mut self, inputs: &Vec<Input>, outputs: &mut Vec<Output>) -> Duration {
         let start_time = Instant::now();
 
         outputs[0].value = match &inputs[0].value {
@@ -47,7 +39,7 @@ impl Operation for Float {
                 } else {
                     OUTPUT_SETTINGS[0].default_value.clone()
                 }
-            },
+            }
         };
 
         Instant::now().duration_since(start_time)

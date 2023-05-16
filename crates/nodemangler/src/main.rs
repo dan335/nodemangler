@@ -7,6 +7,7 @@ use mangler::get_id;
 use mangler::nodes::add::Add;
 use mangler::nodes::node::Node;
 use mangler::nodes::operation::{ConnectionSettings, Operation};
+use mangler::nodes::*;
 use mangler::{graph::Graph, nodes::node_settings::NodeSettings};
 use std::path::Path;
 
@@ -82,7 +83,7 @@ struct MyApp {
         NodeSettings,
         Vec<ConnectionSettings>,
         Vec<ConnectionSettings>,
-        Box<dyn Operation>,
+        Operation,
     )>,
     editing_node_id: Option<String>,
     viewing_node_id: Option<String>,
@@ -222,6 +223,7 @@ impl eframe::App for MyApp {
                                 node_settings,
                                 input_sttings,
                                 &output_settings,
+                                dragging_settings.3.clone(),
                                 cursor_position,
                             );
                         }
@@ -298,10 +300,10 @@ impl MyApp {
         node_settings: NodeSettings,
         input_settings: &Vec<ConnectionSettings>,
         output_settings: &Vec<ConnectionSettings>,
+        operation: Operation,
         position: Pos2,
     ) -> String {
         let id = get_id();
-        let add = Add::default();
         self.graph_editor
             .add_node(id.clone(), node_settings.clone(), position);
         let node = Node::new(
@@ -309,7 +311,7 @@ impl MyApp {
             node_settings,
             input_settings,
             output_settings,
-            Box::new(add),
+            operation,
         );
         self.graph.add_node(id.clone(), node);
         id

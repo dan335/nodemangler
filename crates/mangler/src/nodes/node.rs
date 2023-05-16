@@ -9,7 +9,7 @@ use super::{
 
 #[derive(Debug)]
 pub struct Node {
-    pub operation: Box<dyn Operation>,
+    pub operation: Operation,
     pub id: String,
     pub settings: NodeSettings,
     pub inputs: Vec<Input>,
@@ -24,7 +24,7 @@ impl Node {
         settings: NodeSettings,
         input_settings: &Vec<ConnectionSettings>,
         output_settings: &Vec<ConnectionSettings>,
-        operation: Box<dyn Operation>,
+        operation: Operation,
     ) -> Node {
         let inputs: Vec<Input> = input_settings
             .iter()

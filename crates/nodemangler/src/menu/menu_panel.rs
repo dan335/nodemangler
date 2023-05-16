@@ -19,28 +19,28 @@ impl MenuPanel {
             node_settings: nodes::float::SETTINGS.clone(),
             input_settings: nodes::float::INPUT_SETTINGS.clone(),
             output_settings: nodes::float::OUTPUT_SETTINGS.clone(),
-            operation: Box::new(nodes::float::Float {}),
+            operation: Operation::Float(nodes::float::Float {}),
         });
 
         buttons.push(MenuButton {
             node_settings: nodes::integer::SETTINGS.clone(),
             input_settings: nodes::integer::INPUT_SETTINGS.clone(),
             output_settings: nodes::integer::OUTPUT_SETTINGS.clone(),
-            operation: Box::new(nodes::integer::Integer {}),
+            operation: Operation::Integer(nodes::integer::Integer {}),
         });
 
         buttons.push(MenuButton {
             node_settings: nodes::add::SETTINGS.clone(),
             input_settings: nodes::add::INPUT_SETTINGS.clone(),
             output_settings: nodes::add::OUTPUT_SETTINGS.clone(),
-            operation: Box::new(nodes::add::Add {}),
+            operation: Operation::Add(nodes::add::Add {}),
         });
 
         buttons.push(MenuButton {
             node_settings: nodes::subtract::SETTINGS.clone(),
             input_settings: nodes::subtract::INPUT_SETTINGS.clone(),
             output_settings: nodes::subtract::OUTPUT_SETTINGS.clone(),
-            operation: Box::new(nodes::subtract::Subtract {}),
+            operation: Operation::Subtract(nodes::subtract::Subtract {}),
         });
 
         MenuPanel { buttons }
@@ -57,7 +57,7 @@ impl MenuPanel {
             NodeSettings,
             Vec<ConnectionSettings>,
             Vec<ConnectionSettings>,
-            Box<dyn Operation>,
+            Operation,
         )> = None;
 
         for (menu_button_index, menu_button) in self.buttons.iter_mut().enumerate() {
@@ -68,7 +68,7 @@ impl MenuPanel {
                     menu_button.node_settings.clone(),
                     menu_button.input_settings.clone(),
                     menu_button.output_settings.clone(),
-                    menu_button.operation,
+                    menu_button.operation.clone(),
                 ));
             }
         }
@@ -84,6 +84,6 @@ pub struct MenuResult {
         NodeSettings,
         Vec<ConnectionSettings>,
         Vec<ConnectionSettings>,
-        Box<dyn Operation>,
+        Operation,
     )>,
 }

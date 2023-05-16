@@ -1,3 +1,4 @@
+use crate::nodes::*;
 use core::fmt::Debug;
 use std::time::Duration;
 
@@ -7,16 +8,32 @@ use crate::{
     value::{Value, ValueType},
 };
 
-pub trait Operation {
-    fn run(&mut self, inputs: &Vec<Input>, outputs: &mut Vec<Output>) -> Duration;
+#[derive(Debug, Clone)]
+pub enum Operation {
+    //fn run(&mut self, inputs: &Vec<Input>, outputs: &mut Vec<Output>) -> Duration;
     //fn clone(&self) -> Self;
+    Add(add::Add),
+    Subtract(subtract::Subtract),
+    Float(float::Float),
+    Integer(integer::Integer),
 }
 
-impl Debug for dyn Operation {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("<Operation>")
+impl Operation {
+    pub fn run(&mut self, inputs: &Vec<Input>, outputs: &mut Vec<Output>) -> Duration {
+        match self {
+            Operation::Float(operation) => operation.run(inputs, outputs),
+            Operation::Integer(operation) => operation.run(inputs, outputs),
+            Operation::Add(operation) => operation.run(inputs, outputs),
+            Operation::Subtract(operation) => operation.run(inputs, outputs),
+        }
     }
 }
+
+// impl Debug for dyn Operation {
+//     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
+//         f.write_str("<Operation>")
+//     }
+// }
 
 // impl Clone for Box<dyn Operation> {
 //     fn clone(&self) -> Self {
