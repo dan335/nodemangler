@@ -13,6 +13,11 @@ impl Graph {
         self.is_dirty = true;
     }
 
+    // https://github.com/emilk/egui/discussions/484
+    // pub async fn run_async(&mut self) -> HashSet<String> {
+    //     self.run().await
+    // }
+
     // returns a list of node_ids that ran
     // so that their thumbnails will know to update
     pub fn run(&mut self) -> HashSet<String> {

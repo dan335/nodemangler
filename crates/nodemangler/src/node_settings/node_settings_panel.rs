@@ -9,7 +9,7 @@ use mangler::{
     input::Input,
     nodes::{node_settings::NodeSettings, operation::UiType},
     output::Output,
-    value::Value,
+    value::{Value, ImageFormat},
 };
 
 pub struct NodeSettingsPanel {}
@@ -62,140 +62,148 @@ impl NodeSettingsPanel {
             if let Some(inputs) = node_inputs {
                 for (input_index, input) in inputs.iter_mut().enumerate() {
                     ui.horizontal(|ui| {
-                        ui.add(Label::new(input.name.clone()));
-                        if let Some(ui_type) = &input.ui_type {
-                            match ui_type {
-                                UiType::DragValue => {
-                                    match input.value.clone() {
-                                        Value::Integer(a) => {
-                                            if input.connection.is_some() {
-                                                ui.label(a.to_string());
-                                            } else {
-                                                let mut x = a;
-                                                if ui.add(egui::DragValue::new(&mut x)).changed() {
-                                                    input.value = Value::Integer(x);
-                                                    response
-                                                        .input_indexes_that_changed
-                                                        .push(input_index);
-                                                }
-                                            }
-                                        }
-                                        Value::Decimal(a) => {
-                                            if input.connection.is_some() {
-                                                ui.label(a.to_string());
-                                            } else {
-                                                let mut x = a;
-                                                if ui.add(egui::DragValue::new(&mut x)).changed() {
-                                                    input.value = Value::Decimal(x);
-                                                    response
-                                                        .input_indexes_that_changed
-                                                        .push(input_index);
-                                                }
-                                            }
-                                        }
-                                        Value::String(a) => {
-                                            if input.connection.is_some() {
-                                                ui.label(a);
-                                            } else {
-                                                let mut x = a;
-                                                if ui.text_edit_singleline(&mut x).changed() {
-                                                    input.value = Value::String(x);
-                                                    response.input_indexes_that_changed.push(input_index);
-                                                }
-                                            }
-                                        },
-                                        Value::ImageRgba32F(_) => todo!(),
-                                        Value::ImageRgba8(_) => todo!(),
-                                        Value::ImageGray8(_) => todo!(),
-                                        Value::Bool(a) => {
-                                            if input.connection.is_some() {
-                                                ui.label(a.to_string());
-                                            } else {
-                                                let mut x = a;
-                                                if ui.add(egui::Checkbox::new(&mut x, "Checked")).changed() {
-                                                    input.value = Value::Bool(x);
-                                                    response
-                                                        .input_indexes_that_changed
-                                                        .push(input_index);
-                                                }
-                                            }
-                                        },
-                                        Value::FilterType(a) => {
-                                            if input.connection.is_some() {
-                                                ui.label(format!("{:?}", a));
-                                            } else {
-                                                let mut x = a;
-                                                if egui::ComboBox::from_label("Filter Type").selected_text(format!("{:?}", x)).show_ui(ui, |ui| {
-                                                        ui.selectable_value(&mut x, FilterType::CatmullRom, "Catmull Rom");
-                                                        ui.selectable_value(&mut x, FilterType::Gaussian, "Guassian");
-                                                    }).response.changed() {
-                                                    input.value = Value::FilterType(x);
-                                                    response
-                                                        .input_indexes_that_changed
-                                                        .push(input_index);
-                                                }
-                                            }
-                                        },
-                                    };
+                        ui.label(input.name.clone());
+                        // todo: redo this
+                        // each value type should only have one option
+                        match input.value.clone() {
+                            Value::Bool(a) => {
+                                if input.connection.is_some() {
+                                    ui.label(a.to_string());
+                                } else {
+                                    let mut x = a;
+                                    if ui.add(egui::Checkbox::new(&mut x, "")).changed() {
+                                        input.value = Value::Bool(x);
+                                        response
+                                            .input_indexes_that_changed
+                                            .push(input_index);
+                                    }
                                 }
-                                UiType::Checkbox => {
-                                    match input.value.clone() {
-                                        Value::Bool(a) => {
-                                            if input.connection.is_some() {
-                                                ui.label(a.to_string());
-                                            } else {
-                                                let mut x = a;
-                                                if ui.add(egui::Checkbox::new(&mut x, "Checked")).changed() {
-                                                    input.value = Value::Bool(x);
-                                                    response
-                                                        .input_indexes_that_changed
-                                                        .push(input_index);
-                                                }
-                                            }
-                                        },
-                                        Value::Integer(a) => {
-                                            if input.connection.is_some() {
-                                                ui.label(a.to_string());
-                                            } else {
-                                                let mut x: bool = a == 1;
-                                                if ui.add(egui::Checkbox::new(&mut x, "Checked")).changed() {
-                                                    input.value = Value::Bool(x);
-                                                    response
-                                                        .input_indexes_that_changed
-                                                        .push(input_index);
-                                                }
-                                            }
-                                        },
-                                        _ => { panic!("unsupported"); }
+                            },
+                            Value::Integer(a) => {
+                                if input.connection.is_some() {
+                                    ui.label(a.to_string());
+                                } else {
+                                    let mut x = a;
+                                    if ui.add(egui::DragValue::new(&mut x)).changed() {
+                                        input.value = Value::Integer(x);
+                                        response
+                                            .input_indexes_that_changed
+                                            .push(input_index);
                                     }
-                                },
-                                UiType::Slider => todo!(),
-                                UiType::TextEdit => todo!(),
-                                UiType::ComboBox => {
-                                    match input.value.clone() {
-                                        Value::FilterType(a) => {
-                                            if input.connection.is_some() {
-                                                ui.label(format!("{:?}", a));
-                                            } else {
-                                                let mut x = a;
-                                                if egui::ComboBox::from_label("Filter Type").selected_text(format!("{:?}", x)).show_ui(ui, |ui| {
-                                                        ui.selectable_value(&mut x, FilterType::Nearest, format!("{:?}", FilterType::Nearest));
-                                                        ui.selectable_value(&mut x, FilterType::Triangle, format!("{:?}", FilterType::Triangle));
-                                                        ui.selectable_value(&mut x, FilterType::CatmullRom, format!("{:?}", FilterType::CatmullRom));
-                                                        ui.selectable_value(&mut x, FilterType::Gaussian, format!("{:?}", FilterType::Gaussian));
-                                                        ui.selectable_value(&mut x, FilterType::Lanczos3, format!("{:?}", FilterType::Lanczos3));
-                                                    }).response.changed() {
-                                                    input.value = Value::FilterType(x);
-                                                    response
-                                                        .input_indexes_that_changed
-                                                        .push(input_index);
-                                                }
-                                            }
-                                        },
-                                        _ => { panic!("unsupported"); }
+                                }
+                            },
+                            Value::Decimal(a) => {
+                                if input.connection.is_some() {
+                                    ui.label(a.to_string());
+                                } else {
+                                    let mut x = a;
+                                    if ui.add(egui::DragValue::new(&mut x)).changed() {
+                                        input.value = Value::Decimal(x);
+                                        response
+                                            .input_indexes_that_changed
+                                            .push(input_index);
                                     }
-                                },
-                            }
+                                }
+                            },
+                            Value::String(a) => {
+                                if input.connection.is_some() {
+                                    ui.label(a);
+                                } else {
+                                    let mut x = a;
+                                    if ui.text_edit_singleline(&mut x).changed() {
+                                        input.value = Value::String(x);
+                                        response.input_indexes_that_changed.push(input_index);
+                                    }
+                                }
+                            },
+                            Value::ImageRgba32F(_) => {},
+                            Value::ImageRgb32F(_) => {},
+                            Value::ImageRgba16(_) => {},
+                            Value::ImageRgb16(_) => {},
+                            Value::ImageGrayA16(_) => {},
+                            Value::ImageGray16(_) => {},
+                            Value::ImageRgba8(_) => {},
+                            Value::ImageRgb8(_) => {},
+                            Value::ImageGrayA8(_) => {},
+                            Value::ImageGray8(_) => {},
+                            Value::FilterType(a) => {
+                                if input.connection.is_some() {
+                                    ui.label(format!("{:?}", a));
+                                } else {
+                                    let mut x = a;
+                                    egui::ComboBox::from_label("Filter Type").selected_text(format!("{:?}", x)).show_ui(ui, |ui| {
+                                        if ui.selectable_value(&mut x, FilterType::Nearest, "Nearest Neighbor").changed() {
+                                            input.value = Value::FilterType(x);
+                                            response.input_indexes_that_changed.push(input_index);
+                                        }
+                                        if ui.selectable_value(&mut x, FilterType::Triangle, "Linear Filter (Triangle)").changed() {
+                                            input.value = Value::FilterType(x);
+                                            response.input_indexes_that_changed.push(input_index);
+                                        }
+                                        if ui.selectable_value(&mut x, FilterType::CatmullRom, "Cubic Filter ( CatmullRom)").changed() {
+                                            input.value = Value::FilterType(x);
+                                            response.input_indexes_that_changed.push(input_index);
+                                        }
+                                        if ui.selectable_value(&mut x, FilterType::Gaussian, "Gaussian Filter").changed() {
+                                            input.value = Value::FilterType(x);
+                                            response.input_indexes_that_changed.push(input_index);
+                                        }
+                                        if ui.selectable_value(&mut x, FilterType::Lanczos3, "Lanczos with window 3").changed() {
+                                            input.value = Value::FilterType(x);
+                                            response.input_indexes_that_changed.push(input_index);
+                                        }
+                                    });
+                                }
+                            },
+                            Value::ImageFormat(a) => {
+                                if input.connection.is_some() {
+                                    ui.label(format!("{:?}", a));
+                                } else {
+                                    let mut x = a;
+                                    egui::ComboBox::from_label("Image Format").selected_text(format!("{:?}", x)).show_ui(ui, |ui| {
+                                        if ui.selectable_value(&mut x, ImageFormat::ImageGray16, "Grayscale 16 bit").changed() {
+                                            input.value = Value::ImageFormat(x);
+                                            response.input_indexes_that_changed.push(input_index);
+                                        }
+                                        if ui.selectable_value(&mut x, ImageFormat::ImageGray8, "Grayscale 8 bit").changed() {
+                                            input.value = Value::ImageFormat(x);
+                                            response.input_indexes_that_changed.push(input_index);
+                                        }
+                                        if ui.selectable_value(&mut x, ImageFormat::ImageGrayA16, "Grayscale with alpha 16 bit").changed() {
+                                            input.value = Value::ImageFormat(x);
+                                            response.input_indexes_that_changed.push(input_index);
+                                        }
+                                        if ui.selectable_value(&mut x, ImageFormat::ImageGrayA8, "Grayscale with alpha 8 bit").changed() {
+                                            input.value = Value::ImageFormat(x);
+                                            response.input_indexes_that_changed.push(input_index);
+                                        }
+                                        if ui.selectable_value(&mut x, ImageFormat::ImageRgb16, "RGB 16 bit").changed() {
+                                            input.value = Value::ImageFormat(x);
+                                            response.input_indexes_that_changed.push(input_index);
+                                        }
+                                        if ui.selectable_value(&mut x, ImageFormat::ImageRgb32F, "RGB 32 bit float").changed() {
+                                            input.value = Value::ImageFormat(x);
+                                            response.input_indexes_that_changed.push(input_index);
+                                        }
+                                        if ui.selectable_value(&mut x, ImageFormat::ImageRgb8, "RGB 8 bit").changed() {
+                                            input.value = Value::ImageFormat(x);
+                                            response.input_indexes_that_changed.push(input_index);
+                                        }
+                                        if ui.selectable_value(&mut x, ImageFormat::ImageRgba16, "RGBA 16 bit").changed() {
+                                            input.value = Value::ImageFormat(x);
+                                            response.input_indexes_that_changed.push(input_index);
+                                        }
+                                        if ui.selectable_value(&mut x, ImageFormat::ImageRgba32F, "RGBA 32 bit float").changed() {
+                                            input.value = Value::ImageFormat(x);
+                                            response.input_indexes_that_changed.push(input_index);
+                                        }
+                                        if ui.selectable_value(&mut x, ImageFormat::ImageRgba8, "RGBA 8 bit").changed() {
+                                            input.value = Value::ImageFormat(x);
+                                            response.input_indexes_that_changed.push(input_index);
+                                        }
+                                    });
+                                }
+                            },
                         }
                     });
                 }

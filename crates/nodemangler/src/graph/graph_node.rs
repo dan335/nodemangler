@@ -203,6 +203,9 @@ impl GraphNode {
 
         // output
         match &node.outputs[0].value {
+            mangler::value::Value::Bool(value) => {
+                ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, value.to_string(), FontId::proportional(20.0), Color32::from_gray(200));
+            },
             mangler::value::Value::Integer(value) => {
                 ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, value.to_string(), FontId::proportional(20.0), Color32::from_gray(200));
             },
@@ -213,27 +216,27 @@ impl GraphNode {
                 ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, value.to_string(), FontId::proportional(20.0), Color32::from_gray(200));
             },
 
-            mangler::value::Value::ImageRgba32F(_) => {
+            mangler::value::Value::ImageRgba32F(_) |
+            mangler::value::Value::ImageRgba8(_) |
+            mangler::value::Value::ImageGray8(_) |
+            mangler::value::Value::ImageRgb32F(_) |
+            mangler::value::Value::ImageRgba16(_) |
+            mangler::value::Value::ImageRgb16(_) |
+            mangler::value::Value::ImageGrayA16(_) |
+            mangler::value::Value::ImageGray16(_) |
+            mangler::value::Value::ImageRgb8(_) |
+            mangler::value::Value::ImageGrayA8(_)
+            => {
                 if let Some(thumb) = &self.thumbnail {
                     ui.painter().image(thumb.id(), Rect::from_center_size(self.position + graph_position.to_vec2(), thumb.size_vec2()), Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
                 }
             },
 
-            mangler::value::Value::ImageRgba8(_) => {
-                if let Some(thumb) = &self.thumbnail {
-                    ui.painter().image(thumb.id(), Rect::from_center_size(self.position + graph_position.to_vec2(), thumb.size_vec2()), Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
-                }
-            },
-
-            mangler::value::Value::ImageGray8(_) => {
-                if let Some(thumb) = &self.thumbnail {
-                    ui.painter().image(thumb.id(), Rect::from_center_size(self.position + graph_position.to_vec2(), thumb.size_vec2()), Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
-                }
-            },
-            mangler::value::Value::Bool(value) => {
-                ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, value.to_string(), FontId::proportional(20.0), Color32::from_gray(200));
-            },
             mangler::value::Value::FilterType(value) => {
+                ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, format!("{:?}", value), FontId::proportional(20.0), Color32::from_gray(200));
+            },
+
+            mangler::value::Value::ImageFormat(value) => {
                 ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, format!("{:?}", value), FontId::proportional(20.0), Color32::from_gray(200));
             },
         }
@@ -243,9 +246,9 @@ impl GraphNode {
             ui.painter().add(egui::Shape::rect_stroke(self.get_rect(graph_position), rounding, egui::Stroke::new(4.0, Color32::from_rgb(30, 150, 90))));
         }
 
-        if is_viewing {
+        //if is_viewing {
             //ui.painter().add(egui::Shape::rect_stroke(self.get_rect(graph_position).expand(10.0), rounding, egui::Stroke::new(2.0, Color32::GREEN)));
-        }
+        //}
         // ui.painter().add(egui::Shape::rect_stroke(
         //     rect,
         //     rounding,
