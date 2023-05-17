@@ -46,6 +46,12 @@ impl MenuPanel {
                 output_settings: nodes::image_from_url::OUTPUT_SETTINGS.clone(),
                 operation: Operation::ImageFromUrl(nodes::image_from_url::ImageFromUrl {}),
             },
+            MenuButton {
+                node_settings: nodes::image_resize::SETTINGS.clone(),
+                input_settings: nodes::image_resize::INPUT_SETTINGS.clone(),
+                output_settings: nodes::image_resize::OUTPUT_SETTINGS.clone(),
+                operation: Operation::ImageResize(nodes::image_resize::ImageResize {}),
+            },
         ];
 
         MenuPanel { buttons }

@@ -140,12 +140,14 @@ impl eframe::App for MyApp {
             ui.allocate_ui_at_rect(top_panel_rect, |ui| {
                 if let Some(viewing_node_id) = &self.viewing_node_id {
                     if let Some(node) = self.graph.nodes.get(viewing_node_id) {
-                        self.view_panel.show(ui, Some(node));
+                        let Some(graph_node) = self.graph_editor.graph_nodes.get_mut(viewing_node_id) else { panic!("asdf"); };
+                        self.view_panel.show(ui, Some(node), graph_node.view_image_is_dirty);
+                        graph_node.view_image_is_dirty = false;
                     } else {
-                        self.view_panel.show(ui, None);
+                        self.view_panel.show(ui, None, false);
                     }
                 } else {
-                    self.view_panel.show(ui, None);
+                    self.view_panel.show(ui, None, false);
                 }
             });
 
@@ -271,6 +273,11 @@ impl eframe::App for MyApp {
             for node_id in changed_nodes.iter() {
                 if let Some(graph_node) = self.graph_editor.graph_nodes.get_mut(node_id) {
                     graph_node.thumbnail_is_dirty = true;
+                    if let Some(view_node_id) = &self.viewing_node_id {
+                        if view_node_id == node_id {
+                            graph_node.view_image_is_dirty = true;
+                        }
+                    }
                 }
             }
         }

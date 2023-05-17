@@ -15,6 +15,7 @@ pub enum Operation {
     Float(float::Float),
     Integer(integer::Integer),
     ImageFromUrl(image_from_url::ImageFromUrl),
+    ImageResize(image_resize::ImageResize),
 }
 
 impl Operation {
@@ -25,6 +26,7 @@ impl Operation {
             Operation::Add(operation) => operation.run(inputs, outputs),
             Operation::Subtract(operation) => operation.run(inputs, outputs),
             Operation::ImageFromUrl(operation) => operation.run(inputs, outputs),
+            Operation::ImageResize(operation) => operation.run(inputs, outputs),
         }
     }
 }
@@ -43,4 +45,5 @@ pub enum UiType {
     Checkbox,
     Slider,
     TextEdit,
+    ComboBox,
 }

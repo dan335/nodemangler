@@ -1,7 +1,10 @@
+use core::panic;
+
 use eframe::{
     egui::{self, Label},
     epaint::Rounding,
 };
+use image::imageops::FilterType;
 use mangler::{
     input::Input,
     nodes::{node_settings::NodeSettings, operation::UiType},
@@ -104,11 +107,94 @@ impl NodeSettingsPanel {
                                         Value::ImageRgba32F(_) => todo!(),
                                         Value::ImageRgba8(_) => todo!(),
                                         Value::ImageGray8(_) => todo!(),
+                                        Value::Bool(a) => {
+                                            if input.connection.is_some() {
+                                                ui.label(a.to_string());
+                                            } else {
+                                                let mut x = a;
+                                                if ui.add(egui::Checkbox::new(&mut x, "Checked")).changed() {
+                                                    input.value = Value::Bool(x);
+                                                    response
+                                                        .input_indexes_that_changed
+                                                        .push(input_index);
+                                                }
+                                            }
+                                        },
+                                        Value::FilterType(a) => {
+                                            if input.connection.is_some() {
+                                                ui.label(format!("{:?}", a));
+                                            } else {
+                                                let mut x = a;
+                                                if egui::ComboBox::from_label("Filter Type").selected_text(format!("{:?}", x)).show_ui(ui, |ui| {
+                                                        ui.selectable_value(&mut x, FilterType::CatmullRom, "Catmull Rom");
+                                                        ui.selectable_value(&mut x, FilterType::Gaussian, "Guassian");
+                                                    }).response.changed() {
+                                                    input.value = Value::FilterType(x);
+                                                    response
+                                                        .input_indexes_that_changed
+                                                        .push(input_index);
+                                                }
+                                            }
+                                        },
                                     };
                                 }
-                                UiType::Checkbox => todo!(),
+                                UiType::Checkbox => {
+                                    match input.value.clone() {
+                                        Value::Bool(a) => {
+                                            if input.connection.is_some() {
+                                                ui.label(a.to_string());
+                                            } else {
+                                                let mut x = a;
+                                                if ui.add(egui::Checkbox::new(&mut x, "Checked")).changed() {
+                                                    input.value = Value::Bool(x);
+                                                    response
+                                                        .input_indexes_that_changed
+                                                        .push(input_index);
+                                                }
+                                            }
+                                        },
+                                        Value::Integer(a) => {
+                                            if input.connection.is_some() {
+                                                ui.label(a.to_string());
+                                            } else {
+                                                let mut x: bool = a == 1;
+                                                if ui.add(egui::Checkbox::new(&mut x, "Checked")).changed() {
+                                                    input.value = Value::Bool(x);
+                                                    response
+                                                        .input_indexes_that_changed
+                                                        .push(input_index);
+                                                }
+                                            }
+                                        },
+                                        _ => { panic!("unsupported"); }
+                                    }
+                                },
                                 UiType::Slider => todo!(),
                                 UiType::TextEdit => todo!(),
+                                UiType::ComboBox => {
+                                    match input.value.clone() {
+                                        Value::FilterType(a) => {
+                                            if input.connection.is_some() {
+                                                ui.label(format!("{:?}", a));
+                                            } else {
+                                                let mut x = a;
+                                                if egui::ComboBox::from_label("Filter Type").selected_text(format!("{:?}", x)).show_ui(ui, |ui| {
+                                                        ui.selectable_value(&mut x, FilterType::Nearest, format!("{:?}", FilterType::Nearest));
+                                                        ui.selectable_value(&mut x, FilterType::Triangle, format!("{:?}", FilterType::Triangle));
+                                                        ui.selectable_value(&mut x, FilterType::CatmullRom, format!("{:?}", FilterType::CatmullRom));
+                                                        ui.selectable_value(&mut x, FilterType::Gaussian, format!("{:?}", FilterType::Gaussian));
+                                                        ui.selectable_value(&mut x, FilterType::Lanczos3, format!("{:?}", FilterType::Lanczos3));
+                                                    }).response.changed() {
+                                                    input.value = Value::FilterType(x);
+                                                    response
+                                                        .input_indexes_that_changed
+                                                        .push(input_index);
+                                                }
+                                            }
+                                        },
+                                        _ => { panic!("unsupported"); }
+                                    }
+                                },
                             }
                         }
                     });

@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::println;
 
 use crate::graph::graph_input::draw_graph_input;
@@ -24,6 +25,7 @@ pub struct GraphNode {
     last_drag_position: Option<Pos2>,
     thumbnail: Option<egui::TextureHandle>,
     pub thumbnail_is_dirty: bool,   // node has updated, thumbnail needs updating
+    pub view_image_is_dirty: bool,  // node has updated, view image needs updating
 }
 
 impl GraphNode {
@@ -36,6 +38,7 @@ impl GraphNode {
             last_drag_position: None,
             thumbnail: None,
             thumbnail_is_dirty: true,
+            view_image_is_dirty: false,
         }
     }
 
@@ -147,7 +150,7 @@ impl GraphNode {
             }
 
             if is_viewing && index == 0 {
-                draw_graph_output_highlighted(self.get_output_position(index, graph_position), self.get_output_rect(index, graph_position), index, self.get_rect(graph_position), ui);
+                draw_graph_output_highlighted(self.get_output_position(index, graph_position), ui);
             }
         }
 
@@ -226,6 +229,12 @@ impl GraphNode {
                 if let Some(thumb) = &self.thumbnail {
                     ui.painter().image(thumb.id(), Rect::from_center_size(self.position + graph_position.to_vec2(), thumb.size_vec2()), Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
                 }
+            },
+            mangler::value::Value::Bool(value) => {
+                ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, value.to_string(), FontId::proportional(20.0), Color32::from_gray(200));
+            },
+            mangler::value::Value::FilterType(value) => {
+                ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, format!("{:?}", value), FontId::proportional(20.0), Color32::from_gray(200));
             },
         }
 

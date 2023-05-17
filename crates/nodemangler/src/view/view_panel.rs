@@ -16,7 +16,7 @@ impl ViewPanel {
         }
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, viewing_node: Option<&Node>) {
+    pub fn show(&mut self, ui: &mut egui::Ui, viewing_node: Option<&Node>, image_is_dirty: bool) {
 
         // bg
         ui.painter().add(egui::Shape::rect_filled(
@@ -27,7 +27,7 @@ impl ViewPanel {
 
         // create image
         if let Some(node) = viewing_node {
-            if self.image.is_none() || &node.id != self.image_node_id.as_ref().unwrap() {
+            if self.image.is_none() || &node.id != self.image_node_id.as_ref().unwrap() || image_is_dirty {
                 let color_image = match &node.outputs[0].value {
                     mangler::value::Value::ImageRgba32F(value) => {
                         let image_buffer = DynamicImage::ImageRgba32F(value.clone()).resize(ui.max_rect().width() as u32, ui.max_rect().height() as u32, image::imageops::FilterType::Triangle).to_rgba8();
