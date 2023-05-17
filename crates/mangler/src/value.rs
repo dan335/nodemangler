@@ -1,4 +1,4 @@
-use image::{Rgba32FImage, RgbaImage, GrayImage, imageops::FilterType };
+use image::{imageops::FilterType, GrayImage, Rgba32FImage, RgbaImage};
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -22,8 +22,18 @@ impl Value {
             Value::ImageRgba32F(_) => ValueType::ImageRgba32F,
             Value::ImageRgba8(_) => ValueType::ImageRgba8,
             Value::ImageGray8(_) => ValueType::ImageGray8,
-            Value::FilterType(_) => ValueType::FilterType,  // filter type for resizing images
+            Value::FilterType(_) => ValueType::FilterType, // filter type for resizing images
         }
+    }
+
+    pub fn convert(&self, other: &Value) -> Value {
+        let result = match (self, other) {
+            (Value::Integer(a), Value::Integer(b)) => {
+                Value::Integer(a + b)
+            }
+        }
+
+        result
     }
 }
 
@@ -38,4 +48,3 @@ pub enum ValueType {
     ImageGray8,
     FilterType,
 }
-
