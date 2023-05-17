@@ -10,6 +10,7 @@ use mangler::nodes::node::Node;
 use mangler::nodes::node_settings::NodeSettings;
 
 use super::graph_editor::TempConnection;
+use super::graph_output::draw_graph_output_highlighted;
 
 pub const NODE_SIZE: Vec2 = Vec2::new(132.0, 132.0);
 const NODE_ROUNDING: f32 = 2.0;
@@ -143,6 +144,10 @@ impl GraphNode {
                 graph_node_response.has_stopped_creating_connection = true;
                 graph_node_response.connection_to_position =
                     input_output_response.connection_to_position;
+            }
+
+            if is_viewing && index == 0 {
+                draw_graph_output_highlighted(self.get_output_position(index, graph_position), self.get_output_rect(index, graph_position), index, self.get_rect(graph_position), ui);
             }
         }
 

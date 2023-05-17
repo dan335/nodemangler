@@ -23,3 +23,8 @@ pub fn draw_graph_output(_output: &Output, output_position: Pos2, input_rect: Re
 
     response
 }
+
+pub fn draw_graph_output_highlighted(output_position: Pos2, input_rect: Rect, _index: usize, _rect: Rect, ui: &mut egui::Ui) {
+    let mut color = Color32::from_rgb(222, 214, 90);
+    ui.painter().add(Shape::circle_stroke(output_position, 6.0, egui::Stroke::new(4.0, color)));
+}

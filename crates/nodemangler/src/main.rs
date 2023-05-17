@@ -138,7 +138,15 @@ impl eframe::App for MyApp {
                 Pos2::new(app_rect.width() - 300.0, app_rect.height() / 2.0),
             );
             ui.allocate_ui_at_rect(top_panel_rect, |ui| {
-                self.view_panel.show(ui);
+                if let Some(viewing_node_id) = &self.viewing_node_id {
+                    if let Some(node) = self.graph.nodes.get(viewing_node_id) {
+                        self.view_panel.show(ui, Some(node));
+                    } else {
+                        self.view_panel.show(ui, None);
+                    }
+                } else {
+                    self.view_panel.show(ui, None);
+                }
             });
 
             // -------------------------
