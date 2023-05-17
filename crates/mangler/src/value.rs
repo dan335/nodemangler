@@ -1,3 +1,5 @@
+use std::panic;
+
 use image::{imageops::FilterType, GrayImage, Rgba32FImage, RgbaImage};
 
 #[derive(Debug, Clone)]
@@ -27,25 +29,41 @@ impl Value {
     }
 
     pub fn convert(&self, other: &Value) -> Value {
-        let result = match (self, other) {
-            (Value::Integer(a), Value::Integer(b)) => {
-                Value::Integer(a + b)
+        let result = match (self, other.value_type()) {
+            (Value::Integer(a), ValueType::Integer) => {
+                Value::Integer(*a)
             }
-            (Value::Bool(_), Value::Bool(_)) => todo!(),
-            (Value::Bool(_), Value::Integer(_)) => todo!(),
-            (Value::Bool(_), Value::Decimal(_)) => todo!(),
-            (Value::Bool(_), Value::String(_)) => todo!(),
-            (Value::Bool(_), Value::ImageRgba32F(_)) => todo!(),
-            (Value::Bool(_), Value::ImageRgba8(_)) => todo!(),
-            (Value::Bool(_), Value::ImageGray8(_)) => todo!(),
-            (Value::Bool(_), Value::FilterType(_)) => todo!(),
-            (Value::Integer(_), Value::Bool(_)) => todo!(),
-            (Value::Integer(_), Value::Decimal(_)) => todo!(),
-            (Value::Integer(_), Value::String(_)) => todo!(),
-            (Value::Integer(_), Value::ImageRgba32F(_)) => todo!(),
-            (Value::Integer(_), Value::ImageRgba8(_)) => todo!(),
-            (Value::Integer(_), Value::ImageGray8(_)) => todo!(),
-            (Value::Integer(_), Value::FilterType(_)) => todo!(),
+            (Value::Bool(a), ValueType::Bool) => {
+                Value::Bool(*a)
+            },
+            (Value::Bool(a), ValueType::Integer) => {
+                if *a { Value::Integer(1) } else { Value::Integer(0) }
+            },
+            (Value::Bool(a), ValueType::Decimal) => {
+                if *a { Value::Decimal(1.0) } else { Value::Decimal(0.0) }
+            },
+            (Value::Bool(a), ValueType::String) => {
+                Value::String(a.to_string())
+            },
+            (Value::Bool(_), ValueType::ImageRgba32F) => panic!("Unable to convert."),
+            (Value::Bool(_), ValueType::ImageRgba8) => panic!("Unable to convert."),
+            (Value::Bool(_), ValueType::ImageGray8) => panic!("Unable to convert."),
+            (Value::Bool(_), ValueType::FilterType) => panic!("Unable to convert."),
+            (Value::Integer(a), ValueType::Bool) => {
+                Value::Bool(*a != 0)
+            },
+            (Value::Integer(a), ValueType::Decimal) => {
+                Value::Decimal(*a as f32)
+            },
+            (Value::Integer(a), ValueType::String) => {
+
+            },
+            (Value::Integer(_), ValueType::ImageRgba32F) => panic!("Unable to convert."),
+            (Value::Integer(_), ValueType::ImageRgba8) => panic!("Unable to convert."),
+            (Value::Integer(_), ValueType::ImageGray8) => panic!("Unable to convert."),
+            (Value::Integer(a), ValueType::FilterType) => {
+
+            },
             (Value::Decimal(_), Value::Bool(_)) => todo!(),
             (Value::Decimal(_), Value::Integer(_)) => todo!(),
             (Value::Decimal(_), Value::Decimal(_)) => todo!(),
