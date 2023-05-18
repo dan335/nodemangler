@@ -1,5 +1,5 @@
 use crate::nodes::node::Node;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{collections::{HashMap, HashSet, VecDeque}, println};
 
 #[derive(Default)]
 pub struct Graph {
@@ -11,6 +11,94 @@ impl Graph {
     pub fn add_node(&mut self, id: String, node: Node) {
         self.nodes.insert(id, node);
         self.is_dirty = true;
+    }
+
+    pub fn remove_node(&mut self, id: &String) {
+
+        // get nodes that connect to this one
+        let mut connected_nodes: Vec<String> = Vec::new();
+
+        if let Some(node) = self.nodes.get(id) {
+            for input in node.inputs.iter() {
+                if let Some((other_node_id, _)) = &input.connection {
+                    connected_nodes.push(other_node_id.clone());
+                }
+            }
+
+            for output in node.outputs.iter() {
+                if let Some(connections) = &output.connection {
+                    for (other_node_id, _) in connections.iter() {
+                        connected_nodes.push(other_node_id.clone());
+                    }
+                }
+            }
+        }
+
+        // remove connections
+        for node_id in connected_nodes.iter() {
+            if let Some(node) = self.nodes.get_mut(node_id) {
+
+                // inputs
+                let mut inputs_to_clear: Vec<usize> = Vec::new();
+
+                for (index, input) in node.inputs.iter().enumerate() {
+                    if let Some((other_node_id, _)) = &input.connection {
+                        if other_node_id == id {
+                            inputs_to_clear.push(index);
+                        }
+                    }
+                }
+
+                for index in inputs_to_clear.iter() {
+                    node.inputs[*index].connection = None;
+                }
+
+                // outputs
+                let mut outputs_to_clear: Vec<(usize, usize)> = Vec::new(); // output index, output connection index
+
+                for (output_index, output) in node.outputs.iter().enumerate() {
+                    if let Some(connections) = &output.connection {
+                        for (output_connection_index, (other_node_id, _)) in connections.iter().enumerate() {
+                            if other_node_id == id {
+                                outputs_to_clear.push((output_index, output_connection_index));
+                            }
+                        }
+                    }
+                }
+
+                for (output_index, output_connection_index) in outputs_to_clear.iter() {
+                    if let Some(c) = node.outputs.get_mut(output_index.clone()) {
+                        let d = c.connection.as_mut().unwrap();
+                        d.remove(output_connection_index.clone());
+                    }
+                }
+            }
+
+            // remove node
+            self.nodes.remove(id);
+        }
+    }
+
+    pub fn remove_connection(&mut self, node_id: String, input_index: usize) {
+        let mut output: Option<(String, usize)> = None;
+
+        if let Some(node) = self.nodes.get_mut(&node_id) {
+
+            if let Some((output_node_id, output_index)) = &node.inputs[input_index].connection {
+                output = Some((output_node_id.clone(), output_index.clone()));
+            }
+
+            node.inputs[input_index].connection = None;
+        }
+
+        if let Some((output_node_id, output_index)) = output {
+            if let Some(node) = self.nodes.get_mut(&output_node_id) {
+                if let Some(c) = node.outputs.get_mut(output_index.clone()) {
+                    let d = c.connection.as_mut().unwrap();
+                    d.remove(output_index.clone());
+                }
+            }
+        }
     }
 
     // https://github.com/emilk/egui/discussions/484

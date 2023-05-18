@@ -1,12 +1,11 @@
 use std::fmt::Debug;
-use std::println;
 
 use crate::graph::graph_input::draw_graph_input;
 use crate::graph::graph_output::draw_graph_output;
-use eframe::epaint::{Rounding, FontId, Color32, TextureId, ColorImage};
+use eframe::epaint::{Rounding, FontId, Color32, ColorImage};
 use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect, Vec2};
-use image::{ImageBuffer, Rgba, DynamicImage};
+use image::{DynamicImage};
 use mangler::nodes::node::Node;
 use mangler::nodes::node_settings::NodeSettings;
 
@@ -14,6 +13,7 @@ use super::graph_editor::TempConnection;
 use super::graph_output::draw_graph_output_highlighted;
 
 pub const NODE_SIZE: Vec2 = Vec2::new(132.0, 132.0);
+pub const THUMBNAIL_SIZE: [u32; 2] = [128, 128];
 const NODE_ROUNDING: f32 = 2.0;
 
 #[derive(Clone)]
@@ -56,15 +56,13 @@ impl GraphNode {
         is_viewing: bool,
     ) -> GraphNodeResponse {
         let mut graph_node_response = GraphNodeResponse::default();
-        //let pos = graph_position + self.position.to_vec2();
         let rounding = Rounding::same(NODE_ROUNDING);
-        //let stroke = Stroke::new(1.0, egui::Color32::from_gray(110));
 
-        //let cursor_inside = self.rect.contains(cursor_position);
+        let node_rect = self.get_rect(graph_position);
 
         let bg_response = ui.allocate_rect(
-            self.get_rect(graph_position),
-            egui::Sense::click().union(egui::Sense::drag()),
+            node_rect,
+            egui::Sense::click().union(egui::Sense::drag()).union(egui::Sense::hover())
         );
 
         if bg_response.clicked_by(egui::PointerButton::Primary) {
@@ -73,11 +71,13 @@ impl GraphNode {
         } else if bg_response.clicked_by(egui::PointerButton::Secondary) {
             self.stop_dragging();
             graph_node_response.is_right_click = true;
-        } else if bg_response.drag_started() {
+        } else if bg_response.drag_started_by(egui::PointerButton::Primary) {
             self.start_dragging();
-        } else if bg_response.drag_released() {
+        } else if bg_response.drag_released_by(egui::PointerButton::Primary) {
             self.stop_dragging();
         }
+
+        graph_node_response.is_cursor_inside = bg_response.hovered();
 
         if self.is_dragging {
             if let Some(last_drag_position) = self.last_drag_position {
@@ -89,20 +89,23 @@ impl GraphNode {
 
         // bg
         ui.painter().add(egui::Shape::rect_filled(
-            self.get_rect(graph_position),
+            node_rect,
             rounding,
             egui::Color32::from_gray(70),
         ));
 
+        // ------------
         // inputs
         for (index, input) in node.inputs.iter().enumerate() {
+            // draw input
             let input_output_response = draw_graph_input(
                 input,
-                self.get_input_position(index, graph_position),
-                self.get_input_rect(index, graph_position),
+                self.get_input_position(index, node_rect),
+                self.get_input_rect(index, node_rect),
                 index,
-                self.get_rect(graph_position),
+                node_rect,
                 ui,
+                bg_response.hovered(),
             );
 
             if input_output_response.has_started_creating_connection {
@@ -119,17 +122,22 @@ impl GraphNode {
                 graph_node_response.connection_to_position =
                     input_output_response.connection_to_position;
             }
+
+            if input_output_response.is_cursor_over {
+                graph_node_response.is_cursor_inside = true;
+            }
         }
 
         // outputs
         for (index, output) in node.outputs.iter().enumerate() {
             let input_output_response = draw_graph_output(
                 output,
-                self.get_output_position(index, graph_position),
-                self.get_output_rect(index, graph_position),
+                self.get_output_position(index, node_rect),
+                self.get_output_rect(index, node_rect),
                 index,
-                self.get_rect(graph_position),
+                node_rect,
                 ui,
+                bg_response.hovered(),
             );
 
             // started dragging from connection
@@ -150,13 +158,17 @@ impl GraphNode {
             }
 
             if is_viewing && index == 0 {
-                draw_graph_output_highlighted(self.get_output_position(index, graph_position), ui);
+                draw_graph_output_highlighted(self.get_output_position(index, node_rect), ui);
+            }
+
+            if input_output_response.is_cursor_over {
+                graph_node_response.is_cursor_inside = true;
             }
         }
 
         // ms
         if let Some(time) = node.time {
-            let pos = Pos2 { x: self.get_rect(graph_position).right_bottom().x, y: self.get_rect(graph_position).right_bottom().y + 5.0 };
+            let pos = Pos2 { x: node_rect.right_bottom().x, y: node_rect.right_bottom().y + 5.0 };
             let text = format!("{:.4} ms", time.as_nanos() as f64 / 1_000_000.0);
             ui.painter().text(
                 pos,
@@ -176,19 +188,19 @@ impl GraphNode {
 
             let color_image = match &node.outputs[0].value {
                 mangler::value::Value::ImageRgba32F(value) => {
-                    let image_buffer = DynamicImage::ImageRgba32F(value.clone()).resize(NODE_SIZE.x as u32, NODE_SIZE.y as u32, image::imageops::FilterType::Triangle).to_rgba8();
+                    let image_buffer = DynamicImage::ImageRgba32F(value.clone()).resize(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1], image::imageops::FilterType::Triangle).to_rgba8();
                     let pixels = image_buffer.as_flat_samples();
                     let size = [image_buffer.width() as usize, image_buffer.height() as usize];
                     Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
                 },
                 mangler::value::Value::ImageRgba8(value) => {
-                    let image_buffer = DynamicImage::ImageRgba8(value.clone()).resize(NODE_SIZE.x as u32, NODE_SIZE.y as u32, image::imageops::FilterType::Triangle).to_rgba8();
+                    let image_buffer = DynamicImage::ImageRgba8(value.clone()).resize(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1], image::imageops::FilterType::Triangle).to_rgba8();
                     let pixels = image_buffer.as_flat_samples();
                     let size = [image_buffer.width() as usize, image_buffer.height() as usize];
                     Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
                 },
                 mangler::value::Value::ImageGray8(value) => {
-                    let image_buffer = DynamicImage::ImageLuma8(value.clone()).resize(NODE_SIZE.x as u32, NODE_SIZE.y as u32, image::imageops::FilterType::Triangle).to_rgba8();
+                    let image_buffer = DynamicImage::ImageLuma8(value.clone()).resize(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1], image::imageops::FilterType::Triangle).to_rgba8();
                     let pixels = image_buffer.as_flat_samples();
                     let size = [image_buffer.width() as usize, image_buffer.height() as usize];
                     Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
@@ -201,20 +213,12 @@ impl GraphNode {
             }
         }
 
-        // output
+        // show output result on node
         match &node.outputs[0].value {
-            mangler::value::Value::Bool(value) => {
-                ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, value.to_string(), FontId::proportional(20.0), Color32::from_gray(200));
-            },
-            mangler::value::Value::Integer(value) => {
-                ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, value.to_string(), FontId::proportional(20.0), Color32::from_gray(200));
-            },
-            mangler::value::Value::Decimal(value) => {
-                ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, value.to_string(), FontId::proportional(20.0), Color32::from_gray(200));
-            },
-            mangler::value::Value::String(value) => {
-                ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, value.to_string(), FontId::proportional(20.0), Color32::from_gray(200));
-            },
+            mangler::value::Value::Bool(value) => show_output_text(ui, node_rect.center(), value.to_string()),
+            mangler::value::Value::Integer(value) => show_output_text(ui, node_rect.center(), value.to_string()),
+            mangler::value::Value::Decimal(value) => show_output_text(ui, node_rect.center(), value.to_string()),
+            mangler::value::Value::String(value) => show_output_text(ui, node_rect.center(), value.to_string()),
 
             mangler::value::Value::ImageRgba32F(_) |
             mangler::value::Value::ImageRgba8(_) |
@@ -232,18 +236,17 @@ impl GraphNode {
                 }
             },
 
-            mangler::value::Value::FilterType(value) => {
-                ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, format!("{:?}", value), FontId::proportional(20.0), Color32::from_gray(200));
-            },
+            mangler::value::Value::FilterType(value) => show_output_text(ui, node_rect.center(),format!("{:?}", value)),
+            mangler::value::Value::ImageFormat(value) => show_output_text(ui, node_rect.center(),format!("{:?}", value)),
+        }
 
-            mangler::value::Value::ImageFormat(value) => {
-                ui.painter().text(self.get_rect(graph_position).center(), Align2::CENTER_CENTER, format!("{:?}", value), FontId::proportional(20.0), Color32::from_gray(200));
-            },
+        fn show_output_text(ui: &mut egui::Ui, position: Pos2, txt: String) {
+            ui.painter().text(position, Align2::CENTER_CENTER, txt, FontId::proportional(20.0), Color32::from_gray(200));
         }
 
         // outline
         if is_editing {
-            ui.painter().add(egui::Shape::rect_stroke(self.get_rect(graph_position), rounding, egui::Stroke::new(4.0, Color32::from_rgb(30, 150, 90))));
+            ui.painter().add(egui::Shape::rect_stroke(node_rect, rounding, egui::Stroke::new(4.0, Color32::from_rgb(30, 150, 90))));
         }
 
         //if is_viewing {
@@ -258,8 +261,8 @@ impl GraphNode {
         // text - name
         ui.painter().text(
             Pos2::new(
-                self.get_rect(graph_position).center().x,
-                self.get_rect(graph_position).top() - 20.0,
+                node_rect.center().x,
+                node_rect.top() - 20.0,
             ),
             Align2::CENTER_TOP,
             self.settings.name.clone(),
@@ -279,26 +282,24 @@ impl GraphNode {
         self.last_drag_position = None;
     }
 
-    pub fn get_input_position(&self, index: usize, graph_position: Pos2) -> Pos2 {
-        let rect = self.get_rect(graph_position);
-        Pos2::new(rect.left() - 14.0, rect.top() + 12.0 + 20.0 * index as f32)
+    pub fn get_input_position(&self, index: usize, node_rect: Rect) -> Pos2 {
+        Pos2::new(node_rect.left() - 14.0, node_rect.top() + 12.0 + 20.0 * index as f32)
     }
 
-    pub fn get_output_position(&self, index: usize, graph_position: Pos2) -> Pos2 {
-        let rect = self.get_rect(graph_position);
-        Pos2::new(rect.right() + 14.0, rect.top() + 12.0 + 20.0 * index as f32)
+    pub fn get_output_position(&self, index: usize, node_rect: Rect) -> Pos2 {
+        Pos2::new(node_rect.right() + 14.0, node_rect.top() + 12.0 + 20.0 * index as f32)
     }
 
-    pub fn get_input_rect(&self, index: usize, graph_position: Pos2) -> Rect {
+    pub fn get_input_rect(&self, index: usize, node_rect: Rect) -> Rect {
         Rect::from_center_size(
-            self.get_input_position(index, graph_position),
+            self.get_input_position(index, node_rect),
             Vec2::new(12.0, 12.0),
         )
     }
 
-    pub fn get_output_rect(&self, index: usize, graph_position: Pos2) -> Rect {
+    pub fn get_output_rect(&self, index: usize, node_rect: Rect) -> Rect {
         Rect::from_center_size(
-            self.get_output_position(index, graph_position),
+            self.get_output_position(index, node_rect),
             Vec2::new(12.0, 12.0),
         )
     }
@@ -313,6 +314,7 @@ pub struct GraphNodeResponse {
     pub view_node: bool,
     pub is_right_click: bool,
     pub is_left_click: bool,
+    pub is_cursor_inside: bool,
 }
 
 impl GraphNodeResponse {
@@ -325,6 +327,7 @@ impl GraphNodeResponse {
             view_node: false,
             is_right_click: false,
             is_left_click: false,
+            is_cursor_inside: false,
         }
     }
 }
@@ -334,6 +337,7 @@ pub struct InputOutputResponse {
     pub connection_from_position: Pos2,
     pub has_stopped_creating_connection: bool,
     pub connection_to_position: Pos2,
+    pub is_cursor_over: bool,
 }
 
 impl InputOutputResponse {
@@ -343,6 +347,7 @@ impl InputOutputResponse {
             connection_from_position: Pos2::ZERO,
             has_stopped_creating_connection: false,
             connection_to_position: Pos2::ZERO,
+            is_cursor_over: false,
         }
     }
 }

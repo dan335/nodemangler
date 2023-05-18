@@ -47,6 +47,27 @@ impl Value {
         }
     }
 
+    pub fn value_name(self) -> String {
+        match self {
+            Value::Bool(_) => "bool".to_string(),
+            Value::Integer(_) => "integer".to_string(),
+            Value::Decimal(_) => "decimal".to_string(),
+            Value::String(_) => "string".to_string(),
+            Value::ImageRgba32F(_) => "rgba 32f".to_string(),
+            Value::ImageRgb32F(_) => "rgb 32f".to_string(),
+            Value::ImageRgba16(_) => "rgba 16".to_string(),
+            Value::ImageRgb16(_) => "rgb 16".to_string(),
+            Value::ImageGrayA16(_) => "gray a 16".to_string(),
+            Value::ImageGray16(_) => "gray 16".to_string(),
+            Value::ImageRgba8(_) => "rgba 8".to_string(),
+            Value::ImageRgb8(_) => "rgb 8".to_string(),
+            Value::ImageGrayA8(_) => "gray a 8".to_string(),
+            Value::ImageGray8(_) => "gray 8".to_string(),
+            Value::FilterType(_) => "filter type".to_string(),
+            Value::ImageFormat(_) => "image format".to_string(),
+        }
+    }
+
     pub fn convert_to(&self, other: ValueType) -> Result<Value, ConversionError> {
         match self {
             Value::Bool(a) => match other {

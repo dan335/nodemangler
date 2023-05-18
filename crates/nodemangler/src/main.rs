@@ -210,6 +210,14 @@ impl eframe::App for MyApp {
                 if let Some(new_connection) = graph_editor_response.new_connection {
                     self.connect_nodes(new_connection);
                 }
+
+                for (node_id, input_index) in graph_editor_response.connections_to_delete.iter() {
+                    self.remove_connection(node_id.clone(), input_index.clone());
+                }
+
+                for node_id in graph_editor_response.nodes_to_delete.iter() {
+                    self.remove_node(node_id.clone());
+                }
             });
 
             // dragging from menu
@@ -265,6 +273,11 @@ impl eframe::App for MyApp {
                     egui::Color32::from_gray(150),
                 );
             }
+
+            // show help in bottom left
+            let pos = Pos2::new(app_rect.left() + 10.0, app_rect.bottom() - 10.0);
+            let txt = format!("left click: edit      right click: view      ctrl + left click: delete");
+            ui.painter().text(pos, egui::Align2::LEFT_BOTTOM, txt, egui::FontId::proportional(12.0), egui::Color32::from_gray(150));
         });
 
         if self.graph.is_dirty {
@@ -281,6 +294,8 @@ impl eframe::App for MyApp {
                 }
             }
         }
+
+        
     }
 }
 
@@ -345,12 +360,21 @@ impl MyApp {
         id
     }
 
+    pub fn remove_node(&mut self, node_id: String) {
+        self.graph.remove_node(&node_id);
+        self.graph_editor.remove_node(&node_id);
+    }
+
     pub fn view_node(&mut self, node_id: String) {
         self.viewing_node_id = Some(node_id);
     }
 
     pub fn edit_node(&mut self, node_id: String) {
         self.editing_node_id = Some(node_id);
+    }
+
+    pub fn remove_connection(&mut self, node_id: String, input_index: usize) {
+        self.graph.remove_connection(node_id, input_index);
     }
 }
 
