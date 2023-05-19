@@ -190,7 +190,7 @@ impl GraphEditor {
                             }
                         }
                         ConnectionType::Output => {
-                            for input_index in 0..other_node.inputs.len() {
+                            for input_index in 0..other_node.get_inputs().len() {
                                 if other_graph_node
                                     .get_input_rect(input_index, other_node_rect)
                                     .contains(cursor_position)
@@ -231,7 +231,7 @@ impl GraphEditor {
         // curve, input node id, input index
         let mut connection_curves: Vec<(CubicBezierShape, String, usize)> = Vec::new();
         for (node_id, node) in nodes.iter() {
-            for (input_index, input) in node.inputs.iter().enumerate() {
+            for (input_index, input) in node.get_inputs().iter().enumerate() {
                 if let Some((output_node_id, output_connection_index)) = &input.connection {
                     let input_graph_node = &self.graph_nodes[node_id];
                     let output_graph_node = &self.graph_nodes[output_node_id];

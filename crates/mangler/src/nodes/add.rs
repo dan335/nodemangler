@@ -6,6 +6,8 @@ use crate::value::{Value, ValueType};
 use core::panic;
 use std::time::{Duration, Instant};
 
+use super::operation::OperationResponse;
+
 lazy_static! {
     pub static ref SETTINGS: NodeSettings = NodeSettings::new("Add".to_string());
     pub static ref INPUT_SETTINGS: Vec<ConnectionSettings> = vec![
@@ -30,35 +32,35 @@ lazy_static! {
     },];
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct Add {}
 
-impl Add {
-    pub fn run(&mut self, inputs: &[Input], outputs: &mut [Output]) -> Duration {
-        let start_time = Instant::now();
+pub fn add(inputs: &[Input], outputs: &mut [Output]) -> OperationResponse {
+    let start_time = Instant::now();
 
-        outputs[0].value = match (&inputs[0].value, &inputs[1].value) {
-            (Value::Integer(a), Value::Decimal(b)) => Value::Decimal(*a as f32 + *b),
+    let mut response = OperationResponse::new();
 
-            (Value::Integer(a), Value::Integer(b)) => Value::Integer(*a + *b),
+    response.output_values.push(match (&inputs[0].get_value(), &inputs[1].get_value()) {
+        (Value::Integer(a), Value::Decimal(b)) => Value::Decimal(*a as f32 + *b),
 
-            (Value::Integer(a), Value::String(b)) => Value::String(format!("{} {}", a, *b)),
+        (Value::Integer(a), Value::Integer(b)) => Value::Integer(*a + *b),
 
-            (Value::Decimal(a), Value::Decimal(b)) => Value::Decimal(*a + *b),
+        (Value::Integer(a), Value::String(b)) => Value::String(format!("{} {}", a, *b)),
 
-            (Value::Decimal(a), Value::Integer(b)) => Value::Decimal(*a + *b as f32),
+        (Value::Decimal(a), Value::Decimal(b)) => Value::Decimal(*a + *b),
 
-            (Value::Decimal(a), Value::String(b)) => Value::String(format!("{} {}", a, *b)),
+        (Value::Decimal(a), Value::Integer(b)) => Value::Decimal(*a + *b as f32),
 
-            (Value::String(a), Value::Integer(b)) => Value::String(format!("{} {}", *a, b)),
+        (Value::Decimal(a), Value::String(b)) => Value::String(format!("{} {}", a, *b)),
 
-            (Value::String(a), Value::Decimal(b)) => Value::String(format!("{} {}", *a, b)),
+        (Value::String(a), Value::Integer(b)) => Value::String(format!("{} {}", *a, b)),
 
-            (Value::String(a), Value::String(b)) => Value::String(format!("{} {}", *a, *b)),
+        (Value::String(a), Value::Decimal(b)) => Value::String(format!("{} {}", *a, b)),
 
-            _ => panic!("Unable to add formats."),
-        };
+        (Value::String(a), Value::String(b)) => Value::String(format!("{} {}", *a, *b)),
 
-        Instant::now().duration_since(start_time)
-    }
+        _ => panic!("Unable to add formats."),
+    });
+
+    response.time = Instant::now().duration_since(start_time);
+
+    response
 }

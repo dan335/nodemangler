@@ -1,5 +1,5 @@
-use crate::nodes::node::Node;
-use std::{collections::{HashMap, HashSet, VecDeque}, println};
+use crate::{nodes::node::Node, value::Value};
+use std::{collections::{HashMap, HashSet, VecDeque}};
 
 #[derive(Default)]
 pub struct Graph {
@@ -19,7 +19,7 @@ impl Graph {
         let mut connected_nodes: Vec<String> = Vec::new();
 
         if let Some(node) = self.nodes.get(id) {
-            for input in node.inputs.iter() {
+            for input in node.get_inputs().iter() {
                 if let Some((other_node_id, _)) = &input.connection {
                     connected_nodes.push(other_node_id.clone());
                 }
@@ -41,7 +41,7 @@ impl Graph {
                 // inputs
                 let mut inputs_to_clear: Vec<usize> = Vec::new();
 
-                for (index, input) in node.inputs.iter().enumerate() {
+                for (index, input) in node.get_inputs().iter().enumerate() {
                     if let Some((other_node_id, _)) = &input.connection {
                         if other_node_id == id {
                             inputs_to_clear.push(index);
@@ -50,7 +50,8 @@ impl Graph {
                 }
 
                 for index in inputs_to_clear.iter() {
-                    node.inputs[*index].connection = None;
+                    node.clear_input_connection(*index);
+                    //node.inputs[*index].connection = None;
                 }
 
                 // outputs
@@ -84,11 +85,12 @@ impl Graph {
 
         if let Some(node) = self.nodes.get_mut(&node_id) {
 
-            if let Some((output_node_id, output_index)) = &node.inputs[input_index].connection {
+            if let Some((output_node_id, output_index)) = &node.get_input(input_index).connection {
                 output = Some((output_node_id.clone(), output_index.clone()));
             }
 
-            node.inputs[input_index].connection = None;
+            node.clear_input_connection(input_index);
+            //node.inputs[input_index].connection = None;
         }
 
         if let Some((output_node_id, output_index)) = output {
@@ -147,16 +149,42 @@ impl Graph {
 
         for node_id in sorted_nodes.into_iter() {
             // run node
-            // node needs to be mutable
-            if self.nodes.contains_key(&node_id) {
-                self.nodes.get_mut(&node_id).unwrap().run();
+            let mut output_data : Vec<(String, usize, Value)> = Vec::new();  // connected_node_id, input_index, output.value
+
+            if let Some(node) = self.nodes.get_mut(&node_id) {
+                // run
+                node.run();
+                
+                // gather data to pass to connections
+                for output in node.outputs.iter() {
+                    if let Some(connections) = &output.connection {
+                        for (connected_node_id, input_index) in connections.iter() {
+                            output_data.push((connected_node_id.clone(), input_index.clone(), output.value.clone()));
+                        }
+                    }
+                }
             }
 
-            // pass result to outputs
-            // node no longer needs to be mutable
-            // self.nodes needs to be mutable
-            let node = self.nodes[&node_id].clone();
-            node.pass_outputs_to_connections(&mut self.nodes);
+            for (connected_node_id, input_index, value) in output_data.iter() {
+                if let Some(connected_node) = self.nodes.get_mut(&connected_node_id.clone()) {
+                    //if connected_node.inputs.len() > *input_index {
+                        // should things be converted with code below?
+
+                        // let converted = value.convert_to(connected_node.inputs[*input_index].value.clone().value_type());
+                        // match converted {
+                        //     Ok(converted_value) => {
+                        //         connected_node.inputs[*input_index].value = converted_value;
+                        //     }
+                        //     Err(_) => {
+                        //         panic!("Unable to convert.");
+                        //     }
+                        // }
+
+                        connected_node.set_input_value(*input_index, value.clone());
+                        //connected_node.inputs[*input_index].value = value.clone();
+                    //}
+                }
+            }
         }
 
         // Perform topological sorting on the dirty nodes

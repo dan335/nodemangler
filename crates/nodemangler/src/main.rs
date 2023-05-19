@@ -8,7 +8,6 @@ use mangler::nodes::node::Node;
 use mangler::nodes::operation::{ConnectionSettings, Operation};
 use mangler::{graph::Graph, nodes::node_settings::NodeSettings};
 use std::path::Path;
-
 mod graph;
 mod menu;
 mod node_settings;
@@ -51,7 +50,10 @@ fn main() -> Result<(), eframe::Error> {
         ..Default::default()
     };
 
-    eframe::run_native("Mangler", options, Box::new(|_cc| Box::<MyApp>::default()))
+    let mut graph = Graph::default();
+    let my_app = MyApp::new(graph);
+
+    eframe::run_native("Mangler", options, Box::new(|_cc| Box::<MyApp>::new(my_app)))
 }
 
 // do this without image crate?
@@ -86,21 +88,6 @@ struct MyApp {
     )>,
     editing_node_id: Option<String>,
     viewing_node_id: Option<String>,
-}
-
-impl Default for MyApp {
-    fn default() -> Self {
-        Self {
-            graph: Graph::default(),
-            graph_editor: GraphEditor::new(),
-            node_settings_panel: NodeSettingsPanel::new(),
-            view_panel: ViewPanel::new(),
-            menu_panel: MenuPanel::new(),
-            dragging_menu_button: None,
-            editing_node_id: None,
-            viewing_node_id: None,
-        }
-    }
 }
 
 impl eframe::App for MyApp {
@@ -138,17 +125,18 @@ impl eframe::App for MyApp {
                 Pos2::new(app_rect.width() - 300.0, app_rect.height() / 2.0),
             );
             ui.allocate_ui_at_rect(top_panel_rect, |ui| {
-                if let Some(viewing_node_id) = &self.viewing_node_id {
-                    if let Some(node) = self.graph.nodes.get(viewing_node_id) {
-                        let Some(graph_node) = self.graph_editor.graph_nodes.get_mut(viewing_node_id) else { panic!("asdf"); };
-                        self.view_panel.show(ui, Some(node), graph_node.view_image_is_dirty);
-                        graph_node.view_image_is_dirty = false;
-                    } else {
-                        self.view_panel.show(ui, None, false);
-                    }
-                } else {
-                    self.view_panel.show(ui, None, false);
-                }
+                // todo
+                // if let Some(viewing_node_id) = &self.viewing_node_id {
+                //     if let Some(node) = self.graph.nodes.get(viewing_node_id) {
+                //         let Some(graph_node) = self.graph_editor.graph_nodes.get_mut(viewing_node_id) else { panic!("asdf"); };
+                //         self.view_panel.show(ui, Some(node), graph_node.view_image_is_dirty);
+                //         graph_node.view_image_is_dirty = false;
+                //     } else {
+                //         self.view_panel.show(ui, None, false);
+                //     }
+                // } else {
+                //     self.view_panel.show(ui, None, false);
+                // }
             });
 
             // -------------------------
@@ -162,20 +150,18 @@ impl eframe::App for MyApp {
                     if let Some(node) = self.graph.nodes.get_mut(node_id) {
                         let settings_response = self.node_settings_panel.show(
                             ui,
-                            Some(&mut node.settings),
-                            Some(&mut node.inputs),
-                            Some(&node.outputs),
+                            Some(node),
                         );
 
-                        if !settings_response.input_indexes_that_changed.is_empty() {
+                        if settings_response.has_node_changed {
                             node.is_dirty = true;
                             self.graph.is_dirty = true;
                         }
                     } else {
-                        self.node_settings_panel.show(ui, None, None, None);
+                        self.node_settings_panel.show(ui, None);
                     }
                 } else {
-                    self.node_settings_panel.show(ui, None, None, None);
+                    self.node_settings_panel.show(ui, None);
                 }
             });
 
@@ -280,26 +266,28 @@ impl eframe::App for MyApp {
             ui.painter().text(pos, egui::Align2::LEFT_BOTTOM, txt, egui::FontId::proportional(12.0), egui::Color32::from_gray(150));
         });
 
-        if self.graph.is_dirty {
-            let changed_nodes = self.graph.run();
-
-            for node_id in changed_nodes.iter() {
-                if let Some(graph_node) = self.graph_editor.graph_nodes.get_mut(node_id) {
-                    graph_node.thumbnail_is_dirty = true;
-                    if let Some(view_node_id) = &self.viewing_node_id {
-                        if view_node_id == node_id {
-                            graph_node.view_image_is_dirty = true;
-                        }
-                    }
-                }
-            }
-        }
-
-        
+        self.run_graph();      
     }
 }
 
 impl MyApp {
+    pub fn new(graph: Graph) -> Self {
+        Self {
+            graph,
+            graph_editor: GraphEditor::new(),
+            node_settings_panel: NodeSettingsPanel::new(),
+            view_panel: ViewPanel::new(),
+            menu_panel: MenuPanel::new(),
+            dragging_menu_button: None,
+            editing_node_id: None,
+            viewing_node_id: None,
+        }
+    }
+
+    pub fn run_graph(&mut self) {
+        self.graph.run();         
+    }
+
     pub fn connect_nodes(&mut self, new_connection: NewConnection) {
         // if graph contains both nodes
         if self
@@ -361,6 +349,12 @@ impl MyApp {
     }
 
     pub fn remove_node(&mut self, node_id: String) {
+        if self.editing_node_id == Some(node_id.clone()) {
+            self.editing_node_id = None;
+        }
+        if self.viewing_node_id == Some(node_id.clone()) {
+            self.viewing_node_id = None;
+        }
         self.graph.remove_node(&node_id);
         self.graph_editor.remove_node(&node_id);
     }

@@ -1,14 +1,10 @@
-use core::panic;
-
 use eframe::{
     egui::{self, Label},
     epaint::Rounding,
 };
 use image::imageops::FilterType;
 use mangler::{
-    input::Input,
-    nodes::{node_settings::NodeSettings, operation::UiType},
-    output::Output,
+    nodes::{node::Node},
     value::{Value, ImageFormat},
 };
 
@@ -22,19 +18,14 @@ impl NodeSettingsPanel {
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
-        node_settings: Option<&mut NodeSettings>,
-        node_inputs: Option<&mut Vec<Input>>,
-        node_outputs: Option<&Vec<Output>>,
+        node_option: Option<&mut Node>,
+        // node_settings: Option<&mut NodeSettings>,
+        // node_inputs: Option<&mut Vec<Input>>,
+        // node_outputs: Option<&Vec<Output>>,
     ) -> NodeSettingsPanelResponse {
         let mut response = NodeSettingsPanelResponse::default();
 
-        let mut name: String = "Right Panel".to_string();
-
-        if let Some(settings) = node_settings {
-            name = settings.name.clone();
-        }
-
-        // background color
+        // background
         ui.painter().add(egui::Shape::rect_filled(
             ui.max_rect(),
             Rounding::none(),
@@ -45,37 +36,37 @@ impl NodeSettingsPanel {
         let right_bottom = ui.max_rect().right_bottom();
         let padding = 10.0;
 
+        // create rect for content
         let ui_rect = egui::Rect::from_two_pos(
             egui::Pos2::new(left_top.x + padding, left_top.y + padding),
             egui::Pos2::new(right_bottom.x - padding, right_bottom.y - padding),
         );
 
         ui.allocate_ui_at_rect(ui_rect, |ui| {
-            // name of node
-            ui.vertical_centered(|ui| {
-                ui.heading(name);
-            });
 
-            ui.heading("Inputs");
+            if let Some(node) = node_option {
+                let name = node.settings.name.clone();
+                ui.vertical_centered(|ui| {
+                    ui.heading(name);
+                });
 
-            // show properties
-            if let Some(inputs) = node_inputs {
-                for (input_index, input) in inputs.iter_mut().enumerate() {
+                ui.heading("Inputs");
+
+                // show properties
+                for (_, input) in node.inputs.iter_mut().enumerate() {
                     ui.horizontal(|ui| {
                         ui.label(input.name.clone());
                         // todo: redo this
                         // each value type should only have one option
-                        match input.value.clone() {
+                        match input.get_value().clone() {
                             Value::Bool(a) => {
                                 if input.connection.is_some() {
                                     ui.label(a.to_string());
                                 } else {
                                     let mut x = a;
                                     if ui.add(egui::Checkbox::new(&mut x, "")).changed() {
-                                        input.value = Value::Bool(x);
-                                        response
-                                            .input_indexes_that_changed
-                                            .push(input_index);
+                                        input.set_value(Value::Bool(x));
+                                        response.has_node_changed = true;
                                     }
                                 }
                             },
@@ -85,10 +76,8 @@ impl NodeSettingsPanel {
                                 } else {
                                     let mut x = a;
                                     if ui.add(egui::DragValue::new(&mut x)).changed() {
-                                        input.value = Value::Integer(x);
-                                        response
-                                            .input_indexes_that_changed
-                                            .push(input_index);
+                                        input.set_value(Value::Integer(x));
+                                        response.has_node_changed = true;
                                     }
                                 }
                             },
@@ -98,10 +87,8 @@ impl NodeSettingsPanel {
                                 } else {
                                     let mut x = a;
                                     if ui.add(egui::DragValue::new(&mut x)).changed() {
-                                        input.value = Value::Decimal(x);
-                                        response
-                                            .input_indexes_that_changed
-                                            .push(input_index);
+                                        input.set_value(Value::Decimal(x));
+                                        response.has_node_changed = true;
                                     }
                                 }
                             },
@@ -111,8 +98,8 @@ impl NodeSettingsPanel {
                                 } else {
                                     let mut x = a;
                                     if ui.text_edit_singleline(&mut x).changed() {
-                                        input.value = Value::String(x);
-                                        response.input_indexes_that_changed.push(input_index);
+                                        input.set_value(Value::String(x));
+                                        response.has_node_changed = true;
                                     }
                                 }
                             },
@@ -133,24 +120,24 @@ impl NodeSettingsPanel {
                                     let mut x = a;
                                     egui::ComboBox::from_label("Filter Type").selected_text(format!("{:?}", x)).show_ui(ui, |ui| {
                                         if ui.selectable_value(&mut x, FilterType::Nearest, "Nearest Neighbor").changed() {
-                                            input.value = Value::FilterType(x);
-                                            response.input_indexes_that_changed.push(input_index);
+                                            input.set_value(Value::FilterType(x));
+                                            response.has_node_changed = true;
                                         }
                                         if ui.selectable_value(&mut x, FilterType::Triangle, "Linear Filter (Triangle)").changed() {
-                                            input.value = Value::FilterType(x);
-                                            response.input_indexes_that_changed.push(input_index);
+                                            input.set_value(Value::FilterType(x));
+                                            response.has_node_changed = true;
                                         }
                                         if ui.selectable_value(&mut x, FilterType::CatmullRom, "Cubic Filter ( CatmullRom)").changed() {
-                                            input.value = Value::FilterType(x);
-                                            response.input_indexes_that_changed.push(input_index);
+                                            input.set_value(Value::FilterType(x));
+                                            response.has_node_changed = true;
                                         }
                                         if ui.selectable_value(&mut x, FilterType::Gaussian, "Gaussian Filter").changed() {
-                                            input.value = Value::FilterType(x);
-                                            response.input_indexes_that_changed.push(input_index);
+                                            input.set_value(Value::FilterType(x));
+                                            response.has_node_changed = true;
                                         }
                                         if ui.selectable_value(&mut x, FilterType::Lanczos3, "Lanczos with window 3").changed() {
-                                            input.value = Value::FilterType(x);
-                                            response.input_indexes_that_changed.push(input_index);
+                                            input.set_value(Value::FilterType(x));
+                                            response.has_node_changed = true;
                                         }
                                     });
                                 }
@@ -162,44 +149,44 @@ impl NodeSettingsPanel {
                                     let mut x = a;
                                     egui::ComboBox::from_label("Image Format").selected_text(format!("{:?}", x)).show_ui(ui, |ui| {
                                         if ui.selectable_value(&mut x, ImageFormat::ImageGray16, "Grayscale 16 bit").changed() {
-                                            input.value = Value::ImageFormat(x);
-                                            response.input_indexes_that_changed.push(input_index);
+                                            input.set_value(Value::ImageFormat(x));
+                                            response.has_node_changed = true;
                                         }
                                         if ui.selectable_value(&mut x, ImageFormat::ImageGray8, "Grayscale 8 bit").changed() {
-                                            input.value = Value::ImageFormat(x);
-                                            response.input_indexes_that_changed.push(input_index);
+                                            input.set_value(Value::ImageFormat(x));
+                                            response.has_node_changed = true;
                                         }
                                         if ui.selectable_value(&mut x, ImageFormat::ImageGrayA16, "Grayscale with alpha 16 bit").changed() {
-                                            input.value = Value::ImageFormat(x);
-                                            response.input_indexes_that_changed.push(input_index);
+                                            input.set_value(Value::ImageFormat(x));
+                                            response.has_node_changed = true;
                                         }
                                         if ui.selectable_value(&mut x, ImageFormat::ImageGrayA8, "Grayscale with alpha 8 bit").changed() {
-                                            input.value = Value::ImageFormat(x);
-                                            response.input_indexes_that_changed.push(input_index);
+                                            input.set_value(Value::ImageFormat(x));
+                                            response.has_node_changed = true;
                                         }
                                         if ui.selectable_value(&mut x, ImageFormat::ImageRgb16, "RGB 16 bit").changed() {
-                                            input.value = Value::ImageFormat(x);
-                                            response.input_indexes_that_changed.push(input_index);
+                                            input.set_value(Value::ImageFormat(x));
+                                            response.has_node_changed = true;
                                         }
                                         if ui.selectable_value(&mut x, ImageFormat::ImageRgb32F, "RGB 32 bit float").changed() {
-                                            input.value = Value::ImageFormat(x);
-                                            response.input_indexes_that_changed.push(input_index);
+                                            input.set_value(Value::ImageFormat(x));
+                                            response.has_node_changed = true;
                                         }
                                         if ui.selectable_value(&mut x, ImageFormat::ImageRgb8, "RGB 8 bit").changed() {
-                                            input.value = Value::ImageFormat(x);
-                                            response.input_indexes_that_changed.push(input_index);
+                                            input.set_value(Value::ImageFormat(x));
+                                            response.has_node_changed = true;
                                         }
                                         if ui.selectable_value(&mut x, ImageFormat::ImageRgba16, "RGBA 16 bit").changed() {
-                                            input.value = Value::ImageFormat(x);
-                                            response.input_indexes_that_changed.push(input_index);
+                                            input.set_value(Value::ImageFormat(x));
+                                            response.has_node_changed = true;
                                         }
                                         if ui.selectable_value(&mut x, ImageFormat::ImageRgba32F, "RGBA 32 bit float").changed() {
-                                            input.value = Value::ImageFormat(x);
-                                            response.input_indexes_that_changed.push(input_index);
+                                            input.set_value(Value::ImageFormat(x));
+                                            response.has_node_changed = true;
                                         }
                                         if ui.selectable_value(&mut x, ImageFormat::ImageRgba8, "RGBA 8 bit").changed() {
-                                            input.value = Value::ImageFormat(x);
-                                            response.input_indexes_that_changed.push(input_index);
+                                            input.set_value(Value::ImageFormat(x));
+                                            response.has_node_changed = true;
                                         }
                                     });
                                 }
@@ -207,14 +194,12 @@ impl NodeSettingsPanel {
                         }
                     });
                 }
-            }
 
-            ui.add_space(20.0);
-            ui.heading("Outputs");
+                ui.add_space(20.0);
+                ui.heading("Outputs");
 
-            // outputs
-            if let Some(outputs) = node_outputs {
-                for output in outputs.iter() {
+                // outputs
+                for output in node.outputs.iter() {
                     ui.horizontal(|ui| {
                         ui.add(Label::new(output.name.clone()));
                         match &output.value {
@@ -234,6 +219,11 @@ impl NodeSettingsPanel {
                         }
                     });
                 }
+            } else {
+                let name = "Graph Settings".to_string();
+                ui.vertical_centered(|ui| {
+                    ui.heading(name);
+                });
             }
         });
 
@@ -242,13 +232,13 @@ impl NodeSettingsPanel {
 }
 
 pub struct NodeSettingsPanelResponse {
-    pub input_indexes_that_changed: Vec<usize>,
+    pub has_node_changed: bool,
 }
 
 impl NodeSettingsPanelResponse {
     pub fn default() -> NodeSettingsPanelResponse {
         NodeSettingsPanelResponse {
-            input_indexes_that_changed: vec![],
+            has_node_changed: false,
         }
     }
 }

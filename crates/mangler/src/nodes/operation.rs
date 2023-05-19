@@ -1,6 +1,6 @@
 use crate::nodes::*;
 use core::fmt::Debug;
-use std::time::Duration;
+use std::{time::Duration, thread::{self, JoinHandle}};
 
 use crate::{
     input::Input,
@@ -8,26 +8,30 @@ use crate::{
     value::{Value, ValueType},
 };
 
+use super::{image_from_url::image_from_url, float::new_float, integer::new_integer, subtract::subtract, add::add, image_resize::image_resize};
+
 #[derive(Debug, Clone)]
 pub enum Operation {
-    Add(add::Add),
-    Subtract(subtract::Subtract),
-    Float(float::Float),
-    Integer(integer::Integer),
-    ImageFromUrl(image_from_url::ImageFromUrl),
-    ImageResize(image_resize::ImageResize),
+    Add,
+    Subtract,
+    Float,
+    Integer,
+    ImageFromUrl,
+    ImageResize,
 }
 
 impl Operation {
-    pub fn run(&mut self, inputs: &Vec<Input>, outputs: &mut Vec<Output>) -> Duration {
-        match self {
-            Operation::Float(operation) => operation.run(inputs, outputs),
-            Operation::Integer(operation) => operation.run(inputs, outputs),
-            Operation::Add(operation) => operation.run(inputs, outputs),
-            Operation::Subtract(operation) => operation.run(inputs, outputs),
-            Operation::ImageFromUrl(operation) => operation.run(inputs, outputs),
-            Operation::ImageResize(operation) => operation.run(inputs, outputs),
-        }
+    pub fn run(&mut self, inputs: &Vec<Input>, outputs: &mut Vec<Output>) -> JoinHandle<OperationResponse> {
+        let handle = thread::spawn(|| {
+            match self {
+                Operation::Float => new_float(inputs, outputs),
+                Operation::Integer => new_integer(inputs, outputs),
+                Operation::Add => add(inputs, outputs),
+                Operation::Subtract => subtract(inputs, outputs),
+                Operation::ImageFromUrl => image_from_url(inputs, outputs),
+                Operation::ImageResize => image_resize(inputs, outputs),
+            }
+        });
     }
 }
 
@@ -46,4 +50,16 @@ pub enum UiType {
     Slider,
     TextEdit,
     ComboBox,
+}
+
+
+pub struct OperationResponse {
+    pub output_values: Vec<Value>,
+    pub time: Duration,
+}
+
+impl OperationResponse {
+    pub fn new() -> OperationResponse {
+        OperationResponse { output_values: Vec::new(), time: Duration::default() }
+    }
 }

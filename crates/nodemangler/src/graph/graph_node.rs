@@ -24,8 +24,7 @@ pub struct GraphNode {
     is_dragging: bool,
     last_drag_position: Option<Pos2>,
     thumbnail: Option<egui::TextureHandle>,
-    pub thumbnail_is_dirty: bool,   // node has updated, thumbnail needs updating
-    pub view_image_is_dirty: bool,  // node has updated, view image needs updating
+    change_id: String,  // if this does not match node.change_id then thumnail and image needs to update
 }
 
 impl GraphNode {
@@ -37,8 +36,7 @@ impl GraphNode {
             is_dragging: false,
             last_drag_position: None,
             thumbnail: None,
-            thumbnail_is_dirty: true,
-            view_image_is_dirty: false,
+            change_id: "initial".to_string()    // what it is does not matter
         }
     }
 
@@ -96,7 +94,7 @@ impl GraphNode {
 
         // ------------
         // inputs
-        for (index, input) in node.inputs.iter().enumerate() {
+        for (index, input) in node.get_inputs().iter().enumerate() {
             // draw input
             let input_output_response = draw_graph_input(
                 input,
@@ -183,8 +181,8 @@ impl GraphNode {
 
         // convert to thumbnail
         // https://docs.rs/egui/latest/egui/struct.ColorImage.html#method.from_rgba_unmultiplied
-        if self.thumbnail_is_dirty {
-            self.thumbnail_is_dirty = false;
+        if self.change_id != node.change_id {
+            self.change_id = node.change_id.clone();
 
             let color_image = match &node.outputs[0].value {
                 mangler::value::Value::ImageRgba32F(value) => {

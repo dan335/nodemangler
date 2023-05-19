@@ -5,6 +5,8 @@ use crate::output::Output;
 use crate::value::{Value, ValueType};
 use std::time::{Duration, Instant};
 
+use super::operation::OperationResponse;
+
 lazy_static! {
     pub static ref SETTINGS: NodeSettings = NodeSettings::new("Integer".to_string());
     pub static ref INPUT_SETTINGS: Vec<ConnectionSettings> = vec![ConnectionSettings {
@@ -21,27 +23,25 @@ lazy_static! {
     },];
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct Integer {}
+pub fn new_integer(inputs: &[Input], outputs: &mut [Output]) -> OperationResponse {
+    let start_time = Instant::now();
 
-impl Integer {
-    pub fn run(&mut self, inputs: &[Input], outputs: &mut [Output]) -> Duration {
-        let start_time = Instant::now();
+    let mut response = OperationResponse::new();
 
-        outputs[0].value = match &inputs[0].value {
-            Value::Integer(a) => Value::Integer(*a),
-            Value::Decimal(a) => Value::Integer(*a as i32),
-            Value::String(a) => {
-                if let Ok(n) = a.parse::<i32>() {
-                    Value::Integer(n)
-                } else {
-                    OUTPUT_SETTINGS[0].default_value.clone()
-                }
-            },
+    response.output_values.push(match &inputs[0].get_value() {
+        Value::Integer(a) => Value::Integer(*a),
+        Value::Decimal(a) => Value::Integer(*a as i32),
+        Value::String(a) => {
+            if let Ok(n) = a.parse::<i32>() {
+                Value::Integer(n)
+            } else {
+                OUTPUT_SETTINGS[0].default_value.clone()
+            }
+        },
 
-            _ => panic!("Unable to convert formats to integer."),
-        };
+        _ => panic!("Unable to convert formats to integer."),
+    });
 
-        Instant::now().duration_since(start_time)
-    }
+    response.time = Instant::now().duration_since(start_time);
+    response
 }

@@ -20,37 +20,37 @@ impl MenuPanel {
                 node_settings: nodes::float::SETTINGS.clone(),
                 input_settings: nodes::float::INPUT_SETTINGS.clone(),
                 output_settings: nodes::float::OUTPUT_SETTINGS.clone(),
-                operation: Operation::Float(nodes::float::Float {}),
+                operation: Operation::Float,
             },
             MenuButton {
                 node_settings: nodes::integer::SETTINGS.clone(),
                 input_settings: nodes::integer::INPUT_SETTINGS.clone(),
                 output_settings: nodes::integer::OUTPUT_SETTINGS.clone(),
-                operation: Operation::Integer(nodes::integer::Integer {}),
+                operation: Operation::Integer,
             },
             MenuButton {
                 node_settings: nodes::add::SETTINGS.clone(),
                 input_settings: nodes::add::INPUT_SETTINGS.clone(),
                 output_settings: nodes::add::OUTPUT_SETTINGS.clone(),
-                operation: Operation::Add(nodes::add::Add {}),
+                operation: Operation::Add,
             },
             MenuButton {
                 node_settings: nodes::subtract::SETTINGS.clone(),
                 input_settings: nodes::subtract::INPUT_SETTINGS.clone(),
                 output_settings: nodes::subtract::OUTPUT_SETTINGS.clone(),
-                operation: Operation::Subtract(nodes::subtract::Subtract {}),
+                operation: Operation::Subtract,
             },
             MenuButton {
                 node_settings: nodes::image_from_url::SETTINGS.clone(),
                 input_settings: nodes::image_from_url::INPUT_SETTINGS.clone(),
                 output_settings: nodes::image_from_url::OUTPUT_SETTINGS.clone(),
-                operation: Operation::ImageFromUrl(nodes::image_from_url::ImageFromUrl {}),
+                operation: Operation::ImageFromUrl,
             },
             MenuButton {
                 node_settings: nodes::image_resize::SETTINGS.clone(),
                 input_settings: nodes::image_resize::INPUT_SETTINGS.clone(),
                 output_settings: nodes::image_resize::OUTPUT_SETTINGS.clone(),
-                operation: Operation::ImageResize(nodes::image_resize::ImageResize {}),
+                operation: Operation::ImageResize,
             },
         ];
 

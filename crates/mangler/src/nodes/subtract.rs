@@ -5,6 +5,8 @@ use crate::output::Output;
 use crate::value::{Value, ValueType};
 use std::time::{Duration, Instant};
 
+use super::operation::OperationResponse;
+
 lazy_static! {
     pub static ref SETTINGS: NodeSettings = NodeSettings::new("Subtract".to_string());
     pub static ref INPUT_SETTINGS: Vec<ConnectionSettings> = vec![
@@ -29,25 +31,23 @@ lazy_static! {
     },];
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct Subtract {}
+pub fn subtract(inputs: &[Input], outputs: &mut [Output]) -> OperationResponse {
+    let start_time = Instant::now();
 
-impl Subtract {
-    pub fn run(&mut self, inputs: &[Input], outputs: &mut [Output]) -> Duration {
-        let start_time = Instant::now();
+    let mut response = OperationResponse::new();
 
-        outputs[0].value = match (&inputs[0].value, &inputs[1].value) {
-            (Value::Integer(a), Value::Decimal(b)) => Value::Decimal(*a as f32 - b),
+    outputs[0].value = match (&inputs[0].get_value(), &inputs[1].get_value()) {
+        (Value::Integer(a), Value::Decimal(b)) => Value::Decimal(*a as f32 - b),
 
-            (Value::Integer(a), Value::Integer(b)) => Value::Integer(a - b),
+        (Value::Integer(a), Value::Integer(b)) => Value::Integer(a - b),
 
-            (Value::Decimal(a), Value::Decimal(b)) => Value::Decimal(a - b),
+        (Value::Decimal(a), Value::Decimal(b)) => Value::Decimal(a - b),
 
-            (Value::Decimal(a), Value::Integer(b)) => Value::Decimal(a - *b as f32),
+        (Value::Decimal(a), Value::Integer(b)) => Value::Decimal(a - *b as f32),
 
-            _ => panic!(),
-        };
+        _ => panic!(),
+    };
 
-        Instant::now().duration_since(start_time)
-    }
+    response.time = Instant::now().duration_since(start_time);
+    response
 }
