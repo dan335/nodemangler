@@ -1,17 +1,11 @@
 use image::{RgbaImage, DynamicImage};
-use tokio::sync::mpsc::Sender;
 use crate::NodeOutputChangedMessage;
 use crate::input::Input;
 use crate::nodes::node_settings::NodeSettings;
 use crate::nodes::operation::{ConnectionSettings, UiType};
-use crate::output::Output;
 use crate::value::{Value, ValueType};
 use core::panic;
-use std::any::Any;
-use std::time::{Duration, Instant};
-use std::thread;
-
-use super::operation::OperationResponse;
+use std::time::Instant;
 
 lazy_static! {
     pub static ref SETTINGS: NodeSettings = NodeSettings::new("Resize".to_string());
@@ -75,7 +69,7 @@ lazy_static! {
     ];
 }
 
-pub async fn image_resize(node_id: &String, inputs: &[Input], outputs: &mut [Output], tx_output: Sender<NodeOutputChangedMessage>) -> Duration {
+pub async fn image_resize(node_id: &String, inputs: &[Input]) -> Vec<NodeOutputChangedMessage> {
     let start_time = Instant::now();
 
     let Value::Integer(mut width) = inputs[1].get_value() else { panic!("not suported")};
@@ -132,53 +126,34 @@ pub async fn image_resize(node_id: &String, inputs: &[Input], outputs: &mut [Out
 
     let time = Instant::now().duration_since(start_time);
 
-    let node_output_message_0 = NodeOutputChangedMessage {
+    let mut node_output_messages: Vec<NodeOutputChangedMessage> = Vec::new();
+
+    node_output_messages.push(NodeOutputChangedMessage {
         node_id: node_id.clone(),
         output_index: 0,
-        value: value_0.clone(),
+        value_type: value_0.value_type(),
+        value: value_0,
         time,
-    };
+        thumbnail: None,
+    });
 
-    match tx_output.try_send(node_output_message_0) {
-        Ok(_) => {
-            outputs[0].value = value_0;
-        },
-        Err(err) => {
-            println!("Error: {:?}", err);
-        },
-    }
-
-    let node_output_message_1 = NodeOutputChangedMessage {
+    node_output_messages.push(NodeOutputChangedMessage {
         node_id: node_id.clone(),
         output_index: 1,
-        value: value_1.clone(),
+        value_type: value_1.value_type(),
+        value: value_1,
         time,
-    };
+        thumbnail: None,
+    });
 
-    match tx_output.try_send(node_output_message_1) {
-        Ok(_) => {
-            outputs[1].value = value_1;
-        },
-        Err(err) => {
-            println!("Error: {:?}", err);
-        },
-    }
-
-    let node_output_message_2 = NodeOutputChangedMessage {
+    node_output_messages.push(NodeOutputChangedMessage {
         node_id: node_id.clone(),
         output_index: 2,
-        value: value_2.clone(),
+        value_type: value_2.value_type(),
+        value: value_2,
         time,
-    };
+        thumbnail: None,
+    });
 
-    match tx_output.try_send(node_output_message_2) {
-        Ok(_) => {
-            outputs[2].value = value_2;
-        },
-        Err(err) => {
-            println!("Error: {:?}", err);
-        },
-    }
-
-    time
+    node_output_messages
 }

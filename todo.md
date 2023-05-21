@@ -1,18 +1,17 @@
-* zoom graph panel
-* zoom view panel
-* delay updates if things are busy
-* show graph settings if no nodes are selected
+* structure of app
+    * delay updates if things are busy
+    * make mangler lib runnable from exe
+    * valid types
+
+*ui
+    * zoom graph panel
+    * zoom view panel
+    * show any output in view panel not just main
+    * panel layout
+    * highlight nodes that are possible connections when creating connection
+
 * saving/loading
-* show any output in view panel not just main
-* groups in menu panel
-* panel layout
-* make mangler lib runnable from exe
-* valid types
-* highlight nodes that are possible connections when creating connection
+    * show graph settings if no nodes are selected
 
-* run graph on separate thread
-
-* run operation on separarte thread
-    operation result
-    contains outputs
-    and handle for thread
+* more operations
+    * groups in menu panel

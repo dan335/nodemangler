@@ -1,13 +1,12 @@
 use image::RgbaImage;
 use tokio::sync::mpsc::Sender;
-
 use crate::NodeOutputChangedMessage;
 use crate::input::Input;
 use crate::nodes::node_settings::NodeSettings;
 use crate::nodes::operation::{ConnectionSettings, UiType};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 lazy_static! {
     pub static ref SETTINGS: NodeSettings = NodeSettings::new("Image from URL".to_string());
@@ -34,7 +33,7 @@ lazy_static! {
 }
 
 
-pub async fn image_from_url(node_id: &String, inputs: &[Input], outputs: &mut [Output], tx_output: Sender<NodeOutputChangedMessage>) -> Duration {
+pub async fn image_from_url(node_id: &String, inputs: &[Input]) -> Vec<NodeOutputChangedMessage> {
     let start_time = Instant::now();
 
     let Value::ImageFormat(image_format) = inputs[1].get_value() else { panic!("not suported")};
@@ -73,23 +72,14 @@ pub async fn image_from_url(node_id: &String, inputs: &[Input], outputs: &mut [O
         _ => panic!("Unable to convert formats to url."),
     };
 
-    let time = Instant::now().duration_since(start_time);
-
     let node_output_message = NodeOutputChangedMessage {
         node_id: node_id.clone(),
         output_index: 0,
-        value: value.clone(),
-        time,
+        value_type: value.value_type(),
+        value,
+        time: Instant::now().duration_since(start_time),
+        thumbnail: None,
     };
 
-    match tx_output.try_send(node_output_message) {
-        Ok(_) => {
-            outputs[0].value = value;
-        },
-        Err(err) => {
-            println!("Error: {:?}", err);
-        },
-    }
-
-    time 
+    vec![node_output_message]
 }

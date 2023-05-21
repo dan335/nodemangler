@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use eframe::egui::{self};
-use eframe::epaint::Rounding;
+use eframe::epaint::{Rounding, ColorImage};
 use egui::Vec2;
 use mangler::{get_id, AddNodeMessage, RemoveNodeMessage, AddConnectionMessage, RemoveConnectionMessage, SetNodeInputMessage, NodeOutputChangedMessage, NodeInputChangedMessage};
 use mangler::nodes::operation::{ConnectionSettings, Operation};
@@ -167,33 +167,49 @@ impl eframe::App for MyApp {
 
             puffin_egui::profiler_window(ctx);
         }
-        
-        
-        // messages for when node output changes
-        while let Ok(node_output_message) = self.rx_output_changed.try_recv() {
-            puffin::profile_scope!("ui receive output messages");
-            if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_output_message.node_id) {
-                if let Some(output) = node.outputs.get_mut(node_output_message.output_index) {
-                    output.value = node_output_message.value;
-                    node.is_dirty = true;
-                    node.time = Some(node_output_message.time);
-                }
-            }
-        }
-
-        // messages for when node input changes
-        while let Ok(node_input_changed_message) = self.rx_input_changed.try_recv() {
-            puffin::profile_scope!("ui receive input messages");
-            if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_input_changed_message.node_id) {
-                if let Some(input) = node.inputs.get_mut(node_input_changed_message.input_index) {
-                    input.set_value(node_input_changed_message.value);
-                }
-            }
-        }
 
         // show app background
         egui::CentralPanel::default().show(ctx, |ui| {
             puffin::profile_scope!("central panel show");
+
+            // messages for when node output changes
+            while let Ok(node_output_message) = self.rx_output_changed.try_recv() {
+                puffin::profile_scope!("ui receive output messages");
+                if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_output_message.node_id) {
+                    if let Some(output) = node.outputs.get_mut(node_output_message.output_index) {
+                        output.value = node_output_message.value;
+
+                        if node_output_message.output_index == 0 {
+                            node.thumbnail = match node_output_message.thumbnail {
+                                Some(thumbnail) => {
+                                    let pixels = thumbnail.as_flat_samples();
+                                    let size = [thumbnail.width() as usize, thumbnail.height() as usize];
+                                    let color_image = ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                                    Some(ui.ctx().load_texture(node.id.clone(), color_image, Default::default()))
+                                },
+                                None => None,
+                            };
+
+                            
+                        }
+                        
+                        // thumbnail
+                        //node.is_dirty = true;
+                        node.time = Some(node_output_message.time);
+                    }
+                }
+            }
+
+            // messages for when node input changes
+            while let Ok(node_input_changed_message) = self.rx_input_changed.try_recv() {
+                puffin::profile_scope!("ui receive input messages");
+                if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_input_changed_message.node_id) {
+                    if let Some(input) = node.inputs.get_mut(node_input_changed_message.input_index) {
+                        input.set_value(node_input_changed_message.value);
+                    }
+                }
+            }
+
             let app_rect = ctx.screen_rect();
             let cursor_position = ui
                 .ctx()

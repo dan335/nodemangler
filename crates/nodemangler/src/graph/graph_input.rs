@@ -2,6 +2,7 @@ use eframe::{epaint::{Pos2, Rect, Shape, Color32, FontId}, egui, emath::Align2};
 use mangler::input::Input;
 use crate::graph::graph_node::InputOutputResponse;
 
+
 pub fn draw_graph_input(input: &Input, input_position: Pos2, input_rect: Rect, _index: usize, _node_rect: Rect, ui: &mut egui::Ui, show_names: bool) -> InputOutputResponse {
     let mut response = InputOutputResponse::new();
     let mut color = Color32::from_gray(150);

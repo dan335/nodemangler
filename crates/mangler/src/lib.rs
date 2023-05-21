@@ -1,8 +1,9 @@
 use std::time::Duration;
 
+use image::{ImageBuffer, Rgba};
 use nanoid::nanoid;
 use nodes::{node_settings::NodeSettings, operation::ConnectionSettings, operation::Operation};
-use value::Value;
+use value::{Value, ValueType};
 
 #[macro_use]
 extern crate lazy_static;
@@ -38,12 +39,14 @@ pub struct NodeInputChangedMessage {
 }
 
 // a node has run and it's output has changed
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NodeOutputChangedMessage {
     pub node_id: String,
     pub output_index: usize,
     pub value: Value,
+    pub value_type: ValueType,
     pub time: Duration, 
+    pub thumbnail: Option< ImageBuffer<Rgba<u8>, Vec<u8>>>,
 }
 
 #[derive(Debug)]

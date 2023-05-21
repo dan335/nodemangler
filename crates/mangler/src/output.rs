@@ -1,3 +1,5 @@
+use image::ImageBuffer;
+
 use crate::value::Value;
 
 #[derive(Debug, Clone)]

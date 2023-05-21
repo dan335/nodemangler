@@ -30,8 +30,8 @@ pub struct GraphNode {
     pub time: Option<Duration>,
     is_dragging: bool,
     last_drag_position: Option<Pos2>,
-    thumbnail: Option<egui::TextureHandle>,
-    pub is_dirty: bool,  // thumnail and image need to update
+    pub thumbnail: Option<egui::TextureHandle>,
+    //pub is_dirty: bool,  // thumnail and image need to update
 }
 
 impl GraphNode {
@@ -72,7 +72,7 @@ impl GraphNode {
             is_dragging: false,
             last_drag_position: None,
             thumbnail: None,
-            is_dirty: true,
+            //is_dirty: true,
             inputs,
             outputs,
             time: None,    // what it is does not matter
@@ -220,68 +220,33 @@ impl GraphNode {
             );
         }
 
-        // thumbnail
-
-        // convert to thumbnail
-        // https://docs.rs/egui/latest/egui/struct.ColorImage.html#method.from_rgba_unmultiplied
-        if self.is_dirty {
-            puffin::profile_scope!("graph node.is_dirty");
-
-            let color_image = match &self.outputs[0].value {
-                mangler::value::Value::ImageRgba32F(value) => {
-                    let image_buffer = DynamicImage::ImageRgba32F(value.clone()).resize(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1], image::imageops::FilterType::Triangle).to_rgba8();
-                    let pixels = image_buffer.as_flat_samples();
-                    let size = [image_buffer.width() as usize, image_buffer.height() as usize];
-                    Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
-                },
-                mangler::value::Value::ImageRgba8(value) => {
-                    let image_buffer = DynamicImage::ImageRgba8(value.clone()).resize(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1], image::imageops::FilterType::Triangle).to_rgba8();
-                    let pixels = image_buffer.as_flat_samples();
-                    let size = [image_buffer.width() as usize, image_buffer.height() as usize];
-                    Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
-                },
-                mangler::value::Value::ImageGray8(value) => {
-                    let image_buffer = DynamicImage::ImageLuma8(value.clone()).resize(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1], image::imageops::FilterType::Triangle).to_rgba8();
-                    let pixels = image_buffer.as_flat_samples();
-                    let size = [image_buffer.width() as usize, image_buffer.height() as usize];
-                    Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
-                },
-                _ => None,
-            };
-
-            if let Some(img) = color_image {
-                self.thumbnail = Some(ui.ctx().load_texture(self.id.clone(), img, Default::default()));
-            }
-            self.is_dirty = false;
-        }
-
         // show output result on node
-        match &self.outputs[0].value {
-            mangler::value::Value::Bool(value) => show_output_text(ui, node_rect.center(), value.to_string()),
-            mangler::value::Value::Integer(value) => show_output_text(ui, node_rect.center(), value.to_string()),
-            mangler::value::Value::Decimal(value) => show_output_text(ui, node_rect.center(), value.to_string()),
-            mangler::value::Value::String(value) => show_output_text(ui, node_rect.center(), value.to_string()),
+        if let Some(thumbnail) = &self.thumbnail {
+            ui.painter().image(thumbnail.id(), Rect::from_center_size(self.position + graph_position.to_vec2(), thumbnail.size_vec2()), Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
+        } else {
+            match &self.outputs[0].value {
+                mangler::value::Value::Bool(value) => show_output_text(ui, node_rect.center(), value.to_string()),
+                mangler::value::Value::Integer(value) => show_output_text(ui, node_rect.center(), value.to_string()),
+                mangler::value::Value::Decimal(value) => show_output_text(ui, node_rect.center(), value.to_string()),
+                mangler::value::Value::String(value) => show_output_text(ui, node_rect.center(), value.to_string()),
 
-            mangler::value::Value::ImageRgba32F(_) |
-            mangler::value::Value::ImageRgba8(_) |
-            mangler::value::Value::ImageGray8(_) |
-            mangler::value::Value::ImageRgb32F(_) |
-            mangler::value::Value::ImageRgba16(_) |
-            mangler::value::Value::ImageRgb16(_) |
-            mangler::value::Value::ImageGrayA16(_) |
-            mangler::value::Value::ImageGray16(_) |
-            mangler::value::Value::ImageRgb8(_) |
-            mangler::value::Value::ImageGrayA8(_)
-            => {
-                puffin::profile_scope!("graph node.outputs[0].value");
-                if let Some(thumb) = &self.thumbnail {
-                    ui.painter().image(thumb.id(), Rect::from_center_size(self.position + graph_position.to_vec2(), thumb.size_vec2()), Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
-                }
-            },
+                mangler::value::Value::ImageRgba32F(_) |
+                mangler::value::Value::ImageRgba8(_) |
+                mangler::value::Value::ImageGray8(_) |
+                mangler::value::Value::ImageRgb32F(_) |
+                mangler::value::Value::ImageRgba16(_) |
+                mangler::value::Value::ImageRgb16(_) |
+                mangler::value::Value::ImageGrayA16(_) |
+                mangler::value::Value::ImageGray16(_) |
+                mangler::value::Value::ImageRgb8(_) |
+                mangler::value::Value::ImageGrayA8(_)
+                => {},
 
-            mangler::value::Value::FilterType(value) => show_output_text(ui, node_rect.center(),format!("{:?}", value)),
-            mangler::value::Value::ImageFormat(value) => show_output_text(ui, node_rect.center(),format!("{:?}", value)),
+                mangler::value::Value::FilterType(value) => show_output_text(ui, node_rect.center(),format!("{:?}", value)),
+                mangler::value::Value::ImageFormat(value) => show_output_text(ui, node_rect.center(),format!("{:?}", value)),
+            }
         }
+        
 
         fn show_output_text(ui: &mut egui::Ui, position: Pos2, txt: String) {
             puffin::profile_scope!("graph node.show_output_text()");
