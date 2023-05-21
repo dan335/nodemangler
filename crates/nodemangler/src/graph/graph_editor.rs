@@ -3,7 +3,7 @@ use crate::{graph::graph_node::GraphNode, NewConnection, view};
 use eframe::egui::{self};
 use egui::epaint::CubicBezierShape;
 use egui::Pos2;
-use mangler::nodes::{node::Node, node_settings::NodeSettings};
+use mangler::nodes::{node::Node, node_settings::NodeSettings, operation::ConnectionSettings};
 use std::{
     collections::HashMap,
     time::{Duration, Instant}, println,
@@ -41,7 +41,6 @@ impl GraphEditor {
         &mut self,
         ui: &mut egui::Ui,
         cursor_position: Pos2,
-        nodes: &HashMap<String, Node>,
         cursor_primary_down: bool,
         editing_node_id: &Option<String>,
         viewing_node_id: &Option<String>,
@@ -119,7 +118,7 @@ impl GraphEditor {
 
             // draw node
             let graph_node_response =
-                graph_node.show(ui, self.position, cursor_position, &nodes[&graph_node.id], is_editing, is_viewing);
+                graph_node.show(ui, self.position, cursor_position, is_editing, is_viewing);
                 
             // mouse over it?
             if graph_node_response.is_cursor_inside {
@@ -169,7 +168,7 @@ impl GraphEditor {
             if let Some(temp_connection) = &self.temp_connection {
                 // find node with connection at this position
                 for (_, other_graph_node) in self.graph_nodes.iter() {
-                    let other_node = &nodes[&other_graph_node.id];
+                    let other_node = &self.graph_nodes[&other_graph_node.id];
                     let other_node_rect = other_graph_node.get_rect(self.position);
 
                     match temp_connection.from_connection_type {
@@ -190,7 +189,7 @@ impl GraphEditor {
                             }
                         }
                         ConnectionType::Output => {
-                            for input_index in 0..other_node.get_inputs().len() {
+                            for input_index in 0..other_node.inputs.len() {
                                 if other_graph_node
                                     .get_input_rect(input_index, other_node_rect)
                                     .contains(cursor_position)
@@ -230,8 +229,8 @@ impl GraphEditor {
         // collect curves to tell if we clicked on one to delete it
         // curve, input node id, input index
         let mut connection_curves: Vec<(CubicBezierShape, String, usize)> = Vec::new();
-        for (node_id, node) in nodes.iter() {
-            for (input_index, input) in node.get_inputs().iter().enumerate() {
+        for (node_id, node) in self.graph_nodes.iter() {
+            for (input_index, input) in node.inputs.iter().enumerate() {
                 if let Some((output_node_id, output_connection_index)) = &input.connection {
                     let input_graph_node = &self.graph_nodes[node_id];
                     let output_graph_node = &self.graph_nodes[output_node_id];
@@ -320,12 +319,22 @@ impl GraphEditor {
         self.last_drag_position = None;
     }
 
-    pub fn add_node(&mut self, node_id: String, node_settings: NodeSettings, position: Pos2) {
+    pub fn add_node(
+        &mut self,
+        node_id: String,
+        node_settings: NodeSettings,
+        input_settings: Vec<ConnectionSettings>,
+        output_settings: Vec<ConnectionSettings>,
+        position: Pos2,
+    ) {
         let node = GraphNode::new(
             node_id.clone(),
             position - self.position.to_vec2(),
             node_settings,
+            input_settings,
+            output_settings,
         );
+
         self.graph_nodes.insert(node_id, node);
     }
 

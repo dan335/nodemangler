@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::time::Duration;
 
 use crate::graph::graph_input::draw_graph_input;
 use crate::graph::graph_output::draw_graph_output;
@@ -6,8 +7,10 @@ use eframe::epaint::{Rounding, FontId, Color32, ColorImage};
 use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect, Vec2};
 use image::{DynamicImage};
-use mangler::nodes::node::Node;
+use mangler::input::Input;
 use mangler::nodes::node_settings::NodeSettings;
+use mangler::nodes::operation::ConnectionSettings;
+use mangler::output::Output;
 
 use super::graph_editor::TempConnection;
 use super::graph_output::draw_graph_output_highlighted;
@@ -20,15 +23,47 @@ const NODE_ROUNDING: f32 = 2.0;
 pub struct GraphNode {
     pub id: String,
     position: egui::Pos2,
-    settings: NodeSettings,
+    pub settings: NodeSettings,
+    pub inputs: Vec<Input>,
+    pub outputs: Vec<Output>,
+    pub time: Option<Duration>,
     is_dragging: bool,
     last_drag_position: Option<Pos2>,
     thumbnail: Option<egui::TextureHandle>,
-    change_id: String,  // if this does not match node.change_id then thumnail and image needs to update
+    pub is_dirty: bool,  // thumnail and image need to update
 }
 
 impl GraphNode {
-    pub fn new(id: String, position: Pos2, settings: NodeSettings) -> GraphNode {
+    pub fn new(
+        id: String,
+        position: Pos2,
+        settings: NodeSettings,
+        input_settings: Vec<ConnectionSettings>,
+        output_settings: Vec<ConnectionSettings>,
+    ) -> GraphNode {
+        // same as in node.rs
+        // todo: improve this?
+        let inputs: Vec<Input> = input_settings
+            .iter()
+            // .map(|settings| Input {
+            //     name: settings.name.to_owned(),
+            //     value: settings.default_value.clone(),
+            //     connection: None,
+            //     valid_types: settings.valid_types.to_vec(),
+            //     ui_type: settings.ui_type.clone(),
+            // })
+            .map(|settings| Input::new(settings.clone()))
+            .collect();
+
+        let outputs: Vec<Output> = output_settings
+            .iter()
+            .map(|settings| Output {
+                name: settings.name.to_owned(),
+                value: settings.default_value.clone(),
+                connection: None,
+            })
+            .collect();
+
         GraphNode {
             id,
             position,
@@ -36,7 +71,10 @@ impl GraphNode {
             is_dragging: false,
             last_drag_position: None,
             thumbnail: None,
-            change_id: "initial".to_string()    // what it is does not matter
+            is_dirty: true,
+            inputs,
+            outputs,
+            time: None,    // what it is does not matter
         }
     }
 
@@ -49,7 +87,6 @@ impl GraphNode {
         ui: &mut egui::Ui,
         graph_position: Pos2,
         cursor_position: Pos2,
-        node: &Node,
         is_editing: bool,
         is_viewing: bool,
     ) -> GraphNodeResponse {
@@ -94,7 +131,7 @@ impl GraphNode {
 
         // ------------
         // inputs
-        for (index, input) in node.get_inputs().iter().enumerate() {
+        for (index, input) in self.inputs.iter().enumerate() {
             // draw input
             let input_output_response = draw_graph_input(
                 input,
@@ -109,7 +146,7 @@ impl GraphNode {
             if input_output_response.has_started_creating_connection {
                 graph_node_response.temp_connection = Some(TempConnection {
                     from_position: input_output_response.connection_from_position,
-                    from_node_id: node.id.clone(),
+                    from_node_id: self.id.clone(),
                     from_connection_index: index,
                     from_connection_type: ConnectionType::Input,
                 });
@@ -127,7 +164,7 @@ impl GraphNode {
         }
 
         // outputs
-        for (index, output) in node.outputs.iter().enumerate() {
+        for (index, output) in self.outputs.iter().enumerate() {
             let input_output_response = draw_graph_output(
                 output,
                 self.get_output_position(index, node_rect),
@@ -143,7 +180,7 @@ impl GraphNode {
             if input_output_response.has_started_creating_connection {
                 graph_node_response.temp_connection = Some(TempConnection {
                     from_position: input_output_response.connection_from_position,
-                    from_node_id: node.id.clone(),
+                    from_node_id: self.id.clone(),
                     from_connection_index: index,
                     from_connection_type: ConnectionType::Output,
                 });
@@ -165,7 +202,7 @@ impl GraphNode {
         }
 
         // ms
-        if let Some(time) = node.time {
+        if let Some(time) = self.time {
             let pos = Pos2 { x: node_rect.right_bottom().x, y: node_rect.right_bottom().y + 5.0 };
             let text = format!("{:.4} ms", time.as_nanos() as f64 / 1_000_000.0);
             ui.painter().text(
@@ -181,10 +218,9 @@ impl GraphNode {
 
         // convert to thumbnail
         // https://docs.rs/egui/latest/egui/struct.ColorImage.html#method.from_rgba_unmultiplied
-        if self.change_id != node.change_id {
-            self.change_id = node.change_id.clone();
+        if self.is_dirty {
 
-            let color_image = match &node.outputs[0].value {
+            let color_image = match &self.outputs[0].value {
                 mangler::value::Value::ImageRgba32F(value) => {
                     let image_buffer = DynamicImage::ImageRgba32F(value.clone()).resize(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1], image::imageops::FilterType::Triangle).to_rgba8();
                     let pixels = image_buffer.as_flat_samples();
@@ -212,7 +248,7 @@ impl GraphNode {
         }
 
         // show output result on node
-        match &node.outputs[0].value {
+        match &self.outputs[0].value {
             mangler::value::Value::Bool(value) => show_output_text(ui, node_rect.center(), value.to_string()),
             mangler::value::Value::Integer(value) => show_output_text(ui, node_rect.center(), value.to_string()),
             mangler::value::Value::Decimal(value) => show_output_text(ui, node_rect.center(), value.to_string()),
@@ -300,6 +336,36 @@ impl GraphNode {
             self.get_output_position(index, node_rect),
             Vec2::new(12.0, 12.0),
         )
+    }
+
+    pub fn set_input_connection(
+        &mut self,
+        input_index: usize,
+        output_id: String,
+        output_index: usize,
+    ) {
+        self.inputs[input_index].connection = Some((output_id, output_index));
+    }
+
+    pub fn clear_input_connection(&mut self, input_index: usize) {
+        self.inputs[input_index].connection = None;
+    }
+
+    pub fn set_output_connection(
+        &mut self,
+        output_index: usize,
+        input_id: String,
+        input_index: usize,
+    ) {
+        if self.outputs[output_index].connection.is_some() {
+            self.outputs[output_index]
+                .connection
+                .as_mut()
+                .unwrap()
+                .push((input_id, input_index));
+        } else {
+            self.outputs[output_index].connection = Some(vec![(input_id, input_index)]);
+        }
     }
 }
 

@@ -1,9 +1,11 @@
 use std::{time::Duration, thread::JoinHandle};
-use crate::{input::Input, output::Output, value::Value, get_id};
+use tokio::sync::mpsc::Sender;
+
+use crate::{input::Input, output::Output, value::Value, get_id, NodeOutputChangedMessage};
 
 use super::{
     node_settings::NodeSettings,
-    operation::{ConnectionSettings, Operation, OperationResponse, self},
+    operation::{ConnectionSettings, Operation},
 };
 
 #[derive(Debug)]
@@ -15,7 +17,6 @@ pub struct Node {
     pub outputs: Vec<Output>,
     pub time: Option<Duration>,
     pub is_dirty: bool, // node needs to be re-run
-    pub change_id: String,  // id that gets chagned when ui for this node needs to udpate
 }
 
 impl PartialEq for Node {
@@ -34,8 +35,8 @@ impl Node {
     pub fn new(
         id: String,
         settings: NodeSettings,
-        input_settings: &[ConnectionSettings],
-        output_settings: &[ConnectionSettings],
+        input_settings: Vec<ConnectionSettings>,
+        output_settings: Vec<ConnectionSettings>,
         operation: Operation,
     ) -> Node {
         let inputs: Vec<Input> = input_settings
@@ -66,9 +67,7 @@ impl Node {
             time: None,
             operation,
             settings,
-            //dependencies_are_dirty: true,
             is_dirty: true,
-            change_id: get_id(),
         }
     }
 
@@ -119,9 +118,8 @@ impl Node {
         }
     }
 
-    pub fn run(&mut self) {
-        self.time = Some(self.operation.run(&self.inputs, &mut self.outputs));
-        self.change_id = get_id();
+    pub async fn run(&mut self, tx_output: Sender<NodeOutputChangedMessage>) {
+        self.time = Some(self.operation.run(&self.id, &self.inputs, &mut self.outputs, tx_output).await);
         
         // let response = operation_handle.join();
         // if let Ok(operation_response) = response {

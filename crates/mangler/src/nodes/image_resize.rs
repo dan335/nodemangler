@@ -1,5 +1,6 @@
 use image::{RgbaImage, DynamicImage};
-
+use tokio::sync::mpsc::Sender;
+use crate::NodeOutputChangedMessage;
 use crate::input::Input;
 use crate::nodes::node_settings::NodeSettings;
 use crate::nodes::operation::{ConnectionSettings, UiType};
@@ -74,7 +75,7 @@ lazy_static! {
     ];
 }
 
-pub fn image_resize(inputs: &[Input], outputs: &mut [Output]) -> Duration {
+pub async fn image_resize(node_id: &String, inputs: &[Input], outputs: &mut [Output], tx_output: Sender<NodeOutputChangedMessage>) -> Duration {
     let start_time = Instant::now();
 
     let Value::Integer(mut width) = inputs[1].get_value() else { panic!("not suported")};
@@ -107,7 +108,7 @@ pub fn image_resize(inputs: &[Input], outputs: &mut [Output]) -> Duration {
 
     let resized = dynamic_image.resize_exact(width as u32, height as u32, *filter_type);
 
-    outputs[0].value = match inputs[0].get_value().clone().value_type() {
+    let value_0 = match inputs[0].get_value().clone().value_type() {
         ValueType::ImageRgba32F => Value::ImageRgba32F(resized.to_rgba32f()),
         ValueType::ImageRgb32F => Value::ImageRgb32F(resized.to_rgb32f()),
         ValueType::ImageRgba16 => Value::ImageRgba16(resized.to_rgba16()),
@@ -126,8 +127,58 @@ pub fn image_resize(inputs: &[Input], outputs: &mut [Output]) -> Duration {
         ValueType::ImageFormat => { panic!("Unsupported.") }
     };
     
-    outputs[1].value = Value::Integer(resized.width() as i32);
-    outputs[2].value = Value::Integer(resized.height() as i32);
+    let value_1 = Value::Integer(resized.width() as i32);
+    let value_2 = Value::Integer(resized.height() as i32);
 
-    Instant::now().duration_since(start_time)
+    let time = Instant::now().duration_since(start_time);
+
+    let node_output_message_0 = NodeOutputChangedMessage {
+        node_id: node_id.clone(),
+        output_index: 0,
+        value: value_0.clone(),
+        time,
+    };
+
+    match tx_output.try_send(node_output_message_0) {
+        Ok(_) => {
+            outputs[0].value = value_0;
+        },
+        Err(err) => {
+            println!("Error: {:?}", err);
+        },
+    }
+
+    let node_output_message_1 = NodeOutputChangedMessage {
+        node_id: node_id.clone(),
+        output_index: 1,
+        value: value_1.clone(),
+        time,
+    };
+
+    match tx_output.try_send(node_output_message_1) {
+        Ok(_) => {
+            outputs[1].value = value_1;
+        },
+        Err(err) => {
+            println!("Error: {:?}", err);
+        },
+    }
+
+    let node_output_message_2 = NodeOutputChangedMessage {
+        node_id: node_id.clone(),
+        output_index: 2,
+        value: value_2.clone(),
+        time,
+    };
+
+    match tx_output.try_send(node_output_message_2) {
+        Ok(_) => {
+            outputs[2].value = value_2;
+        },
+        Err(err) => {
+            println!("Error: {:?}", err);
+        },
+    }
+
+    time
 }

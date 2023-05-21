@@ -1,13 +1,13 @@
 use image::RgbaImage;
+use tokio::sync::mpsc::Sender;
 
+use crate::NodeOutputChangedMessage;
 use crate::input::Input;
 use crate::nodes::node_settings::NodeSettings;
 use crate::nodes::operation::{ConnectionSettings, UiType};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use std::time::{Duration, Instant};
-
-use super::operation::OperationResponse;
 
 lazy_static! {
     pub static ref SETTINGS: NodeSettings = NodeSettings::new("Image from URL".to_string());
@@ -34,15 +34,15 @@ lazy_static! {
 }
 
 
-pub fn image_from_url(inputs: &[Input], outputs: &mut [Output]) -> Duration {
+pub async fn image_from_url(node_id: &String, inputs: &[Input], outputs: &mut [Output], tx_output: Sender<NodeOutputChangedMessage>) -> Duration {
     let start_time = Instant::now();
 
     let Value::ImageFormat(image_format) = inputs[1].get_value() else { panic!("not suported")};
 
-    outputs[0].value = match &inputs[0].get_value() {
+    let value = match &inputs[0].get_value() {
         Value::String(url) => {
-            if let Ok(image_response) = reqwest::blocking::get(url) {
-                if let Ok(image_bytes) = image_response.bytes() {
+            if let Ok(image_response) = reqwest::get(url).await {
+                if let Ok(image_bytes) = image_response.bytes().await {
                     if let Ok(image) = image::load_from_memory(&image_bytes) {
                         match image_format {
                             crate::value::ImageFormat::ImageRgba32F => Value::ImageRgba32F(image.to_rgba32f()),
@@ -73,5 +73,23 @@ pub fn image_from_url(inputs: &[Input], outputs: &mut [Output]) -> Duration {
         _ => panic!("Unable to convert formats to url."),
     };
 
-    Instant::now().duration_since(start_time)
+    let time = Instant::now().duration_since(start_time);
+
+    let node_output_message = NodeOutputChangedMessage {
+        node_id: node_id.clone(),
+        output_index: 0,
+        value: value.clone(),
+        time,
+    };
+
+    match tx_output.try_send(node_output_message) {
+        Ok(_) => {
+            outputs[0].value = value;
+        },
+        Err(err) => {
+            println!("Error: {:?}", err);
+        },
+    }
+
+    time 
 }

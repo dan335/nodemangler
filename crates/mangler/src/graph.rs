@@ -1,25 +1,51 @@
-use crate::{nodes::node::Node, value::Value};
+use crate::{nodes::{node::Node, node_settings::NodeSettings, operation::{ConnectionSettings, Operation}}, value::Value, NodeOutputChangedMessage, NodeInputChangedMessage};
 use std::{collections::{HashMap, HashSet, VecDeque}};
-use std::future;
+use tokio::sync::mpsc::Sender;
 
-#[derive(Default)]
+
 pub struct Graph {
+    pub tx_output_changed: Sender<NodeOutputChangedMessage>,
+    pub tx_input_changed: Sender<NodeInputChangedMessage>,
     pub nodes: HashMap<String, Node>, // node_id, node
     pub is_dirty: bool,               // needs to run
 }
 
 impl Graph {
-    pub fn add_node(&mut self, id: String, node: Node) {
-        self.nodes.insert(id, node);
+    pub fn new(tx_output_changed: Sender<NodeOutputChangedMessage>, tx_input_changed: Sender<NodeInputChangedMessage>) -> Graph {
+        Graph {
+            nodes: HashMap::new(),
+            is_dirty: false,
+            tx_output_changed,
+            tx_input_changed,
+        }
+    }
+
+    pub fn add_node(
+        &mut self,
+        node_id: String,
+        node_settings: NodeSettings,
+        input_settings: Vec<ConnectionSettings>,
+        output_settings: Vec<ConnectionSettings>,
+        operation: Operation,
+    ) {
+        let node = Node::new(
+            node_id.clone(),
+            node_settings,
+            input_settings,
+            output_settings,
+            operation,
+        );
+
+        self.nodes.insert(node_id, node);
         self.is_dirty = true;
     }
 
-    pub fn remove_node(&mut self, id: &String) {
+    pub fn remove_node(&mut self, node_id: String) {
 
         // get nodes that connect to this one
         let mut connected_nodes: Vec<String> = Vec::new();
 
-        if let Some(node) = self.nodes.get(id) {
+        if let Some(node) = self.nodes.get(&node_id) {
             for input in node.get_inputs().iter() {
                 if let Some((other_node_id, _)) = &input.connection {
                     connected_nodes.push(other_node_id.clone());
@@ -36,15 +62,15 @@ impl Graph {
         }
 
         // remove connections
-        for node_id in connected_nodes.iter() {
-            if let Some(node) = self.nodes.get_mut(node_id) {
+        for connected_node_id in connected_nodes.iter() {
+            if let Some(node) = self.nodes.get_mut(connected_node_id) {
 
                 // inputs
                 let mut inputs_to_clear: Vec<usize> = Vec::new();
 
                 for (index, input) in node.get_inputs().iter().enumerate() {
                     if let Some((other_node_id, _)) = &input.connection {
-                        if other_node_id == id {
+                        if other_node_id == &node_id {
                             inputs_to_clear.push(index);
                         }
                     }
@@ -61,7 +87,7 @@ impl Graph {
                 for (output_index, output) in node.outputs.iter().enumerate() {
                     if let Some(connections) = &output.connection {
                         for (output_connection_index, (other_node_id, _)) in connections.iter().enumerate() {
-                            if other_node_id == id {
+                            if other_node_id == &node_id {
                                 outputs_to_clear.push((output_index, output_connection_index));
                             }
                         }
@@ -77,9 +103,43 @@ impl Graph {
             }
 
             // remove node
-            self.nodes.remove(id);
+            self.nodes.remove(&node_id);
         }
     }
+
+    pub fn add_connection(
+        &mut self,
+        input_node_id: String,
+        input_connection_index: usize,
+        output_node_id: String,
+        output_connection_index: usize,
+    ) {
+        if self.nodes.get_mut(&input_node_id).is_some() && self.nodes.get_mut(&output_node_id).is_some() {
+            // set output connection
+            if let Some(from) = self.nodes.get_mut(&output_node_id) {
+                from.set_output_connection(
+                    output_connection_index,
+                    input_node_id.clone(),
+                    input_connection_index,
+                );
+
+                from.is_dirty = true;
+            }
+
+            // set input connection
+            if let Some(to) = self.nodes.get_mut(&input_node_id) {
+                to.set_input_connection(
+                    input_connection_index,
+                    output_node_id,
+                    output_connection_index,
+                );
+            }
+
+            // mark graph as dirty
+            self.is_dirty = true;
+        }
+    }
+
 
     pub fn remove_connection(&mut self, node_id: String, input_index: usize) {
         let mut output: Option<(String, usize)> = None;
@@ -104,6 +164,15 @@ impl Graph {
         }
     }
 
+    pub fn set_input(&mut self, node_id: String, input_index: usize, value: Value) {
+        if let Some(node) = self.nodes.get_mut(&node_id) {
+            if let Some(input) = node.inputs.get_mut(input_index) {
+                input.set_value(value);
+                node.is_dirty = true;
+            }
+        }
+    }
+
     // https://github.com/emilk/egui/discussions/484
     // pub async fn run_async(&mut self) -> HashSet<String> {
     //     self.run().await
@@ -111,7 +180,7 @@ impl Graph {
 
     // returns a list of node_ids that ran
     // so that their thumbnails will know to update
-    pub fn run(&mut self) -> HashSet<String> {
+    pub async fn run(&mut self) -> HashSet<String> {
         let mut dirty_nodes: HashSet<String> = HashSet::new();
         let mut checked_nodes: HashSet<String> = HashSet::new();
         let mut nodes_to_check: VecDeque<String> = VecDeque::new();
@@ -153,9 +222,10 @@ impl Graph {
             let mut output_data : Vec<(String, usize, Value)> = Vec::new();  // connected_node_id, input_index, output.value
 
             if let Some(node) = self.nodes.get_mut(&node_id) {
+
                 // run
-                node.run();
-                
+                node.run(self.tx_output_changed.clone()).await;
+
                 // gather data to pass to connections
                 for output in node.outputs.iter() {
                     if let Some(connections) = &output.connection {
@@ -181,7 +251,22 @@ impl Graph {
                         //     }
                         // }
 
+                        // todo: send to editor
+
                         connected_node.set_input_value(*input_index, value.clone());
+
+                        let node_input_changed_message = NodeInputChangedMessage {
+                            node_id: connected_node_id.clone(),
+                            input_index: input_index.clone(),
+                            value: value.clone(),
+                        };
+
+                        match self.tx_input_changed.try_send(node_input_changed_message) {
+                            Ok(_) => {},
+                            Err(err) => {
+                                println!("Error: {:?}", err);
+                            },
+                        }
                         //connected_node.inputs[*input_index].value = value.clone();
                     //}
                 }

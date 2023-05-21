@@ -7,5 +7,5 @@ edition = "2021"
 lazy_static = "1.4.0"
 nanoid = "0.4.0"
 image = "0.24.6"
-reqwest = { version = "0.11.18", features = ["blocking"] }
-
+reqwest = { version = "0.11.18" }
+tokio = { version = "1", features = ["full"] }

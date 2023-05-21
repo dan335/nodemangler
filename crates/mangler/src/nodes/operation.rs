@@ -1,4 +1,6 @@
-use crate::nodes::*;
+use tokio::sync::mpsc::Sender;
+
+use crate::{nodes::*, NodeOutputChangedMessage};
 use core::fmt::Debug;
 use std::{time::Duration, thread::{self, JoinHandle}};
 
@@ -21,14 +23,14 @@ pub enum Operation {
 }
 
 impl Operation {
-    pub fn run(&self, inputs: &Vec<Input>, outputs: &mut Vec<Output>) -> Duration {
+    pub async fn run(&self, node_id: &String, inputs: &Vec<Input>, outputs: &mut Vec<Output>, tx_output: Sender<NodeOutputChangedMessage>) -> Duration {
         match self {
-            Operation::Float => new_float(inputs, outputs),
-            Operation::Integer => new_integer(inputs, outputs),
-            Operation::Add => add(inputs, outputs),
-            Operation::Subtract => subtract(inputs, outputs),
-            Operation::ImageFromUrl => image_from_url(inputs, outputs),
-            Operation::ImageResize => image_resize(inputs, outputs),
+            Operation::Float => new_float(node_id, inputs, outputs, tx_output).await,
+            Operation::Integer => new_integer(node_id, inputs, outputs, tx_output).await,
+            Operation::Add => add(node_id, inputs, outputs, tx_output).await,
+            Operation::Subtract => subtract(node_id, inputs, outputs, tx_output).await,
+            Operation::ImageFromUrl => image_from_url(node_id, inputs, outputs, tx_output).await,
+            Operation::ImageResize => image_resize(node_id, inputs, outputs, tx_output).await,
         }
     }
 }

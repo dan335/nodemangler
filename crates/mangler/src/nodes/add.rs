@@ -1,3 +1,6 @@
+use tokio::sync::mpsc::Sender;
+
+use crate::NodeOutputChangedMessage;
 use crate::input::Input;
 use crate::nodes::node_settings::NodeSettings;
 use crate::nodes::operation::{ConnectionSettings, UiType};
@@ -33,10 +36,10 @@ lazy_static! {
 }
 
 
-pub fn add(inputs: &[Input], outputs: &mut [Output]) -> Duration {
+pub async fn add(node_id: &String, inputs: &[Input], outputs: &mut [Output], tx_output: Sender<NodeOutputChangedMessage>) -> Duration {
     let start_time = Instant::now();
 
-    outputs[0].value = match (&inputs[0].get_value(), &inputs[1].get_value()) {
+    let value = match (&inputs[0].get_value(), &inputs[1].get_value()) {
         (Value::Integer(a), Value::Decimal(b)) => Value::Decimal(*a as f32 + *b),
 
         (Value::Integer(a), Value::Integer(b)) => Value::Integer(*a + *b),
@@ -58,5 +61,23 @@ pub fn add(inputs: &[Input], outputs: &mut [Output]) -> Duration {
         _ => panic!("Unable to add formats."),
     };
 
-    Instant::now().duration_since(start_time)
+    let time = Instant::now().duration_since(start_time);
+
+    let node_output_message = NodeOutputChangedMessage {
+        node_id: node_id.clone(),
+        output_index: 0,
+        value: value.clone(),
+        time,
+    };
+
+    match tx_output.try_send(node_output_message) {
+        Ok(_) => {
+            outputs[0].value = value;
+        },
+        Err(err) => {
+            println!("Error: {:?}", err);
+        },
+    }
+
+    time    
 }
