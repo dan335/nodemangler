@@ -47,7 +47,7 @@ impl Value {
         }
     }
 
-    pub fn value_name(self) -> String {
+    pub fn value_name(&self) -> String {
         match self {
             Value::Bool(_) => "bool".to_string(),
             Value::Integer(_) => "integer".to_string(),

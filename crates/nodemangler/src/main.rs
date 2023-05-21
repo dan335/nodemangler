@@ -21,6 +21,7 @@ use node_settings::node_settings_panel::NodeSettingsPanel;
 use view::view_panel::ViewPanel;
 use tokio::sync::mpsc;
 
+pub const PROFILE: bool = false;
 pub const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
 pub const DEFAULT_WINDOW_HEIGHT: f32 = 800.0;
 //const ICON: &[u8; 2869] = include_bytes!("..\\assets\\mangler_icon.png");
@@ -28,23 +29,9 @@ pub const DEFAULT_WINDOW_HEIGHT: f32 = 800.0;
 
 #[tokio::main]
 async fn main() -> Result<(), eframe::Error> {
-    //let mut graph = Graph::new();
-
-    // let id = add::Add::new(&mut graph);
-
-    // if let Some(node) = graph.nodes.get_mut(&id) {
-    //     node.set_intput_value(0, Value::Decimal { value: 5.0 });
-    // }
-
-    // graph.run();
-
-    // if let Some(v) = graph.nodes.get(&id) {
-    //     println!("Hello, world! {:?}", v.print_output());
-    // }
-    //let mut icon_data: Option<IconData> = None;
+    puffin::set_scopes_on(PROFILE);
 
     let icon_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/mangler_icon.png");
-    //icon_data = Some(load_icon(icon_path.to_str().unwrap()));
 
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)),
@@ -63,12 +50,13 @@ async fn main() -> Result<(), eframe::Error> {
 
     
     let my_app = MyApp::new(tx_add_node, tx_remove_node, tx_add_connection, tx_remove_connection, tx_set_input, rx_input_changed, rx_output_changed);
+    
 
     eframe::run_native(
         "Mangler",
         options,
-        Box::new(|cc| {
-            let frame = cc.egui_ctx.clone();
+        Box::new(|_cc| {
+            //let frame = cc.egui_ctx.clone();
 
             tokio::spawn(async move {
                 let mut graph = Graph::new(tx_output_changed, tx_input_changed);
@@ -172,7 +160,18 @@ struct MyApp {
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        
+        if PROFILE {
+            puffin::profile_function!();
+            puffin::GlobalProfiler::lock().new_frame(); // call once per frame!
+
+            puffin_egui::profiler_window(ctx);
+        }
+        
+        
+        // messages for when node output changes
         while let Ok(node_output_message) = self.rx_output_changed.try_recv() {
+            puffin::profile_scope!("ui receive output messages");
             if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_output_message.node_id) {
                 if let Some(output) = node.outputs.get_mut(node_output_message.output_index) {
                     output.value = node_output_message.value;
@@ -182,7 +181,9 @@ impl eframe::App for MyApp {
             }
         }
 
+        // messages for when node input changes
         while let Ok(node_input_changed_message) = self.rx_input_changed.try_recv() {
+            puffin::profile_scope!("ui receive input messages");
             if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_input_changed_message.node_id) {
                 if let Some(input) = node.inputs.get_mut(node_input_changed_message.input_index) {
                     input.set_value(node_input_changed_message.value);
@@ -190,7 +191,9 @@ impl eframe::App for MyApp {
             }
         }
 
+        // show app background
         egui::CentralPanel::default().show(ctx, |ui| {
+            puffin::profile_scope!("central panel show");
             let app_rect = ctx.screen_rect();
             let cursor_position = ui
                 .ctx()
@@ -208,6 +211,7 @@ impl eframe::App for MyApp {
                 Pos2::new(200.0, app_rect.height() / 2.0),
             );
             ui.allocate_ui_at_rect(menu_panel_rect, |ui| {
+                puffin::profile_scope!("menu panel");
                 let menu_result = self.menu_panel.show(ui);
 
                 // dragging from menu
@@ -223,6 +227,7 @@ impl eframe::App for MyApp {
                 Pos2::new(app_rect.width() - 300.0, app_rect.height() / 2.0),
             );
             ui.allocate_ui_at_rect(top_panel_rect, |ui| {
+                puffin::profile_scope!("top panel");
                 // todo
                 // if let Some(viewing_node_id) = &self.viewing_node_id {
                 //     if let Some(node) = self.graph.nodes.get(viewing_node_id) {
@@ -245,6 +250,7 @@ impl eframe::App for MyApp {
             );
 
             ui.allocate_ui_at_rect(settings_panel_rect, |ui| {
+                puffin::profile_scope!("settings panel");
                 if let Some(node_id) = &self.editing_node_id {
                     if let Some(graph_node) = self.graph_editor.graph_nodes.get_mut(node_id) {
                         self.node_settings_panel.show(ui, Some(graph_node), self.tx_set_input.clone());
@@ -263,6 +269,7 @@ impl eframe::App for MyApp {
                 Pos2::new(app_rect.width(), app_rect.height()),
             );
             ui.allocate_ui_at_rect(bottom_panel_rect, |ui| {
+                puffin::profile_scope!("graph panel");
                 let graph_editor_response: GraphEditorResponse = self.graph_editor.show(
                     ui,
                     cursor_position,
@@ -483,7 +490,7 @@ impl MyApp {
                         input_connection_index,
                     );
 
-                    from.is_dirty = true;
+                    //from.is_dirty = true;
                 }
 
                 // set input connection

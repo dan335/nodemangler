@@ -45,6 +45,7 @@ impl GraphEditor {
         editing_node_id: &Option<String>,
         viewing_node_id: &Option<String>,
     ) -> GraphEditorResponse {
+        puffin::profile_scope!("graph panel.show()");
         let mut graph_editor_response = GraphEditorResponse::default();
 
         let editor_rect = ui.max_rect();
@@ -99,6 +100,7 @@ impl GraphEditor {
         //let mut connection_to_position = Pos2::ZERO;
 
         for (graph_node_id, graph_node) in self.graph_nodes.iter_mut() {
+            puffin::profile_scope!("graph panel.graph_nodes.iter()");
             
             // are we editing node
             let mut is_editing = false;

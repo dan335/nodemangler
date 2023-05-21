@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::fmt::Debug;
 use std::time::Duration;
 
@@ -90,6 +91,7 @@ impl GraphNode {
         is_editing: bool,
         is_viewing: bool,
     ) -> GraphNodeResponse {
+        puffin::profile_scope!("graph node.show()");
         let mut graph_node_response = GraphNodeResponse::default();
         let rounding = Rounding::same(NODE_ROUNDING);
 
@@ -132,6 +134,7 @@ impl GraphNode {
         // ------------
         // inputs
         for (index, input) in self.inputs.iter().enumerate() {
+            puffin::profile_scope!("graph node.inputs.iter()");
             // draw input
             let input_output_response = draw_graph_input(
                 input,
@@ -165,8 +168,10 @@ impl GraphNode {
 
         // outputs
         for (index, output) in self.outputs.iter().enumerate() {
+            puffin::profile_scope!("graph node.outputs.iter()");
             let input_output_response = draw_graph_output(
-                output,
+                &output.name,
+                &output.value.value_name(),
                 self.get_output_position(index, node_rect),
                 self.get_output_rect(index, node_rect),
                 index,
@@ -203,6 +208,7 @@ impl GraphNode {
 
         // ms
         if let Some(time) = self.time {
+            puffin::profile_scope!("graph node.inputs show time");
             let pos = Pos2 { x: node_rect.right_bottom().x, y: node_rect.right_bottom().y + 5.0 };
             let text = format!("{:.4} ms", time.as_nanos() as f64 / 1_000_000.0);
             ui.painter().text(
@@ -219,6 +225,7 @@ impl GraphNode {
         // convert to thumbnail
         // https://docs.rs/egui/latest/egui/struct.ColorImage.html#method.from_rgba_unmultiplied
         if self.is_dirty {
+            puffin::profile_scope!("graph node.is_dirty");
 
             let color_image = match &self.outputs[0].value {
                 mangler::value::Value::ImageRgba32F(value) => {
@@ -245,6 +252,7 @@ impl GraphNode {
             if let Some(img) = color_image {
                 self.thumbnail = Some(ui.ctx().load_texture(self.id.clone(), img, Default::default()));
             }
+            self.is_dirty = false;
         }
 
         // show output result on node
@@ -265,6 +273,7 @@ impl GraphNode {
             mangler::value::Value::ImageRgb8(_) |
             mangler::value::Value::ImageGrayA8(_)
             => {
+                puffin::profile_scope!("graph node.outputs[0].value");
                 if let Some(thumb) = &self.thumbnail {
                     ui.painter().image(thumb.id(), Rect::from_center_size(self.position + graph_position.to_vec2(), thumb.size_vec2()), Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
                 }
@@ -275,11 +284,13 @@ impl GraphNode {
         }
 
         fn show_output_text(ui: &mut egui::Ui, position: Pos2, txt: String) {
+            puffin::profile_scope!("graph node.show_output_text()");
             ui.painter().text(position, Align2::CENTER_CENTER, txt, FontId::proportional(20.0), Color32::from_gray(200));
         }
 
         // outline
         if is_editing {
+            puffin::profile_scope!("graph node.show_is_editing");
             ui.painter().add(egui::Shape::rect_stroke(node_rect, rounding, egui::Stroke::new(4.0, Color32::from_rgb(30, 150, 90))));
         }
 
@@ -317,14 +328,17 @@ impl GraphNode {
     }
 
     pub fn get_input_position(&self, index: usize, node_rect: Rect) -> Pos2 {
+        puffin::profile_scope!("graph node.get_input_position()");
         Pos2::new(node_rect.left() - 14.0, node_rect.top() + 12.0 + 20.0 * index as f32)
     }
 
     pub fn get_output_position(&self, index: usize, node_rect: Rect) -> Pos2 {
+        puffin::profile_scope!("graph node.get_output_position()");
         Pos2::new(node_rect.right() + 14.0, node_rect.top() + 12.0 + 20.0 * index as f32)
     }
 
     pub fn get_input_rect(&self, index: usize, node_rect: Rect) -> Rect {
+        puffin::profile_scope!("graph node.get_input_rect()");
         Rect::from_center_size(
             self.get_input_position(index, node_rect),
             Vec2::new(12.0, 12.0),
@@ -332,6 +346,7 @@ impl GraphNode {
     }
 
     pub fn get_output_rect(&self, index: usize, node_rect: Rect) -> Rect {
+        puffin::profile_scope!("graph node.get_output_rect()");
         Rect::from_center_size(
             self.get_output_position(index, node_rect),
             Vec2::new(12.0, 12.0),
@@ -344,6 +359,7 @@ impl GraphNode {
         output_id: String,
         output_index: usize,
     ) {
+        puffin::profile_scope!("graph node.set_input_connection()");
         self.inputs[input_index].connection = Some((output_id, output_index));
     }
 
@@ -357,6 +373,7 @@ impl GraphNode {
         input_id: String,
         input_index: usize,
     ) {
+        puffin::profile_scope!("graph node.set_output_connection()");
         if self.outputs[output_index].connection.is_some() {
             self.outputs[output_index]
                 .connection
