@@ -1,9 +1,9 @@
-use std::time::Duration;
+use std::{time::Duration, thread::JoinHandle};
 use crate::{input::Input, output::Output, value::Value, get_id};
 
 use super::{
     node_settings::NodeSettings,
-    operation::{ConnectionSettings, Operation},
+    operation::{ConnectionSettings, Operation, OperationResponse, self},
 };
 
 #[derive(Debug)]
@@ -122,5 +122,14 @@ impl Node {
     pub fn run(&mut self) {
         self.time = Some(self.operation.run(&self.inputs, &mut self.outputs));
         self.change_id = get_id();
+        
+        // let response = operation_handle.join();
+        // if let Ok(operation_response) = response {
+        //     for (index, o) in operation_response.output_values.iter().enumerate() {
+        //         self.outputs[index].value = o.clone();
+        //     }
+        //     self.time = Some(operation_response.time);
+        //     self.change_id = get_id();
+        // }
     }
 }

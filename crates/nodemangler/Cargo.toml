@@ -10,3 +10,4 @@ eframe = "0.21.3"
 image = "0.24.6"
 mangler = { path = "../mangler" }
 time = "0.3.21"
+tokio = { version = "1", features = ["full"] }

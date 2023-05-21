@@ -31,10 +31,8 @@ lazy_static! {
     },];
 }
 
-pub fn subtract(inputs: &[Input], outputs: &mut [Output]) -> OperationResponse {
+pub fn subtract(inputs: &[Input], outputs: &mut [Output]) -> Duration {
     let start_time = Instant::now();
-
-    let mut response = OperationResponse::new();
 
     outputs[0].value = match (&inputs[0].get_value(), &inputs[1].get_value()) {
         (Value::Integer(a), Value::Decimal(b)) => Value::Decimal(*a as f32 - b),
@@ -48,6 +46,5 @@ pub fn subtract(inputs: &[Input], outputs: &mut [Output]) -> OperationResponse {
         _ => panic!(),
     };
 
-    response.time = Instant::now().duration_since(start_time);
-    response
+    Instant::now().duration_since(start_time)
 }

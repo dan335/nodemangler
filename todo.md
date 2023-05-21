@@ -9,7 +9,6 @@
 * make mangler lib runnable from exe
 * valid types
 * highlight nodes that are possible connections when creating connection
-* use rayon for complicated operations
 
 * run graph on separate thread
 

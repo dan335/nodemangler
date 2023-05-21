@@ -74,10 +74,8 @@ lazy_static! {
     ];
 }
 
-pub fn image_resize(inputs: &[Input], outputs: &mut [Output]) -> OperationResponse {
+pub fn image_resize(inputs: &[Input], outputs: &mut [Output]) -> Duration {
     let start_time = Instant::now();
-
-    let mut response = OperationResponse::new();
 
     let Value::Integer(mut width) = inputs[1].get_value() else { panic!("not suported")};
     let Value::Integer(mut height) = inputs[2].get_value() else { panic!("not suported")};
@@ -109,7 +107,7 @@ pub fn image_resize(inputs: &[Input], outputs: &mut [Output]) -> OperationRespon
 
     let resized = dynamic_image.resize_exact(width as u32, height as u32, *filter_type);
 
-    response.output_values.push(match inputs[0].get_value().clone().value_type() {
+    outputs[0].value = match inputs[0].get_value().clone().value_type() {
         ValueType::ImageRgba32F => Value::ImageRgba32F(resized.to_rgba32f()),
         ValueType::ImageRgb32F => Value::ImageRgb32F(resized.to_rgb32f()),
         ValueType::ImageRgba16 => Value::ImageRgba16(resized.to_rgba16()),
@@ -126,11 +124,10 @@ pub fn image_resize(inputs: &[Input], outputs: &mut [Output]) -> OperationRespon
         ValueType::String |
         ValueType::FilterType |
         ValueType::ImageFormat => { panic!("Unsupported.") }
-    });
+    };
     
     outputs[1].value = Value::Integer(resized.width() as i32);
     outputs[2].value = Value::Integer(resized.height() as i32);
 
-    response.time = Instant::now().duration_since(start_time);
-    response
+    Instant::now().duration_since(start_time)
 }

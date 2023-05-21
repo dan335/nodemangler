@@ -7,6 +7,8 @@ use mangler::get_id;
 use mangler::nodes::node::Node;
 use mangler::nodes::operation::{ConnectionSettings, Operation};
 use mangler::{graph::Graph, nodes::node_settings::NodeSettings};
+use tokio::sync::oneshot::Sender;
+use tokio::time::{Instant, Duration};
 use std::path::Path;
 mod graph;
 mod menu;
@@ -19,6 +21,8 @@ use graph::graph_editor::GraphEditor;
 use menu::menu_panel::MenuPanel;
 use node_settings::node_settings_panel::NodeSettingsPanel;
 use view::view_panel::ViewPanel;
+use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc::UnboundedReceiver;
 
 pub const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
 pub const DEFAULT_WINDOW_HEIGHT: f32 = 800.0;
@@ -50,10 +54,31 @@ fn main() -> Result<(), eframe::Error> {
         ..Default::default()
     };
 
-    let mut graph = Graph::default();
-    let my_app = MyApp::new(graph);
+    //let (tx_run_graph, rx_run_graph) = oneshot::channel();
+    let (tx_input, rx input) = mpsc::channel(32);
+    let (tx_output, rx_output) = mpsc::channel(32); 
 
-    eframe::run_native("Mangler", options, Box::new(|_cc| Box::<MyApp>::new(my_app)))
+    
+    let my_app = MyApp::new(tx_input, rx_output);
+
+    eframe::run_native(
+        "Mangler",
+        options,
+        Box::new(|cc| {
+            let frame = cc.egui_ctx.clone();
+
+            tokio::spawn(async move {
+                let mut graph = Graph::default();
+
+                loop {
+                    let sleep_time = Instant::now() + Duration::from_millis(33);
+                    tokio::time::sleep_until(sleep_time);
+                }
+            });
+
+            Box::<MyApp>::new(my_app)
+        })
+    )
 }
 
 // do this without image crate?
@@ -75,7 +100,7 @@ fn load_icon(path: &str) -> eframe::IconData {
 }
 
 struct MyApp {
-    pub graph: Graph,
+    tx_run_graph: oneshot::Sender<bool>,
     graph_editor: GraphEditor,
     node_settings_panel: NodeSettingsPanel,
     view_panel: ViewPanel,
@@ -266,14 +291,14 @@ impl eframe::App for MyApp {
             ui.painter().text(pos, egui::Align2::LEFT_BOTTOM, txt, egui::FontId::proportional(12.0), egui::Color32::from_gray(150));
         });
 
-        self.run_graph();      
+        self.graph.run();      
     }
 }
 
 impl MyApp {
-    pub fn new(graph: Graph) -> Self {
+    pub fn new(tx_run_graph: oneshot::Sender<bool>) -> Self {
         Self {
-            graph,
+            tx_run_graph,
             graph_editor: GraphEditor::new(),
             node_settings_panel: NodeSettingsPanel::new(),
             view_panel: ViewPanel::new(),
@@ -284,9 +309,9 @@ impl MyApp {
         }
     }
 
-    pub fn run_graph(&mut self) {
-        self.graph.run();         
-    }
+    // pub fn run_graph(&mut self) {
+    //     self.graph.run();         
+    // }
 
     pub fn connect_nodes(&mut self, new_connection: NewConnection) {
         // if graph contains both nodes
@@ -395,3 +420,6 @@ impl NewConnection {
         }
     }
 }
+
+
+

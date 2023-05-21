@@ -34,14 +34,12 @@ lazy_static! {
 }
 
 
-pub fn image_from_url(inputs: &[Input], outputs: &mut [Output]) -> OperationResponse {
+pub fn image_from_url(inputs: &[Input], outputs: &mut [Output]) -> Duration {
     let start_time = Instant::now();
-
-    let mut response = OperationResponse::new();
 
     let Value::ImageFormat(image_format) = inputs[1].get_value() else { panic!("not suported")};
 
-    response.output_values.push(match &inputs[0].get_value() {
+    outputs[0].value = match &inputs[0].get_value() {
         Value::String(url) => {
             if let Ok(image_response) = reqwest::blocking::get(url) {
                 if let Ok(image_bytes) = image_response.bytes() {
@@ -73,8 +71,7 @@ pub fn image_from_url(inputs: &[Input], outputs: &mut [Output]) -> OperationResp
         },
 
         _ => panic!("Unable to convert formats to url."),
-    });
+    };
 
-    response.time = Instant::now().duration_since(start_time);
-    response
+    Instant::now().duration_since(start_time)
 }

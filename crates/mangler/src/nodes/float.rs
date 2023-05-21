@@ -24,12 +24,10 @@ lazy_static! {
 }
 
 
-pub fn new_float(inputs: &[Input], outputs: &mut [Output]) -> OperationResponse {
+pub fn new_float(inputs: &[Input], outputs: &mut [Output]) -> Duration {
     let start_time = Instant::now();
 
-    let mut response = OperationResponse::new();
-
-    response.output_values.push(match &inputs[0].get_value() {
+    outputs[0].value = match &inputs[0].get_value() {
         Value::Integer(a) => Value::Decimal(*a as f32),
         Value::Decimal(a) => Value::Decimal(*a),
         Value::String(a) => {
@@ -41,9 +39,7 @@ pub fn new_float(inputs: &[Input], outputs: &mut [Output]) -> OperationResponse 
         },
 
         _ => panic!("Unable to convert formats to float."),
-    });
+    };
 
-    response.time = Instant::now().duration_since(start_time);
-
-    response
+    Instant::now().duration_since(start_time)
 }

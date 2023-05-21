@@ -21,17 +21,15 @@ pub enum Operation {
 }
 
 impl Operation {
-    pub fn run(&mut self, inputs: &Vec<Input>, outputs: &mut Vec<Output>) -> JoinHandle<OperationResponse> {
-        let handle = thread::spawn(|| {
-            match self {
-                Operation::Float => new_float(inputs, outputs),
-                Operation::Integer => new_integer(inputs, outputs),
-                Operation::Add => add(inputs, outputs),
-                Operation::Subtract => subtract(inputs, outputs),
-                Operation::ImageFromUrl => image_from_url(inputs, outputs),
-                Operation::ImageResize => image_resize(inputs, outputs),
-            }
-        });
+    pub fn run(&self, inputs: &Vec<Input>, outputs: &mut Vec<Output>) -> Duration {
+        match self {
+            Operation::Float => new_float(inputs, outputs),
+            Operation::Integer => new_integer(inputs, outputs),
+            Operation::Add => add(inputs, outputs),
+            Operation::Subtract => subtract(inputs, outputs),
+            Operation::ImageFromUrl => image_from_url(inputs, outputs),
+            Operation::ImageResize => image_resize(inputs, outputs),
+        }
     }
 }
 

@@ -33,12 +33,10 @@ lazy_static! {
 }
 
 
-pub fn add(inputs: &[Input], outputs: &mut [Output]) -> OperationResponse {
+pub fn add(inputs: &[Input], outputs: &mut [Output]) -> Duration {
     let start_time = Instant::now();
 
-    let mut response = OperationResponse::new();
-
-    response.output_values.push(match (&inputs[0].get_value(), &inputs[1].get_value()) {
+    outputs[0].value = match (&inputs[0].get_value(), &inputs[1].get_value()) {
         (Value::Integer(a), Value::Decimal(b)) => Value::Decimal(*a as f32 + *b),
 
         (Value::Integer(a), Value::Integer(b)) => Value::Integer(*a + *b),
@@ -58,9 +56,7 @@ pub fn add(inputs: &[Input], outputs: &mut [Output]) -> OperationResponse {
         (Value::String(a), Value::String(b)) => Value::String(format!("{} {}", *a, *b)),
 
         _ => panic!("Unable to add formats."),
-    });
+    };
 
-    response.time = Instant::now().duration_since(start_time);
-
-    response
+    Instant::now().duration_since(start_time)
 }
