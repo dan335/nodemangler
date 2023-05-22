@@ -1,13 +1,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use eframe::egui::{self};
-use eframe::epaint::{Rounding, ColorImage};
+use eframe::epaint::{ColorImage, Rounding};
 use egui::Vec2;
-use mangler::{get_id, AddNodeMessage, RemoveNodeMessage, AddConnectionMessage, RemoveConnectionMessage, SetNodeInputMessage, NodeOutputChangedMessage, NodeInputChangedMessage};
 use mangler::nodes::operation::{ConnectionSettings, Operation};
+use mangler::{
+    get_id, AddConnectionMessage, AddNodeMessage, NodeInputChangedMessage,
+    NodeOutputChangedMessage, RemoveConnectionMessage, RemoveNodeMessage, SetNodeInputMessage,
+};
 use mangler::{graph::Graph, nodes::node_settings::NodeSettings};
-use tokio::time::{Instant, Duration};
 use std::path::Path;
+use tokio::time::{Duration, Instant};
 mod graph;
 mod menu;
 mod node_settings;
@@ -18,14 +21,13 @@ use egui::{Pos2, Rect};
 use graph::graph_editor::GraphEditor;
 use menu::menu_panel::MenuPanel;
 use node_settings::node_settings_panel::NodeSettingsPanel;
-use view::view_panel::ViewPanel;
 use tokio::sync::mpsc;
+use view::view_panel::ViewPanel;
 
 pub const PROFILE: bool = false;
 pub const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
 pub const DEFAULT_WINDOW_HEIGHT: f32 = 800.0;
 //const ICON: &[u8; 2869] = include_bytes!("..\\assets\\mangler_icon.png");
-
 
 #[tokio::main]
 async fn main() -> Result<(), eframe::Error> {
@@ -46,11 +48,17 @@ async fn main() -> Result<(), eframe::Error> {
     let (tx_remove_connection, mut rx_remove_connection) = mpsc::channel(32);
     let (tx_set_input, mut rx_set_input) = mpsc::channel(32);
     let (tx_input_changed, rx_input_changed) = mpsc::channel(32);
-    let (tx_output_changed, rx_output_changed) = mpsc::channel(32); 
+    let (tx_output_changed, rx_output_changed) = mpsc::channel(32);
 
-    
-    let my_app = MyApp::new(tx_add_node, tx_remove_node, tx_add_connection, tx_remove_connection, tx_set_input, rx_input_changed, rx_output_changed);
-    
+    let my_app = MyApp::new(
+        tx_add_node,
+        tx_remove_node,
+        tx_add_connection,
+        tx_remove_connection,
+        tx_set_input,
+        rx_input_changed,
+        rx_output_changed,
+    );
 
     eframe::run_native(
         "Mangler",
@@ -83,14 +91,14 @@ async fn main() -> Result<(), eframe::Error> {
                             add_connection_message.input_node_id,
                             add_connection_message.input_connection_index,
                             add_connection_message.output_node_id,
-                            add_connection_message.output_connection_index
+                            add_connection_message.output_connection_index,
                         );
                     }
 
                     while let Ok(remove_connection_message) = rx_remove_connection.try_recv() {
                         graph.remove_connection(
                             remove_connection_message.node_id,
-                            remove_connection_message.input_index
+                            remove_connection_message.input_index,
                         );
                     }
 
@@ -98,7 +106,7 @@ async fn main() -> Result<(), eframe::Error> {
                         graph.set_input(
                             node_input_message.node_id,
                             node_input_message.input_index,
-                            node_input_message.value
+                            node_input_message.value,
                         );
                     }
 
@@ -110,7 +118,7 @@ async fn main() -> Result<(), eframe::Error> {
             });
 
             Box::<MyApp>::new(my_app)
-        })
+        }),
     )
 }
 
@@ -132,11 +140,7 @@ fn load_icon(path: &str) -> eframe::IconData {
     }
 }
 
-
-
-
 struct MyApp {
-    
     tx_add_node: mpsc::Sender<AddNodeMessage>,
     tx_remove_node: mpsc::Sender<RemoveNodeMessage>,
     tx_add_connection: mpsc::Sender<AddConnectionMessage>,
@@ -160,7 +164,6 @@ struct MyApp {
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        
         if PROFILE {
             puffin::profile_function!();
             puffin::GlobalProfiler::lock().new_frame(); // call once per frame!
@@ -175,7 +178,11 @@ impl eframe::App for MyApp {
             // messages for when node output changes
             while let Ok(node_output_message) = self.rx_output_changed.try_recv() {
                 puffin::profile_scope!("ui receive output messages");
-                if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_output_message.node_id) {
+                if let Some(node) = self
+                    .graph_editor
+                    .graph_nodes
+                    .get_mut(&node_output_message.node_id)
+                {
                     if let Some(output) = node.outputs.get_mut(node_output_message.output_index) {
                         output.value = node_output_message.value;
 
@@ -183,16 +190,20 @@ impl eframe::App for MyApp {
                             node.thumbnail = match node_output_message.thumbnail {
                                 Some(thumbnail) => {
                                     let pixels = thumbnail.as_flat_samples();
-                                    let size = [thumbnail.width() as usize, thumbnail.height() as usize];
-                                    let color_image = ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-                                    Some(ui.ctx().load_texture(node.id.clone(), color_image, Default::default()))
-                                },
+                                    let size =
+                                        [thumbnail.width() as usize, thumbnail.height() as usize];
+                                    let color_image =
+                                        ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                                    Some(ui.ctx().load_texture(
+                                        node.id.clone(),
+                                        color_image,
+                                        Default::default(),
+                                    ))
+                                }
                                 None => None,
                             };
-
-                            
                         }
-                        
+
                         // thumbnail
                         //node.is_dirty = true;
                         node.time = Some(node_output_message.time);
@@ -203,8 +214,13 @@ impl eframe::App for MyApp {
             // messages for when node input changes
             while let Ok(node_input_changed_message) = self.rx_input_changed.try_recv() {
                 puffin::profile_scope!("ui receive input messages");
-                if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_input_changed_message.node_id) {
-                    if let Some(input) = node.inputs.get_mut(node_input_changed_message.input_index) {
+                if let Some(node) = self
+                    .graph_editor
+                    .graph_nodes
+                    .get_mut(&node_input_changed_message.node_id)
+                {
+                    if let Some(input) = node.inputs.get_mut(node_input_changed_message.input_index)
+                    {
                         input.set_value(node_input_changed_message.value);
                     }
                 }
@@ -269,12 +285,18 @@ impl eframe::App for MyApp {
                 puffin::profile_scope!("settings panel");
                 if let Some(node_id) = &self.editing_node_id {
                     if let Some(graph_node) = self.graph_editor.graph_nodes.get_mut(node_id) {
-                        self.node_settings_panel.show(ui, Some(graph_node), self.tx_set_input.clone());
+                        self.node_settings_panel.show(
+                            ui,
+                            Some(graph_node),
+                            self.tx_set_input.clone(),
+                        );
                     } else {
-                        self.node_settings_panel.show(ui, None, self.tx_set_input.clone());
+                        self.node_settings_panel
+                            .show(ui, None, self.tx_set_input.clone());
                     }
                 } else {
-                    self.node_settings_panel.show(ui, None, self.tx_set_input.clone());
+                    self.node_settings_panel
+                        .show(ui, None, self.tx_set_input.clone());
                 }
             });
 
@@ -307,7 +329,12 @@ impl eframe::App for MyApp {
                 }
 
                 if let Some(new_connection) = graph_editor_response.new_connection {
-                    self.add_connection(new_connection.input_node_id, new_connection.input_connection_index, new_connection.output_node_id, new_connection.output_connection_index);
+                    self.add_connection(
+                        new_connection.input_node_id,
+                        new_connection.input_connection_index,
+                        new_connection.output_node_id,
+                        new_connection.output_connection_index,
+                    );
                 }
 
                 for (node_id, input_index) in graph_editor_response.connections_to_delete.iter() {
@@ -375,13 +402,18 @@ impl eframe::App for MyApp {
 
             // show help in bottom left
             let pos = Pos2::new(app_rect.left() + 10.0, app_rect.bottom() - 10.0);
-            let txt = format!("left click: edit      right click: view      ctrl + left click: delete");
-            ui.painter().text(pos, egui::Align2::LEFT_BOTTOM, txt, egui::FontId::proportional(12.0), egui::Color32::from_gray(150));
-        });   
+            let txt =
+                format!("left click: edit      right click: view      ctrl + left click: delete");
+            ui.painter().text(
+                pos,
+                egui::Align2::LEFT_BOTTOM,
+                txt,
+                egui::FontId::proportional(12.0),
+                egui::Color32::from_gray(150),
+            );
+        });
     }
 }
-
-
 
 impl MyApp {
     pub fn new(
@@ -411,10 +443,6 @@ impl MyApp {
         }
     }
 
-
-    
-    
-
     pub fn add_node(
         &mut self,
         node_settings: NodeSettings,
@@ -423,7 +451,6 @@ impl MyApp {
         operation: Operation,
         position: Pos2,
     ) {
-
         let node_id = get_id();
 
         let add_node_message = AddNodeMessage {
@@ -441,12 +468,12 @@ impl MyApp {
                     node_settings.clone(),
                     input_settings.clone(),
                     output_settings.clone(),
-                    position
+                    position,
                 );
-            },
+            }
             Err(err) => {
-                println!("Error: {:?}", err);
-            },
+                println!("Error sending AddNodeMessage: {:?}", err);
+            }
         }
     }
 
@@ -462,16 +489,13 @@ impl MyApp {
                 }
                 if self.viewing_node_id == Some(node_id.clone()) {
                     self.viewing_node_id = None;
-                }
-        ;
+                };
                 self.graph_editor.remove_node(&node_id);
-            },
+            }
             Err(err) => {
-                println!("Error: {:?}", err);
-            },
+                println!("Error sending RemoveNodeMessage: {:?}", err);
+            }
         }
-
-        
     }
 
     pub fn view_node(&mut self, node_id: String) {
@@ -517,10 +541,10 @@ impl MyApp {
                         output_connection_index,
                     );
                 }
-            },
+            }
             Err(err) => {
-                println!("Error: {:?}", err);
-            },
+                println!("Error sending AddConnectionMessage: {:?}", err);
+            }
         }
     }
 
@@ -530,11 +554,14 @@ impl MyApp {
             input_index,
         };
 
-        match self.tx_remove_connection.try_send(remove_connection_message) {
+        match self
+            .tx_remove_connection
+            .try_send(remove_connection_message)
+        {
             Ok(_) => todo!(),
             Err(err) => {
-                println!("Error: {:?}", err);
-            },
+                println!("Error sending RemoveConnectionMessage: {:?}", err);
+            }
         }
     }
 }
@@ -562,11 +589,3 @@ impl NewConnection {
         }
     }
 }
-
-
-
-
-
-
-
-

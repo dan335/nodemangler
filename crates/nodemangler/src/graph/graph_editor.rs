@@ -1,15 +1,13 @@
 use super::graph_node::ConnectionType;
-use crate::{graph::graph_node::GraphNode, NewConnection, view};
+use crate::{graph::graph_node::GraphNode, view, NewConnection};
 use eframe::egui::{self};
 use egui::epaint::CubicBezierShape;
 use egui::Pos2;
-use mangler::nodes::{node::Node, node_settings::NodeSettings, operation::ConnectionSettings};
+use mangler::nodes::{node_settings::NodeSettings, operation::ConnectionSettings};
 use std::{
     collections::HashMap,
-    time::{Duration, Instant}, println,
+    time::{Duration, Instant},
 };
-
-const DOUBLE_CLICK_DURATION: Duration = Duration::from_millis(500);
 
 pub struct GraphEditor {
     position: Pos2,
@@ -54,7 +52,7 @@ impl GraphEditor {
         ui.set_clip_rect(editor_rect);
 
         let cursor_inside = editor_rect.contains(cursor_position);
-        let mut cursor_primary_went_down = false;   // did mouse button go down this frame
+        let mut cursor_primary_went_down = false; // did mouse button go down this frame
         let mut cursor_primary_went_up = false; // did mous button go up this rame
         let mut is_cursor_over_node = false;
 
@@ -101,7 +99,7 @@ impl GraphEditor {
 
         for (graph_node_id, graph_node) in self.graph_nodes.iter_mut() {
             puffin::profile_scope!("graph panel.graph_nodes.iter()");
-            
+
             // are we editing node
             let mut is_editing = false;
             if let Some(n) = editing_node_id {
@@ -121,7 +119,7 @@ impl GraphEditor {
             // draw node
             let graph_node_response =
                 graph_node.show(ui, self.position, cursor_position, is_editing, is_viewing);
-                
+
             // mouse over it?
             if graph_node_response.is_cursor_inside {
                 is_cursor_over_node = true;
@@ -149,7 +147,9 @@ impl GraphEditor {
 
                 if is_command_down {
                     // delete node
-                    graph_editor_response.nodes_to_delete.push(graph_node_id.clone());
+                    graph_editor_response
+                        .nodes_to_delete
+                        .push(graph_node_id.clone());
                 } else {
                     graph_editor_response.editing_node_id = Some(graph_node_id.clone());
                 }
@@ -161,8 +161,6 @@ impl GraphEditor {
                 graph_editor_response.viewing_node_id = Some(graph_node_id.clone());
             }
         }
-
-        
 
         // ------------------------
         // find if it stopped on a connection
@@ -177,7 +175,7 @@ impl GraphEditor {
                         ConnectionType::Input => {
                             for output_index in 0..other_node.outputs.len() {
                                 if other_graph_node
-                                    .get_output_rect(output_index,other_node_rect)
+                                    .get_output_rect(output_index, other_node_rect)
                                     .contains(cursor_position)
                                 {
                                     graph_editor_response.new_connection =
@@ -268,9 +266,12 @@ impl GraphEditor {
                 if cursor_primary_went_down {
                     for (curve, input_node_id, input_index) in connection_curves.iter() {
                         if curve.visual_bounding_rect().contains(cursor_position) {
-                            let distance = distance_to_cubic_bezier_curve(cursor_position, curve.points);
+                            let distance =
+                                distance_to_cubic_bezier_curve(cursor_position, curve.points);
                             if distance < 6.0 {
-                                graph_editor_response.connections_to_delete.push((input_node_id.clone(), input_index.clone()));
+                                graph_editor_response
+                                    .connections_to_delete
+                                    .push((input_node_id.clone(), input_index.clone()));
                             }
                         }
                     }
@@ -284,7 +285,12 @@ impl GraphEditor {
     }
 
     // returns curve shape to detect clickin on curve
-    pub fn draw_connection_line(&self, ui: &mut egui::Ui, from: Pos2, to: Pos2) -> CubicBezierShape {
+    pub fn draw_connection_line(
+        &self,
+        ui: &mut egui::Ui,
+        from: Pos2,
+        to: Pos2,
+    ) -> CubicBezierShape {
         let offset_max = 150.0;
         let color = egui::Color32::from_gray(150);
         let stroke = egui::Stroke::new(2.0, color);
@@ -363,7 +369,7 @@ pub struct GraphEditorResponse {
     pub editing_node_id: Option<String>,
     pub viewing_node_id: Option<String>,
     pub nodes_to_delete: Vec<String>,
-    pub connections_to_delete: Vec<(String, usize)>,    // node id, input index
+    pub connections_to_delete: Vec<(String, usize)>, // node id, input index
 }
 
 impl GraphEditorResponse {
@@ -381,7 +387,6 @@ impl GraphEditorResponse {
     }
 }
 
-
 fn distance_to_cubic_bezier_curve(point: Pos2, points: [Pos2; 4]) -> f32 {
     let t = nearest_t(point, points);
     let curve_point = point_at(t, points);
@@ -392,7 +397,7 @@ fn distance_to_cubic_bezier_curve(point: Pos2, points: [Pos2; 4]) -> f32 {
     fn nearest_t(point: Pos2, points: [Pos2; 4]) -> f32 {
         // Find the nearest t value by iterating and comparing distances
         let mut t = 0.0;
-        let mut step = 0.1;
+        let step = 0.1;
         let mut min_distance = f32::MAX;
 
         while t <= 1.0 {
@@ -421,14 +426,12 @@ fn distance_to_cubic_bezier_curve(point: Pos2, points: [Pos2; 4]) -> f32 {
         let uuu = uu * u;
         let ttt = tt * t;
 
-        let x =
-            uuu * points[0].x
+        let x = uuu * points[0].x
             + 3.0 * uu * t * points[1].x
             + 3.0 * u * tt * points[2].x
             + ttt * points[3].x;
 
-        let y =
-            uuu * points[0].y
+        let y = uuu * points[0].y
             + 3.0 * uu * t * points[1].y
             + 3.0 * u * tt * points[2].y
             + ttt * points[3].y;

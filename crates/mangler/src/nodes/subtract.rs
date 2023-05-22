@@ -1,9 +1,9 @@
-use crate::NodeOutputChangedMessage;
 use crate::input::Input;
 use crate::nodes::node_settings::NodeSettings;
-use crate::nodes::operation::{ConnectionSettings, UiType};
+use crate::nodes::operation::{ConnectionSettings, UiType, OperationResponse};
 use crate::value::{Value, ValueType};
 use std::time::Instant;
+use super::operation::OperationError;
 
 lazy_static! {
     pub static ref SETTINGS: NodeSettings = NodeSettings::new("Subtract".to_string());
@@ -29,7 +29,7 @@ lazy_static! {
     },];
 }
 
-pub async fn subtract(node_id: &String, inputs: &[Input]) -> Vec<NodeOutputChangedMessage> {
+pub async fn subtract(node_id: &String, inputs: &[Input]) -> Result<Vec<OperationResponse>, OperationError> {
     let start_time = Instant::now();
 
     let value = match (&inputs[0].get_value(), &inputs[1].get_value()) {
@@ -44,14 +44,11 @@ pub async fn subtract(node_id: &String, inputs: &[Input]) -> Vec<NodeOutputChang
         _ => panic!(),
     };
 
-    let node_output_message = NodeOutputChangedMessage {
-        node_id: node_id.clone(),
-        output_index: 0,
-        value_type: value.value_type(),
+    let node_output_message = OperationResponse {
+        index: 0,
         value,
         time: Instant::now().duration_since(start_time),
-        thumbnail: None,
     };
 
-    vec![node_output_message] 
+    Ok(vec![node_output_message]) 
 }

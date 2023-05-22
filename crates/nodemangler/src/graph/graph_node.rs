@@ -1,17 +1,16 @@
-use std::any::Any;
 use std::fmt::Debug;
 use std::time::Duration;
 
 use crate::graph::graph_input::draw_graph_input;
 use crate::graph::graph_output::draw_graph_output;
-use eframe::epaint::{Rounding, FontId, Color32, ColorImage};
+use eframe::epaint::{Color32, FontId, Rounding};
 use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect, Vec2};
-use image::{DynamicImage};
 use mangler::input::Input;
 use mangler::nodes::node_settings::NodeSettings;
 use mangler::nodes::operation::ConnectionSettings;
 use mangler::output::Output;
+use mangler::value::Value;
 
 use super::graph_editor::TempConnection;
 use super::graph_output::draw_graph_output_highlighted;
@@ -62,6 +61,7 @@ impl GraphNode {
                 name: settings.name.to_owned(),
                 value: settings.default_value.clone(),
                 connection: None,
+                value_type: settings.default_value.value_type(),
             })
             .collect();
 
@@ -75,7 +75,7 @@ impl GraphNode {
             //is_dirty: true,
             inputs,
             outputs,
-            time: None,    // what it is does not matter
+            time: None, // what it is does not matter
         }
     }
 
@@ -99,7 +99,9 @@ impl GraphNode {
 
         let bg_response = ui.allocate_rect(
             node_rect,
-            egui::Sense::click().union(egui::Sense::drag()).union(egui::Sense::hover())
+            egui::Sense::click()
+                .union(egui::Sense::drag())
+                .union(egui::Sense::hover()),
         );
 
         if bg_response.clicked_by(egui::PointerButton::Primary) {
@@ -209,7 +211,10 @@ impl GraphNode {
         // ms
         if let Some(time) = self.time {
             puffin::profile_scope!("graph node.inputs show time");
-            let pos = Pos2 { x: node_rect.right_bottom().x, y: node_rect.right_bottom().y + 5.0 };
+            let pos = Pos2 {
+                x: node_rect.right_bottom().x,
+                y: node_rect.right_bottom().y + 5.0,
+            };
             let text = format!("{:.4} ms", time.as_nanos() as f64 / 1_000_000.0);
             ui.painter().text(
                 pos,
@@ -222,45 +227,73 @@ impl GraphNode {
 
         // show output result on node
         if let Some(thumbnail) = &self.thumbnail {
-            ui.painter().image(thumbnail.id(), Rect::from_center_size(self.position + graph_position.to_vec2(), thumbnail.size_vec2()), Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
+            ui.painter().image(
+                thumbnail.id(),
+                Rect::from_center_size(
+                    self.position + graph_position.to_vec2(),
+                    thumbnail.size_vec2(),
+                ),
+                Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)),
+                Color32::WHITE,
+            );
         } else {
             match &self.outputs[0].value {
-                mangler::value::Value::Bool(value) => show_output_text(ui, node_rect.center(), value.to_string()),
-                mangler::value::Value::Integer(value) => show_output_text(ui, node_rect.center(), value.to_string()),
-                mangler::value::Value::Decimal(value) => show_output_text(ui, node_rect.center(), value.to_string()),
-                mangler::value::Value::String(value) => show_output_text(ui, node_rect.center(), value.to_string()),
+                mangler::value::Value::Bool(value) => {
+                    show_output_text(ui, node_rect.center(), value.to_string())
+                }
+                mangler::value::Value::Integer(value) => {
+                    show_output_text(ui, node_rect.center(), value.to_string())
+                }
+                mangler::value::Value::Decimal(value) => {
+                    show_output_text(ui, node_rect.center(), value.to_string())
+                }
+                mangler::value::Value::String(value) => {
+                    show_output_text(ui, node_rect.center(), value.to_string())
+                }
 
-                mangler::value::Value::ImageRgba32F(_) |
-                mangler::value::Value::ImageRgba8(_) |
-                mangler::value::Value::ImageGray8(_) |
-                mangler::value::Value::ImageRgb32F(_) |
-                mangler::value::Value::ImageRgba16(_) |
-                mangler::value::Value::ImageRgb16(_) |
-                mangler::value::Value::ImageGrayA16(_) |
-                mangler::value::Value::ImageGray16(_) |
-                mangler::value::Value::ImageRgb8(_) |
-                mangler::value::Value::ImageGrayA8(_)
-                => {},
+                mangler::value::Value::ImageRgba32F(_)
+                | mangler::value::Value::ImageRgba8(_)
+                | mangler::value::Value::ImageGray8(_)
+                | mangler::value::Value::ImageRgb32F(_)
+                | mangler::value::Value::ImageRgba16(_)
+                | mangler::value::Value::ImageRgb16(_)
+                | mangler::value::Value::ImageGrayA16(_)
+                | mangler::value::Value::ImageGray16(_)
+                | mangler::value::Value::ImageRgb8(_)
+                | mangler::value::Value::ImageGrayA8(_) => {}
 
-                mangler::value::Value::FilterType(value) => show_output_text(ui, node_rect.center(),format!("{:?}", value)),
-                mangler::value::Value::ImageFormat(value) => show_output_text(ui, node_rect.center(),format!("{:?}", value)),
+                mangler::value::Value::FilterType(value) => {
+                    show_output_text(ui, node_rect.center(), format!("{:?}", value))
+                }
+                mangler::value::Value::ImageFormat(value) => {
+                    show_output_text(ui, node_rect.center(), format!("{:?}", value))
+                }
             }
         }
-        
 
         fn show_output_text(ui: &mut egui::Ui, position: Pos2, txt: String) {
             puffin::profile_scope!("graph node.show_output_text()");
-            ui.painter().text(position, Align2::CENTER_CENTER, txt, FontId::proportional(20.0), Color32::from_gray(200));
+            ui.painter().text(
+                position,
+                Align2::CENTER_CENTER,
+                txt,
+                FontId::proportional(20.0),
+                Color32::from_gray(200),
+            );
         }
 
         // outline
         if is_editing {
             puffin::profile_scope!("graph node.show_is_editing");
-            ui.painter().add(egui::Shape::rect_stroke(node_rect, rounding, egui::Stroke::new(4.0, Color32::from_rgb(30, 150, 90))));
+            ui.painter().add(egui::Shape::rect_stroke(
+                node_rect,
+                rounding,
+                egui::Stroke::new(4.0, Color32::from_rgb(30, 150, 90)),
+            ));
         }
 
         //if is_viewing {
-            //ui.painter().add(egui::Shape::rect_stroke(self.get_rect(graph_position).expand(10.0), rounding, egui::Stroke::new(2.0, Color32::GREEN)));
+        //ui.painter().add(egui::Shape::rect_stroke(self.get_rect(graph_position).expand(10.0), rounding, egui::Stroke::new(2.0, Color32::GREEN)));
         //}
         // ui.painter().add(egui::Shape::rect_stroke(
         //     rect,
@@ -270,10 +303,7 @@ impl GraphNode {
 
         // text - name
         ui.painter().text(
-            Pos2::new(
-                node_rect.center().x,
-                node_rect.top() - 20.0,
-            ),
+            Pos2::new(node_rect.center().x, node_rect.top() - 20.0),
             Align2::CENTER_TOP,
             self.settings.name.clone(),
             egui::FontId::default(),
@@ -294,12 +324,18 @@ impl GraphNode {
 
     pub fn get_input_position(&self, index: usize, node_rect: Rect) -> Pos2 {
         puffin::profile_scope!("graph node.get_input_position()");
-        Pos2::new(node_rect.left() - 14.0, node_rect.top() + 12.0 + 20.0 * index as f32)
+        Pos2::new(
+            node_rect.left() - 14.0,
+            node_rect.top() + 12.0 + 20.0 * index as f32,
+        )
     }
 
     pub fn get_output_position(&self, index: usize, node_rect: Rect) -> Pos2 {
         puffin::profile_scope!("graph node.get_output_position()");
-        Pos2::new(node_rect.right() + 14.0, node_rect.top() + 12.0 + 20.0 * index as f32)
+        Pos2::new(
+            node_rect.right() + 14.0,
+            node_rect.top() + 12.0 + 20.0 * index as f32,
+        )
     }
 
     pub fn get_input_rect(&self, index: usize, node_rect: Rect) -> Rect {

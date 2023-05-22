@@ -4,12 +4,12 @@ use eframe::{
 };
 use image::imageops::FilterType;
 use mangler::{
-    nodes::{node::Node},
-    value::{Value, ImageFormat}, input::Input,
+    input::Input,
+    value::{ImageFormat, Value},
 };
 use tokio::sync::mpsc::Sender;
 
-use crate::{SetNodeInputMessage, graph::graph_node::GraphNode};
+use crate::{graph::graph_node::GraphNode, SetNodeInputMessage};
 
 pub struct NodeSettingsPanel {}
 
@@ -17,8 +17,15 @@ impl NodeSettingsPanel {
     pub fn new() -> NodeSettingsPanel {
         NodeSettingsPanel {}
     }
-    
-    fn change_value(&self, tx_input: Sender<SetNodeInputMessage>, node_id: String, input_index: usize, input: &mut Input, value: Value) {
+
+    fn change_value(
+        &self,
+        tx_input: Sender<SetNodeInputMessage>,
+        node_id: String,
+        input_index: usize,
+        input: &mut Input,
+        value: Value,
+    ) {
         let set_node_input_message = SetNodeInputMessage {
             node_id,
             input_index,
@@ -26,12 +33,10 @@ impl NodeSettingsPanel {
         };
 
         match tx_input.try_send(set_node_input_message) {
-            Ok(_) => {
-
-            },
+            Ok(_) => {}
             Err(err) => {
-                println!("Error: {:?}", err);
-            },
+                println!("Error sending SetNodeInputMessage: {:?}", err);
+            }
         }
 
         input.set_value(value);
@@ -43,7 +48,6 @@ impl NodeSettingsPanel {
         node_option: Option<&mut GraphNode>,
         tx_input: Sender<SetNodeInputMessage>,
     ) {
-
         // background
         ui.painter().add(egui::Shape::rect_filled(
             ui.max_rect(),
@@ -62,7 +66,6 @@ impl NodeSettingsPanel {
         );
 
         ui.allocate_ui_at_rect(ui_rect, |ui| {
-
             if let Some(node) = node_option {
                 let name = node.settings.name.clone();
                 ui.vertical_centered(|ui| {
@@ -85,11 +88,17 @@ impl NodeSettingsPanel {
                                     let mut x = a;
                                     if ui.add(egui::Checkbox::new(&mut x, "")).changed() {
                                         let value = Value::Bool(x);
-                                        self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
+                                        self.change_value(
+                                            tx_input.clone(),
+                                            node.id.clone(),
+                                            input_index,
+                                            input,
+                                            value.clone(),
+                                        );
                                         input.set_value(value);
                                     }
                                 }
-                            },
+                            }
                             Value::Integer(a) => {
                                 if input.connection.is_some() {
                                     ui.label(a.to_string());
@@ -97,11 +106,17 @@ impl NodeSettingsPanel {
                                     let mut x = a;
                                     if ui.add(egui::DragValue::new(&mut x)).changed() {
                                         let value = Value::Integer(x);
-                                        self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
+                                        self.change_value(
+                                            tx_input.clone(),
+                                            node.id.clone(),
+                                            input_index,
+                                            input,
+                                            value.clone(),
+                                        );
                                         input.set_value(value);
                                     }
                                 }
-                            },
+                            }
                             Value::Decimal(a) => {
                                 if input.connection.is_some() {
                                     ui.label(a.to_string());
@@ -109,11 +124,17 @@ impl NodeSettingsPanel {
                                     let mut x = a;
                                     if ui.add(egui::DragValue::new(&mut x)).changed() {
                                         let value = Value::Decimal(x);
-                                        self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
+                                        self.change_value(
+                                            tx_input.clone(),
+                                            node.id.clone(),
+                                            input_index,
+                                            input,
+                                            value.clone(),
+                                        );
                                         input.set_value(value);
                                     }
                                 }
-                            },
+                            }
                             Value::String(a) => {
                                 if input.connection.is_some() {
                                     ui.label(a);
@@ -121,112 +142,324 @@ impl NodeSettingsPanel {
                                     let mut x = a;
                                     if ui.text_edit_singleline(&mut x).changed() {
                                         let value = Value::String(x);
-                                        self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
+                                        self.change_value(
+                                            tx_input.clone(),
+                                            node.id.clone(),
+                                            input_index,
+                                            input,
+                                            value.clone(),
+                                        );
                                         input.set_value(value);
                                     }
                                 }
-                            },
-                            Value::ImageRgba32F(_) => {},
-                            Value::ImageRgb32F(_) => {},
-                            Value::ImageRgba16(_) => {},
-                            Value::ImageRgb16(_) => {},
-                            Value::ImageGrayA16(_) => {},
-                            Value::ImageGray16(_) => {},
-                            Value::ImageRgba8(_) => {},
-                            Value::ImageRgb8(_) => {},
-                            Value::ImageGrayA8(_) => {},
-                            Value::ImageGray8(_) => {},
+                            }
+                            Value::ImageRgba32F(_) => {}
+                            Value::ImageRgb32F(_) => {}
+                            Value::ImageRgba16(_) => {}
+                            Value::ImageRgb16(_) => {}
+                            Value::ImageGrayA16(_) => {}
+                            Value::ImageGray16(_) => {}
+                            Value::ImageRgba8(_) => {}
+                            Value::ImageRgb8(_) => {}
+                            Value::ImageGrayA8(_) => {}
+                            Value::ImageGray8(_) => {}
                             Value::FilterType(a) => {
                                 if input.connection.is_some() {
                                     ui.label(format!("{:?}", a));
                                 } else {
                                     let mut x = a;
-                                    egui::ComboBox::from_label("Filter Type").selected_text(format!("{:?}", x)).show_ui(ui, |ui| {
-                                        if ui.selectable_value(&mut x, FilterType::Nearest, "Nearest Neighbor").changed() {
-                                            let value = Value::FilterType(x);
-                                            self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
-                                            input.set_value(value);
-                                        }
-                                        if ui.selectable_value(&mut x, FilterType::Triangle, "Linear Filter (Triangle)").changed() {
-                                            let value = Value::FilterType(x);
-                                            self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
-                                            input.set_value(value);
-                                        }
-                                        if ui.selectable_value(&mut x, FilterType::CatmullRom, "Cubic Filter ( CatmullRom)").changed() {
-                                            let value = Value::FilterType(x);
-                                            self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
-                                            input.set_value(value);
-                                        }
-                                        if ui.selectable_value(&mut x, FilterType::Gaussian, "Gaussian Filter").changed() {
-                                            let value = Value::FilterType(x);
-                                            self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
-                                            input.set_value(value);
-                                        }
-                                        if ui.selectable_value(&mut x, FilterType::Lanczos3, "Lanczos with window 3").changed() {
-                                            let value = Value::FilterType(x);
-                                            self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
-                                            input.set_value(value);
-                                        }
-                                    });
+                                    egui::ComboBox::from_label("Filter Type")
+                                        .selected_text(format!("{:?}", x))
+                                        .show_ui(ui, |ui| {
+                                            if ui
+                                                .selectable_value(
+                                                    &mut x,
+                                                    FilterType::Nearest,
+                                                    "Nearest Neighbor",
+                                                )
+                                                .changed()
+                                            {
+                                                let value = Value::FilterType(x);
+                                                self.change_value(
+                                                    tx_input.clone(),
+                                                    node.id.clone(),
+                                                    input_index,
+                                                    input,
+                                                    value.clone(),
+                                                );
+                                                input.set_value(value);
+                                            }
+                                            if ui
+                                                .selectable_value(
+                                                    &mut x,
+                                                    FilterType::Triangle,
+                                                    "Linear Filter (Triangle)",
+                                                )
+                                                .changed()
+                                            {
+                                                let value = Value::FilterType(x);
+                                                self.change_value(
+                                                    tx_input.clone(),
+                                                    node.id.clone(),
+                                                    input_index,
+                                                    input,
+                                                    value.clone(),
+                                                );
+                                                input.set_value(value);
+                                            }
+                                            if ui
+                                                .selectable_value(
+                                                    &mut x,
+                                                    FilterType::CatmullRom,
+                                                    "Cubic Filter ( CatmullRom)",
+                                                )
+                                                .changed()
+                                            {
+                                                let value = Value::FilterType(x);
+                                                self.change_value(
+                                                    tx_input.clone(),
+                                                    node.id.clone(),
+                                                    input_index,
+                                                    input,
+                                                    value.clone(),
+                                                );
+                                                input.set_value(value);
+                                            }
+                                            if ui
+                                                .selectable_value(
+                                                    &mut x,
+                                                    FilterType::Gaussian,
+                                                    "Gaussian Filter",
+                                                )
+                                                .changed()
+                                            {
+                                                let value = Value::FilterType(x);
+                                                self.change_value(
+                                                    tx_input.clone(),
+                                                    node.id.clone(),
+                                                    input_index,
+                                                    input,
+                                                    value.clone(),
+                                                );
+                                                input.set_value(value);
+                                            }
+                                            if ui
+                                                .selectable_value(
+                                                    &mut x,
+                                                    FilterType::Lanczos3,
+                                                    "Lanczos with window 3",
+                                                )
+                                                .changed()
+                                            {
+                                                let value = Value::FilterType(x);
+                                                self.change_value(
+                                                    tx_input.clone(),
+                                                    node.id.clone(),
+                                                    input_index,
+                                                    input,
+                                                    value.clone(),
+                                                );
+                                                input.set_value(value);
+                                            }
+                                        });
                                 }
-                            },
+                            }
                             Value::ImageFormat(a) => {
                                 if input.connection.is_some() {
                                     ui.label(format!("{:?}", a));
                                 } else {
                                     let mut x = a;
-                                    egui::ComboBox::from_label("Image Format").selected_text(format!("{:?}", x)).show_ui(ui, |ui| {
-                                        if ui.selectable_value(&mut x, ImageFormat::ImageGray16, "Grayscale 16 bit").changed() {
-                                            let value = Value::ImageFormat(x);
-                                            self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
-                                            input.set_value(value);
-                                        }
-                                        if ui.selectable_value(&mut x, ImageFormat::ImageGray8, "Grayscale 8 bit").changed() {
-                                            let value = Value::ImageFormat(x);
-                                            self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
-                                            input.set_value(value);
-                                        }
-                                        if ui.selectable_value(&mut x, ImageFormat::ImageGrayA16, "Grayscale with alpha 16 bit").changed() {
-                                            let value = Value::ImageFormat(x);
-                                            self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
-                                            input.set_value(value);
-                                        }
-                                        if ui.selectable_value(&mut x, ImageFormat::ImageGrayA8, "Grayscale with alpha 8 bit").changed() {
-                                            let value = Value::ImageFormat(x);
-                                            self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
-                                            input.set_value(value);
-                                        }
-                                        if ui.selectable_value(&mut x, ImageFormat::ImageRgb16, "RGB 16 bit").changed() {
-                                            let value = Value::ImageFormat(x);
-                                            self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
-                                            input.set_value(value);
-                                        }
-                                        if ui.selectable_value(&mut x, ImageFormat::ImageRgb32F, "RGB 32 bit float").changed() {
-                                            let value = Value::ImageFormat(x);
-                                            self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
-                                            input.set_value(value);
-                                        }
-                                        if ui.selectable_value(&mut x, ImageFormat::ImageRgb8, "RGB 8 bit").changed() {
-                                            let value = Value::ImageFormat(x);
-                                            self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
-                                            input.set_value(value);
-                                        }
-                                        if ui.selectable_value(&mut x, ImageFormat::ImageRgba16, "RGBA 16 bit").changed() {
-                                            let value = Value::ImageFormat(x);
-                                            self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
-                                            input.set_value(value);
-                                        }
-                                        if ui.selectable_value(&mut x, ImageFormat::ImageRgba32F, "RGBA 32 bit float").changed() {
-                                            let value = Value::ImageFormat(x);
-                                            self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
-                                            input.set_value(value);
-                                        }
-                                        if ui.selectable_value(&mut x, ImageFormat::ImageRgba8, "RGBA 8 bit").changed() {
-                                            let value = Value::ImageFormat(x);
-                                            self.change_value(tx_input.clone(), node.id.clone(), input_index, input, value.clone());
-                                            input.set_value(value);
-                                        }
-                                    });
+                                    egui::ComboBox::from_label("Image Format")
+                                        .selected_text(format!("{:?}", x))
+                                        .show_ui(ui, |ui| {
+                                            if ui
+                                                .selectable_value(
+                                                    &mut x,
+                                                    ImageFormat::ImageGray16,
+                                                    "Grayscale 16 bit",
+                                                )
+                                                .changed()
+                                            {
+                                                let value = Value::ImageFormat(x);
+                                                self.change_value(
+                                                    tx_input.clone(),
+                                                    node.id.clone(),
+                                                    input_index,
+                                                    input,
+                                                    value.clone(),
+                                                );
+                                                input.set_value(value);
+                                            }
+                                            if ui
+                                                .selectable_value(
+                                                    &mut x,
+                                                    ImageFormat::ImageGray8,
+                                                    "Grayscale 8 bit",
+                                                )
+                                                .changed()
+                                            {
+                                                let value = Value::ImageFormat(x);
+                                                self.change_value(
+                                                    tx_input.clone(),
+                                                    node.id.clone(),
+                                                    input_index,
+                                                    input,
+                                                    value.clone(),
+                                                );
+                                                input.set_value(value);
+                                            }
+                                            if ui
+                                                .selectable_value(
+                                                    &mut x,
+                                                    ImageFormat::ImageGrayA16,
+                                                    "Grayscale with alpha 16 bit",
+                                                )
+                                                .changed()
+                                            {
+                                                let value = Value::ImageFormat(x);
+                                                self.change_value(
+                                                    tx_input.clone(),
+                                                    node.id.clone(),
+                                                    input_index,
+                                                    input,
+                                                    value.clone(),
+                                                );
+                                                input.set_value(value);
+                                            }
+                                            if ui
+                                                .selectable_value(
+                                                    &mut x,
+                                                    ImageFormat::ImageGrayA8,
+                                                    "Grayscale with alpha 8 bit",
+                                                )
+                                                .changed()
+                                            {
+                                                let value = Value::ImageFormat(x);
+                                                self.change_value(
+                                                    tx_input.clone(),
+                                                    node.id.clone(),
+                                                    input_index,
+                                                    input,
+                                                    value.clone(),
+                                                );
+                                                input.set_value(value);
+                                            }
+                                            if ui
+                                                .selectable_value(
+                                                    &mut x,
+                                                    ImageFormat::ImageRgb16,
+                                                    "RGB 16 bit",
+                                                )
+                                                .changed()
+                                            {
+                                                let value = Value::ImageFormat(x);
+                                                self.change_value(
+                                                    tx_input.clone(),
+                                                    node.id.clone(),
+                                                    input_index,
+                                                    input,
+                                                    value.clone(),
+                                                );
+                                                input.set_value(value);
+                                            }
+                                            if ui
+                                                .selectable_value(
+                                                    &mut x,
+                                                    ImageFormat::ImageRgb32F,
+                                                    "RGB 32 bit float",
+                                                )
+                                                .changed()
+                                            {
+                                                let value = Value::ImageFormat(x);
+                                                self.change_value(
+                                                    tx_input.clone(),
+                                                    node.id.clone(),
+                                                    input_index,
+                                                    input,
+                                                    value.clone(),
+                                                );
+                                                input.set_value(value);
+                                            }
+                                            if ui
+                                                .selectable_value(
+                                                    &mut x,
+                                                    ImageFormat::ImageRgb8,
+                                                    "RGB 8 bit",
+                                                )
+                                                .changed()
+                                            {
+                                                let value = Value::ImageFormat(x);
+                                                self.change_value(
+                                                    tx_input.clone(),
+                                                    node.id.clone(),
+                                                    input_index,
+                                                    input,
+                                                    value.clone(),
+                                                );
+                                                input.set_value(value);
+                                            }
+                                            if ui
+                                                .selectable_value(
+                                                    &mut x,
+                                                    ImageFormat::ImageRgba16,
+                                                    "RGBA 16 bit",
+                                                )
+                                                .changed()
+                                            {
+                                                let value = Value::ImageFormat(x);
+                                                self.change_value(
+                                                    tx_input.clone(),
+                                                    node.id.clone(),
+                                                    input_index,
+                                                    input,
+                                                    value.clone(),
+                                                );
+                                                input.set_value(value);
+                                            }
+                                            if ui
+                                                .selectable_value(
+                                                    &mut x,
+                                                    ImageFormat::ImageRgba32F,
+                                                    "RGBA 32 bit float",
+                                                )
+                                                .changed()
+                                            {
+                                                let value = Value::ImageFormat(x);
+                                                self.change_value(
+                                                    tx_input.clone(),
+                                                    node.id.clone(),
+                                                    input_index,
+                                                    input,
+                                                    value.clone(),
+                                                );
+                                                input.set_value(value);
+                                            }
+                                            if ui
+                                                .selectable_value(
+                                                    &mut x,
+                                                    ImageFormat::ImageRgba8,
+                                                    "RGBA 8 bit",
+                                                )
+                                                .changed()
+                                            {
+                                                let value = Value::ImageFormat(x);
+                                                self.change_value(
+                                                    tx_input.clone(),
+                                                    node.id.clone(),
+                                                    input_index,
+                                                    input,
+                                                    value.clone(),
+                                                );
+                                                input.set_value(value);
+                                            }
+                                        });
+                                }
+                            }
+                            Value::UiButton(_) => {
+                                if input.connection.is_some() {
+                                    ui.label(format!("{:?}", a));
+                                } else {
+
                                 }
                             },
                         }

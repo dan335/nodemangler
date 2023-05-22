@@ -1,11 +1,13 @@
-use image::{RgbaImage, DynamicImage};
-use crate::NodeOutputChangedMessage;
 use crate::input::Input;
 use crate::nodes::node_settings::NodeSettings;
 use crate::nodes::operation::{ConnectionSettings, UiType};
 use crate::value::{Value, ValueType};
+use super::operation::OperationError;
 use core::panic;
+use image::{DynamicImage, RgbaImage};
 use std::time::Instant;
+
+use super::operation::OperationResponse;
 
 lazy_static! {
     pub static ref SETTINGS: NodeSettings = NodeSettings::new("Resize".to_string());
@@ -13,7 +15,11 @@ lazy_static! {
         ConnectionSettings {
             name: "image".to_string(),
             default_value: Value::ImageRgba8(RgbaImage::new(32, 32)),
-            valid_types: vec![ValueType::ImageRgba32F, ValueType::ImageRgba8, ValueType::ImageGray8],
+            valid_types: vec![
+                ValueType::ImageRgba32F,
+                ValueType::ImageRgba8,
+                ValueType::ImageGray8
+            ],
             ui_type: None,
         },
         ConnectionSettings {
@@ -51,7 +57,11 @@ lazy_static! {
         ConnectionSettings {
             name: "image".to_string(),
             default_value: Value::ImageRgba8(RgbaImage::new(32, 32)),
-            valid_types: vec![ValueType::ImageRgba32F, ValueType::ImageRgba8, ValueType::ImageGray8],
+            valid_types: vec![
+                ValueType::ImageRgba32F,
+                ValueType::ImageRgba8,
+                ValueType::ImageGray8
+            ],
             ui_type: None,
         },
         ConnectionSettings {
@@ -69,11 +79,13 @@ lazy_static! {
     ];
 }
 
-pub async fn image_resize(node_id: &String, inputs: &[Input]) -> Vec<NodeOutputChangedMessage> {
+pub async fn image_resize(node_id: &String, inputs: &[Input]) -> Result<Vec<OperationResponse>, OperationError> {
     let start_time = Instant::now();
 
-    let Value::Integer(mut width) = inputs[1].get_value() else { panic!("not suported")};
-    let Value::Integer(mut height) = inputs[2].get_value() else { panic!("not suported")};
+    let Ok(Value::Integer(mut width)) = inputs[1].get_value().convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+    let Ok(Value::Integer(mut height)) = inputs[2].get_value().convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+    // let Value::Integer(mut width) = inputs[1].get_value() else { panic!("not suported")};
+    // let Value::Integer(mut height) = inputs[2].get_value() else { panic!("not suported")};
     let Value::Bool(auto_width) = inputs[3].get_value() else { panic!("not suported")};
     let Value::Bool(auto_height) = inputs[4].get_value() else { panic!("not suported")};
     let Value::FilterType(filter_type) = inputs[5].get_value() else { panic!("not suported")};
@@ -92,12 +104,14 @@ pub async fn image_resize(node_id: &String, inputs: &[Input]) -> Vec<NodeOutputC
         Value::ImageRgb8(image) => DynamicImage::ImageRgb8(image.clone()),
         Value::ImageGrayA8(image) => DynamicImage::ImageLumaA8(image.clone()),
         Value::ImageGray8(image) => DynamicImage::ImageLuma8(image.clone()),
-        Value::Bool(_) |
-        Value::Integer(_) |
-        Value::Decimal(_) |
-        Value::String(_) |
-        Value::FilterType(_) |
-        Value::ImageFormat(_) => { panic!("Unsupported.") },
+        Value::Bool(_)
+        | Value::Integer(_)
+        | Value::Decimal(_)
+        | Value::String(_)
+        | Value::FilterType(_)
+        | Value::ImageFormat(_) => {
+            panic!("Unsupported.")
+        }
     };
 
     let resized = dynamic_image.resize_exact(width as u32, height as u32, *filter_type);
@@ -113,47 +127,40 @@ pub async fn image_resize(node_id: &String, inputs: &[Input]) -> Vec<NodeOutputC
         ValueType::ImageRgb8 => Value::ImageRgb8(resized.to_rgb8()),
         ValueType::ImageGrayA8 => Value::ImageGrayA8(resized.to_luma_alpha8()),
         ValueType::ImageGray8 => Value::ImageGray8(resized.to_luma8()),
-        ValueType::Bool |
-        ValueType::Integer |
-        ValueType::Decimal |
-        ValueType::String |
-        ValueType::FilterType |
-        ValueType::ImageFormat => { panic!("Unsupported.") }
+        ValueType::Bool
+        | ValueType::Integer
+        | ValueType::Decimal
+        | ValueType::String
+        | ValueType::FilterType
+        | ValueType::ImageFormat => {
+            return Err(OperationError{ message: "Format not supported.".to_string() });
+        }
     };
-    
+
     let value_1 = Value::Integer(resized.width() as i32);
     let value_2 = Value::Integer(resized.height() as i32);
 
     let time = Instant::now().duration_since(start_time);
 
-    let mut node_output_messages: Vec<NodeOutputChangedMessage> = Vec::new();
+    let mut node_output_messages: Vec<OperationResponse> = Vec::new();
 
-    node_output_messages.push(NodeOutputChangedMessage {
-        node_id: node_id.clone(),
-        output_index: 0,
-        value_type: value_0.value_type(),
+    node_output_messages.push(OperationResponse {
+        index: 0,
         value: value_0,
         time,
-        thumbnail: None,
     });
 
-    node_output_messages.push(NodeOutputChangedMessage {
-        node_id: node_id.clone(),
-        output_index: 1,
-        value_type: value_1.value_type(),
+    node_output_messages.push(OperationResponse {
+        index: 1,
         value: value_1,
         time,
-        thumbnail: None,
     });
 
-    node_output_messages.push(NodeOutputChangedMessage {
-        node_id: node_id.clone(),
-        output_index: 2,
-        value_type: value_2.value_type(),
+    node_output_messages.push(OperationResponse {
+        index: 2,
         value: value_2,
         time,
-        thumbnail: None,
     });
 
-    node_output_messages
+    Ok(node_output_messages)
 }

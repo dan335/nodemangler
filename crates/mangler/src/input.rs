@@ -1,4 +1,7 @@
-use crate::{value::{Value, ValueType}, nodes::{operation::{UiType, ConnectionSettings}, node_settings::NodeSettings}};
+use crate::{
+    nodes::operation::{ConnectionSettings, UiType},
+    value::{Value, ValueType},
+};
 
 #[derive(Debug, Clone)]
 pub struct Input {
@@ -37,5 +40,3 @@ impl Input {
         self.value = value;
     }
 }
-
-

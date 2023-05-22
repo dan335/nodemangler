@@ -1,7 +1,7 @@
-use crate::NodeOutputChangedMessage;
+use super::operation::OperationError;
 use crate::input::Input;
 use crate::nodes::node_settings::NodeSettings;
-use crate::nodes::operation::{ConnectionSettings, UiType};
+use crate::nodes::operation::{ConnectionSettings, UiType, OperationResponse};
 use crate::value::{Value, ValueType};
 use std::time::Instant;
 
@@ -22,7 +22,7 @@ lazy_static! {
 }
 
 
-pub async fn new_float(node_id: &String, inputs: &[Input]) -> Vec<NodeOutputChangedMessage> {
+pub async fn new_float(node_id: &String, inputs: &[Input]) -> Result<Vec<OperationResponse>, OperationError> {
     let start_time = Instant::now();
 
     let value = match &inputs[0].get_value() {
@@ -39,14 +39,11 @@ pub async fn new_float(node_id: &String, inputs: &[Input]) -> Vec<NodeOutputChan
         _ => panic!("Unable to convert formats to float."),
     };
 
-    let node_output_message = NodeOutputChangedMessage {
-        node_id: node_id.clone(),
-        output_index: 0,
-        value_type: value.value_type(),
+    let node_output_message = OperationResponse {
+        index: 0,
         value,
         time: Instant::now().duration_since(start_time),
-        thumbnail: None,
     };
 
-    vec![node_output_message]
+    Ok(vec![node_output_message])
 }

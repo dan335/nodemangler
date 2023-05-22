@@ -1,7 +1,7 @@
-use std::{time::Duration, thread::JoinHandle};
+use std::time::Duration;
 use tokio::sync::mpsc::Sender;
 
-use crate::{input::Input, output::Output, value::Value, get_id, NodeOutputChangedMessage};
+use crate::{input::Input, output::Output, value::Value, NodeOutputChangedMessage};
 
 use super::{
     node_settings::NodeSettings,
@@ -55,6 +55,7 @@ impl Node {
             .iter()
             .map(|settings| Output {
                 name: settings.name.to_owned(),
+                value_type: settings.default_value.value_type(),
                 value: settings.default_value.clone(),
                 connection: None,
             })
@@ -73,7 +74,7 @@ impl Node {
 
     pub fn set_input_value(&mut self, index: usize, value: Value) {
         if let Some(input) = self.inputs.get_mut(index) {
-            input.set_value(value);//value = value;
+            input.set_value(value); //value = value;
             self.is_dirty = true;
         } else {
             panic!("Invalid input index: {}", index);
@@ -119,8 +120,12 @@ impl Node {
     }
 
     pub async fn run(&mut self, tx_output: Sender<NodeOutputChangedMessage>) {
-        self.time = Some(self.operation.run(&self.id, &self.inputs, &mut self.outputs, tx_output).await);
-        
+        self.time = Some(
+            self.operation
+                .run(&self.id, &self.inputs, &mut self.outputs, tx_output)
+                .await,
+        );
+
         // let response = operation_handle.join();
         // if let Ok(operation_response) = response {
         //     for (index, o) in operation_response.output_values.iter().enumerate() {

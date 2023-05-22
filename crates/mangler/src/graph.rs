@@ -264,7 +264,7 @@ impl Graph {
                         match self.tx_input_changed.try_send(node_input_changed_message) {
                             Ok(_) => {},
                             Err(err) => {
-                                println!("Error: {:?}", err);
+                                println!("Error sending NodeInputChangedMessage: {:?}", err);
                             },
                         }
                         //connected_node.inputs[*input_index].value = value.clone();

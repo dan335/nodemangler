@@ -1,11 +1,12 @@
-use crate::NodeOutputChangedMessage;
 use crate::input::Input;
 use crate::nodes::node_settings::NodeSettings;
-use crate::nodes::operation::{ConnectionSettings, UiType};
-use crate::output::Output;
+use crate::nodes::operation::{ConnectionSettings, UiType, OperationResponse};
 use crate::value::{Value, ValueType};
+use crate::NodeOutputChangedMessage;
 use core::panic;
 use std::time::Instant;
+
+use super::operation::OperationError;
 
 lazy_static! {
     pub static ref SETTINGS: NodeSettings = NodeSettings::new("Add".to_string());
@@ -31,10 +32,9 @@ lazy_static! {
     },];
 }
 
-
 // NodeOutputChangedMessage is the message to send to main thread
 // value is separate because it will not be sent
-pub async fn add(node_id: &String, inputs: &[Input]) -> Vec<NodeOutputChangedMessage> {
+pub async fn add(node_id: &String, inputs: &[Input]) -> Result<Vec<OperationResponse>, OperationError> {
     let start_time = Instant::now();
 
     let value = match (&inputs[0].get_value(), &inputs[1].get_value()) {
@@ -59,14 +59,11 @@ pub async fn add(node_id: &String, inputs: &[Input]) -> Vec<NodeOutputChangedMes
         _ => panic!("Unable to add formats."),
     };
 
-    let node_output_message = NodeOutputChangedMessage {
-        node_id: node_id.clone(),
-        output_index: 0,
-        value_type: value.value_type(),
-        value: value,
+    let response = OperationResponse {
+        value,
         time: Instant::now().duration_since(start_time),
-        thumbnail: None,
+        index: 0,
     };
 
-    vec![node_output_message]
+    Ok(vec![response])
 }

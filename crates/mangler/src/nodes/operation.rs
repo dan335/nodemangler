@@ -27,7 +27,7 @@ pub enum Operation {
 
 impl Operation {
     pub async fn run(&self, node_id: &String, inputs: &Vec<Input>, outputs: &mut Vec<Output>, tx_output: Sender<NodeOutputChangedMessage>) -> Duration {
-        let node_output_messages = match self {
+        let p_operation_responses: Result<Vec<OperationResponse>, OperationError> = match self {
             Operation::Float => new_float(node_id, inputs).await,
             Operation::Integer => new_integer(node_id, inputs).await,
             Operation::Add => add(node_id, inputs).await,
@@ -35,24 +35,35 @@ impl Operation {
             Operation::ImageFromUrl => image_from_url(node_id, inputs).await,
             Operation::ImageResize => image_resize(node_id, inputs).await,
         };
-        
-        let time = node_output_messages[0].time;
 
-        for (index, mut node_output_message) in node_output_messages.into_iter().enumerate() {
+        if let Ok(operation_responses) = p_operation_responses {
+            let time = operation_responses[0].time;
 
-            node_output_message.thumbnail = Self::create_thumbnail(&node_output_message.value);
+            for operation_response in operation_responses.into_iter() {
 
-            match tx_output.try_send(node_output_message.clone()) {
-                Ok(_) => {
-                    outputs[index].value = node_output_message.value;
-                },
-                Err(err) => {
-                    println!("Error: {:?}", err);
-                },
+                let node_output_message = NodeOutputChangedMessage {
+                    node_id: node_id.clone(),
+                    output_index: operation_response.index,
+                    value: operation_response.value.clone(),
+                    value_type: operation_response.value.value_type(),
+                    time: operation_response.time,
+                    thumbnail: Self::create_thumbnail(&operation_response.value),
+                };
+
+                outputs[operation_response.index].value = operation_response.value;
+
+                match tx_output.try_send(node_output_message.clone()) {
+                    Ok(_) => {},
+                    Err(err) => {
+                        println!("Error sending NodeOutputChangedMessage: {:?}", err);
+                    },
+                }
             }
-        }
 
-        time
+            return time;
+        }
+        
+        Duration::ZERO
     }
 
     pub fn create_thumbnail(value: &Value) -> Option<ImageBuffer<Rgba<u8>, Vec<u8>>> {
@@ -117,12 +128,14 @@ pub enum UiType {
 }
 
 
-// pub struct OperationResponse {
-//     pub output_values: Vec<NodeOutputChangedMessage>,
-// }
+pub struct OperationResponse {
+    pub index: usize,
+    pub value: Value,
+    pub time: Duration,
+}
 
-// impl OperationResponse {
-//     pub fn new() -> OperationResponse {
-//         OperationResponse { output_values: Vec::new() }
-//     }
-// }
+
+#[derive(Debug)]
+pub struct OperationError {
+    pub message: String,
+}
