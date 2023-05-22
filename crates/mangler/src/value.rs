@@ -4,10 +4,68 @@ use image::{
 };
 
 
+// #[derive(Debug, Clone)]
+// pub enum Value {
+//     BasicValue(BasicValue),
+//     ImageValue(ImageValue),
+//     TextValue(TextValue),
+//     SettingValue(SettingValue),
+//     UiValue(UiValue),
+// }
+
+// #[derive(Debug, Clone)]
+// pub enum BasicValue {
+//     Bool(bool),
+//     Integer(i32),
+//     Decimal(f32),
+// }
+
+// #[derive(Debug, Clone)]
+// pub enum ImageValue {
+//     ImageRgba32F(Rgba32FImage),
+//     ImageRgb32F(Rgb32FImage),
+//     ImageRgba16(ImageBuffer<Rgba<u16>, Vec<u16>>),
+//     ImageRgb16(ImageBuffer<Rgb<u16>, Vec<u16>>),
+//     ImageGrayA16(ImageBuffer<LumaA<u16>, Vec<u16>>),
+//     ImageGray16(ImageBuffer<Luma<u16>, Vec<u16>>),
+//     ImageRgba8(RgbaImage),
+//     ImageRgb8(RgbImage),
+//     ImageGrayA8(GrayAlphaImage),
+//     ImageGray8(GrayImage),
+// }
+
+// #[derive(Debug, Clone)]
+// pub enum TextValue {
+//     String(String)
+// }
+
+// #[derive(Debug, Clone)]
+// pub enum SettingValue {
+//     FilterType(FilterType),
+//     ImageFormat(ImageFormat),
+// }
+
+// #[derive(Debug, Clone)]
+// pub enum UiValue {
+//     UiButton(UiButton)
+// }
+
+// impl TryFrom<BasicValue> for ImageValue {
+//     fn try_from(value: BasicValue) -> Result<Self, Self::Error> {
+//         match value {
+
+//         }
+//     }
+// }
+
+
+
+
+
+
 
 #[derive(Debug, Clone)]
 pub enum Value {
-    Bool(bool),
     Integer(i32),
     Decimal(f32),
     String(String),
@@ -26,57 +84,263 @@ pub enum Value {
     UiButton(bool),
 }
 
+//pub struct BoolValue(bool);
+
+impl TryFrom<Value> for Value {
+    type Error = ();
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Integer(int) => Ok(Value::Decimal(int as f32)),
+            Value::Decimal(float) => Ok(Value::Integer(float as i32)),
+            _ => Err(()),
+        }
+    }
+}
+
+// impl TryFrom<Value> for Value {
+//     type Error;
+
+//     fn try_from(value: Value) -> Result<Self, Self::Error> {
+//         todo!()
+//     }
+// }
+
+// pub struct ImageValue(ImageData);
+
+// impl TryFrom<Value> for ImageValue {
+//     type Error = ConversionError;
+
+//     fn try_from(value: Value) -> Result<ImageValue, Self::Error> {
+//         match value {
+//             Value::BoolValue => {
+                
+//             },
+//             Value::ImageValue => todo!(),
+//             Value::Integer(_) => todo!(),
+//             Value::Decimal(_) => todo!(),
+//             Value::String(_) => todo!(),
+//             Value::ImageRgba32F(_) => todo!(),
+//             Value::ImageRgb32F(_) => todo!(),
+//             Value::ImageRgba16(_) => todo!(),
+//             Value::ImageRgb16(_) => todo!(),
+//             Value::ImageGrayA16(_) => todo!(),
+//             Value::ImageGray16(_) => todo!(),
+//             Value::ImageRgba8(_) => todo!(),
+//             Value::ImageRgb8(_) => todo!(),
+//             Value::ImageGrayA8(_) => todo!(),
+//             Value::ImageGray8(_) => todo!(),
+//             Value::FilterType(_) => todo!(),
+//             Value::ImageFormat(_) => todo!(),
+//             Value::UiButton(_) => todo!(),
+//         }
+//     }
+// }
+
+// pub enum ImageData {
+//     ImageRgba32F(Rgba32FImage),
+//     ImageRgb32F(Rgb32FImage),
+//     ImageRgba16(ImageBuffer<Rgba<u16>, Vec<u16>>),
+//     ImageRgb16(ImageBuffer<Rgb<u16>, Vec<u16>>),
+//     ImageGrayA16(ImageBuffer<LumaA<u16>, Vec<u16>>),
+//     ImageGray16(ImageBuffer<Luma<u16>, Vec<u16>>),
+//     ImageRgba8(RgbaImage),
+//     ImageRgb8(RgbImage),
+//     ImageGrayA8(GrayAlphaImage),
+//     ImageGray8(GrayImage),
+// }
+
+// impl TryFrom<Value> for ImageData {
+//     type Error;
+
+//     fn try_from(value: Value) -> Result<Self, Self::Error> {
+//         todo!()
+//     }
+// }
+
 impl Value {
+
     pub fn value_type(&self) -> ValueType {
         match self {
-            Value::Bool(_) => ValueType::Bool,
-            Value::Integer(_) => ValueType::Integer,
-            Value::Decimal(_) => ValueType::Decimal,
-            Value::String(_) => ValueType::String,
-            Value::ImageRgba32F(_) => ValueType::ImageRgba32F,
-            Value::ImageRgba8(_) => ValueType::ImageRgba8,
-            Value::ImageGray8(_) => ValueType::ImageGray8,
-            Value::FilterType(_) => ValueType::FilterType,
-            Value::ImageRgb32F(_) => ValueType::ImageRgb32F,
-            Value::ImageRgba16(_) => ValueType::ImageRgba16,
-            Value::ImageRgb16(_) => ValueType::ImageRgb16,
-            Value::ImageGrayA16(_) => ValueType::ImageGrayA16,
-            Value::ImageGray16(_) => ValueType::ImageGray16,
-            Value::ImageRgb8(_) => ValueType::ImageRgb8,
-            Value::ImageGrayA8(_) => ValueType::ImageGrayA8,
-            Value::ImageFormat(_) => ValueType::ImageFormat,
-            Value::UiButton(_) => ValueType::UiButton,
+            Value::BasicValue(v) => {
+                match v {
+                    BasicValue::Bool(_) => ValueType::Bool,
+                    BasicValue::Integer(_) => ValueType::Integer,
+                    BasicValue::Decimal(_) => ValueType::Decimal,
+                }
+            },
+            Value::ImageValue(v) => {
+                match v {
+                    ImageValue::ImageRgba32F(_) => ValueType::ImageRgba32F,
+                    ImageValue::ImageRgb32F(_) => ValueType::ImageRgb32F,
+                    ImageValue::ImageRgba16(_) => ValueType::ImageRgba16,
+                    ImageValue::ImageRgb16(_) => ValueType::ImageRgb16,
+                    ImageValue::ImageGrayA16(_) => ValueType::ImageGrayA16,
+                    ImageValue::ImageGray16(_) => ValueType::ImageGray16,
+                    ImageValue::ImageRgba8(_) => ValueType::ImageRgba8,
+                    ImageValue::ImageRgb8(_) => ValueType::ImageRgb8,
+                    ImageValue::ImageGrayA8(_) => ValueType::ImageGrayA8,
+                    ImageValue::ImageGray8(_) => ValueType::ImageGray8,
+                }
+            },
+            Value::TextValue(v) => {
+                match v {
+                    TextValue::String(_) => ValueType::String,
+                }
+            },
+            Value::SettingValue(v) => {
+                match v {
+                    SettingValue::FilterType(_) => ValueType::FilterType,
+                    SettingValue::ImageFormat(_) => ValueType::ImageFormat,
+                }
+            },
+            Value::UiValue(v) => {
+                match v {
+                    UiValue::UiButton(_) => ValueType::UiButton,
+                }
+            },
         }
+
+        // match self {
+        //     Value::Bool(_) => ValueType::Bool,
+        //     Value::Integer(_) => ValueType::Integer,
+        //     Value::Decimal(_) => ValueType::Decimal,
+        //     Value::String(_) => ValueType::String,
+        //     Value::ImageRgba32F(_) => ValueType::ImageRgba32F,
+        //     Value::ImageRgba8(_) => ValueType::ImageRgba8,
+        //     Value::ImageGray8(_) => ValueType::ImageGray8,
+        //     Value::FilterType(_) => ValueType::FilterType,
+        //     Value::ImageRgb32F(_) => ValueType::ImageRgb32F,
+        //     Value::ImageRgba16(_) => ValueType::ImageRgba16,
+        //     Value::ImageRgb16(_) => ValueType::ImageRgb16,
+        //     Value::ImageGrayA16(_) => ValueType::ImageGrayA16,
+        //     Value::ImageGray16(_) => ValueType::ImageGray16,
+        //     Value::ImageRgb8(_) => ValueType::ImageRgb8,
+        //     Value::ImageGrayA8(_) => ValueType::ImageGrayA8,
+        //     Value::ImageFormat(_) => ValueType::ImageFormat,
+        //     Value::UiButton(_) => ValueType::UiButton,
+        // }
     }
 
     pub fn value_name(&self) -> String {
         match self {
-            Value::Bool(_) => "bool".to_string(),
-            Value::Integer(_) => "integer".to_string(),
-            Value::Decimal(_) => "decimal".to_string(),
-            Value::String(_) => "string".to_string(),
-            Value::ImageRgba32F(_) => "rgba 32f".to_string(),
-            Value::ImageRgb32F(_) => "rgb 32f".to_string(),
-            Value::ImageRgba16(_) => "rgba 16".to_string(),
-            Value::ImageRgb16(_) => "rgb 16".to_string(),
-            Value::ImageGrayA16(_) => "gray a 16".to_string(),
-            Value::ImageGray16(_) => "gray 16".to_string(),
-            Value::ImageRgba8(_) => "rgba 8".to_string(),
-            Value::ImageRgb8(_) => "rgb 8".to_string(),
-            Value::ImageGrayA8(_) => "gray a 8".to_string(),
-            Value::ImageGray8(_) => "gray 8".to_string(),
-            Value::FilterType(_) => "filter type".to_string(),
-            Value::ImageFormat(_) => "image format".to_string(),
-            Value::UiButton(_) => "button".to_string(),
+            Value::BasicValue(v) => {
+                match v {
+                    BasicValue::Bool(_) => "bool".to_string(),
+                    BasicValue::Integer(_) => "integer".to_string(),
+                    BasicValue::Decimal(_) => "decimal".to_string(),
+                }
+            },
+            Value::ImageValue(v) => {
+                match v {
+                    ImageValue::ImageRgba32F(_) => "rgba 32f image".to_string(),
+                    ImageValue::ImageRgb32F(_) => "rgb 32f image".to_string(),
+                    ImageValue::ImageRgba16(_) => "rgba 16 image".to_string(),
+                    ImageValue::ImageRgb16(_) => "rgb 16 image".to_string(),
+                    ImageValue::ImageGrayA16(_) => "gray alpha 16 image".to_string(),
+                    ImageValue::ImageGray16(_) => "gray 16 image".to_string(),
+                    ImageValue::ImageRgba8(_) => "rgba 8 image".to_string(),
+                    ImageValue::ImageRgb8(_) => "rgb 8 image".to_string(),
+                    ImageValue::ImageGrayA8(_) => "gray alpha 8 image".to_string(),
+                    ImageValue::ImageGray8(_) => "gray 8 image".to_string(),
+                }
+            },
+            Value::TextValue(v) => {
+                match v {
+                    TextValue::String(_) => "string".to_string(),
+                }
+            },
+            Value::SettingValue(v) => {
+                match v {
+                    SettingValue::FilterType(_) => "filter type".to_string(),
+                    SettingValue::ImageFormat(_) => "image format".to_string(),
+                }
+            },
+            Value::UiValue(v) => {
+                match v {
+                    UiValue::UiButton(_) => "button".to_string(),
+                }
+            },
         }
+        
+        // match self {
+        //     Value::Bool(_) => "bool".to_string(),
+        //     Value::Integer(_) => "integer".to_string(),
+        //     Value::Decimal(_) => "decimal".to_string(),
+        //     Value::String(_) => "string".to_string(),
+        //     Value::ImageRgba32F(_) => "rgba 32f".to_string(),
+        //     Value::ImageRgb32F(_) => "rgb 32f".to_string(),
+        //     Value::ImageRgba16(_) => "rgba 16".to_string(),
+        //     Value::ImageRgb16(_) => "rgb 16".to_string(),
+        //     Value::ImageGrayA16(_) => "gray a 16".to_string(),
+        //     Value::ImageGray16(_) => "gray 16".to_string(),
+        //     Value::ImageRgba8(_) => "rgba 8".to_string(),
+        //     Value::ImageRgb8(_) => "rgb 8".to_string(),
+        //     Value::ImageGrayA8(_) => "gray a 8".to_string(),
+        //     Value::ImageGray8(_) => "gray 8".to_string(),
+        //     Value::FilterType(_) => "filter type".to_string(),
+        //     Value::ImageFormat(_) => "image format".to_string(),
+        //     Value::UiButton(_) => "button".to_string(),
+        // }
     }
 
     pub fn convert_to(&self, other: ValueType) -> Result<Value, ConversionError> {
         match self {
+            Value::BasicValue(a) => match other {
+                ValueType::BasicValueType(t) => match t {
+                    BasicValueType::Bool => Ok(Value::BasicValue(*a)),
+                    BasicValueType::Integer => {
+                        if *a {
+                            Ok(Value::Integer(1))
+                        } else {
+                            Ok(Value::Integer(0))
+                        }
+                    },
+                    BasicValueType::Decimal => todo!(),
+                },
+                ValueType::ImageValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+                ValueType::TextValueType(t) => match t {
+                    TextValueType::String => todo!(),
+                },
+                ValueType::SettingValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+                ValueType::UiValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+            },
+            Value::ImageValue(a) => match other {
+                ValueType::BasicValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+                ValueType::ImageValueType(_) => todo!(),
+                ValueType::TextValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+                ValueType::SettingValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+                ValueType::UiValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+            },
+            Value::TextValue(a) => match other {
+                ValueType::BasicValueType(_) => todo!(),
+                ValueType::ImageValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+                ValueType::TextValueType(_) => todo!(),
+                ValueType::SettingValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+                ValueType::UiValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+            },
+            Value::SettingValue(a) => match other {
+                ValueType::BasicValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+                ValueType::ImageValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+                ValueType::TextValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+                ValueType::SettingValueType(_) => todo!(),
+                ValueType::UiValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+            },
+            Value::UiValue(a) => match other {
+                ValueType::BasicValueType(_) => todo!(),
+                ValueType::ImageValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+                ValueType::TextValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+                ValueType::SettingValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+                ValueType::UiValueType(_) => Err(ConversionError {message: "Unable to convert.".to_string()}),
+            },
+        };
+
+        match self {
             Value::Bool(a) => match other {
                 ValueType::Bool => Ok(Value::Bool(*a)),
                 ValueType::Integer => {
-                    if *a {
+                    let 
+                    if BasicValue(*a) {
                         Ok(Value::Integer(1))
                     } else {
                         Ok(Value::Integer(0))
@@ -763,10 +1027,22 @@ impl Value {
 
 #[derive(Debug, Clone)]
 pub enum ValueType {
+    BasicValueType(BasicValueType),
+    ImageValueType(ImageValueType),
+    TextValueType(TextValueType),
+    SettingValueType(SettingValueType),
+    UiValueType(UiValueType),
+}
+
+#[derive(Debug, Clone)]
+pub enum BasicValueType {
     Bool,
     Integer,
     Decimal,
-    String,
+}
+
+#[derive(Debug, Clone)]
+pub enum ImageValueType {
     ImageRgba32F,
     ImageRgb32F,
     ImageRgba16,
@@ -777,10 +1053,25 @@ pub enum ValueType {
     ImageRgb8,
     ImageGrayA8,
     ImageGray8,
+}
+
+#[derive(Debug, Clone)]
+pub enum TextValueType {
+    String,
+}
+
+#[derive(Debug, Clone)]
+pub enum SettingValueType {
     FilterType,
     ImageFormat,
-    UiButton,
 }
+
+#[derive(Debug, Clone)]
+pub enum UiValueType {
+    Button
+}
+
+
 
 #[derive(Debug)]
 pub struct ConversionError {
@@ -802,4 +1093,5 @@ pub enum ImageFormat {
 }
 
 
+#[derive(Debug, Clone)]
 pub struct UiButton(bool);
