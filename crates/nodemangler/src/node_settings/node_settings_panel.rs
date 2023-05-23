@@ -153,16 +153,16 @@ impl NodeSettingsPanel {
                                     }
                                 }
                             }
-                            Value::ImageRgba32F(_) => {}
-                            Value::ImageRgb32F(_) => {}
-                            Value::ImageRgba16(_) => {}
-                            Value::ImageRgb16(_) => {}
-                            Value::ImageGrayA16(_) => {}
-                            Value::ImageGray16(_) => {}
-                            Value::ImageRgba8(_) => {}
-                            Value::ImageRgb8(_) => {}
-                            Value::ImageGrayA8(_) => {}
-                            Value::ImageGray8(_) => {}
+                            Value::Rgba32FImage(_) => {}
+                            Value::Rgb32FImage(_) => {}
+                            Value::Rgba16Image(_) => {}
+                            Value::Rgb16Image(_) => {}
+                            Value::GrayAlpha16Image(_) => {}
+                            Value::Gray16Image(_) => {}
+                            Value::RgbaImage(_) => {}
+                            Value::RgbImage(_) => {}
+                            Value::GrayAlphaImage(_) => {}
+                            Value::GrayImage(_) => {}
                             Value::FilterType(a) => {
                                 if input.connection.is_some() {
                                     ui.label(format!("{:?}", a));
@@ -455,11 +455,19 @@ impl NodeSettingsPanel {
                                         });
                                 }
                             }
-                            Value::UiButton(_) => {
+                            Value::UiButton(a) => {
                                 if input.connection.is_some() {
                                     ui.label(format!("{:?}", a));
                                 } else {
-
+                                    if ui.add(egui::Button::new(input.name.clone())).clicked() {
+                                        self.change_value(
+                                            tx_input.clone(),
+                                            node.id.clone(),
+                                            input_index,
+                                            input,
+                                            Value::UiButton(true),
+                                        );
+                                    }
                                 }
                             },
                         }

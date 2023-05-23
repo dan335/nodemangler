@@ -1,12 +1,9 @@
 use crate::input::Input;
 use crate::nodes::node_settings::NodeSettings;
-use crate::nodes::operation::{ConnectionSettings, UiType, OperationResponse};
+use crate::nodes::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
 use crate::value::{Value, ValueType};
-use crate::NodeOutputChangedMessage;
 use core::panic;
 use std::time::Instant;
-
-use super::operation::OperationError;
 
 lazy_static! {
     pub static ref SETTINGS: NodeSettings = NodeSettings::new("Add".to_string());
@@ -34,7 +31,7 @@ lazy_static! {
 
 // NodeOutputChangedMessage is the message to send to main thread
 // value is separate because it will not be sent
-pub async fn add(node_id: &String, inputs: &[Input]) -> Result<Vec<OperationResponse>, OperationError> {
+pub async fn add(inputs: &[Input]) -> Result<Vec<OperationResponse>, OperationError> {
     let start_time = Instant::now();
 
     let value = match (&inputs[0].get_value(), &inputs[1].get_value()) {
@@ -65,5 +62,5 @@ pub async fn add(node_id: &String, inputs: &[Input]) -> Result<Vec<OperationResp
         index: 0,
     };
 
-    Ok(vec![response])
+    Ok(Vec::from([response]))
 }

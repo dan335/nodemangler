@@ -238,36 +238,37 @@ impl GraphNode {
             );
         } else {
             match &self.outputs[0].value {
-                mangler::value::Value::Bool(value) => {
+                Value::Bool(value) => {
                     show_output_text(ui, node_rect.center(), value.to_string())
                 }
-                mangler::value::Value::Integer(value) => {
+                Value::Integer(value) => {
                     show_output_text(ui, node_rect.center(), value.to_string())
                 }
-                mangler::value::Value::Decimal(value) => {
+                Value::Decimal(value) => {
                     show_output_text(ui, node_rect.center(), value.to_string())
                 }
-                mangler::value::Value::String(value) => {
+                Value::String(value) => {
                     show_output_text(ui, node_rect.center(), value.to_string())
                 }
 
-                mangler::value::Value::ImageRgba32F(_)
-                | mangler::value::Value::ImageRgba8(_)
-                | mangler::value::Value::ImageGray8(_)
-                | mangler::value::Value::ImageRgb32F(_)
-                | mangler::value::Value::ImageRgba16(_)
-                | mangler::value::Value::ImageRgb16(_)
-                | mangler::value::Value::ImageGrayA16(_)
-                | mangler::value::Value::ImageGray16(_)
-                | mangler::value::Value::ImageRgb8(_)
-                | mangler::value::Value::ImageGrayA8(_) => {}
+                Value::Rgba32FImage(_)
+                | Value::RgbaImage(_)
+                | Value::GrayImage(_)
+                | Value::Rgb32FImage(_)
+                | Value::Rgba16Image(_)
+                | Value::Rgb16Image(_)
+                | Value::GrayAlpha16Image(_)
+                | Value::Gray16Image(_)
+                | Value::RgbImage(_)
+                | Value::GrayAlphaImage(_) => {}
 
-                mangler::value::Value::FilterType(value) => {
+                Value::FilterType(value) => {
                     show_output_text(ui, node_rect.center(), format!("{:?}", value))
                 }
-                mangler::value::Value::ImageFormat(value) => {
+                Value::ImageFormat(value) => {
                     show_output_text(ui, node_rect.center(), format!("{:?}", value))
                 }
+                Value::UiButton(_) => todo!(),
             }
         }
 

@@ -1,24 +1,22 @@
+use image::{RgbaImage, DynamicImage};
+
 use crate::input::Input;
 use crate::nodes::node_settings::NodeSettings;
-use crate::nodes::operation::{ConnectionSettings, UiType};
+use crate::nodes::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
 use crate::value::{Value, ValueType};
-use super::operation::OperationError;
 use core::panic;
-use image::{DynamicImage, RgbaImage};
 use std::time::Instant;
-
-use super::operation::OperationResponse;
 
 lazy_static! {
     pub static ref SETTINGS: NodeSettings = NodeSettings::new("Resize".to_string());
     pub static ref INPUT_SETTINGS: Vec<ConnectionSettings> = vec![
         ConnectionSettings {
             name: "image".to_string(),
-            default_value: Value::ImageRgba8(RgbaImage::new(32, 32)),
+            default_value: Value::RgbaImage(RgbaImage::new(32, 32)),
             valid_types: vec![
-                ValueType::ImageRgba32F,
-                ValueType::ImageRgba8,
-                ValueType::ImageGray8
+                ValueType::Rgba32FImage,
+                ValueType::RgbaImage,
+                ValueType::GrayImage
             ],
             ui_type: None,
         },
@@ -56,11 +54,11 @@ lazy_static! {
     pub static ref OUTPUT_SETTINGS: Vec<ConnectionSettings> = vec![
         ConnectionSettings {
             name: "image".to_string(),
-            default_value: Value::ImageRgba8(RgbaImage::new(32, 32)),
+            default_value: Value::RgbaImage(RgbaImage::new(32, 32)),
             valid_types: vec![
-                ValueType::ImageRgba32F,
-                ValueType::ImageRgba8,
-                ValueType::ImageGray8
+                ValueType::Rgba32FImage,
+                ValueType::RgbaImage,
+                ValueType::GrayImage
             ],
             ui_type: None,
         },
@@ -79,11 +77,11 @@ lazy_static! {
     ];
 }
 
-pub async fn image_resize(node_id: &String, inputs: &[Input]) -> Result<Vec<OperationResponse>, OperationError> {
+pub async fn image_resize(inputs: &[Input]) -> Result<Vec<OperationResponse>, OperationError> {
     let start_time = Instant::now();
 
-    let Ok(Value::Integer(mut width)) = inputs[1].get_value().convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-    let Ok(Value::Integer(mut height)) = inputs[2].get_value().convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+    let Ok(Value::Integer(mut width)) = inputs[1].get_value().try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+    let Ok(Value::Integer(mut height)) = inputs[2].get_value().try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
     // let Value::Integer(mut width) = inputs[1].get_value() else { panic!("not suported")};
     // let Value::Integer(mut height) = inputs[2].get_value() else { panic!("not suported")};
     let Value::Bool(auto_width) = inputs[3].get_value() else { panic!("not suported")};
@@ -94,16 +92,16 @@ pub async fn image_resize(node_id: &String, inputs: &[Input]) -> Result<Vec<Oper
     height = height.max(1);
 
     let dynamic_image = match &inputs[0].get_value() {
-        Value::ImageRgba32F(image) => DynamicImage::ImageRgba32F(image.clone()),
-        Value::ImageRgb32F(image) => DynamicImage::ImageRgb32F(image.clone()),
-        Value::ImageRgba16(image) => DynamicImage::ImageRgba16(image.clone()),
-        Value::ImageRgb16(image) => DynamicImage::ImageRgb16(image.clone()),
-        Value::ImageGrayA16(image) => DynamicImage::ImageLumaA16(image.clone()),
-        Value::ImageGray16(image) => DynamicImage::ImageLuma16(image.clone()),
-        Value::ImageRgba8(image) => DynamicImage::ImageRgba8(image.clone()),
-        Value::ImageRgb8(image) => DynamicImage::ImageRgb8(image.clone()),
-        Value::ImageGrayA8(image) => DynamicImage::ImageLumaA8(image.clone()),
-        Value::ImageGray8(image) => DynamicImage::ImageLuma8(image.clone()),
+        Value::Rgba32FImage(image) => DynamicImage::ImageRgba32F(image.clone()),
+        Value::Rgb32FImage(image) => DynamicImage::ImageRgb32F(image.clone()),
+        Value::Rgba16Image(image) => DynamicImage::ImageRgba16(image.clone()),
+        Value::Rgb16Image(image) => DynamicImage::ImageRgb16(image.clone()),
+        Value::GrayAlpha16Image(image) => DynamicImage::ImageLumaA16(image.clone()),
+        Value::Gray16Image(image) => DynamicImage::ImageLuma16(image.clone()),
+        Value::RgbaImage(image) => DynamicImage::ImageRgba8(image.clone()),
+        Value::RgbImage(image) => DynamicImage::ImageRgb8(image.clone()),
+        Value::GrayAlphaImage(image) => DynamicImage::ImageLumaA8(image.clone()),
+        Value::GrayImage(image) => DynamicImage::ImageLuma8(image.clone()),
         Value::Bool(_)
         | Value::Integer(_)
         | Value::Decimal(_)
@@ -112,21 +110,22 @@ pub async fn image_resize(node_id: &String, inputs: &[Input]) -> Result<Vec<Oper
         | Value::ImageFormat(_) => {
             panic!("Unsupported.")
         }
+        Value::UiButton(_) => todo!(),
     };
 
     let resized = dynamic_image.resize_exact(width as u32, height as u32, *filter_type);
 
     let value_0 = match inputs[0].get_value().clone().value_type() {
-        ValueType::ImageRgba32F => Value::ImageRgba32F(resized.to_rgba32f()),
-        ValueType::ImageRgb32F => Value::ImageRgb32F(resized.to_rgb32f()),
-        ValueType::ImageRgba16 => Value::ImageRgba16(resized.to_rgba16()),
-        ValueType::ImageRgb16 => Value::ImageRgb16(resized.to_rgb16()),
-        ValueType::ImageGrayA16 => Value::ImageGrayA16(resized.to_luma_alpha16()),
-        ValueType::ImageGray16 => Value::ImageGray16(resized.to_luma16()),
-        ValueType::ImageRgba8 => Value::ImageRgba8(resized.to_rgba8()),
-        ValueType::ImageRgb8 => Value::ImageRgb8(resized.to_rgb8()),
-        ValueType::ImageGrayA8 => Value::ImageGrayA8(resized.to_luma_alpha8()),
-        ValueType::ImageGray8 => Value::ImageGray8(resized.to_luma8()),
+        ValueType::Rgba32FImage => Value::Rgba32FImage(resized.to_rgba32f()),
+        ValueType::Rgb32FImage => Value::Rgb32FImage(resized.to_rgb32f()),
+        ValueType::Rgba16Image => Value::Rgba16Image(resized.to_rgba16()),
+        ValueType::Rgb16Image => Value::Rgb16Image(resized.to_rgb16()),
+        ValueType::GrayAlpha16Image => Value::GrayAlpha16Image(resized.to_luma_alpha16()),
+        ValueType::Gray16Image => Value::Gray16Image(resized.to_luma16()),
+        ValueType::RgbaImage => Value::RgbaImage(resized.to_rgba8()),
+        ValueType::RgbImage => Value::RgbImage(resized.to_rgb8()),
+        ValueType::GrayAlphaImage => Value::GrayAlphaImage(resized.to_luma_alpha8()),
+        ValueType::GrayImage => Value::GrayImage(resized.to_luma8()),
         ValueType::Bool
         | ValueType::Integer
         | ValueType::Decimal
@@ -135,6 +134,7 @@ pub async fn image_resize(node_id: &String, inputs: &[Input]) -> Result<Vec<Oper
         | ValueType::ImageFormat => {
             return Err(OperationError{ message: "Format not supported.".to_string() });
         }
+        ValueType::UiButton => todo!(),
     };
 
     let value_1 = Value::Integer(resized.width() as i32);

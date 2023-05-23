@@ -34,7 +34,7 @@ impl ViewPanel {
                 || image_is_dirty
             {
                 let color_image = match &node.outputs[0].value {
-                    mangler::value::Value::ImageRgba32F(value) => {
+                    mangler::value::Value::Rgba32FImage(value) => {
                         let image_buffer = DynamicImage::ImageRgba32F(value.clone())
                             .resize(
                                 ui.max_rect().width() as u32,
@@ -49,7 +49,7 @@ impl ViewPanel {
                         ];
                         Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
                     }
-                    mangler::value::Value::ImageRgba8(value) => {
+                    mangler::value::Value::RgbaImage(value) => {
                         let image_buffer = DynamicImage::ImageRgba8(value.clone())
                             .resize(
                                 ui.max_rect().width() as u32,
@@ -64,7 +64,7 @@ impl ViewPanel {
                         ];
                         Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
                     }
-                    mangler::value::Value::ImageGray8(value) => {
+                    mangler::value::Value::GrayImage(value) => {
                         let image_buffer = DynamicImage::ImageLuma8(value.clone())
                             .resize(
                                 ui.max_rect().width() as u32,

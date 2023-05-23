@@ -14,24 +14,7 @@ pub struct MenuButton {
     pub operation: Operation,
 }
 
-// impl Clone for MenuButton {
-//     fn clone(&self) -> Self {
-//         MenuButton {
-//             operation: self.operation.clone(),
-//         }
-//     }
-// }
-
 impl MenuButton {
-    // pub fn new(node_settings: NodeSettings, input_settings: Vec<ConnectionSettings>, output_settings: Vec<ConnectionSettings>) -> MenuButton {
-    //     MenuButton {
-    //         node_settings,
-    //         input_settings,
-    //         output_settings,
-    //         T,
-    //     }
-    // }
-
     pub fn show(&mut self, ui: &mut egui::Ui, button_index: usize) -> MenuButtonResult {
         let container_rect = ui.max_rect();
         let button_top_position = container_rect.top() + (BUTTON_HEIGHT * button_index as f32);
