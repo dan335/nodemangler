@@ -1,6 +1,6 @@
 use crate::input::Input;
-use crate::nodes::node_settings::NodeSettings;
-use crate::nodes::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
+use crate::node_settings::NodeSettings;
+use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
 use crate::value::{Value, ValueType};
 use std::time::Instant;
 
@@ -19,8 +19,8 @@ lazy_static! {
     ];
     pub static ref OUTPUT_SETTINGS: Vec<ConnectionSettings> = vec![ConnectionSettings {
         name: "image".to_string(),
-        default_value: Value::RgbaImage(RgbaImage::new(32, 32)),
-        valid_types: vec![ValueType::RgbaImage],
+        default_value: Value::DynamicImage(image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32))),
+        valid_types: vec![ValueType::DynamicImage],
         ui_type: None,
     },];
 }
@@ -39,7 +39,7 @@ pub async fn image_from_clipboard(_inputs: &[Input]) -> Result<Vec<OperationResp
             if let Some(image) = image_option{
                 let node_output_message = OperationResponse {
                     index: 0,
-                    value: Value::RgbaImage(image),
+                    value: Value::DynamicImage(image::DynamicImage::ImageRgba8(image)),
                     time: Instant::now().duration_since(start_time),
                 };
 

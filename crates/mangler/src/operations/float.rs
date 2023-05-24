@@ -1,8 +1,7 @@
 use crate::input::Input;
-use crate::nodes::node_settings::NodeSettings;
-use crate::nodes::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
+use crate::node_settings::NodeSettings;
+use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
 use crate::value::{Value, ValueType};
-use core::panic;
 use std::time::Instant;
 
 lazy_static! {
@@ -36,7 +35,7 @@ pub async fn new_float(inputs: &[Input]) -> Result<Vec<OperationResponse>, Opera
             }
         },
 
-        _ => panic!("Unable to convert formats to float."),
+        _ => {return Err(OperationError{message:"Unable to convert to float.".to_string()});}
     };
 
     let node_output_message = OperationResponse {

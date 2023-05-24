@@ -2,8 +2,9 @@
     * delay updates if things are busy
     * make mangler lib runnable from exe
     * valid types
+    * node for a whole graph.  use a graph inside a graph
 
-*ui
+* ui
     * zoom view panel
     * show any output in view panel not just main
     * panel layout

@@ -3,12 +3,12 @@
 use eframe::egui::{self};
 use eframe::epaint::{ColorImage, Rounding};
 use egui::Vec2;
-use mangler::nodes::operation::{ConnectionSettings, Operation};
+use mangler::operation::{ConnectionSettings, Operation};
 use mangler::{
     get_id, AddConnectionMessage, AddNodeMessage, NodeInputChangedMessage,
     NodeOutputChangedMessage, RemoveConnectionMessage, RemoveNodeMessage, SetNodeInputMessage,
 };
-use mangler::{graph::Graph, nodes::node_settings::NodeSettings};
+use mangler::{graph::Graph, node_settings::NodeSettings};
 use std::path::Path;
 use tokio::time::{Duration, Instant};
 mod graph;

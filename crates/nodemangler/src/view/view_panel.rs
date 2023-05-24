@@ -4,7 +4,6 @@ use eframe::{
 };
 use egui::{Color32, Pos2, Rect};
 use image::DynamicImage;
-use mangler::nodes::node::Node;
 
 use crate::graph::graph_node::GraphNode;
 
@@ -40,7 +39,7 @@ impl ViewPanel {
 
         if let Some(node) = viewing_node {
             if self.image_node_id.is_none() || self.image_node_id.clone().unwrap() != node.id {
-                self.create_thumbnail(ui, node);
+                //self.create_thumbnail(ui, node);
             }
 
             if let Some(image) = &self.image {
@@ -103,63 +102,63 @@ impl ViewPanel {
     }
 
 
-    fn create_thumbnail(&mut self, ui: &mut egui::Ui, node: &GraphNode) {
-        let color_image = match &node.outputs[0].value {
-            mangler::value::Value::Rgba32FImage(value) => {
-                let image_buffer = DynamicImage::ImageRgba32F(value.clone())
-                    .resize(
-                        ui.max_rect().width() as u32,
-                        ui.max_rect().height() as u32,
-                        image::imageops::FilterType::Triangle,
-                    )
-                    .to_rgba8();
-                let pixels = image_buffer.as_flat_samples();
-                let size = [
-                    image_buffer.width() as usize,
-                    image_buffer.height() as usize,
-                ];
-                Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
-            }
-            mangler::value::Value::RgbaImage(value) => {
-                let image_buffer = DynamicImage::ImageRgba8(value.clone())
-                    .resize(
-                        ui.max_rect().width() as u32,
-                        ui.max_rect().height() as u32,
-                        image::imageops::FilterType::Triangle,
-                    )
-                    .to_rgba8();
-                let pixels = image_buffer.as_flat_samples();
-                let size = [
-                    image_buffer.width() as usize,
-                    image_buffer.height() as usize,
-                ];
-                Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
-            }
-            mangler::value::Value::GrayImage(value) => {
-                let image_buffer = DynamicImage::ImageLuma8(value.clone())
-                    .resize(
-                        ui.max_rect().width() as u32,
-                        ui.max_rect().height() as u32,
-                        image::imageops::FilterType::Triangle,
-                    )
-                    .to_rgba8();
-                let pixels = image_buffer.as_flat_samples();
-                let size = [
-                    image_buffer.width() as usize,
-                    image_buffer.height() as usize,
-                ];
-                Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
-            }
-            _ => None,
-        };
+    // fn create_thumbnail(&mut self, ui: &mut egui::Ui, node: &GraphNode) {
+    //     let color_image = match &node.outputs[0].value {
+    //         mangler::value::Value::Rgba32FImage(value) => {
+    //             let image_buffer = DynamicImage::ImageRgba32F(value.clone())
+    //                 .resize(
+    //                     ui.max_rect().width() as u32,
+    //                     ui.max_rect().height() as u32,
+    //                     image::imageops::FilterType::Triangle,
+    //                 )
+    //                 .to_rgba8();
+    //             let pixels = image_buffer.as_flat_samples();
+    //             let size = [
+    //                 image_buffer.width() as usize,
+    //                 image_buffer.height() as usize,
+    //             ];
+    //             Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
+    //         }
+    //         mangler::value::Value::RgbaImage(value) => {
+    //             let image_buffer = DynamicImage::ImageRgba8(value.clone())
+    //                 .resize(
+    //                     ui.max_rect().width() as u32,
+    //                     ui.max_rect().height() as u32,
+    //                     image::imageops::FilterType::Triangle,
+    //                 )
+    //                 .to_rgba8();
+    //             let pixels = image_buffer.as_flat_samples();
+    //             let size = [
+    //                 image_buffer.width() as usize,
+    //                 image_buffer.height() as usize,
+    //             ];
+    //             Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
+    //         }
+    //         mangler::value::Value::GrayImage(value) => {
+    //             let image_buffer = DynamicImage::ImageLuma8(value.clone())
+    //                 .resize(
+    //                     ui.max_rect().width() as u32,
+    //                     ui.max_rect().height() as u32,
+    //                     image::imageops::FilterType::Triangle,
+    //                 )
+    //                 .to_rgba8();
+    //             let pixels = image_buffer.as_flat_samples();
+    //             let size = [
+    //                 image_buffer.width() as usize,
+    //                 image_buffer.height() as usize,
+    //             ];
+    //             Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
+    //         }
+    //         _ => None,
+    //     };
 
-        if let Some(img) = color_image {
-            self.image = Some(ui.ctx().load_texture(
-                node.id.clone(),
-                img,
-                Default::default(),
-            ));
-            self.image_node_id = Some(node.id.clone());
-        }
-    }
+    //     if let Some(img) = color_image {
+    //         self.image = Some(ui.ctx().load_texture(
+    //             node.id.clone(),
+    //             img,
+    //             Default::default(),
+    //         ));
+    //         self.image_node_id = Some(node.id.clone());
+    //     }
+    // }
 }

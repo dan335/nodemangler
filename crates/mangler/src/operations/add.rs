@@ -1,8 +1,7 @@
 use crate::input::Input;
-use crate::nodes::node_settings::NodeSettings;
-use crate::nodes::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
+use crate::node_settings::NodeSettings;
+use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
 use crate::value::{Value, ValueType};
-use core::panic;
 use std::time::Instant;
 
 lazy_static! {
@@ -53,7 +52,7 @@ pub async fn add(inputs: &[Input]) -> Result<Vec<OperationResponse>, OperationEr
 
         (Value::String(a), Value::String(b)) => Value::String(format!("{} {}", *a, *b)),
 
-        _ => panic!("Unable to add formats."),
+        _ => {return Err(OperationError{message:"Unable to add formats.".to_string()});}
     };
 
     let response = OperationResponse {

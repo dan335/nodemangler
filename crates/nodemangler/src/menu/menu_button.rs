@@ -1,8 +1,8 @@
 use eframe::{egui, emath::Align2, epaint::FontId};
 use egui::{Color32, Pos2, Rect, Rounding, Stroke};
-use mangler::nodes::{
+use mangler::{
     node_settings::NodeSettings,
-    operation::{ConnectionSettings, Operation},
+    operation::{ConnectionSettings, Operation}, OperationCategory, OperationDescription,
 };
 
 const BUTTON_HEIGHT: f32 = 36.0;
@@ -17,6 +17,15 @@ pub struct MenuButton {
 }
 
 impl MenuButton {
+    pub fn new(cateogy: &OperationDescription) -> Self {
+        Self {
+            node_settings: cateogy.node_settings.clone(),
+            input_settings: cateogy.input_settings.clone(),
+            output_settings: cateogy.output_settings.clone(),
+            operation: cateogy.operation.clone(),
+        }
+    }
+
     pub fn show(&mut self, ui: &mut egui::Ui, button_index: usize) -> MenuButtonResult {
         let container_rect = ui.max_rect();
         let button_top_position = container_rect.top() + (BUTTON_HEIGHT * button_index as f32);

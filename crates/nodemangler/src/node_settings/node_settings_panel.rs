@@ -153,16 +153,6 @@ impl NodeSettingsPanel {
                                     }
                                 }
                             }
-                            Value::Rgba32FImage(_) => {}
-                            Value::Rgb32FImage(_) => {}
-                            Value::Rgba16Image(_) => {}
-                            Value::Rgb16Image(_) => {}
-                            Value::GrayAlpha16Image(_) => {}
-                            Value::Gray16Image(_) => {}
-                            Value::RgbaImage(_) => {}
-                            Value::RgbImage(_) => {}
-                            Value::GrayAlphaImage(_) => {}
-                            Value::GrayImage(_) => {}
                             Value::FilterType(a) => {
                                 if input.connection.is_some() {
                                     ui.label(format!("{:?}", a));
@@ -470,6 +460,7 @@ impl NodeSettingsPanel {
                                     }
                                 }
                             },
+                            Value::DynamicImage(_) => {},
                         }
                     });
                 }
@@ -491,9 +482,6 @@ impl NodeSettingsPanel {
                             Value::String(v) => {
                                 ui.add(Label::new(v.to_string()));
                             }
-                            // Value::ImageRgba32F(_) => todo!(),
-                            // Value::ImageRgba8(_) => todo!(),
-                            // Value::ImageGray8(_) => todo!(),
                             _ => {}
                         }
                     });

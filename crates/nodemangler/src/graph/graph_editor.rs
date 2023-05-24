@@ -3,7 +3,7 @@ use crate::{graph::graph_node::GraphNode, NewConnection, view_to_graph_space_pos
 use eframe::{egui::{self}, epaint::{Rect, Stroke, Color32, Rounding}};
 use egui::epaint::CubicBezierShape;
 use egui::Pos2;
-use mangler::nodes::{node_settings::NodeSettings, operation::ConnectionSettings};
+use mangler::{node_settings::NodeSettings, operation::ConnectionSettings};
 use std::{
     collections::HashMap,
     time::Instant,

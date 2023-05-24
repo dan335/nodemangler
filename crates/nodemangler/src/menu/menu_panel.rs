@@ -1,9 +1,8 @@
-use std::vec;
+use eframe::{egui};
+use mangler::{operation::{Operation, ConnectionSettings}, node_settings::NodeSettings};
 
-use eframe::{egui, epaint::Rounding};
-use mangler::nodes::{operations::{float, integer, add, subtract, image_from_url, image_resize, image_from_clipboard, text_from_clipboard}, operation::{Operation, ConnectionSettings}, node_settings::NodeSettings};
-
-use super::{menu_button::MenuButton, menu_category::MenuCategory};
+use super::{menu_category::MenuCategory};
+use mangler::OPERATION_LIST;
 
 pub struct MenuPanel {
     pub buttons: Vec<MenuCategory>,
@@ -11,62 +10,11 @@ pub struct MenuPanel {
 
 impl MenuPanel {
     pub fn new() -> MenuPanel {
-        let buttons= vec![
-            MenuCategory::new("Numbers", vec![
-                MenuButton {
-                    node_settings: float::SETTINGS.clone(),
-                    input_settings: float::INPUT_SETTINGS.clone(),
-                    output_settings: float::OUTPUT_SETTINGS.clone(),
-                    operation: Operation::Float,
-                },
-                MenuButton {
-                    node_settings: integer::SETTINGS.clone(),
-                    input_settings: integer::INPUT_SETTINGS.clone(),
-                    output_settings: integer::OUTPUT_SETTINGS.clone(),
-                    operation: Operation::Integer,
-                },
-                MenuButton {
-                    node_settings: add::SETTINGS.clone(),
-                    input_settings: add::INPUT_SETTINGS.clone(),
-                    output_settings: add::OUTPUT_SETTINGS.clone(),
-                    operation: Operation::Add,
-                },
-                MenuButton {
-                    node_settings: subtract::SETTINGS.clone(),
-                    input_settings: subtract::INPUT_SETTINGS.clone(),
-                    output_settings: subtract::OUTPUT_SETTINGS.clone(),
-                    operation: Operation::Subtract,
-                },
-            ]),
-            MenuCategory::new("Images", vec![
-                MenuButton {
-                    node_settings: image_from_url::SETTINGS.clone(),
-                    input_settings: image_from_url::INPUT_SETTINGS.clone(),
-                    output_settings: image_from_url::OUTPUT_SETTINGS.clone(),
-                    operation: Operation::ImageFromUrl,
-                },
-                MenuButton {
-                    node_settings: image_resize::SETTINGS.clone(),
-                    input_settings: image_resize::INPUT_SETTINGS.clone(),
-                    output_settings: image_resize::OUTPUT_SETTINGS.clone(),
-                    operation: Operation::ImageResize,
-                },
-                MenuButton {
-                    node_settings: image_from_clipboard::SETTINGS.clone(),
-                    input_settings: image_from_clipboard::INPUT_SETTINGS.clone(),
-                    output_settings: image_from_clipboard::OUTPUT_SETTINGS.clone(),
-                    operation: Operation::ImageFromClipboard,
-                },
-            ]),
-            MenuCategory::new("Text", vec![
-                MenuButton {
-                    node_settings: text_from_clipboard::SETTINGS.clone(),
-                    input_settings: text_from_clipboard::INPUT_SETTINGS.clone(),
-                    output_settings: text_from_clipboard::OUTPUT_SETTINGS.clone(),
-                    operation: Operation::TextFromClipboard,
-                },
-            ]), 
-        ];
+        let mut buttons: Vec<MenuCategory> = Vec::new();
+
+        for category in OPERATION_LIST.iter() {
+            buttons.push(MenuCategory::new(category));
+        }
 
         MenuPanel { buttons }
     }
@@ -90,12 +38,12 @@ impl MenuPanel {
             
     
             let mut index = 0;
-            for (category_index, menu_category) in self.buttons.iter_mut().enumerate() {
-                menu_category.show(ui, index);
+            for (category_index, category) in self.buttons.iter_mut().enumerate() {
+                category.show(ui, index);
                 index += 1;
     
-                if !menu_category.is_collapsed {
-                    for (button_index, menu_button) in menu_category.buttons.iter_mut().enumerate() {
+                if !category.is_collapsed {
+                    for (button_index, menu_button) in category.buttons.iter_mut().enumerate() {
                         let menu_button_result = menu_button.show(ui, index);
         
                         if menu_button_result.is_dragging {

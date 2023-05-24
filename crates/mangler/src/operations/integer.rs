@@ -1,8 +1,7 @@
 use crate::input::Input;
-use crate::nodes::node_settings::NodeSettings;
-use crate::nodes::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
+use crate::node_settings::NodeSettings;
+use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
 use crate::value::{Value, ValueType};
-use core::panic;
 use std::time::Instant;
 
 lazy_static! {
@@ -35,7 +34,7 @@ pub async fn new_integer(inputs: &[Input]) -> Result<Vec<OperationResponse>, Ope
             }
         },
 
-        _ => panic!("Unable to convert formats to integer."),
+        _ => { return Err(OperationError{message:"Not supported".to_string()}); },
     };
 
     let node_output_message = OperationResponse {

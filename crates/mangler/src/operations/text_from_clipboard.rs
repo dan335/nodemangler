@@ -1,6 +1,6 @@
 use crate::input::Input;
-use crate::nodes::node_settings::NodeSettings;
-use crate::nodes::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
+use crate::node_settings::NodeSettings;
+use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
 use crate::value::{Value, ValueType};
 use std::time::Instant;
 use arboard::Clipboard;
@@ -18,7 +18,7 @@ lazy_static! {
     pub static ref OUTPUT_SETTINGS: Vec<ConnectionSettings> = vec![ConnectionSettings {
         name: "text".to_string(),
         default_value: Value::String("".to_string()),
-        valid_types: vec![ValueType::RgbaImage],
+        valid_types: vec![ValueType::DynamicImage],
         ui_type: None,
     },];
 }

@@ -1,4 +1,4 @@
-use crate::{nodes::{node::Node, node_settings::NodeSettings, operation::{ConnectionSettings, Operation}}, value::Value, NodeOutputChangedMessage, NodeInputChangedMessage};
+use crate::{node_settings::NodeSettings, operation::{ConnectionSettings, Operation}, value::Value, NodeOutputChangedMessage, NodeInputChangedMessage, node::Node};
 use std::{collections::{HashMap, HashSet, VecDeque}};
 use tokio::sync::mpsc::Sender;
 

@@ -1,7 +1,6 @@
-use crate::{
-    nodes::operation::{ConnectionSettings, UiType},
-    value::{Value, ValueType},
-};
+use crate::value::{Value, ValueType};
+use crate::operation::{ConnectionSettings, UiType};
+
 
 #[derive(Debug, Clone)]
 pub struct Input {
@@ -22,15 +21,6 @@ impl Input {
             ui_type: settings.ui_type,
         }
     }
-    // pub fn new(name: String, value: Value, ui_type: UiType) -> Input {
-    //     Input {
-    //         name,
-    //         value,
-    //         connection: None,
-    //         valid_types: Vec::new(),
-    //         ui_type: Some(ui_type)
-    //     }
-    // }
 
     pub fn get_value(&self) -> &Value {
         &self.value

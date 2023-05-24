@@ -1,8 +1,8 @@
 use eframe::{egui, emath::Align2, epaint::{FontId, PathShape, Vec2}};
 use egui::{Color32, Pos2, Rect, Rounding, Stroke};
-use mangler::nodes::{
+use mangler::{
     node_settings::NodeSettings,
-    operation::{ConnectionSettings, Operation},
+    operation::{ConnectionSettings, Operation}, OperationDescription, OperationCategory,
 };
 
 use super::menu_button::MenuButton;
@@ -12,15 +12,21 @@ const BACKGROUND_COLOR: Color32 = egui::Color32::from_gray(70);
 const BACKGROUND_COLOR_HOVER: Color32 = egui::Color32::from_gray(80);
 
 pub struct MenuCategory {
-    title: String,
+    name: String,
     pub buttons: Vec<MenuButton>,
     pub is_collapsed: bool,
 }
 
 impl MenuCategory {
-    pub fn new(title: &str, buttons: Vec<MenuButton>) -> Self {
+    pub fn new(category: &OperationCategory) -> Self {
+        let mut buttons: Vec<MenuButton> = Vec::new();
+
+        for operation in category.operations.iter() {
+            buttons.push(MenuButton::new(operation));
+        }
+
         Self {
-            title: title.to_owned(),
+            name: category.name.to_owned(),
             buttons,
             is_collapsed: true,
         }
@@ -84,7 +90,7 @@ impl MenuCategory {
             ui.painter().text(
                 Pos2::new(rect.left() + 25.0, rect.center().y),
                 Align2::LEFT_CENTER,
-                self.title.clone(),
+                self.name.clone(),
                 FontId::default(),
                 Color32::from_gray(220),
             );

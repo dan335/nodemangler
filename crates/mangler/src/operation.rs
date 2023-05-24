@@ -1,8 +1,9 @@
+use image::{DynamicImage, ImageBuffer};
 use tokio::sync::mpsc::Sender;
 use crate::{NodeOutputChangedMessage, value::Value};
 use core::fmt::Debug;
 use std::time::Duration;
-use super::operations::{
+use crate::operations::{
     float::new_float,
     add::add,
     image_from_clipboard::image_from_clipboard,

@@ -1,8 +1,7 @@
 use crate::input::Input;
-use crate::nodes::node_settings::NodeSettings;
-use crate::nodes::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
+use crate::node_settings::NodeSettings;
+use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
 use crate::value::{Value, ValueType};
-use core::panic;
 use std::time::Instant;
 
 lazy_static! {
@@ -41,7 +40,7 @@ pub async fn subtract(inputs: &[Input]) -> Result<Vec<OperationResponse>, Operat
 
         (Value::Decimal(a), Value::Integer(b)) => Value::Decimal(a - *b as f32),
 
-        _ => panic!(),
+        _ => { return Err(OperationError{message:"Not supported".to_string()}); },
     };
 
     let node_output_message = OperationResponse {

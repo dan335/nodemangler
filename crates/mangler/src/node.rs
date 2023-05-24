@@ -28,9 +28,6 @@ impl PartialEq for Node {
 // impl Eq for Node {}
 
 impl Node {
-    // fn hash<H: Hasher>(&self, state: &mut H) {
-    //     self.id.hash(state);
-    // }
 
     pub fn new(
         id: String,
@@ -125,14 +122,5 @@ impl Node {
                 .run(&self.id, &self.inputs, &mut self.outputs, tx_output)
                 .await,
         );
-
-        // let response = operation_handle.join();
-        // if let Ok(operation_response) = response {
-        //     for (index, o) in operation_response.output_values.iter().enumerate() {
-        //         self.outputs[index].value = o.clone();
-        //     }
-        //     self.time = Some(operation_response.time);
-        //     self.change_id = get_id();
-        // }
     }
 }

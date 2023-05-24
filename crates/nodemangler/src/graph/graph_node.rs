@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 use std::time::Duration;
 
-use crate::graph::graph_editor;
 use crate::graph::graph_input::draw_graph_input;
 use crate::graph::graph_output::draw_graph_output;
 use crate::{graph_to_view_space_pos2, view_to_graph_space_pos2};
@@ -9,9 +8,8 @@ use eframe::epaint::{Color32, FontId, Rounding};
 use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect, Vec2};
 use mangler::input::Input;
-use mangler::nodes::node;
-use mangler::nodes::node_settings::NodeSettings;
-use mangler::nodes::operation::ConnectionSettings;
+use mangler::node_settings::NodeSettings;
+use mangler::operation::ConnectionSettings;
 use mangler::output::Output;
 use mangler::value::Value;
 
@@ -33,7 +31,6 @@ pub struct GraphNode {
     is_dragging: bool,
     last_drag_position: Option<Pos2>,
     pub thumbnail: Option<egui::TextureHandle>,
-    //pub is_dirty: bool,  // thumnail and image need to update
 }
 
 impl GraphNode {
@@ -237,6 +234,36 @@ impl GraphNode {
             );
         }
 
+        // image format
+        if let Value::DynamicImage(image) = self.outputs[0].value.clone() {
+
+            let bits = image.color().bits_per_pixel() / image.color().channel_count() as u16;
+            let channels = match image.color().channel_count() {
+                1 => "r".to_string(),
+                2 => "rg".to_string(),
+                3 => "rgb".to_string(),
+                4 => "rgba".to_string(),
+                _ => "".to_string(),
+            };
+
+            // if image.color().has_alpha() {
+            //     channels = format!("{}a", channels);
+            // }
+
+            let pos = Pos2 {
+                x: node_rect.right_bottom().x,
+                y: node_rect.right_bottom().y + 20.0,
+            };
+            let text = format!("{}{}", channels, bits);
+            ui.painter().text(
+                pos,
+                Align2::RIGHT_TOP,
+                text,
+                egui::FontId::monospace(10.0),
+                egui::Color32::from_gray(200),
+            );
+        }
+
         // show output result on node
         if let Some(thumbnail) = &self.thumbnail {
             ui.painter().image(
@@ -263,17 +290,6 @@ impl GraphNode {
                     show_output_text(ui, node_rect.center(), value.to_string(), graph_zoom)
                 }
 
-                Value::Rgba32FImage(_)
-                | Value::RgbaImage(_)
-                | Value::GrayImage(_)
-                | Value::Rgb32FImage(_)
-                | Value::Rgba16Image(_)
-                | Value::Rgb16Image(_)
-                | Value::GrayAlpha16Image(_)
-                | Value::Gray16Image(_)
-                | Value::RgbImage(_)
-                | Value::GrayAlphaImage(_) => {}
-
                 Value::FilterType(value) => {
                     show_output_text(ui, node_rect.center(), format!("{:?}", value), graph_zoom)
                 }
@@ -281,6 +297,7 @@ impl GraphNode {
                     show_output_text(ui, node_rect.center(), format!("{:?}", value), graph_zoom)
                 }
                 Value::UiButton(_) => todo!(),
+                Value::DynamicImage(_) => {},
             }
         }
 
