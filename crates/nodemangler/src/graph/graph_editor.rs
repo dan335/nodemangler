@@ -1,16 +1,23 @@
 use super::graph_node::ConnectionType;
-use crate::{graph::graph_node::GraphNode, view, NewConnection};
-use eframe::egui::{self};
+use crate::{graph::graph_node::GraphNode, NewConnection, view_to_graph_space_pos2, graph_to_view_space_pos2, graph_to_view_space, view_to_graph_space};
+use eframe::{egui::{self}, epaint::{Rect, Stroke, Color32, Rounding}};
 use egui::epaint::CubicBezierShape;
 use egui::Pos2;
 use mangler::nodes::{node_settings::NodeSettings, operation::ConnectionSettings};
 use std::{
     collections::HashMap,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
+const BACKGROUND_COLOR: Color32 = egui::Color32::from_gray(35);
+const GRID_COLOR: Color32 = egui::Color32::from_gray(45);
+const ZOOM_MULTIPLIER: f32 = 0.001;
+const ZOOM_BOUNDS: [f32; 2] = [0.15, 5.0];
+
+
 pub struct GraphEditor {
-    position: Pos2,
+    pub position: Pos2,
+    pub zoom: f32,
     is_dragging: bool,
     last_drag_position: Option<Pos2>,
     pub graph_nodes: HashMap<String, GraphNode>,
@@ -26,6 +33,7 @@ impl GraphEditor {
     pub fn new() -> GraphEditor {
         GraphEditor {
             position: Pos2::ZERO,
+            zoom: 1.0,
             is_dragging: false,
             last_drag_position: None,
             graph_nodes: HashMap::default(),
@@ -47,9 +55,41 @@ impl GraphEditor {
         let mut graph_editor_response = GraphEditorResponse::default();
 
         let editor_rect = ui.max_rect();
+        //let panel_cursor_position = Pos2::new(cursor_position.x - editor_rect.min.x, cursor_position.y - editor_rect.min.y);
+
+        ui.ctx().input(|input_state| {
+            // let mouse_x = cursor_position.x - editor_rect.min.x;
+            // let mouse_y = cursor_position.y - editor_rect.min.y;
+//println!("{} {}, {:?}", mouse_x, mouse_y, self.position);
+            let new_zoom = (self.zoom * (1.0 + input_state.scroll_delta.y * ZOOM_MULTIPLIER)).min(ZOOM_BOUNDS[1]).max(ZOOM_BOUNDS[0]);
+
+            let old_x = view_to_graph_space(self.zoom, editor_rect.max.x - editor_rect.min.x);
+            let new_x = view_to_graph_space(new_zoom, editor_rect.max.x - editor_rect.min.x); 
+            let old_y = view_to_graph_space(self.zoom, editor_rect.max.y - editor_rect.min.y);
+            let new_y = view_to_graph_space(new_zoom, editor_rect.max.y - editor_rect.min.y);
+
+            let mouse_percent_x = cursor_position.x / (editor_rect.max.x - editor_rect.min.x);
+            let mouse_perceny_y = cursor_position.y / (editor_rect.max.y - editor_rect.min.y);
+
+            self.position.x += view_to_graph_space(new_zoom, mouse_percent_x * graph_to_view_space(new_zoom, new_x - old_x));
+            self.position.y += view_to_graph_space(new_zoom, mouse_perceny_y * graph_to_view_space(new_zoom, new_y - old_y));
+
+            self.zoom = new_zoom;
+        });
+
+        
         ui.allocate_rect(editor_rect, egui::Sense::hover());
 
         ui.set_clip_rect(editor_rect);
+
+        // bg
+        ui.painter().add(egui::Shape::rect_filled(
+            editor_rect,
+            Rounding::none(),
+            BACKGROUND_COLOR,
+        ));
+
+        self.draw_background_grid(ui, editor_rect, self.position);
 
         let cursor_inside = editor_rect.contains(cursor_position);
         let mut cursor_primary_went_down = false; // did mouse button go down this frame
@@ -75,8 +115,11 @@ impl GraphEditor {
         }
 
         if self.is_dragging {
+            
             if let Some(last_drag_position) = self.last_drag_position {
-                self.position += cursor_position - last_drag_position;
+                //self.position += (cursor_position - last_drag_position) *(1.0 / self.zoom);
+                
+                self.position += view_to_graph_space_pos2(self.zoom, cursor_position - last_drag_position.to_vec2()).to_vec2();
             }
 
             self.last_drag_position = Some(cursor_position);
@@ -118,7 +161,7 @@ impl GraphEditor {
 
             // draw node
             let graph_node_response =
-                graph_node.show(ui, self.position, cursor_position, is_editing, is_viewing);
+                graph_node.show(ui, self.position, self.zoom, cursor_position, is_editing, is_viewing);
 
             // mouse over it?
             if graph_node_response.is_cursor_inside {
@@ -169,7 +212,7 @@ impl GraphEditor {
                 // find node with connection at this position
                 for (_, other_graph_node) in self.graph_nodes.iter() {
                     let other_node = &self.graph_nodes[&other_graph_node.id];
-                    let other_node_rect = other_graph_node.get_rect(self.position);
+                    let other_node_rect = other_graph_node.get_rect(self.position, self.zoom);
 
                     match temp_connection.from_connection_type {
                         ConnectionType::Input => {
@@ -235,8 +278,8 @@ impl GraphEditor {
                     let input_graph_node = &self.graph_nodes[node_id];
                     let output_graph_node = &self.graph_nodes[output_node_id];
 
-                    let input_node_rect = input_graph_node.get_rect(self.position);
-                    let output_node_rect = output_graph_node.get_rect(self.position);
+                    let input_node_rect = input_graph_node.get_rect(self.position, self.zoom);
+                    let output_node_rect = output_graph_node.get_rect(self.position, self.zoom);
 
                     let curve = self.draw_connection_line(
                         ui,
@@ -279,10 +322,51 @@ impl GraphEditor {
             }
         });
 
+        self.draw_top_border(ui, editor_rect);
+
         self.previous_cursor_primary_down = Some(cursor_primary_down);
 
         graph_editor_response
     }
+
+    pub fn draw_top_border(&self, ui: &mut egui::Ui, rect: Rect) {
+        let size = 2.0;
+        let stroke = Stroke::new(size, egui::Color32::from_gray(10));
+
+        let mut points: Vec<Pos2> = Vec::with_capacity(2);
+        points.push(Pos2::new(rect.left(), rect.top() + (size * 0.5)));
+        points.push(Pos2::new(rect.right(), rect.top() + (size * 0.5)));
+
+        ui.painter().add(egui::Shape::line(points.clone(), stroke));
+    }
+
+    pub fn draw_background_grid(&self, ui: &mut egui::Ui, editor_rect: Rect, graph_position: Pos2) {
+        let stroke = Stroke::new(1.0, GRID_COLOR);
+        let grid_size: f32 = 50.0;
+        
+        let mut x = graph_to_view_space(self.zoom, graph_position.x % grid_size);
+        let mut y = graph_to_view_space(self.zoom, graph_position.y % grid_size);
+
+        while x <= editor_rect.max.x {
+            let mut points: Vec<Pos2> = Vec::with_capacity(2);
+            points.push(Pos2::new(x, editor_rect.min.y));
+            points.push(Pos2::new(x, editor_rect.max.y));
+            ui.painter().add(egui::Shape::line(points.clone(), stroke));
+
+            x += graph_to_view_space(self.zoom, grid_size);
+        }
+
+        while y <= editor_rect.max.y {
+            let mut points: Vec<Pos2> = Vec::with_capacity(2);
+            points.push(Pos2::new(editor_rect.min.x, y));
+            points.push(Pos2::new(editor_rect.max.x, y));
+            ui.painter().add(egui::Shape::line(points.clone(), stroke));
+
+            y += graph_to_view_space(self.zoom, grid_size);
+        }
+    }
+
+    
 
     // returns curve shape to detect clickin on curve
     pub fn draw_connection_line(
@@ -333,11 +417,14 @@ impl GraphEditor {
         node_settings: NodeSettings,
         input_settings: Vec<ConnectionSettings>,
         output_settings: Vec<ConnectionSettings>,
-        position: Pos2,
+        position_graph_space: Pos2,
     ) {
+        //let inverse_zoom = 1.0 / self.zoom;
+        //let position = Pos2::new(position_graph_space.x, position_graph_space.y);
+
         let node = GraphNode::new(
             node_id.clone(),
-            position - self.position.to_vec2(),
+            position_graph_space,
             node_settings,
             input_settings,
             output_settings,
@@ -439,3 +526,5 @@ fn distance_to_cubic_bezier_curve(point: Pos2, points: [Pos2; 4]) -> f32 {
         Pos2 { x, y }
     }
 }
+
+

@@ -6,6 +6,8 @@ use mangler::nodes::{
 };
 
 const BUTTON_HEIGHT: f32 = 36.0;
+const BACKGROUND_COLOR: Color32 = egui::Color32::from_gray(50);
+const BACKGROUND_COLOR_HOVER: Color32 = egui::Color32::from_gray(80);
 
 pub struct MenuButton {
     pub node_settings: NodeSettings,
@@ -33,31 +35,39 @@ impl MenuButton {
                 button_rect.min,
                 Pos2::new(button_rect.max.x, button_rect.max.y),
             );
+
+            let response = ui.allocate_rect(rect, egui::Sense::drag().union(egui::Sense::hover()));
+
+            let mut background_color = BACKGROUND_COLOR;
+            if response.hovered() {
+                background_color = BACKGROUND_COLOR_HOVER;
+            }
+            
             ui.painter().add(egui::Shape::rect_filled(
-                rect,
+                rect.shrink(1.0),
                 rounding,
-                egui::Color32::from_gray(50),
+                background_color,
             ));
 
-            let mut points: Vec<Pos2> = Vec::with_capacity(2);
-            points.push(Pos2::new(rect.left(), rect.top()));
-            points.push(Pos2::new(rect.right(), rect.top()));
-            ui.painter().add(egui::Shape::line(points.clone(), stroke));
+            // let mut points: Vec<Pos2> = Vec::with_capacity(2);
+            // points.push(Pos2::new(rect.left(), rect.top()));
+            // points.push(Pos2::new(rect.right(), rect.top()));
+            // ui.painter().add(egui::Shape::line(points.clone(), stroke));
 
-            points.clear();
-            points.push(Pos2::new(rect.left(), rect.bottom() + 1.0));
-            points.push(Pos2::new(rect.right(), rect.bottom() + 1.0));
-            ui.painter().add(egui::Shape::line(points, stroke));
+            // points.clear();
+            // points.push(Pos2::new(rect.left(), rect.bottom() + 1.0));
+            // points.push(Pos2::new(rect.right(), rect.bottom() + 1.0));
+            // ui.painter().add(egui::Shape::line(points, stroke));
 
             ui.painter().text(
-                rect.center(),
-                Align2::CENTER_CENTER,
+                Pos2::new(rect.left() + 40.0, rect.center().y),
+                Align2::LEFT_CENTER,
                 self.node_settings.name.clone(),
                 FontId::default(),
                 Color32::from_gray(220),
             );
 
-            let response = ui.allocate_rect(rect, egui::Sense::click().union(egui::Sense::drag()));
+            
 
             if response.clicked() {
             } else if response.drag_started() {

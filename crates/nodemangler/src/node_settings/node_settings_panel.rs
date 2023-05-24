@@ -49,11 +49,11 @@ impl NodeSettingsPanel {
         tx_input: Sender<SetNodeInputMessage>,
     ) {
         // background
-        ui.painter().add(egui::Shape::rect_filled(
-            ui.max_rect(),
-            Rounding::none(),
-            egui::Color32::from_gray(40),
-        ));
+        // ui.painter().add(egui::Shape::rect_filled(
+        //     ui.max_rect(),
+        //     Rounding::none(),
+        //     egui::Color32::from_gray(40),
+        // ));
 
         let left_top = ui.max_rect().left_top();
         let right_bottom = ui.max_rect().right_bottom();

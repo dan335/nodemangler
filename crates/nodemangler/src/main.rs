@@ -18,7 +18,7 @@ mod title_bar;
 mod view;
 use crate::graph::graph_editor::GraphEditorResponse;
 use egui::{Pos2, Rect};
-use graph::graph_editor::GraphEditor;
+use graph::graph_editor::{GraphEditor};
 use menu::menu_panel::MenuPanel;
 use node_settings::node_settings_panel::NodeSettingsPanel;
 use tokio::sync::mpsc;
@@ -260,18 +260,16 @@ impl eframe::App for MyApp {
             );
             ui.allocate_ui_at_rect(top_panel_rect, |ui| {
                 puffin::profile_scope!("top panel");
-                // todo
-                // if let Some(viewing_node_id) = &self.viewing_node_id {
-                //     if let Some(node) = self.graph.nodes.get(viewing_node_id) {
-                //         let Some(graph_node) = self.graph_editor.graph_nodes.get_mut(viewing_node_id) else { panic!("asdf"); };
-                //         self.view_panel.show(ui, Some(node), graph_node.view_image_is_dirty);
-                //         graph_node.view_image_is_dirty = false;
-                //     } else {
-                //         self.view_panel.show(ui, None, false);
-                //     }
-                // } else {
-                //     self.view_panel.show(ui, None, false);
-                // }
+
+                if let Some(viewing_node_id) = &self.viewing_node_id {
+                    if let Some(graph_node) = self.graph_editor.graph_nodes.get(viewing_node_id) {
+                        self.view_panel.show(ui, Some(graph_node));
+                    } else {
+                        self.view_panel.show(ui, None);
+                    }
+                } else {
+                    self.view_panel.show(ui, None);
+                }
             });
 
             // -------------------------
@@ -306,6 +304,7 @@ impl eframe::App for MyApp {
                 Pos2::new(0.0, app_rect.height() / 2.0),
                 Pos2::new(app_rect.width(), app_rect.height()),
             );
+
             ui.allocate_ui_at_rect(bottom_panel_rect, |ui| {
                 puffin::profile_scope!("graph panel");
                 let graph_editor_response: GraphEditorResponse = self.graph_editor.show(
@@ -362,12 +361,14 @@ impl eframe::App for MyApp {
                             let input_sttings = dragging_settings.1.clone();
                             let output_settings = dragging_settings.2.clone();
 
+                            //let node_position_view_space = Pos2::new(cursor_position.x - bottom_panel_rect.min.x, cursor_position.y - bottom_panel_rect.min.y);
+//println!("{:?}", cursor_position);
                             self.add_node(
                                 node_settings,
                                 input_sttings,
                                 output_settings,
                                 dragging_settings.3.clone(),
-                                cursor_position,
+                                view_to_graph_space_pos2(self.graph_editor.zoom, cursor_position) - self.graph_editor.position.to_vec2(),
                             );
                         }
                     }
@@ -449,7 +450,7 @@ impl MyApp {
         input_settings: Vec<ConnectionSettings>,
         output_settings: Vec<ConnectionSettings>,
         operation: Operation,
-        position: Pos2,
+        position_graph_space: Pos2,
     ) {
         let node_id = get_id();
 
@@ -460,7 +461,7 @@ impl MyApp {
             output_settings: output_settings.clone(),
             operation: operation.clone(),
         };
-
+println!("main add node {:?}", position_graph_space);
         match self.tx_add_node.try_send(add_node_message) {
             Ok(_) => {
                 self.graph_editor.add_node(
@@ -468,7 +469,7 @@ impl MyApp {
                     node_settings.clone(),
                     input_settings.clone(),
                     output_settings.clone(),
-                    position,
+                    position_graph_space,
                 );
             }
             Err(err) => {
@@ -588,4 +589,21 @@ impl NewConnection {
             output_connection_index,
         }
     }
+}
+
+
+pub fn view_to_graph_space(zoom: f32, n: f32) -> f32 {
+    n * zoom
+}
+
+pub fn view_to_graph_space_pos2(zoom: f32, n: Pos2) -> Pos2 {
+    Pos2::new(view_to_graph_space(zoom, n.x), view_to_graph_space(zoom, n.y))
+}
+
+pub fn graph_to_view_space(zoom: f32, n: f32) -> f32 {
+    n / zoom
+}
+
+pub fn graph_to_view_space_pos2(zoom: f32, n: Pos2) -> Pos2 {
+    Pos2::new(graph_to_view_space(zoom, n.x), graph_to_view_space(zoom, n.y))
 }

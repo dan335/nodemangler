@@ -1,18 +1,21 @@
 use std::fmt::Debug;
 use std::time::Duration;
 
+use crate::graph::graph_editor;
 use crate::graph::graph_input::draw_graph_input;
 use crate::graph::graph_output::draw_graph_output;
+use crate::{graph_to_view_space_pos2, view_to_graph_space_pos2};
 use eframe::epaint::{Color32, FontId, Rounding};
 use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect, Vec2};
 use mangler::input::Input;
+use mangler::nodes::node;
 use mangler::nodes::node_settings::NodeSettings;
 use mangler::nodes::operation::ConnectionSettings;
 use mangler::output::Output;
 use mangler::value::Value;
 
-use super::graph_editor::TempConnection;
+use super::graph_editor::{TempConnection};
 use super::graph_output::draw_graph_output_highlighted;
 
 pub const NODE_SIZE: Vec2 = Vec2::new(132.0, 132.0);
@@ -79,15 +82,24 @@ impl GraphNode {
         }
     }
 
-    pub fn get_rect(&self, graph_position: Pos2) -> Rect {
-        Rect::from_center_size(self.position + graph_position.to_vec2(), NODE_SIZE)
+    pub fn get_rect(&self, graph_position: Pos2, graph_zoom: f32) -> Rect {
+        let node_view_pos = graph_to_view_space_pos2(graph_zoom, self.position);
+        let graph_view_pos = graph_to_view_space_pos2(graph_zoom, graph_position);
+
+
+        let graph_pos = Pos2::new(graph_view_pos.x + node_view_pos.x, graph_view_pos.y + node_view_pos.y);
+        //println!("graph pos node {:?}", graph_pos);
+        //let view_pos = graph_to_view_space_pos2(graph_zoom, graph_pos);
+        let view_size = graph_to_view_space_pos2(graph_zoom, NODE_SIZE.to_pos2());
+        Rect::from_center_size(graph_pos, view_size.to_vec2())
     }
 
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
         graph_position: Pos2,
-        cursor_position: Pos2,
+        graph_zoom: f32,
+        panel_cursor_position: Pos2,
         is_editing: bool,
         is_viewing: bool,
     ) -> GraphNodeResponse {
@@ -95,7 +107,7 @@ impl GraphNode {
         let mut graph_node_response = GraphNodeResponse::default();
         let rounding = Rounding::same(NODE_ROUNDING);
 
-        let node_rect = self.get_rect(graph_position);
+        let node_rect = self.get_rect(graph_position, graph_zoom);
 
         let bg_response = ui.allocate_rect(
             node_rect,
@@ -120,10 +132,10 @@ impl GraphNode {
 
         if self.is_dragging {
             if let Some(last_drag_position) = self.last_drag_position {
-                self.position += cursor_position - last_drag_position;
+                self.position += view_to_graph_space_pos2(graph_zoom, panel_cursor_position - last_drag_position.to_vec2()).to_vec2();
             }
 
-            self.last_drag_position = Some(cursor_position);
+            self.last_drag_position = Some(panel_cursor_position);
         }
 
         // bg
@@ -230,8 +242,8 @@ impl GraphNode {
             ui.painter().image(
                 thumbnail.id(),
                 Rect::from_center_size(
-                    self.position + graph_position.to_vec2(),
-                    thumbnail.size_vec2(),
+                    self.get_rect(graph_position, graph_zoom).center(),
+                    graph_to_view_space_pos2(graph_zoom, thumbnail.size_vec2().to_pos2()).to_vec2(),
                 ),
                 Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)),
                 Color32::WHITE,
@@ -239,16 +251,16 @@ impl GraphNode {
         } else {
             match &self.outputs[0].value {
                 Value::Bool(value) => {
-                    show_output_text(ui, node_rect.center(), value.to_string())
+                    show_output_text(ui, node_rect.center(), value.to_string(), graph_zoom)
                 }
                 Value::Integer(value) => {
-                    show_output_text(ui, node_rect.center(), value.to_string())
+                    show_output_text(ui, node_rect.center(), value.to_string(), graph_zoom)
                 }
                 Value::Decimal(value) => {
-                    show_output_text(ui, node_rect.center(), value.to_string())
+                    show_output_text(ui, node_rect.center(), value.to_string(), graph_zoom)
                 }
                 Value::String(value) => {
-                    show_output_text(ui, node_rect.center(), value.to_string())
+                    show_output_text(ui, node_rect.center(), value.to_string(), graph_zoom)
                 }
 
                 Value::Rgba32FImage(_)
@@ -263,22 +275,22 @@ impl GraphNode {
                 | Value::GrayAlphaImage(_) => {}
 
                 Value::FilterType(value) => {
-                    show_output_text(ui, node_rect.center(), format!("{:?}", value))
+                    show_output_text(ui, node_rect.center(), format!("{:?}", value), graph_zoom)
                 }
                 Value::ImageFormat(value) => {
-                    show_output_text(ui, node_rect.center(), format!("{:?}", value))
+                    show_output_text(ui, node_rect.center(), format!("{:?}", value), graph_zoom)
                 }
                 Value::UiButton(_) => todo!(),
             }
         }
 
-        fn show_output_text(ui: &mut egui::Ui, position: Pos2, txt: String) {
+        fn show_output_text(ui: &mut egui::Ui, position: Pos2, txt: String, graph_zoom: f32) {
             puffin::profile_scope!("graph node.show_output_text()");
             ui.painter().text(
                 position,
                 Align2::CENTER_CENTER,
                 txt,
-                FontId::proportional(20.0),
+                FontId::proportional(20.0 * graph_zoom),
                 Color32::from_gray(200),
             );
         }
