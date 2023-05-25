@@ -55,6 +55,7 @@ impl GraphEditor {
         let mut graph_editor_response = GraphEditorResponse::default();
 
         let editor_rect = ui.max_rect();
+        let editor_bg_response = ui.allocate_rect(editor_rect, egui::Sense::drag().union(egui::Sense::hover()));
         //let panel_cursor_position = Pos2::new(cursor_position.x - editor_rect.min.x, cursor_position.y - editor_rect.min.y);
 
         ui.ctx().input(|input_state| {
@@ -78,7 +79,7 @@ impl GraphEditor {
         });
 
         
-        ui.allocate_rect(editor_rect, egui::Sense::hover());
+        
 
         ui.set_clip_rect(editor_rect);
 
@@ -92,6 +93,11 @@ impl GraphEditor {
         self.draw_background_grid(ui, editor_rect, self.position);
 
         let cursor_inside = editor_rect.contains(cursor_position);
+
+        
+
+
+        
         let mut cursor_primary_went_down = false; // did mouse button go down this frame
         let mut cursor_primary_went_up = false; // did mous button go up this rame
         let mut is_cursor_over_node = false;
@@ -115,7 +121,6 @@ impl GraphEditor {
         }
 
         if self.is_dragging {
-            
             if let Some(last_drag_position) = self.last_drag_position {
                 //self.position += (cursor_position - last_drag_position) *(1.0 / self.zoom);
                 
@@ -295,9 +300,20 @@ impl GraphEditor {
 
         // ------------------------
         // mouse
-        if cursor_primary_went_down && !is_cursor_over_node {
+
+        if editor_bg_response.clicked_by(egui::PointerButton::Primary) && !is_cursor_over_node {
+            graph_editor_response.clear_editing_node = true;
+        } else if editor_bg_response.clicked_by(egui::PointerButton::Secondary) && !is_cursor_over_node {
+            graph_editor_response.clear_viewing_node = true;;
+        } else if editor_bg_response.drag_started_by(egui::PointerButton::Primary) && !is_cursor_over_node {
             self.start_dragging();
+        } else if editor_bg_response.drag_released_by(egui::PointerButton::Primary) {
+            self.stop_dragging();
         }
+
+        // if cursor_primary_went_down && !is_cursor_over_node {
+        //     self.start_dragging();
+        // }
 
         if self.last_node_click.is_some() {
             graph_editor_response.request_redraw = true;
@@ -455,6 +471,8 @@ pub struct GraphEditorResponse {
     pub request_redraw: bool,
     pub editing_node_id: Option<String>,
     pub viewing_node_id: Option<String>,
+    pub clear_editing_node: bool,
+    pub clear_viewing_node: bool,
     pub nodes_to_delete: Vec<String>,
     pub connections_to_delete: Vec<(String, usize)>, // node id, input index
 }
@@ -470,6 +488,8 @@ impl GraphEditorResponse {
             viewing_node_id: None,
             nodes_to_delete: Vec::new(),
             connections_to_delete: Vec::new(),
+            clear_editing_node: false,  // should editing node be cleared.  clicked on graph bg
+            clear_viewing_node: false,
         }
     }
 }
