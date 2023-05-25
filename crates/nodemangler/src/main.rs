@@ -124,15 +124,27 @@ impl ManglerApp {
                 if ui.add(egui::Button::new("Load")).clicked() {
                     println!("New");
                 }
-    
+
+                // info about programs
+                // id, name
+                // sorted
+                let mut program_list: Vec<(String, String)> = Vec::new();
+                
+                // sort programs and put into list
                 for (program_id, program) in self.programs.iter() {
+                    program_list.push((program_id.clone(), program.name.clone()));
+                }
+
+                program_list.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap().then(a.0.partial_cmp(&b.0).unwrap()));
+
+                for (program_id, program_name) in program_list.iter() {
                     let mut stroke = Stroke::NONE;
 
                     if self.current_program == Some(program_id.clone()) {
                         stroke = Stroke::new(2.0, Color32::from_gray(150))
                     }
 
-                    if ui.add(egui::Button::new(&program.name).stroke(stroke)).clicked() {
+                    if ui.add(egui::Button::new(program_name).stroke(stroke)).clicked() {
                         self.current_program = Some(program_id.clone());
                     }
                 }

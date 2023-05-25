@@ -104,6 +104,14 @@ impl GraphNode {
         let mut graph_node_response = GraphNodeResponse::default();
         let rounding = Rounding::same(NODE_ROUNDING);
 
+        if self.is_dragging {
+            if let Some(last_drag_position) = self.last_drag_position {
+                self.position += view_to_graph_space_pos2(graph_zoom, panel_cursor_position - last_drag_position.to_vec2()).to_vec2();
+            }
+
+            self.last_drag_position = Some(panel_cursor_position);
+        }
+
         let node_rect = self.get_rect(graph_position, graph_zoom);
 
         let bg_response = ui.allocate_rect(
@@ -127,13 +135,7 @@ impl GraphNode {
 
         graph_node_response.is_cursor_inside = bg_response.hovered();
 
-        if self.is_dragging {
-            if let Some(last_drag_position) = self.last_drag_position {
-                self.position += view_to_graph_space_pos2(graph_zoom, panel_cursor_position - last_drag_position.to_vec2()).to_vec2();
-            }
-
-            self.last_drag_position = Some(panel_cursor_position);
-        }
+        
 
         // bg
         ui.painter().add(egui::Shape::rect_filled(
