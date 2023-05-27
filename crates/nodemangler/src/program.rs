@@ -4,7 +4,7 @@ use epaint::{ColorImage, Rect, Pos2, Rounding, Vec2};
 use mangler::{AddNodeMessage, RemoveNodeMessage, AddConnectionMessage, RemoveConnectionMessage, SetNodeInputMessage, NodeInputChangedMessage, NodeOutputChangedMessage, node_settings::NodeSettings, operation::{ConnectionSettings, Operation}, graph::Graph, get_id, AddedNodeMessage, RemovedNodeMessage, AddedConnectionMessage, RemovedConnectionMessage};
 use tokio::{sync::mpsc, time::{Instant, Duration}, task::JoinHandle};
 
-use crate::{graph::graph_editor::{GraphEditor, GraphEditorResponse}, view::view_panel::ViewPanel, menu::menu_panel::MenuPanel, view_to_graph_space_pos2, APP_MENU_HEIGHT, settings::{settings_panel, node_settings_panel, graph_settings_panel::{self, GraphSettingsResponse}}};
+use crate::{graph::graph_editor::{GraphEditor, GraphEditorResponse}, view::view_panel::ViewPanel, menu::menu_panel::MenuPanel, view_to_graph_space_pos2, APP_MENU_HEIGHT, settings::{node_settings_panel, graph_settings_panel::{self, GraphSettingsResponse}}};
 
 pub struct Program {
     pub id: String,
@@ -63,11 +63,12 @@ impl Program {
                         add_node_message.input_settings,
                         add_node_message.output_settings,
                         add_node_message.operation,
-                    );
+                        add_node_message.position,
+                    ).await;
                 }
 
                 while let Ok(remove_node_message) = rx_remove_node.try_recv() {
-                    graph.remove_node(remove_node_message.node_id);
+                    graph.remove_node(remove_node_message.node_id).await;
                 }
 
                 while let Ok(add_connection_message) = rx_add_connection.try_recv() {
@@ -76,14 +77,14 @@ impl Program {
                         add_connection_message.input_connection_index,
                         add_connection_message.output_node_id,
                         add_connection_message.output_connection_index,
-                    );
+                    ).await;
                 }
 
                 while let Ok(remove_connection_message) = rx_remove_connection.try_recv() {
                     graph.remove_connection(
                         remove_connection_message.node_id,
                         remove_connection_message.input_index,
-                    );
+                    ).await;
                 }
 
                 while let Ok(node_input_message) = rx_set_input.try_recv() {
@@ -192,44 +193,44 @@ impl Program {
 
         while let Ok(added_node_message) = self.rx_added_node.try_recv() {
             self.graph_editor.add_node(
-                node_id.clone(),
-                node_settings.clone(),
-                input_settings.clone(),
-                output_settings.clone(),
-                position_graph_space,
+                added_node_message.node_id.clone(),
+                added_node_message.node_settings.clone(),
+                added_node_message.input_settings.clone(),
+                added_node_message.output_settings.clone(),
+                added_node_message.position.clone().into(),
             );
             self.needs_to_save = true;
         }
 
         while let Ok(removed_node_message) = self.rx_removed_node.try_recv() {
-            if self.editing_node_id == Some(node_id.clone()) {
+            if self.editing_node_id == Some(removed_node_message.node_id.clone()) {
                 self.editing_node_id = None;
             }
-            if self.viewing_node_id == Some(node_id.clone()) {
+            if self.viewing_node_id == Some(removed_node_message.node_id.clone()) {
                 self.viewing_node_id = None;
             };
-            self.graph_editor.remove_node(&node_id);
+            self.graph_editor.remove_node(&removed_node_message.node_id);
             self.needs_to_save = true;
         }
 
         while let Ok(added_connection_message) = self.rx_added_connection.try_recv() {
             // set output connection
-            if let Some(from) = self.graph_editor.graph_nodes.get_mut(&output_node_id) {
+            if let Some(from) = self.graph_editor.graph_nodes.get_mut(&added_connection_message.output_node_id) {
                 from.set_output_connection(
-                    output_connection_index,
-                    input_node_id.clone(),
-                    input_connection_index,
+                    added_connection_message.output_connection_index,
+                    added_connection_message.input_node_id.clone(),
+                    added_connection_message.input_connection_index,
                 );
 
                 //from.is_dirty = true;
             }
 
             // set input connection
-            if let Some(to) = self.graph_editor.graph_nodes.get_mut(&input_node_id) {
+            if let Some(to) = self.graph_editor.graph_nodes.get_mut(&added_connection_message.input_node_id) {
                 to.set_input_connection(
-                    input_connection_index,
-                    output_node_id,
-                    output_connection_index,
+                    added_connection_message.input_connection_index,
+                    added_connection_message.output_node_id,
+                    added_connection_message.output_connection_index,
                 );
             }
 
@@ -237,6 +238,29 @@ impl Program {
         }
 
         while let Ok(removed_connection_message) = self.rx_removed_connection.try_recv() {
+            
+            let mut output: Option<(String, usize)> = None;
+
+            if let Some(node) = self.graph_editor.graph_nodes.get_mut(&removed_connection_message.node_id) {
+
+                if let Some((output_node_id, output_index)) = &node.inputs[removed_connection_message.input_index].connection {
+                    output = Some((output_node_id.clone(), output_index.clone()));
+                }
+
+                node.clear_input_connection(removed_connection_message.input_index);
+                //node.inputs[input_index].connection = None;
+            }
+
+            if let Some((output_node_id, output_index)) = output {
+                if let Some(node) = self.graph_editor.graph_nodes.get_mut(&output_node_id) {
+
+                    if let Some(c) = node.outputs.get_mut(output_index.clone()) {
+                        let d = c.connection.as_mut().unwrap();
+                        d.remove(output_index.clone());
+                    }
+                }
+            }
+
             self.needs_to_save = true;
         }
 
@@ -470,6 +494,7 @@ impl Program {
             input_settings: input_settings.clone(),
             output_settings: output_settings.clone(),
             operation: operation.clone(),
+            position: position_graph_space.into(),
         };
 
         match self.tx_add_node.try_send(add_node_message) {

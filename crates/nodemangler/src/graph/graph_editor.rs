@@ -287,20 +287,21 @@ impl GraphEditor {
         for (node_id, node) in self.graph_nodes.iter() {
             for (input_index, input) in node.inputs.iter().enumerate() {
                 if let Some((output_node_id, output_connection_index)) = &input.connection {
-                    let input_graph_node = &self.graph_nodes[node_id];
-                    let output_graph_node = &self.graph_nodes[output_node_id];
+                    if let Some(input_graph_node) = &self.graph_nodes.get(node_id) {
+                        if let Some(output_graph_node) = &self.graph_nodes.get(output_node_id) {
+                            let input_node_rect = input_graph_node.get_rect(self.position, self.zoom);
+                            let output_node_rect = output_graph_node.get_rect(self.position, self.zoom);
 
-                    let input_node_rect = input_graph_node.get_rect(self.position, self.zoom);
-                    let output_node_rect = output_graph_node.get_rect(self.position, self.zoom);
+                            let curve = self.draw_connection_line(
+                                ui,
+                                output_graph_node
+                                    .get_output_position(*output_connection_index, output_node_rect),
+                                input_graph_node.get_input_position(input_index, input_node_rect),
+                            );
 
-                    let curve = self.draw_connection_line(
-                        ui,
-                        output_graph_node
-                            .get_output_position(*output_connection_index, output_node_rect),
-                        input_graph_node.get_input_position(input_index, input_node_rect),
-                    );
-
-                    connection_curves.push((curve, node_id.clone(), input_index));
+                            connection_curves.push((curve, node_id.clone(), input_index));
+                        }
+                    }
                 }
             }
         }
@@ -334,7 +335,7 @@ impl GraphEditor {
                         if curve.visual_bounding_rect().contains(cursor_position) {
                             let distance =
                                 distance_to_cubic_bezier_curve(cursor_position, curve.points);
-                            if distance < 6.0 {
+                            if distance < 15.0 {
                                 graph_editor_response
                                     .connections_to_delete
                                     .push((input_node_id.clone(), input_index.clone()));

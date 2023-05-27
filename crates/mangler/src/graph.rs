@@ -69,77 +69,42 @@ impl Graph {
     pub async fn remove_node(&mut self, node_id: String) {
 
         // get nodes that connect to this one
-        let mut connected_nodes: Vec<String> = Vec::new();
+        let mut output_connections: Vec<(String, usize)> = Vec::new();
+        let mut input_indexes: Vec<usize> = Vec::new();
 
         if let Some(node) = self.nodes.get(&node_id) {
-            for input in node.get_inputs().iter() {
-                if let Some((other_node_id, _)) = &input.connection {
-                    connected_nodes.push(other_node_id.clone());
-                }
+            for input_index in 0..node.inputs.len() {
+                input_indexes.push(input_index);
             }
 
             for output in node.outputs.iter() {
                 if let Some(connections) = &output.connection {
-                    for (other_node_id, _) in connections.iter() {
-                        connected_nodes.push(other_node_id.clone());
+                    for (other_node_id, input_index) in connections.iter() {
+                        output_connections.push((other_node_id.clone(), *input_index));
                     }
                 }
             }
+        }
+
+        for input_index in input_indexes.iter() {
+            self.remove_connection(node_id.clone(), *input_index);
         }
 
         // remove connections
-        for connected_node_id in connected_nodes.iter() {
-            if let Some(node) = self.nodes.get_mut(connected_node_id) {
-
-                // inputs
-                let mut inputs_to_clear: Vec<usize> = Vec::new();
-
-                for (index, input) in node.get_inputs().iter().enumerate() {
-                    if let Some((other_node_id, _)) = &input.connection {
-                        if other_node_id == &node_id {
-                            inputs_to_clear.push(index);
-                        }
-                    }
-                }
-
-                for index in inputs_to_clear.iter() {
-                    node.clear_input_connection(*index);
-                    //node.inputs[*index].connection = None;
-                }
-
-                // outputs
-                let mut outputs_to_clear: Vec<(usize, usize)> = Vec::new(); // output index, output connection index
-
-                for (output_index, output) in node.outputs.iter().enumerate() {
-                    if let Some(connections) = &output.connection {
-                        for (output_connection_index, (other_node_id, _)) in connections.iter().enumerate() {
-                            if other_node_id == &node_id {
-                                outputs_to_clear.push((output_index, output_connection_index));
-                            }
-                        }
-                    }
-                }
-
-                for (output_index, output_connection_index) in outputs_to_clear.iter() {
-                    if let Some(c) = node.outputs.get_mut(output_index.clone()) {
-                        let d = c.connection.as_mut().unwrap();
-                        d.remove(output_connection_index.clone());
-                    }
-                }
-            }
-
-            // remove node
-            self.nodes.remove(&node_id);
-
-            let removed_node_message = RemovedNodeMessage {
-                node_id: node_id.clone(),
-            };
-
-            let _result = self.tx_removed_node.send(removed_node_message).await;
+        for (connected_node_id, input_index) in output_connections.iter() {
+            self.remove_connection(connected_node_id.clone(), *input_index);
         }
+
+        // remove node
+        self.nodes.remove(&node_id);
+
+        let removed_node_message = RemovedNodeMessage {
+            node_id: node_id.clone(),
+        };
+        let _result = self.tx_removed_node.send(removed_node_message).await;
     }
 
-    pub fn add_connection(
+    pub async fn add_connection(
         &mut self,
         input_node_id: String,
         input_connection_index: usize,
@@ -162,7 +127,7 @@ impl Graph {
             if let Some(to) = self.nodes.get_mut(&input_node_id) {
                 to.set_input_connection(
                     input_connection_index,
-                    output_node_id,
+                    output_node_id.clone(),
                     output_connection_index,
                 );
             }
@@ -171,13 +136,19 @@ impl Graph {
             self.is_dirty = true;
 
             let added_connection_message = AddedConnectionMessage {
-
+                input_node_id,
+                input_connection_index,
+                output_node_id,
+                output_connection_index,
             };
+
+            let _response = self.tx_added_connection.send(added_connection_message).await;
         }
     }
 
 
-    pub fn remove_connection(&mut self, node_id: String, input_index: usize) {
+    pub async fn remove_connection(&mut self, node_id: String, input_index: usize) {
+        println!("remove_connection {} {}", node_id, input_index);
         let mut output: Option<(String, usize)> = None;
 
         if let Some(node) = self.nodes.get_mut(&node_id) {
@@ -192,12 +163,20 @@ impl Graph {
 
         if let Some((output_node_id, output_index)) = output {
             if let Some(node) = self.nodes.get_mut(&output_node_id) {
+
                 if let Some(c) = node.outputs.get_mut(output_index.clone()) {
                     let d = c.connection.as_mut().unwrap();
                     d.remove(output_index.clone());
                 }
             }
         }
+
+        let removed_connection_message = RemovedConnectionMessage {
+            node_id,
+            input_index,
+        };
+
+        self.tx_removed_connection.send(removed_connection_message).await;
     }
 
     pub fn set_input(&mut self, node_id: String, input_index: usize, value: Value) {

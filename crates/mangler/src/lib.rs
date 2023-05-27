@@ -92,7 +92,10 @@ pub struct AddConnectionMessage {
 
 #[derive(Debug)]
 pub struct AddedConnectionMessage {
-
+    pub input_node_id: String,
+    pub input_connection_index: usize,
+    pub output_node_id: String,
+    pub output_connection_index: usize,
 }
 
 #[derive(Debug)]
