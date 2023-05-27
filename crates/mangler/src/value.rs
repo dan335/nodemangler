@@ -1,15 +1,19 @@
 use image::{imageops::FilterType, DynamicImage, ImageBuffer, Rgba};
+use serde::{Serialize, Deserialize};
 
 pub const THUMBNAIL_SIZE: [u32; 2] = [128, 128];
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Value {
     Bool(bool),
     Integer(i32),
     Decimal(f32),
     String(String),
     DynamicImage(DynamicImage), // switch to using dynamicimage
+
+    #[serde(serialize_with = "serialize_filter_type", deserialize_with = "deserialize_filter_type")]
     FilterType(FilterType),
+    
     ImageFormat(ImageFormat),
     UiButton(bool),
 }
@@ -240,7 +244,7 @@ impl Value {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ValueType {
     Bool,
     Integer,
@@ -258,7 +262,7 @@ pub struct ConversionError {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ImageFormat {
     ImageRgba32F,
     ImageRgb32F,
@@ -275,3 +279,33 @@ pub enum ImageFormat {
 
 #[derive(Debug, Clone)]
 pub struct UiButton(bool);
+
+
+fn serialize_filter_type<S>(value: &FilterType, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let serialized_value = match value {
+        FilterType::CatmullRom => "catmullrom",
+        FilterType::Gaussian => "guassian",
+        FilterType::Lanczos3 => "lanczos3",
+        FilterType::Nearest => "nearest",
+        FilterType::Triangle => "triangle",
+    };
+    serializer.serialize_str(serialized_value)
+}
+
+fn deserialize_filter_type<'de, D>(deserializer: D) -> Result<FilterType, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let deserialized_value = String::deserialize(deserializer)?;
+    match deserialized_value.as_str() {
+        "catmullrom" => Ok(FilterType::CatmullRom),
+        "guassian" => Ok(FilterType::Gaussian),
+        "lanczos3" => Ok(FilterType::Lanczos3),
+        "nearest" => Ok(FilterType::Nearest),
+        "triangle" => Ok(FilterType::Triangle),
+        _ => Err(serde::de::Error::custom("Unknown enum value")),
+    }
+}

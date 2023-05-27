@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 use std::time::Duration;
-
+use serde::{Serialize, Deserialize};
 use crate::graph::graph_input::draw_graph_input;
 use crate::graph::graph_output::draw_graph_output;
 use crate::{graph_to_view_space_pos2, view_to_graph_space_pos2};
@@ -20,16 +20,20 @@ pub const NODE_SIZE: Vec2 = Vec2::new(132.0, 132.0);
 pub const THUMBNAIL_SIZE: [u32; 2] = [128, 128];
 const NODE_ROUNDING: f32 = 2.0;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct GraphNode {
     pub id: String,
     position: egui::Pos2,
     pub settings: NodeSettings,
     pub inputs: Vec<Input>,
     pub outputs: Vec<Output>,
+    #[serde(skip)] 
     pub time: Option<Duration>,
+    #[serde(skip)] 
     is_dragging: bool,
+    #[serde(skip)] 
     last_drag_position: Option<Pos2>,
+    #[serde(skip)] 
     pub thumbnail: Option<egui::TextureHandle>,
 }
 
@@ -107,6 +111,7 @@ impl GraphNode {
         if self.is_dragging {
             if let Some(last_drag_position) = self.last_drag_position {
                 self.position += view_to_graph_space_pos2(graph_zoom, panel_cursor_position - last_drag_position.to_vec2()).to_vec2();
+                graph_node_response.needs_to_save = true;
             }
 
             self.last_drag_position = Some(panel_cursor_position);
@@ -429,6 +434,7 @@ pub struct GraphNodeResponse {
     pub is_right_click: bool,
     pub is_left_click: bool,
     pub is_cursor_inside: bool,
+    pub needs_to_save: bool,    // does program need to save
 }
 
 impl GraphNodeResponse {
@@ -442,6 +448,7 @@ impl GraphNodeResponse {
             is_right_click: false,
             is_left_click: false,
             is_cursor_inside: false,
+            needs_to_save: false,
         }
     }
 }

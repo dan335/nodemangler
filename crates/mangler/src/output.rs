@@ -1,6 +1,7 @@
 use crate::value::{Value, ValueType};
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Output {
     pub name: String,
     pub value: Value,

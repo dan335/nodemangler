@@ -1,4 +1,4 @@
-use crate::{node_settings::NodeSettings, operation::{ConnectionSettings, Operation}, value::Value, NodeOutputChangedMessage, NodeInputChangedMessage, node::Node};
+use crate::{node_settings::NodeSettings, operation::{ConnectionSettings, Operation}, value::Value, NodeOutputChangedMessage, NodeInputChangedMessage, node::Node, RemovedConnectionMessage, AddedConnectionMessage, RemovedNodeMessage, AddedNodeMessage};
 use std::{collections::{HashMap, HashSet, VecDeque}};
 use tokio::sync::mpsc::Sender;
 
@@ -6,41 +6,67 @@ use tokio::sync::mpsc::Sender;
 pub struct Graph {
     pub tx_output_changed: Sender<NodeOutputChangedMessage>,
     pub tx_input_changed: Sender<NodeInputChangedMessage>,
+    pub tx_added_node: Sender<AddedNodeMessage>,
+    pub tx_removed_node: Sender<RemovedNodeMessage>,
+    pub tx_added_connection: Sender<AddedConnectionMessage>,
+    pub tx_removed_connection: Sender<RemovedConnectionMessage>,
     pub nodes: HashMap<String, Node>, // node_id, node
     pub is_dirty: bool,               // needs to run
 }
 
 impl Graph {
-    pub fn new(tx_output_changed: Sender<NodeOutputChangedMessage>, tx_input_changed: Sender<NodeInputChangedMessage>) -> Graph {
+    pub fn new(
+        tx_output_changed: Sender<NodeOutputChangedMessage>,
+        tx_input_changed: Sender<NodeInputChangedMessage>,
+        tx_added_node: Sender<AddedNodeMessage>,
+        tx_removed_node: Sender<RemovedNodeMessage>,
+        tx_added_connection: Sender<AddedConnectionMessage>,
+        tx_removed_connection: Sender<RemovedConnectionMessage>,
+    ) -> Graph {
         Graph {
             nodes: HashMap::new(),
             is_dirty: false,
             tx_output_changed,
             tx_input_changed,
+            tx_added_node,
+            tx_removed_node,
+            tx_added_connection,
+            tx_removed_connection,
         }
     }
 
-    pub fn add_node(
+    pub async fn add_node(
         &mut self,
         node_id: String,
         node_settings: NodeSettings,
         input_settings: Vec<ConnectionSettings>,
         output_settings: Vec<ConnectionSettings>,
         operation: Operation,
+        position: [f32; 2],
     ) {
         let node = Node::new(
             node_id.clone(),
-            node_settings,
-            input_settings,
-            output_settings,
+            node_settings.clone(),
+            input_settings.clone(),
+            output_settings.clone(),
             operation,
         );
 
-        self.nodes.insert(node_id, node);
+        self.nodes.insert(node_id.clone(), node);
         self.is_dirty = true;
+
+        let added_node_message = AddedNodeMessage {
+            node_id: node_id,
+            node_settings,
+            input_settings,
+            output_settings,
+            position,
+        };
+
+        let _result = self.tx_added_node.send(added_node_message).await;
     }
 
-    pub fn remove_node(&mut self, node_id: String) {
+    pub async fn remove_node(&mut self, node_id: String) {
 
         // get nodes that connect to this one
         let mut connected_nodes: Vec<String> = Vec::new();
@@ -104,6 +130,12 @@ impl Graph {
 
             // remove node
             self.nodes.remove(&node_id);
+
+            let removed_node_message = RemovedNodeMessage {
+                node_id: node_id.clone(),
+            };
+
+            let _result = self.tx_removed_node.send(removed_node_message).await;
         }
     }
 
@@ -137,6 +169,10 @@ impl Graph {
 
             // mark graph as dirty
             self.is_dirty = true;
+
+            let added_connection_message = AddedConnectionMessage {
+
+            };
         }
     }
 

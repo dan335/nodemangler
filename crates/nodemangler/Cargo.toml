@@ -6,11 +6,18 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-eframe = { version = "0.21.3", features = ["puffin"] }
-epaint = "0.21.0"
+eframe = { version = "0.22", features = ["persistence"] }
+epaint = "0.22"
 image = "0.24.6"
 mangler = { path = "../mangler" }
 puffin = "0.15.0"
-puffin_egui = "0.21.0"
+puffin_egui = "0.22"
+rfd = "0.11.4"
+sanitize-filename = "0.4.0"
 time = "0.3.21"
 tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[patch.crates-io]
+"image" = { git = 'https://github.com/oovm/image.git' }

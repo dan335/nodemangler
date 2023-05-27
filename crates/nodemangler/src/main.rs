@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+use app_bar::bar;
 use eframe::egui::{self, Layout};
 use epaint::{Rect, Rounding, Color32, Stroke};
 use std::collections::HashMap;
@@ -14,6 +15,7 @@ mod settings;
 mod title_bar;
 mod view;
 mod program;
+mod app_bar;
 use egui::{Pos2};
 
 pub const PROFILE: bool = false;
@@ -31,7 +33,10 @@ async fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)),
         icon_data: Some(load_icon(icon_path.to_str().unwrap())),
-        maximized: true,
+        //maximized: true,
+        drag_and_drop_support: true,
+        resizable: true,
+        decorated: false,
         ..Default::default()
     };
 
@@ -81,14 +86,41 @@ impl eframe::App for ManglerApp {
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            self.show_app_menu(ctx, ui);
+            let bar_response = bar::show(ctx, frame, ui, &self.programs, &self.current_program);
+
+            if let Some(new_program) = bar_response.new_program {
+                self.programs.insert(new_program.id.clone(), new_program);
+            }
+
+            if let Some(current_program) = bar_response.current_program {
+                self.current_program = Some(current_program);
+            }
             
             if let Some(current_program) = &self.current_program {
                 if let Some(program) = self.programs.get_mut(current_program) {
                     program.show(ctx, frame, ui);
                 }
             }
+
+            if let Some(program_id_to_close) = bar_response.program_to_close {
+                if let Some(program) = self.programs.remove(&program_id_to_close) {
+                    program.close();
+                    if self.current_program == Some(program_id_to_close) {
+                        self.current_program = None;
+
+                        if let Some(next_program_id) = self.programs.keys().next() {
+                            self.current_program = Some(next_program_id.clone());
+                        }
+                    }
+                }
+            }
         });
+
+        for (_program_id, program) in self.programs.iter_mut() {
+            if program.needs_to_save {
+                program.save_to_file();
+            }
+        }
     }
 }
 
@@ -100,59 +132,7 @@ impl ManglerApp {
         }
     } 
 
-    pub fn show_app_menu(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        let app_rect = ctx.screen_rect();
-        let app_menu_rect = Rect::from_two_pos(Pos2::ZERO, Pos2::new(app_rect.max.x, APP_MENU_HEIGHT));
-
-        let rounding = Rounding::none();
-        let background_color = Color32::from_gray(20);
-        
-        ui.painter().add(egui::Shape::rect_filled(
-            app_menu_rect,
-            rounding,
-            background_color,
-        ));
-
-        ui.allocate_ui_with_layout(app_menu_rect.size(), Layout::left_to_right(egui::Align::Min), |ui| {
-            ui.horizontal(|ui| {
-                if ui.add(egui::Button::new("New")).clicked() {
-                    let id = get_id();
-                    self.programs.insert(id.clone(), Program::new(id.clone()));
-                    self.current_program = Some(id);
-                }
-        
-                if ui.add(egui::Button::new("Load")).clicked() {
-                    println!("New");
-                }
-
-                // info about programs
-                // id, name
-                // sorted
-                let mut program_list: Vec<(String, String)> = Vec::new();
-                
-                // sort programs and put into list
-                for (program_id, program) in self.programs.iter() {
-                    program_list.push((program_id.clone(), program.name.clone()));
-                }
-
-                program_list.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap().then(a.0.partial_cmp(&b.0).unwrap()));
-
-                for (program_id, program_name) in program_list.iter() {
-                    let mut stroke = Stroke::NONE;
-
-                    if self.current_program == Some(program_id.clone()) {
-                        stroke = Stroke::new(2.0, Color32::from_gray(150))
-                    }
-
-                    if ui.add(egui::Button::new(program_name).stroke(stroke)).clicked() {
-                        self.current_program = Some(program_id.clone());
-                    }
-                }
-            });
-        });
-
-        
-    }
+    
 }
 
 

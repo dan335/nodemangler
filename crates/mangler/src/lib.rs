@@ -60,10 +60,25 @@ pub struct AddNodeMessage {
     pub input_settings: Vec<ConnectionSettings>,
     pub output_settings: Vec<ConnectionSettings>,
     pub operation: Operation,
+    pub position: [f32; 2],
+}
+
+#[derive(Debug)]
+pub struct AddedNodeMessage {
+    pub node_id: String,
+    pub node_settings: NodeSettings,
+    pub input_settings: Vec<ConnectionSettings>,
+    pub output_settings: Vec<ConnectionSettings>,
+    pub position: [f32; 2],
 }
 
 #[derive(Debug)]
 pub struct RemoveNodeMessage {
+    pub node_id: String,
+}
+
+#[derive(Debug)]
+pub struct RemovedNodeMessage {
     pub node_id: String,
 }
 
@@ -76,7 +91,18 @@ pub struct AddConnectionMessage {
 }
 
 #[derive(Debug)]
+pub struct AddedConnectionMessage {
+
+}
+
+#[derive(Debug)]
 pub struct RemoveConnectionMessage {
+    pub node_id: String,
+    pub input_index: usize,
+}
+
+#[derive(Debug)]
+pub struct RemovedConnectionMessage {
     pub node_id: String,
     pub input_index: usize,
 }

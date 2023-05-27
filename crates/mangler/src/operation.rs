@@ -1,4 +1,4 @@
-use image::{DynamicImage, ImageBuffer};
+use serde::{Serialize, Deserialize};
 use tokio::sync::mpsc::Sender;
 use crate::{NodeOutputChangedMessage, value::Value};
 use core::fmt::Debug;
@@ -20,7 +20,7 @@ use crate::{
     value::ValueType,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Operation {
     Add,
     Subtract,
@@ -84,7 +84,7 @@ pub struct ConnectionSettings {
     pub ui_type: Option<UiType>, // for output connections it's none
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum UiType {
     DragValue,
     Checkbox,

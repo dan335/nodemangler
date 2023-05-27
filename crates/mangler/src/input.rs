@@ -1,8 +1,9 @@
 use crate::value::{Value, ValueType};
 use crate::operation::{ConnectionSettings, UiType};
+use serde::{Serialize, Deserialize};
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Input {
     pub name: String,
     value: Value,
