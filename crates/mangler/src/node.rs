@@ -1,5 +1,7 @@
 use std::time::Duration;
 use tokio::sync::mpsc::Sender;
+use glam::f32::Vec2;
+use serde::{Deserialize, Serialize};
 
 use crate::{input::Input, output::Output, value::Value, NodeOutputChangedMessage};
 
@@ -8,7 +10,7 @@ use super::{
     operation::{ConnectionSettings, Operation},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Node {
     pub operation: Operation,
     pub id: String,
@@ -17,6 +19,7 @@ pub struct Node {
     pub outputs: Vec<Output>,
     pub time: Option<Duration>,
     pub is_dirty: bool, // node needs to be re-run
+    pub position: Vec2,
 }
 
 impl PartialEq for Node {
@@ -35,6 +38,7 @@ impl Node {
         input_settings: Vec<ConnectionSettings>,
         output_settings: Vec<ConnectionSettings>,
         operation: Operation,
+        position: glam::f32::Vec2,
     ) -> Node {
         let inputs: Vec<Input> = input_settings
             .iter()
@@ -66,6 +70,7 @@ impl Node {
             operation,
             settings,
             is_dirty: true,
+            position,
         }
     }
 

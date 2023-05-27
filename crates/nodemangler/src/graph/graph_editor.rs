@@ -76,7 +76,6 @@ impl GraphEditor {
             self.position.y += view_to_graph_space(new_zoom, mouse_perceny_y * graph_to_view_space(new_zoom, new_y - old_y));
 
             self.zoom = new_zoom;
-            graph_editor_response.needs_to_save = true;
         });
 
         
@@ -126,7 +125,6 @@ impl GraphEditor {
                 //self.position += (cursor_position - last_drag_position) *(1.0 / self.zoom);
                 
                 self.position += view_to_graph_space_pos2(self.zoom, cursor_position - last_drag_position.to_vec2()).to_vec2();
-                graph_editor_response.needs_to_save = true;
             }
 
             self.last_drag_position = Some(cursor_position);
@@ -170,9 +168,9 @@ impl GraphEditor {
             let graph_node_response =
                 graph_node.show(ui, self.position, self.zoom, cursor_position, is_editing, is_viewing);
 
-            // save graph
-            if graph_node_response.needs_to_save {
-                graph_editor_response.needs_to_save = true;
+            // node moved
+            if let Some(new_position) = graph_node_response.new_position {
+                graph_editor_response.new_node_position = Some((graph_node_id.clone(), new_position.clone()));
             }
 
             // mouse over it?
@@ -483,7 +481,7 @@ pub struct GraphEditorResponse {
     pub clear_viewing_node: bool,
     pub nodes_to_delete: Vec<String>,
     pub connections_to_delete: Vec<(String, usize)>, // node id, input index
-    pub needs_to_save: bool,    // soemthing changed and program needs to save
+    pub new_node_position: Option<(String, Pos2)>,
 }
 
 impl GraphEditorResponse {
@@ -499,7 +497,7 @@ impl GraphEditorResponse {
             connections_to_delete: Vec::new(),
             clear_editing_node: false,  // should editing node be cleared.  clicked on graph bg
             clear_viewing_node: false,
-            needs_to_save: false,
+            new_node_position: None,
         }
     }
 }

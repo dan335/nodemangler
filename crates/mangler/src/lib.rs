@@ -1,9 +1,11 @@
-use std::time::Duration;
-
+use std::{time::Duration, path::PathBuf, collections::HashMap};
+use glam::f32::Vec2;
 use image::{ImageBuffer, Rgba};
 use nanoid::nanoid;
+use node::Node;
 use node_settings::NodeSettings;
 use operation::Operation;
+use serde::{Serialize, Deserialize};
 use value::{Value, ValueType};
 use crate::operation::ConnectionSettings;
 
@@ -60,7 +62,7 @@ pub struct AddNodeMessage {
     pub input_settings: Vec<ConnectionSettings>,
     pub output_settings: Vec<ConnectionSettings>,
     pub operation: Operation,
-    pub position: [f32; 2],
+    pub position: Vec2,
 }
 
 #[derive(Debug)]
@@ -69,7 +71,12 @@ pub struct AddedNodeMessage {
     pub node_settings: NodeSettings,
     pub input_settings: Vec<ConnectionSettings>,
     pub output_settings: Vec<ConnectionSettings>,
-    pub position: [f32; 2],
+    pub position: Vec2,
+}
+
+#[derive(Debug)]
+pub struct LoadedNodeMessage {
+    pub node: Node,
 }
 
 #[derive(Debug)]
@@ -110,6 +117,18 @@ pub struct RemovedConnectionMessage {
     pub input_index: usize,
 }
 
+#[derive(Debug)]
+pub enum GraphMessage {
+    SavePath(PathBuf),
+    GraphName(String),
+}
+
+#[derive(Debug)]
+pub struct NodePosition {
+    pub node_id: String,
+    pub position: glam::f32::Vec2,
+}
+
 
 pub struct OperationCategory {
     pub name: String,
@@ -122,6 +141,16 @@ pub struct OperationDescription {
     pub input_settings: Vec<ConnectionSettings>,
     pub output_settings: Vec<ConnectionSettings>,
     pub operation: Operation,
+}
+
+#[derive(Debug)]
+pub struct NewGraphError(pub String);
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GraphSaveData {
+    pub id: String,
+    pub name: String,
+    pub nodes: HashMap<String, Node>,
 }
 
 

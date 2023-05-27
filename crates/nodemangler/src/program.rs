@@ -1,16 +1,16 @@
 use std::path::{PathBuf};
 use eframe::egui;
 use epaint::{ColorImage, Rect, Pos2, Rounding, Vec2};
-use mangler::{AddNodeMessage, RemoveNodeMessage, AddConnectionMessage, RemoveConnectionMessage, SetNodeInputMessage, NodeInputChangedMessage, NodeOutputChangedMessage, node_settings::NodeSettings, operation::{ConnectionSettings, Operation}, graph::Graph, get_id, AddedNodeMessage, RemovedNodeMessage, AddedConnectionMessage, RemovedConnectionMessage};
+use mangler::{AddNodeMessage, RemoveNodeMessage, AddConnectionMessage, RemoveConnectionMessage, SetNodeInputMessage, NodeInputChangedMessage, NodeOutputChangedMessage, node_settings::NodeSettings, operation::{ConnectionSettings, Operation}, graph::Graph, get_id, AddedNodeMessage, RemovedNodeMessage, AddedConnectionMessage, RemovedConnectionMessage, GraphMessage, NewGraphError, NodePosition, LoadedNodeMessage};
 use tokio::{sync::mpsc, time::{Instant, Duration}, task::JoinHandle};
 
-use crate::{graph::graph_editor::{GraphEditor, GraphEditorResponse}, view::view_panel::ViewPanel, menu::menu_panel::MenuPanel, view_to_graph_space_pos2, APP_MENU_HEIGHT, settings::{node_settings_panel, graph_settings_panel::{self, GraphSettingsResponse}}};
+use crate::{graph::{graph_editor::{GraphEditor, GraphEditorResponse}, graph_node::GraphNode}, view::view_panel::ViewPanel, menu::menu_panel::MenuPanel, view_to_graph_space_pos2, APP_MENU_HEIGHT, settings::{node_settings_panel, graph_settings_panel::{self, GraphSettingsResponse}}};
 
 pub struct Program {
     pub id: String,
     pub name: String,
     pub save_path: Option<PathBuf>,
-    pub needs_to_save: bool,
+    //pub needs_to_save: bool,
     pub thread_handle: JoinHandle<bool>,
     tx_add_node: mpsc::Sender<AddNodeMessage>,
     tx_remove_node: mpsc::Sender<RemoveNodeMessage>,
@@ -21,8 +21,11 @@ pub struct Program {
     rx_output_changed: mpsc::Receiver<NodeOutputChangedMessage>,
     rx_added_node: mpsc::Receiver<AddedNodeMessage>,
     rx_removed_node: mpsc::Receiver<RemovedNodeMessage>,
+    rx_loaded_node: mpsc::Receiver<LoadedNodeMessage>,
     rx_added_connection: mpsc::Receiver<AddedConnectionMessage>,
     rx_removed_connection: mpsc::Receiver<RemovedConnectionMessage>,
+    tx_graph_setting: mpsc::Sender<GraphMessage>,
+    tx_node_position: mpsc::Sender<NodePosition>,
     graph_editor: GraphEditor,
     view_panel: ViewPanel,
     menu_panel: MenuPanel,
@@ -37,7 +40,7 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn new(id: String) -> Self {
+    pub fn new(id: Option<String>, save_file: Option<PathBuf>) -> Result<Self, NewGraphError> {
         let (tx_add_node, mut rx_add_node) = mpsc::channel::<AddNodeMessage>(32);
         let (tx_remove_node, mut rx_remove_node) = mpsc::channel::<RemoveNodeMessage>(32);
         let (tx_add_connection, mut rx_add_connection) = mpsc::channel::<AddConnectionMessage>(32);
@@ -47,86 +50,129 @@ impl Program {
         let (tx_output_changed, rx_output_changed) = mpsc::channel::<NodeOutputChangedMessage>(32);
         let (tx_added_node, rx_added_node) = mpsc::channel::<AddedNodeMessage>(32);
         let (tx_removed_node, rx_removed_node) = mpsc::channel::<RemovedNodeMessage>(32);
+        let (tx_loaded_node, rx_loaded_node) = mpsc::channel::<LoadedNodeMessage>(32);
         let (tx_added_connection, rx_added_connection) = mpsc::channel::<AddedConnectionMessage>(32);
         let (tx_removed_connection, rx_removed_connection) = mpsc::channel::<RemovedConnectionMessage>(32);
+        let (tx_graph_setting, mut rx_graph_setting) = mpsc::channel::<GraphMessage>(32);
+        let (tx_node_position, mut rx_node_position) = mpsc::channel::<NodePosition>(32);
 
-        let thread_handle = tokio::spawn(async move {
-            let mut graph = Graph::new(tx_output_changed, tx_input_changed, tx_added_node, tx_removed_node, tx_added_connection, tx_removed_connection);
+        let graph_result = match save_file {
+            Some(path) => Graph::load(path, tx_output_changed, tx_input_changed, tx_added_node, tx_removed_node, tx_loaded_node, tx_added_connection, tx_removed_connection),
+            None => {
+                let graph_id = match id {
+                    Some(graph_id) => graph_id,
+                    None => get_id(),
+                };
 
-            loop {
-                let mut sleep_time = Instant::now() + Duration::from_millis(33);
+                Graph::new(graph_id, tx_output_changed, tx_input_changed, tx_added_node, tx_removed_node, tx_loaded_node, tx_added_connection, tx_removed_connection)
+            },
+        };
 
-                while let Ok(add_node_message) = rx_add_node.try_recv() {
-                    graph.add_node(
-                        add_node_message.node_id,
-                        add_node_message.node_settings,
-                        add_node_message.input_settings,
-                        add_node_message.output_settings,
-                        add_node_message.operation,
-                        add_node_message.position,
-                    ).await;
-                }
-
-                while let Ok(remove_node_message) = rx_remove_node.try_recv() {
-                    graph.remove_node(remove_node_message.node_id).await;
-                }
-
-                while let Ok(add_connection_message) = rx_add_connection.try_recv() {
-                    graph.add_connection(
-                        add_connection_message.input_node_id,
-                        add_connection_message.input_connection_index,
-                        add_connection_message.output_node_id,
-                        add_connection_message.output_connection_index,
-                    ).await;
-                }
-
-                while let Ok(remove_connection_message) = rx_remove_connection.try_recv() {
-                    graph.remove_connection(
-                        remove_connection_message.node_id,
-                        remove_connection_message.input_index,
-                    ).await;
-                }
-
-                while let Ok(node_input_message) = rx_set_input.try_recv() {
-                    graph.set_input(
-                        node_input_message.node_id,
-                        node_input_message.input_index,
-                        node_input_message.value,
-                    );
-                }
-
-                graph.run().await;
-
-                sleep_time = sleep_time.max(Instant::now() + Duration::from_millis(5));
-                tokio::time::sleep_until(sleep_time).await;
-            }
-
-            true
-        });
+        match graph_result {
+            Ok(mut graph) => {
+                let id = graph.id.clone();
+                let name = graph.name.clone();
+                let save_path = graph.save_path.clone();
+                
+                let thread_handle = tokio::spawn(async move {
+                    loop {
+                        let mut sleep_time = Instant::now() + Duration::from_millis(16);
         
-        Program {
-            tx_add_node,
-            tx_remove_node,
-            tx_add_connection,
-            tx_remove_connection,
-            tx_set_input,
-            rx_input_changed,
-            rx_output_changed,
-            id,
-            name: "New Graph".to_string(),
-            save_path: None,
-            needs_to_save: false,
-            thread_handle,
-            graph_editor: GraphEditor::new(),
-            view_panel: ViewPanel::new(),
-            menu_panel: MenuPanel::new(),
-            dragging_menu_button: None,
-            editing_node_id: None,
-            viewing_node_id: None,
-            rx_added_node,
-            rx_removed_node,
-            rx_added_connection,
-            rx_removed_connection,
+                        while let Ok(add_node_message) = rx_add_node.try_recv() {
+                            graph.add_node(
+                                add_node_message.node_id,
+                                add_node_message.node_settings,
+                                add_node_message.input_settings,
+                                add_node_message.output_settings,
+                                add_node_message.operation,
+                                add_node_message.position,
+                            ).await;
+                        }
+        
+                        while let Ok(remove_node_message) = rx_remove_node.try_recv() {
+                            graph.remove_node(remove_node_message.node_id).await;
+                        }
+        
+                        while let Ok(add_connection_message) = rx_add_connection.try_recv() {
+                            graph.add_connection(
+                                add_connection_message.input_node_id,
+                                add_connection_message.input_connection_index,
+                                add_connection_message.output_node_id,
+                                add_connection_message.output_connection_index,
+                            ).await;
+                        }
+        
+                        while let Ok(remove_connection_message) = rx_remove_connection.try_recv() {
+                            graph.remove_connection(
+                                remove_connection_message.node_id,
+                                remove_connection_message.input_index,
+                            ).await;
+                        }
+        
+                        while let Ok(node_input_message) = rx_set_input.try_recv() {
+                            graph.set_input(
+                                node_input_message.node_id,
+                                node_input_message.input_index,
+                                node_input_message.value,
+                            );
+                        }
+        
+                        while let Ok(graph_message) = rx_graph_setting.try_recv() {
+                            match graph_message {
+                                GraphMessage::SavePath(save_path) => {
+                                    graph.set_save_path(save_path);
+                                },
+                                GraphMessage::GraphName(name) => {
+                                    graph.name = name;
+                                    graph.save_to_file();
+                                },
+                            }
+                        }
+
+                        while let Ok(node_position_message) = rx_node_position.try_recv() {
+                            graph.set_node_position(node_position_message.node_id, node_position_message.position);
+                        }
+        
+                        graph.run().await;
+        
+                        sleep_time = sleep_time.max(Instant::now() + Duration::from_millis(2));
+                        tokio::time::sleep_until(sleep_time).await;
+                    }
+        
+                    true    // do not remove
+                });
+                
+                Ok(Program {
+                    tx_add_node,
+                    tx_remove_node,
+                    tx_add_connection,
+                    tx_remove_connection,
+                    tx_set_input,
+                    rx_input_changed,
+                    rx_output_changed,
+                    id,
+                    name,
+                    save_path,
+                    //needs_to_save: false,
+                    thread_handle,
+                    graph_editor: GraphEditor::new(),
+                    view_panel: ViewPanel::new(),
+                    menu_panel: MenuPanel::new(),
+                    dragging_menu_button: None,
+                    editing_node_id: None,
+                    viewing_node_id: None,
+                    rx_added_node,
+                    rx_removed_node,
+                    rx_added_connection,
+                    rx_removed_connection,
+                    tx_graph_setting,
+                    tx_node_position,
+                    rx_loaded_node,
+                })
+            },
+            Err(error) => {
+                Err(NewGraphError(format!("Error creating new graph.  Error: {:?}", error)))
+            },
         }
     }
 
@@ -186,7 +232,7 @@ impl Program {
                 if let Some(input) = node.inputs.get_mut(node_input_changed_message.input_index)
                 {
                     input.set_value(node_input_changed_message.value);
-                    self.needs_to_save = true;
+                    //self.needs_to_save = true;
                 }
             }
         }
@@ -197,9 +243,9 @@ impl Program {
                 added_node_message.node_settings.clone(),
                 added_node_message.input_settings.clone(),
                 added_node_message.output_settings.clone(),
-                added_node_message.position.clone().into(),
+                Pos2::new(added_node_message.position.x, added_node_message.position.y),
             );
-            self.needs_to_save = true;
+            //self.needs_to_save = true;
         }
 
         while let Ok(removed_node_message) = self.rx_removed_node.try_recv() {
@@ -210,7 +256,23 @@ impl Program {
                 self.viewing_node_id = None;
             };
             self.graph_editor.remove_node(&removed_node_message.node_id);
-            self.needs_to_save = true;
+            //self.needs_to_save = true;
+        }
+
+        while let Ok(loaded_node_message) = self.rx_loaded_node.try_recv() {
+            let graph_node = GraphNode {
+                id: loaded_node_message.node.id.clone(),
+                position: Pos2::new(loaded_node_message.node.position.x, loaded_node_message.node.position.y),
+                settings: loaded_node_message.node.settings,
+                inputs: loaded_node_message.node.inputs,
+                outputs: loaded_node_message.node.outputs,
+                time: None,
+                is_dragging: false,
+                last_drag_position: None,
+                thumbnail: None,
+            };
+
+            self.graph_editor.graph_nodes.insert(loaded_node_message.node.id, graph_node);
         }
 
         while let Ok(added_connection_message) = self.rx_added_connection.try_recv() {
@@ -234,7 +296,7 @@ impl Program {
                 );
             }
 
-            self.needs_to_save = true;
+            //self.needs_to_save = true;
         }
 
         while let Ok(removed_connection_message) = self.rx_removed_connection.try_recv() {
@@ -261,7 +323,7 @@ impl Program {
                 }
             }
 
-            self.needs_to_save = true;
+            //self.needs_to_save = true;
         }
 
         let app_rect = ctx.screen_rect();
@@ -344,10 +406,32 @@ impl Program {
                 if show_graph_settings {
                     let graph_settings_response = graph_settings_panel::show(ui, &mut self.name, &self.save_path);
 
+                    // name changed
+                    if let Some(new_name) = graph_settings_response.new_name {
+                        self.name = new_name.clone();
+
+                        let graph_message = GraphMessage::GraphName(new_name);
+
+                        match self.tx_graph_setting.try_send(graph_message) {
+                            Ok(_) => {},
+                            Err(err) => {
+                                println!("Error sending graph_message: {:?}", err);
+                            },
+                        }
+                    }
+
                     // save path changed
                     if let Some(save_path) = graph_settings_response.new_save_path {
-                        self.save_path = Some(save_path);
-                        self.needs_to_save = true;
+                        self.save_path = Some(save_path.clone());
+
+                        let graph_message = GraphMessage::SavePath(save_path);
+
+                        match self.tx_graph_setting.try_send(graph_message) {
+                            Ok(_) => {},
+                            Err(err) => {
+                                println!("Error sending graph_message: {:?}", err);
+                            },
+                        }
                     }
                 }
             });
@@ -369,6 +453,20 @@ impl Program {
                 &self.editing_node_id,
                 &self.viewing_node_id,
             );
+
+            if let Some(new_node_position) = graph_editor_response.new_node_position {
+                let node_position_message = NodePosition {
+                    node_id: new_node_position.0,
+                    position: glam::f32::vec2(new_node_position.1.x, new_node_position.1.y),
+                };
+
+                match self.tx_node_position.try_send(node_position_message) {
+                    Ok(_) => {},
+                    Err(error) => {
+                        println!("Error sending node position message. {:?}", error);
+                    },
+                }
+            }
 
             if graph_editor_response.request_redraw {
                 ctx.request_repaint();
@@ -494,7 +592,7 @@ impl Program {
             input_settings: input_settings.clone(),
             output_settings: output_settings.clone(),
             operation: operation.clone(),
-            position: position_graph_space.into(),
+            position: glam::f32::Vec2::new(position_graph_space.x, position_graph_space.y),
         };
 
         match self.tx_add_node.try_send(add_node_message) {
@@ -508,14 +606,14 @@ impl Program {
     }
 
 
-    pub fn save_to_file(&mut self) {
-        if let Some(path) = &self.save_path {
-            for node in self.graph_editor.graph_nodes.iter() {
-                //println!("{:?}", toml::ser::to_string(&node));
-                println!("{:?}", serde_json::to_string(&node));
-            }
-        }
-    }
+    // pub fn save_to_file(&mut self) {
+    //     if let Some(path) = &self.save_path {
+    //         for node in self.graph_editor.graph_nodes.iter() {
+    //             //println!("{:?}", toml::ser::to_string(&node));
+    //             println!("{:?}", serde_json::to_string(&node));
+    //         }
+    //     }
+    // }
 
     pub fn remove_node(&mut self, node_id: String) {
         let remove_node_message = RemoveNodeMessage {
@@ -534,12 +632,12 @@ impl Program {
 
     pub fn view_node(&mut self, node_id: String) {
         self.viewing_node_id = Some(node_id);
-        self.needs_to_save = true;
+        //self.needs_to_save = true;
     }
 
     pub fn edit_node(&mut self, node_id: String) {
         self.editing_node_id = Some(node_id);
-        self.needs_to_save = true;
+        //self.needs_to_save = true;
     }
 
     pub fn add_connection(

@@ -11,7 +11,9 @@ pub fn show(
     let mut graph_settings_response = GraphSettingsResponse::new();
 
     ui.label("Graph Name");
-    ui.text_edit_singleline(program_name);
+    if ui.text_edit_singleline(program_name).changed() {
+        graph_settings_response.new_name = Some(program_name.clone());
+    }
 
     let mut path = "".to_string();
     if let Some(p) = program_path {
@@ -56,12 +58,14 @@ pub fn show(
 
 pub struct GraphSettingsResponse {
     pub new_save_path: Option<PathBuf>,
+    pub new_name: Option<String>,
 }
 
 impl GraphSettingsResponse {
     pub fn new() -> Self {
         Self {
             new_save_path: None,
+            new_name: None,
         }
     }
 }

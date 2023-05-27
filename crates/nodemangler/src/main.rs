@@ -89,7 +89,9 @@ impl eframe::App for ManglerApp {
             let bar_response = bar::show(ctx, frame, ui, &self.programs, &self.current_program);
 
             if let Some(new_program) = bar_response.new_program {
+                let program_id = new_program.id.clone();
                 self.programs.insert(new_program.id.clone(), new_program);
+                self.current_program = Some(program_id);
             }
 
             if let Some(current_program) = bar_response.current_program {
@@ -116,11 +118,11 @@ impl eframe::App for ManglerApp {
             }
         });
 
-        for (_program_id, program) in self.programs.iter_mut() {
-            if program.needs_to_save {
-                program.save_to_file();
-            }
-        }
+        // for (_program_id, program) in self.programs.iter_mut() {
+        //     if program.needs_to_save {
+        //         program.save_to_file();
+        //     }
+        // }
     }
 }
 

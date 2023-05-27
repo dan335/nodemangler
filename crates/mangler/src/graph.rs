@@ -1,37 +1,110 @@
-use crate::{node_settings::NodeSettings, operation::{ConnectionSettings, Operation}, value::Value, NodeOutputChangedMessage, NodeInputChangedMessage, node::Node, RemovedConnectionMessage, AddedConnectionMessage, RemovedNodeMessage, AddedNodeMessage};
-use std::{collections::{HashMap, HashSet, VecDeque}};
+use crate::{node_settings::NodeSettings, operation::{ConnectionSettings, Operation}, value::Value, NodeOutputChangedMessage, NodeInputChangedMessage, node::Node, RemovedConnectionMessage, AddedConnectionMessage, RemovedNodeMessage, AddedNodeMessage, GraphMessage, NewGraphError, GraphSaveData, LoadedNodeMessage};
+use std::{collections::{HashMap, HashSet, VecDeque}, path::PathBuf};
 use tokio::sync::mpsc::Sender;
+use glam::f32::Vec2;
+use std::fs;
 
 
 pub struct Graph {
+    pub id: String,
+    pub name: String,
     pub tx_output_changed: Sender<NodeOutputChangedMessage>,
     pub tx_input_changed: Sender<NodeInputChangedMessage>,
     pub tx_added_node: Sender<AddedNodeMessage>,
     pub tx_removed_node: Sender<RemovedNodeMessage>,
+    pub tx_loaded_node: Sender<LoadedNodeMessage>,
     pub tx_added_connection: Sender<AddedConnectionMessage>,
     pub tx_removed_connection: Sender<RemovedConnectionMessage>,
     pub nodes: HashMap<String, Node>, // node_id, node
     pub is_dirty: bool,               // needs to run
+    pub save_path: Option<PathBuf>,
 }
 
 impl Graph {
     pub fn new(
+        id: String,
         tx_output_changed: Sender<NodeOutputChangedMessage>,
         tx_input_changed: Sender<NodeInputChangedMessage>,
         tx_added_node: Sender<AddedNodeMessage>,
         tx_removed_node: Sender<RemovedNodeMessage>,
+        tx_loaded_node: Sender<LoadedNodeMessage>,
         tx_added_connection: Sender<AddedConnectionMessage>,
         tx_removed_connection: Sender<RemovedConnectionMessage>,
-    ) -> Graph {
-        Graph {
+    ) -> Result<Graph, NewGraphError> {
+        Ok(Graph {
             nodes: HashMap::new(),
             is_dirty: false,
             tx_output_changed,
             tx_input_changed,
             tx_added_node,
             tx_removed_node,
+            tx_loaded_node,
             tx_added_connection,
             tx_removed_connection,
+            save_path: None,
+            id,
+            name: "New Graph".to_string(),
+        })
+    }
+
+    pub fn load(
+        save_path: PathBuf,
+        tx_output_changed: Sender<NodeOutputChangedMessage>,
+        tx_input_changed: Sender<NodeInputChangedMessage>,
+        tx_added_node: Sender<AddedNodeMessage>,
+        tx_removed_node: Sender<RemovedNodeMessage>,
+        tx_loaded_node: Sender<LoadedNodeMessage>,
+        tx_added_connection: Sender<AddedConnectionMessage>,
+        tx_removed_connection: Sender<RemovedConnectionMessage>,
+    ) -> Result<Graph, NewGraphError> {
+        match fs::read_to_string(&save_path) {
+            Ok(data) => {
+                match serde_json::from_str::<GraphSaveData>(&data) {
+                    Ok(json) => {
+                        let mut graph = Graph {
+                            is_dirty: false,
+                            tx_output_changed,
+                            tx_input_changed,
+                            tx_added_node,
+                            tx_removed_node,
+                            tx_loaded_node,
+                            tx_added_connection,
+                            tx_removed_connection,
+                            save_path: Some(save_path),
+                            nodes: json.nodes,
+                            id: json.id,
+                            name: json.name,
+                        };
+
+                        for (_node_id, node) in graph.nodes.iter_mut() {
+                            node.is_dirty = true;
+                            
+                            let added_node_message = LoadedNodeMessage {
+                                node: node.clone(),
+                            };
+
+                            match graph.tx_loaded_node.try_send(added_node_message) {
+                                Ok(_) => {},
+                                Err(err) => {
+                                    println!("Error sending added_node_message: {:?}", err);
+                                },
+                            }
+                        }
+                        
+                        Ok(graph)
+                    },
+                    Err(error) => Err(NewGraphError(format!("Error loading graph. Error: {}", error.to_string()))),
+                }
+            },
+            Err(error) => Err(NewGraphError(format!("Error loading graph. Error: {}", error.to_string()))),
+        }
+    }
+
+
+    pub fn set_node_position(&mut self, node_id: String, position: glam::f32::Vec2) {
+        if let Some(node) = self.nodes.get_mut(&node_id) {
+            node.position = position;
+            self.save_to_file();
         }
     }
 
@@ -42,7 +115,7 @@ impl Graph {
         input_settings: Vec<ConnectionSettings>,
         output_settings: Vec<ConnectionSettings>,
         operation: Operation,
-        position: [f32; 2],
+        position: Vec2,
     ) {
         let node = Node::new(
             node_id.clone(),
@@ -50,6 +123,7 @@ impl Graph {
             input_settings.clone(),
             output_settings.clone(),
             operation,
+            position,
         );
 
         self.nodes.insert(node_id.clone(), node);
@@ -63,7 +137,14 @@ impl Graph {
             position,
         };
 
-        let _result = self.tx_added_node.send(added_node_message).await;
+        match self.tx_added_node.try_send(added_node_message) {
+            Ok(_) => {},
+            Err(err) => {
+                println!("Error sending added_node_message: {:?}", err);
+            },
+        }
+
+        self.save_to_file();
     }
 
     pub async fn remove_node(&mut self, node_id: String) {
@@ -101,7 +182,15 @@ impl Graph {
         let removed_node_message = RemovedNodeMessage {
             node_id: node_id.clone(),
         };
-        let _result = self.tx_removed_node.send(removed_node_message).await;
+
+        match self.tx_removed_node.try_send(removed_node_message) {
+            Ok(_) => {},
+            Err(err) => {
+                println!("Error sending removed_node_message: {:?}", err);
+            },
+        }
+
+        self.save_to_file();
     }
 
     pub async fn add_connection(
@@ -142,7 +231,14 @@ impl Graph {
                 output_connection_index,
             };
 
-            let _response = self.tx_added_connection.send(added_connection_message).await;
+            match self.tx_added_connection.try_send(added_connection_message) {
+                Ok(_) => {},
+                Err(err) => {
+                    println!("Error sending added_connection_message: {:?}", err);
+                },
+            }
+
+            self.save_to_file();
         }
     }
 
@@ -176,7 +272,14 @@ impl Graph {
             input_index,
         };
 
-        self.tx_removed_connection.send(removed_connection_message).await;
+        match self.tx_removed_connection.try_send(removed_connection_message) {
+            Ok(_) => {},
+            Err(err) => {
+                println!("Error sending removed_connection_message: {:?}", err);
+            },
+        }
+
+        self.save_to_file();
     }
 
     pub fn set_input(&mut self, node_id: String, input_index: usize, value: Value) {
@@ -184,8 +287,14 @@ impl Graph {
             if let Some(input) = node.inputs.get_mut(input_index) {
                 input.set_value(value);
                 node.is_dirty = true;
+                self.save_to_file();
             }
         }
+    }
+
+    pub fn set_save_path(&mut self, save_path: PathBuf) {
+        self.save_path = Some(save_path);
+        self.save_to_file();
     }
 
     // https://github.com/emilk/egui/discussions/484
@@ -195,7 +304,7 @@ impl Graph {
 
     // returns a list of node_ids that ran
     // so that their thumbnails will know to update
-    pub async fn run(&mut self) -> HashSet<String> {
+    pub async fn run(&mut self) {
         let mut dirty_nodes: HashSet<String> = HashSet::new();
         let mut checked_nodes: HashSet<String> = HashSet::new();
         let mut nodes_to_check: VecDeque<String> = VecDeque::new();
@@ -206,6 +315,10 @@ impl Graph {
                 nodes_to_check.push_back(node_id.clone());
                 node.is_dirty = false;
             }
+        }
+
+        if nodes_to_check.is_empty() {
+            return;
         }
 
         // loop through dirty nodes and their dependecies
@@ -329,6 +442,25 @@ impl Graph {
             sorted_order.push_front(node_id.clone());
         }
 
-        dirty_nodes.clone()
+        self.save_to_file();
+    }
+
+    pub fn save_to_file(&self) {
+        if let Some(save_path) = &self.save_path {
+            let data = GraphSaveData {
+                nodes: self.nodes.clone(),
+                id: self.id.clone(),
+                name: self.name.clone(),
+            };
+
+            match serde_json::to_string(&data) {
+                Ok(data_string) => {
+                    let _result = fs::write(save_path, data_string); 
+                },
+                Err(error) => {
+                    println!("Error saving file.  {:?}", error);
+                },
+            }
+        }
     }
 }

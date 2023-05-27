@@ -8,10 +8,11 @@ lazy_static = "1.4.0"
 nanoid = "0.4.0"
 image = "0.24.6"
 reqwest = { version = "0.11.18" }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
 arboard = "3.2.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+glam = { version = "0.24", features = ["serde"] }
 
 [patch.crates-io]
 "image" = { git = 'https://github.com/oovm/image.git' }

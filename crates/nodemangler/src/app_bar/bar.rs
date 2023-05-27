@@ -54,16 +54,18 @@ pub fn show_menu(ctx: &egui::Context, ui: &mut egui::Ui, programs: &HashMap<Stri
                 egui::Frame::none().inner_margin(8.0).show(ui, |ui| {
 
                     if ui.add(egui::Button::new("New").frame(false)).clicked() {
-                        let id = get_id();
-                        bar_response.new_program = Some(Program::new(id.clone()));
-                        bar_response.current_program = Some(id);
+                        if let Ok(new_program) = Program::new(None, None) {
+                            bar_response.new_program = Some(new_program);
+                        }
                     }
 
                     ui.add_space(10.0);
             
                     if ui.add(egui::Button::new("Load").frame(false)).clicked() {
-                        if let Some(save_paths) = rfd::FileDialog::new().add_filter("mangler", &["mangle"]).pick_files() {
-                            println!("{:?}", save_paths);
+                        if let Some(save_path) = rfd::FileDialog::new().add_filter("mangler", &["mangle"]).pick_file() {
+                            if let Ok(new_program) = Program::new(None, Some(save_path)) {
+                                bar_response.new_program = Some(new_program);
+                            }
                         }
                     }
 
@@ -79,17 +81,17 @@ pub fn show_menu(ctx: &egui::Context, ui: &mut egui::Ui, programs: &HashMap<Stri
                 // info about programs
                 // id, name
                 // sorted
-                let mut program_list: Vec<(String, String, bool)> = Vec::new();
+                let mut program_list: Vec<(String, String)> = Vec::new();
                 
                 // sort programs and put into list
                 for (program_id, program) in programs.iter() {
-                    program_list.push((program_id.clone(), program.name.clone(), program.needs_to_save));
+                    program_list.push((program_id.clone(), program.name.clone()));
                 }
 
                 program_list.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap().then(a.0.partial_cmp(&b.0).unwrap()));
 
                 // show programs
-                for (program_id, program_name, needs_to_save) in program_list.iter() {
+                for (program_id, program_name) in program_list.iter() {
                     //let mut stroke = Stroke::NONE;
                     let mut bg_color = Color32::from_gray(30);
 
@@ -101,10 +103,10 @@ pub fn show_menu(ctx: &egui::Context, ui: &mut egui::Ui, programs: &HashMap<Stri
                     egui::Frame::none().fill(bg_color).inner_margin(8.0).show(ui, |ui| {
                         let mut name = program_name.clone();
 
-                        if *needs_to_save {
-                            name.push(' ');
-                            name.push('*');
-                        }
+                        // if *needs_to_save {
+                        //     name.push(' ');
+                        //     name.push('*');
+                        // }
                         
                         if ui.add(egui::Button::new(name).frame(false)).clicked() {
                             bar_response.current_program = Some(program_id.clone());
