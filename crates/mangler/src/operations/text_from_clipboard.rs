@@ -1,6 +1,6 @@
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
+use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType, OutputResponse};
 use crate::value::{Value, ValueType};
 use std::time::Instant;
 use arboard::Clipboard;
@@ -23,18 +23,19 @@ lazy_static! {
     },];
 }
 
-pub async fn text_from_clipboard(_inputs: &[Input]) -> Result<Vec<OperationResponse>, OperationError> {
+pub async fn text_from_clipboard(_inputs: &[Input]) -> Result<OperationResponse, OperationError> {
     let start_time = Instant::now();
 
     if let Ok(mut clipboard) = Clipboard::new() {
         if let Ok(text) = clipboard.get_text() {
             let node_output_message = OperationResponse {
-                index: 0,
-                value: Value::String(text),
                 time: Instant::now().duration_since(start_time),
+                outputs: vec![OutputResponse {
+                    value: Value::String(text),
+                }]
             };
         
-            return Ok(vec![node_output_message]);
+            return Ok(node_output_message);
         }
     }
     

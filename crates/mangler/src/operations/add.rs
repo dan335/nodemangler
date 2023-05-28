@@ -1,6 +1,6 @@
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
+use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType, OutputResponse};
 use crate::value::{Value, ValueType};
 use std::time::Instant;
 
@@ -30,7 +30,7 @@ lazy_static! {
 
 // NodeOutputChangedMessage is the message to send to main thread
 // value is separate because it will not be sent
-pub async fn add(inputs: &[Input]) -> Result<Vec<OperationResponse>, OperationError> {
+pub async fn add(inputs: &[Input]) -> Result<OperationResponse, OperationError> {
     let start_time = Instant::now();
 
     let value = match (&inputs[0].get_value(), &inputs[1].get_value()) {
@@ -55,11 +55,10 @@ pub async fn add(inputs: &[Input]) -> Result<Vec<OperationResponse>, OperationEr
         _ => {return Err(OperationError{message:"Unable to add formats.".to_string()});}
     };
 
-    let response = OperationResponse {
-        value,
+    Ok(OperationResponse {
         time: Instant::now().duration_since(start_time),
-        index: 0,
-    };
-
-    Ok(Vec::from([response]))
+        outputs: vec![OutputResponse {
+            value,
+        }],
+    })
 }

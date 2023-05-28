@@ -1,6 +1,6 @@
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
+use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType, OutputResponse};
 use crate::value::{Value, ValueType};
 use std::time::Instant;
 
@@ -25,7 +25,7 @@ lazy_static! {
     },];
 }
 
-pub async fn image_from_clipboard(_inputs: &[Input]) -> Result<Vec<OperationResponse>, OperationError> {
+pub async fn image_from_clipboard(_inputs: &[Input]) -> Result<OperationResponse, OperationError> {
     let start_time = Instant::now();
 
     if let Ok(mut clipboard) = Clipboard::new() {
@@ -37,13 +37,12 @@ pub async fn image_from_clipboard(_inputs: &[Input]) -> Result<Vec<OperationResp
             );
             
             if let Some(image) = image_option{
-                let node_output_message = OperationResponse {
-                    index: 0,
-                    value: Value::DynamicImage(image::DynamicImage::ImageRgba8(image)),
+                return Ok(OperationResponse {
                     time: Instant::now().duration_since(start_time),
-                };
-
-                return Ok(vec![node_output_message]);
+                    outputs: vec![OutputResponse {
+                        value: Value::DynamicImage(image::DynamicImage::ImageRgba8(image)),
+                    }],
+                });
             } 
         }
     }

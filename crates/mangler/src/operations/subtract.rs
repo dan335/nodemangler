@@ -1,6 +1,6 @@
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
+use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType, OutputResponse};
 use crate::value::{Value, ValueType};
 use std::time::Instant;
 
@@ -28,7 +28,7 @@ lazy_static! {
     },];
 }
 
-pub async fn subtract(inputs: &[Input]) -> Result<Vec<OperationResponse>, OperationError> {
+pub async fn subtract(inputs: &[Input]) -> Result<OperationResponse, OperationError> {
     let start_time = Instant::now();
 
     let value = match (&inputs[0].get_value(), &inputs[1].get_value()) {
@@ -44,10 +44,11 @@ pub async fn subtract(inputs: &[Input]) -> Result<Vec<OperationResponse>, Operat
     };
 
     let node_output_message = OperationResponse {
-        index: 0,
-        value,
         time: Instant::now().duration_since(start_time),
+        outputs: vec![OutputResponse{
+            value,
+        }],
     };
 
-    Ok(vec![node_output_message]) 
+    Ok(node_output_message) 
 }

@@ -2,7 +2,7 @@ use image::{RgbaImage, DynamicImage};
 
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
+use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType, OutputResponse};
 use crate::value::{Value, ValueType};
 use std::time::Instant;
 
@@ -72,7 +72,7 @@ lazy_static! {
     ];
 }
 
-pub async fn image_resize(inputs: &[Input]) -> Result<Vec<OperationResponse>, OperationError> {
+pub async fn image_resize(inputs: &[Input]) -> Result<OperationResponse, OperationError> {
     let start_time = Instant::now();
 
     let Ok(Value::Integer(mut width)) = inputs[1].get_value().try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
@@ -94,23 +94,12 @@ pub async fn image_resize(inputs: &[Input]) -> Result<Vec<OperationResponse>, Op
 
     let mut node_output_messages: Vec<OperationResponse> = Vec::new();
 
-    node_output_messages.push(OperationResponse {
-        index: 0,
-        value: Value::DynamicImage(resized),
+    Ok(OperationResponse {
+        outputs: vec![
+            OutputResponse { value: Value::DynamicImage(resized) },
+            OutputResponse { value: value_1 },
+            OutputResponse { value: value_2 },
+        ],
         time,
-    });
-
-    node_output_messages.push(OperationResponse {
-        index: 1,
-        value: value_1,
-        time,
-    });
-
-    node_output_messages.push(OperationResponse {
-        index: 2,
-        value: value_2,
-        time,
-    });
-
-    Ok(node_output_messages)
+    })
 }
