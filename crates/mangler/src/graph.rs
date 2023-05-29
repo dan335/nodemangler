@@ -1,5 +1,6 @@
 use crate::{node_settings::NodeSettings, operation::{ConnectionSettings, Operation}, value::Value, NodeOutputChangedMessage, NodeInputChangedMessage, node::Node, RemovedConnectionMessage, AddedConnectionMessage, RemovedNodeMessage, AddedNodeMessage, GraphMessage, NewGraphError, GraphSaveData, LoadedNodeMessage};
 use std::{collections::{HashMap, HashSet, VecDeque}, path::PathBuf};
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::Sender;
 use glam::f32::Vec2;
 use std::fs;
@@ -20,7 +21,7 @@ pub struct Graph {
     pub save_path: Option<PathBuf>,
 }
 
-impl Graph {
+impl Graph  {
     pub fn new(
         id: String,
         tx_output_changed: Sender<NodeOutputChangedMessage>,
@@ -343,7 +344,7 @@ impl Graph {
         }
 
         // sort list to run
-        let sorted_nodes = topological_sort(&self.nodes, &dirty_nodes);
+        let sorted_nodes = self.topological_sort(&self.nodes, &dirty_nodes);
 
         for node_id in sorted_nodes.into_iter() {
             // run node
@@ -401,46 +402,7 @@ impl Graph {
             }
         }
 
-        // Perform topological sorting on the dirty nodes
-        fn topological_sort(
-            nodes: &HashMap<String, Node>,
-            dirty_nodes: &HashSet<String>,
-        ) -> Vec<String> {
-            let mut visited: HashSet<String> = HashSet::new();
-            let mut sorted_order: VecDeque<String> = VecDeque::new();
-
-            for node_id in dirty_nodes {
-                if !visited.contains(node_id) {
-                    visit_node(nodes, &node_id, &mut visited, &mut sorted_order);
-                }
-            }
-
-            sorted_order.into_iter().collect()
-        }
-
-        // Recursive function to visit a node and its dependencies
-        fn visit_node(
-            nodes: &HashMap<String, Node>,
-            node_id: &String,
-            visited: &mut HashSet<String>,
-            sorted_order: &mut VecDeque<String>,
-        ) {
-            visited.insert(node_id.clone());
-
-            if let Some(node) = nodes.get(node_id) {
-                for output in node.outputs.iter() {
-                    if let Some(connections) = &output.connection {
-                        for (connection_node_id, _connection_input_index) in connections {
-                            if !visited.contains(connection_node_id) {
-                                visit_node(nodes, connection_node_id, visited, sorted_order);
-                            }
-                        }
-                    }
-                }
-            }
-
-            sorted_order.push_front(node_id.clone());
-        }
+        
 
         self.save_to_file();
     }
@@ -462,5 +424,49 @@ impl Graph {
                 },
             }
         }
+    }
+
+
+    // Perform topological sorting on the dirty nodes
+    fn topological_sort(
+        &self,
+        nodes: &HashMap<String, Node>,
+        dirty_nodes: &HashSet<String>,
+    ) -> Vec<String> {
+        let mut visited: HashSet<String> = HashSet::new();
+        let mut sorted_order: VecDeque<String> = VecDeque::new();
+
+        for node_id in dirty_nodes {
+            if !visited.contains(node_id) {
+                self.visit_node(nodes, &node_id, &mut visited, &mut sorted_order);
+            }
+        }
+
+        sorted_order.into_iter().collect()
+    }
+
+    // Recursive function to visit a node and its dependencies
+    fn visit_node(
+        &self,
+        nodes: &HashMap<String, Node>,
+        node_id: &String,
+        visited: &mut HashSet<String>,
+        sorted_order: &mut VecDeque<String>,
+    ) {
+        visited.insert(node_id.clone());
+
+        if let Some(node) = nodes.get(node_id) {
+            for output in node.outputs.iter() {
+                if let Some(connections) = &output.connection {
+                    for (connection_node_id, _connection_input_index) in connections {
+                        if !visited.contains(connection_node_id) {
+                            self.visit_node(nodes, connection_node_id, visited, sorted_order);
+                        }
+                    }
+                }
+            }
+        }
+
+        sorted_order.push_front(node_id.clone());
     }
 }

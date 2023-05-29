@@ -2,6 +2,7 @@ use std::time::Duration;
 use tokio::sync::mpsc::Sender;
 use glam::f32::Vec2;
 use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
 
 use crate::{input::Input, output::Output, value::Value, NodeOutputChangedMessage};
 
@@ -25,6 +26,10 @@ pub struct Node {
 impl PartialEq for Node {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        self.id != other.id
     }
 }
 
@@ -122,10 +127,12 @@ impl Node {
     }
 
     pub async fn run(&mut self, tx_output: Sender<NodeOutputChangedMessage>) {
-        self.time = Some(
-            self.operation
-                .run(&self.id, &self.inputs, &mut self.outputs, tx_output)
-                .await,
-        );
+        // self.time = Some(
+        //     self.operation
+        //         .run(&self.id, &self.inputs, &mut self.outputs, tx_output)
+        //         .await,
+        // );
+
+        self.operation.run(&self.inputs);
     }
 }

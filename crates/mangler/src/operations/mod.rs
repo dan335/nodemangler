@@ -1,7 +1,7 @@
 pub mod add;
 pub mod subtract;
 pub mod float;
-pub mod integer;
+pub mod input_integer;
 pub mod image_from_url;
 pub mod image_resize;
 pub mod image_from_clipboard;
