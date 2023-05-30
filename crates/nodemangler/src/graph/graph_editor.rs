@@ -1,19 +1,21 @@
 use super::graph_node::ConnectionType;
-use crate::{graph::graph_node::GraphNode, NewConnection, view_to_graph_space_pos2, graph_to_view_space_pos2, graph_to_view_space, view_to_graph_space};
-use eframe::{egui::{self}, epaint::{Rect, Stroke, Color32, Rounding}};
+use crate::{
+    graph::graph_node::GraphNode, graph_to_view_space, view_to_graph_space,
+    view_to_graph_space_pos2, NewConnection,
+};
+use eframe::{
+    egui,
+    epaint::{Color32, Rect, Rounding, Stroke},
+};
 use egui::epaint::CubicBezierShape;
 use egui::Pos2;
-use mangler::{node_settings::NodeSettings, operation::{ConnectionSettings, Operation}};
-use std::{
-    collections::HashMap,
-    time::Instant,
-};
+use mangler::operation::Operation;
+use std::{collections::HashMap, time::Instant};
 
 const BACKGROUND_COLOR: Color32 = egui::Color32::from_gray(35);
 const GRID_COLOR: Color32 = egui::Color32::from_gray(45);
 const ZOOM_MULTIPLIER: f32 = 0.001;
 const ZOOM_BOUNDS: [f32; 2] = [0.15, 5.0];
-
 
 pub struct GraphEditor {
     pub position: Pos2,
@@ -55,31 +57,37 @@ impl GraphEditor {
         let mut graph_editor_response = GraphEditorResponse::default();
 
         let editor_rect = ui.max_rect();
-        let editor_bg_response = ui.allocate_rect(editor_rect, egui::Sense::drag().union(egui::Sense::hover()));
+        let editor_bg_response =
+            ui.allocate_rect(editor_rect, egui::Sense::drag().union(egui::Sense::hover()));
         //let panel_cursor_position = Pos2::new(cursor_position.x - editor_rect.min.x, cursor_position.y - editor_rect.min.y);
 
         ui.ctx().input(|input_state| {
             // let mouse_x = cursor_position.x - editor_rect.min.x;
             // let mouse_y = cursor_position.y - editor_rect.min.y;
-//println!("{} {}, {:?}", mouse_x, mouse_y, self.position);
-            let new_zoom = (self.zoom * (1.0 + input_state.scroll_delta.y * ZOOM_MULTIPLIER)).min(ZOOM_BOUNDS[1]).max(ZOOM_BOUNDS[0]);
+            //println!("{} {}, {:?}", mouse_x, mouse_y, self.position);
+            let new_zoom = (self.zoom * (1.0 + input_state.scroll_delta.y * ZOOM_MULTIPLIER))
+                .min(ZOOM_BOUNDS[1])
+                .max(ZOOM_BOUNDS[0]);
 
             let old_x = view_to_graph_space(self.zoom, editor_rect.max.x - editor_rect.min.x);
-            let new_x = view_to_graph_space(new_zoom, editor_rect.max.x - editor_rect.min.x); 
+            let new_x = view_to_graph_space(new_zoom, editor_rect.max.x - editor_rect.min.x);
             let old_y = view_to_graph_space(self.zoom, editor_rect.max.y - editor_rect.min.y);
             let new_y = view_to_graph_space(new_zoom, editor_rect.max.y - editor_rect.min.y);
 
             let mouse_percent_x = cursor_position.x / (editor_rect.max.x - editor_rect.min.x);
             let mouse_perceny_y = cursor_position.y / (editor_rect.max.y - editor_rect.min.y);
 
-            self.position.x += view_to_graph_space(new_zoom, mouse_percent_x * graph_to_view_space(new_zoom, new_x - old_x));
-            self.position.y += view_to_graph_space(new_zoom, mouse_perceny_y * graph_to_view_space(new_zoom, new_y - old_y));
+            self.position.x += view_to_graph_space(
+                new_zoom,
+                mouse_percent_x * graph_to_view_space(new_zoom, new_x - old_x),
+            );
+            self.position.y += view_to_graph_space(
+                new_zoom,
+                mouse_perceny_y * graph_to_view_space(new_zoom, new_y - old_y),
+            );
 
             self.zoom = new_zoom;
         });
-
-        
-        
 
         ui.set_clip_rect(editor_rect);
 
@@ -94,10 +102,6 @@ impl GraphEditor {
 
         let cursor_inside = editor_rect.contains(cursor_position);
 
-        
-
-
-        
         let mut cursor_primary_went_down = false; // did mouse button go down this frame
         let mut cursor_primary_went_up = false; // did mous button go up this rame
         let mut is_cursor_over_node = false;
@@ -123,8 +127,12 @@ impl GraphEditor {
         if self.is_dragging {
             if let Some(last_drag_position) = self.last_drag_position {
                 //self.position += (cursor_position - last_drag_position) *(1.0 / self.zoom);
-                
-                self.position += view_to_graph_space_pos2(self.zoom, cursor_position - last_drag_position.to_vec2()).to_vec2();
+
+                self.position += view_to_graph_space_pos2(
+                    self.zoom,
+                    cursor_position - last_drag_position.to_vec2(),
+                )
+                .to_vec2();
             }
 
             self.last_drag_position = Some(cursor_position);
@@ -165,12 +173,19 @@ impl GraphEditor {
             }
 
             // draw node
-            let graph_node_response =
-                graph_node.show(ui, self.position, self.zoom, cursor_position, is_editing, is_viewing);
+            let graph_node_response = graph_node.show(
+                ui,
+                self.position,
+                self.zoom,
+                cursor_position,
+                is_editing,
+                is_viewing,
+            );
 
             // node moved
             if let Some(new_position) = graph_node_response.new_position {
-                graph_editor_response.new_node_position = Some((graph_node_id.clone(), new_position.clone()));
+                graph_editor_response.new_node_position =
+                    Some((graph_node_id.clone(), new_position.clone()));
             }
 
             // mouse over it?
@@ -287,13 +302,17 @@ impl GraphEditor {
                 if let Some((output_node_id, output_connection_index)) = &input.connection {
                     if let Some(input_graph_node) = &self.graph_nodes.get(node_id) {
                         if let Some(output_graph_node) = &self.graph_nodes.get(output_node_id) {
-                            let input_node_rect = input_graph_node.get_rect(self.position, self.zoom);
-                            let output_node_rect = output_graph_node.get_rect(self.position, self.zoom);
+                            let input_node_rect =
+                                input_graph_node.get_rect(self.position, self.zoom);
+                            let output_node_rect =
+                                output_graph_node.get_rect(self.position, self.zoom);
 
                             let curve = self.draw_connection_line(
                                 ui,
-                                output_graph_node
-                                    .get_output_position(*output_connection_index, output_node_rect),
+                                output_graph_node.get_output_position(
+                                    *output_connection_index,
+                                    output_node_rect,
+                                ),
                                 input_graph_node.get_input_position(input_index, input_node_rect),
                             );
 
@@ -309,9 +328,13 @@ impl GraphEditor {
 
         if editor_bg_response.clicked_by(egui::PointerButton::Primary) && !is_cursor_over_node {
             graph_editor_response.clear_editing_node = true;
-        } else if editor_bg_response.clicked_by(egui::PointerButton::Secondary) && !is_cursor_over_node {
-            graph_editor_response.clear_viewing_node = true;;
-        } else if editor_bg_response.drag_started_by(egui::PointerButton::Primary) && !is_cursor_over_node {
+        } else if editor_bg_response.clicked_by(egui::PointerButton::Secondary)
+            && !is_cursor_over_node
+        {
+            graph_editor_response.clear_viewing_node = true;
+        } else if editor_bg_response.drag_started_by(egui::PointerButton::Primary)
+            && !is_cursor_over_node
+        {
             self.start_dragging();
         } else if editor_bg_response.drag_released_by(egui::PointerButton::Primary) {
             self.stop_dragging();
@@ -365,7 +388,7 @@ impl GraphEditor {
     pub fn draw_background_grid(&self, ui: &mut egui::Ui, editor_rect: Rect, graph_position: Pos2) {
         let stroke = Stroke::new(1.0, GRID_COLOR);
         let grid_size: f32 = 50.0;
-        
+
         let mut x = graph_to_view_space(self.zoom, graph_position.x % grid_size);
         let mut y = graph_to_view_space(self.zoom, graph_position.y % grid_size);
 
@@ -387,8 +410,6 @@ impl GraphEditor {
             y += graph_to_view_space(self.zoom, grid_size);
         }
     }
-
-    
 
     // returns curve shape to detect clickin on curve
     pub fn draw_connection_line(
@@ -433,20 +454,11 @@ impl GraphEditor {
         self.last_drag_position = None;
     }
 
-    pub fn add_node(
-        &mut self,
-        node_id: String,
-        operation: Operation,
-        position_graph_space: Pos2,
-    ) {
+    pub fn add_node(&mut self, node_id: String, operation: Operation, position_graph_space: Pos2) {
         //let inverse_zoom = 1.0 / self.zoom;
         //let position = Pos2::new(position_graph_space.x, position_graph_space.y);
 
-        let node = GraphNode::new(
-            node_id.clone(),
-            position_graph_space,
-            operation,
-        );
+        let node = GraphNode::new(node_id.clone(), position_graph_space, operation);
 
         self.graph_nodes.insert(node_id, node);
     }
@@ -491,7 +503,7 @@ impl GraphEditorResponse {
             viewing_node_id: None,
             nodes_to_delete: Vec::new(),
             connections_to_delete: Vec::new(),
-            clear_editing_node: false,  // should editing node be cleared.  clicked on graph bg
+            clear_editing_node: false, // should editing node be cleared.  clicked on graph bg
             clear_viewing_node: false,
             new_node_position: None,
         }
@@ -550,5 +562,3 @@ fn distance_to_cubic_bezier_curve(point: Pos2, points: [Pos2; 4]) -> f32 {
         Pos2 { x, y }
     }
 }
-
-

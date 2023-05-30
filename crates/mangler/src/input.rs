@@ -1,7 +1,5 @@
 use crate::value::{Value, ValueType};
-use crate::operation::{ConnectionSettings, UiType};
-use serde::{Serialize, Deserialize};
-
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Input {

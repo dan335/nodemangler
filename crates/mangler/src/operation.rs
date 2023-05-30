@@ -1,21 +1,15 @@
-use serde::{Serialize, Deserialize};
 use crate::node_settings::NodeSettings;
 use crate::operations::input_integer::OperationInputInteger;
 use crate::value::Value;
 use core::fmt::Debug;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-
-use crate::{
-    input::Input,
-    output::Output,
-    value::ValueType,
-};
-
+use crate::{input::Input, output::Output, value::ValueType};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Operation {
-    InputInteger
+    InputInteger,
 }
 
 impl Operation {
@@ -43,7 +37,6 @@ impl Operation {
         }
     }
 }
-
 
 // #[derive(Debug, Clone, Serialize, Deserialize)]
 // pub enum Operation {
@@ -96,7 +89,7 @@ impl Operation {
 
 //             return time;
 //         }
-        
+
 //         Duration::ZERO
 //     }
 // }
@@ -129,7 +122,6 @@ pub struct OperationResponse {
 pub struct OutputResponse {
     pub value: Value,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OperationError {

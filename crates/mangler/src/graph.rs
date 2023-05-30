@@ -1,10 +1,15 @@
-use crate::{node_settings::NodeSettings, operation::{ConnectionSettings, Operation}, value::Value, NodeOutputChangedMessage, NodeInputChangedMessage, node::Node, RemovedConnectionMessage, AddedConnectionMessage, RemovedNodeMessage, AddedNodeMessage, GraphMessage, NewGraphError, GraphSaveData, LoadedNodeMessage};
-use std::{collections::{HashMap, HashSet, VecDeque}, path::PathBuf};
-use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc::Sender;
+use crate::{
+    node::Node, operation::Operation, value::Value, AddedConnectionMessage, AddedNodeMessage,
+    GraphSaveData, LoadedNodeMessage, NewGraphError, NodeInputChangedMessage,
+    NodeOutputChangedMessage, RemovedConnectionMessage, RemovedNodeMessage,
+};
 use glam::f32::Vec2;
 use std::fs;
-
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    path::PathBuf,
+};
+use tokio::sync::mpsc::Sender;
 
 pub struct Graph {
     pub id: String,
@@ -21,7 +26,7 @@ pub struct Graph {
     pub save_path: Option<PathBuf>,
 }
 
-impl Graph  {
+impl Graph {
     pub fn new(
         id: String,
         tx_output_changed: Sender<NodeOutputChangedMessage>,
@@ -59,48 +64,49 @@ impl Graph  {
         tx_removed_connection: Sender<RemovedConnectionMessage>,
     ) -> Result<Graph, NewGraphError> {
         match fs::read_to_string(&save_path) {
-            Ok(data) => {
-                match serde_json::from_str::<GraphSaveData>(&data) {
-                    Ok(json) => {
-                        let mut graph = Graph {
-                            is_dirty: false,
-                            tx_output_changed,
-                            tx_input_changed,
-                            tx_added_node,
-                            tx_removed_node,
-                            tx_loaded_node,
-                            tx_added_connection,
-                            tx_removed_connection,
-                            save_path: Some(save_path),
-                            nodes: json.nodes,
-                            id: json.id,
-                            name: json.name,
-                        };
+            Ok(data) => match serde_json::from_str::<GraphSaveData>(&data) {
+                Ok(json) => {
+                    let mut graph = Graph {
+                        is_dirty: false,
+                        tx_output_changed,
+                        tx_input_changed,
+                        tx_added_node,
+                        tx_removed_node,
+                        tx_loaded_node,
+                        tx_added_connection,
+                        tx_removed_connection,
+                        save_path: Some(save_path),
+                        nodes: json.nodes,
+                        id: json.id,
+                        name: json.name,
+                    };
 
-                        for (_node_id, node) in graph.nodes.iter_mut() {
-                            node.is_dirty = true;
-                            
-                            let added_node_message = LoadedNodeMessage {
-                                node: node.clone(),
-                            };
+                    for (_node_id, node) in graph.nodes.iter_mut() {
+                        node.is_dirty = true;
 
-                            match graph.tx_loaded_node.try_send(added_node_message) {
-                                Ok(_) => {},
-                                Err(err) => {
-                                    println!("Error sending added_node_message: {:?}", err);
-                                },
+                        let added_node_message = LoadedNodeMessage { node: node.clone() };
+
+                        match graph.tx_loaded_node.try_send(added_node_message) {
+                            Ok(_) => {}
+                            Err(err) => {
+                                println!("Error sending added_node_message: {:?}", err);
                             }
                         }
-                        
-                        Ok(graph)
-                    },
-                    Err(error) => Err(NewGraphError(format!("Error loading graph. Error: {}", error.to_string()))),
+                    }
+
+                    Ok(graph)
                 }
+                Err(error) => Err(NewGraphError(format!(
+                    "Error loading graph. Error: {}",
+                    error.to_string()
+                ))),
             },
-            Err(error) => Err(NewGraphError(format!("Error loading graph. Error: {}", error.to_string()))),
+            Err(error) => Err(NewGraphError(format!(
+                "Error loading graph. Error: {}",
+                error.to_string()
+            ))),
         }
     }
-
 
     pub fn set_node_position(&mut self, node_id: String, position: glam::f32::Vec2) {
         if let Some(node) = self.nodes.get_mut(&node_id) {
@@ -109,17 +115,8 @@ impl Graph  {
         }
     }
 
-    pub async fn add_node(
-        &mut self,
-        node_id: String,
-        operation: Operation,
-        position: Vec2,
-    ) {
-        let node = Node::new(
-            node_id.clone(),
-            operation.clone(),
-            position,
-        );
+    pub async fn add_node(&mut self, node_id: String, operation: Operation, position: Vec2) {
+        let node = Node::new(node_id.clone(), operation.clone(), position);
 
         self.nodes.insert(node_id.clone(), node);
         self.is_dirty = true;
@@ -131,17 +128,16 @@ impl Graph  {
         };
 
         match self.tx_added_node.try_send(added_node_message) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(err) => {
                 println!("Error sending added_node_message: {:?}", err);
-            },
+            }
         }
 
         self.save_to_file();
     }
 
     pub async fn remove_node(&mut self, node_id: String) {
-
         // get nodes that connect to this one
         let mut output_connections: Vec<(String, usize)> = Vec::new();
         let mut input_indexes: Vec<usize> = Vec::new();
@@ -161,12 +157,13 @@ impl Graph  {
         }
 
         for input_index in input_indexes.iter() {
-            self.remove_connection(node_id.clone(), *input_index);
+            self.remove_connection(node_id.clone(), *input_index).await;
         }
 
         // remove connections
         for (connected_node_id, input_index) in output_connections.iter() {
-            self.remove_connection(connected_node_id.clone(), *input_index);
+            self.remove_connection(connected_node_id.clone(), *input_index)
+                .await;
         }
 
         // remove node
@@ -177,10 +174,10 @@ impl Graph  {
         };
 
         match self.tx_removed_node.try_send(removed_node_message) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(err) => {
                 println!("Error sending removed_node_message: {:?}", err);
-            },
+            }
         }
 
         self.save_to_file();
@@ -193,7 +190,9 @@ impl Graph  {
         output_node_id: String,
         output_connection_index: usize,
     ) {
-        if self.nodes.get_mut(&input_node_id).is_some() && self.nodes.get_mut(&output_node_id).is_some() {
+        if self.nodes.get_mut(&input_node_id).is_some()
+            && self.nodes.get_mut(&output_node_id).is_some()
+        {
             // set output connection
             if let Some(from) = self.nodes.get_mut(&output_node_id) {
                 from.set_output_connection(
@@ -225,23 +224,20 @@ impl Graph  {
             };
 
             match self.tx_added_connection.try_send(added_connection_message) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(err) => {
                     println!("Error sending added_connection_message: {:?}", err);
-                },
+                }
             }
 
             self.save_to_file();
         }
     }
 
-
     pub async fn remove_connection(&mut self, node_id: String, input_index: usize) {
-        println!("remove_connection {} {}", node_id, input_index);
         let mut output: Option<(String, usize)> = None;
 
         if let Some(node) = self.nodes.get_mut(&node_id) {
-
             if let Some((output_node_id, output_index)) = &node.get_input(input_index).connection {
                 output = Some((output_node_id.clone(), output_index.clone()));
             }
@@ -252,7 +248,6 @@ impl Graph  {
 
         if let Some((output_node_id, output_index)) = output {
             if let Some(node) = self.nodes.get_mut(&output_node_id) {
-
                 if let Some(c) = node.outputs.get_mut(output_index.clone()) {
                     let d = c.connection.as_mut().unwrap();
                     d.remove(output_index.clone());
@@ -265,11 +260,14 @@ impl Graph  {
             input_index,
         };
 
-        match self.tx_removed_connection.try_send(removed_connection_message) {
-            Ok(_) => {},
+        match self
+            .tx_removed_connection
+            .try_send(removed_connection_message)
+        {
+            Ok(_) => {}
             Err(err) => {
                 println!("Error sending removed_connection_message: {:?}", err);
-            },
+            }
         }
 
         self.save_to_file();
@@ -340,10 +338,9 @@ impl Graph  {
 
         for node_id in sorted_nodes.into_iter() {
             // run node
-            let mut output_data : Vec<(String, usize, Value)> = Vec::new();  // connected_node_id, input_index, output.value
+            let mut output_data: Vec<(String, usize, Value)> = Vec::new(); // connected_node_id, input_index, output.value
 
             if let Some(node) = self.nodes.get_mut(&node_id) {
-
                 // run
                 node.run(self.tx_output_changed.clone()).await;
 
@@ -351,7 +348,11 @@ impl Graph  {
                 for output in node.outputs.iter() {
                     if let Some(connections) = &output.connection {
                         for (connected_node_id, input_index) in connections.iter() {
-                            output_data.push((connected_node_id.clone(), input_index.clone(), output.value.clone()));
+                            output_data.push((
+                                connected_node_id.clone(),
+                                input_index.clone(),
+                                output.value.clone(),
+                            ));
                         }
                     }
                 }
@@ -360,41 +361,39 @@ impl Graph  {
             for (connected_node_id, input_index, value) in output_data.iter() {
                 if let Some(connected_node) = self.nodes.get_mut(&connected_node_id.clone()) {
                     //if connected_node.inputs.len() > *input_index {
-                        // should things be converted with code below?
+                    // should things be converted with code below?
 
-                        // let converted = value.convert_to(connected_node.inputs[*input_index].value.clone().value_type());
-                        // match converted {
-                        //     Ok(converted_value) => {
-                        //         connected_node.inputs[*input_index].value = converted_value;
-                        //     }
-                        //     Err(_) => {
-                        //         panic!("Unable to convert.");
-                        //     }
-                        // }
+                    // let converted = value.convert_to(connected_node.inputs[*input_index].value.clone().value_type());
+                    // match converted {
+                    //     Ok(converted_value) => {
+                    //         connected_node.inputs[*input_index].value = converted_value;
+                    //     }
+                    //     Err(_) => {
+                    //         panic!("Unable to convert.");
+                    //     }
+                    // }
 
-                        // todo: send to editor
+                    // todo: send to editor
 
-                        connected_node.set_input_value(*input_index, value.clone());
+                    connected_node.set_input_value(*input_index, value.clone());
 
-                        let node_input_changed_message = NodeInputChangedMessage {
-                            node_id: connected_node_id.clone(),
-                            input_index: input_index.clone(),
-                            value: value.clone(),
-                        };
+                    let node_input_changed_message = NodeInputChangedMessage {
+                        node_id: connected_node_id.clone(),
+                        input_index: input_index.clone(),
+                        value: value.clone(),
+                    };
 
-                        match self.tx_input_changed.try_send(node_input_changed_message) {
-                            Ok(_) => {},
-                            Err(err) => {
-                                println!("Error sending NodeInputChangedMessage: {:?}", err);
-                            },
+                    match self.tx_input_changed.try_send(node_input_changed_message) {
+                        Ok(_) => {}
+                        Err(err) => {
+                            println!("Error sending NodeInputChangedMessage: {:?}", err);
                         }
-                        //connected_node.inputs[*input_index].value = value.clone();
+                    }
+                    //connected_node.inputs[*input_index].value = value.clone();
                     //}
                 }
             }
         }
-
-        
 
         self.save_to_file();
     }
@@ -409,15 +408,14 @@ impl Graph  {
 
             match serde_json::to_string(&data) {
                 Ok(data_string) => {
-                    let _result = fs::write(save_path, data_string); 
-                },
+                    let _result = fs::write(save_path, data_string);
+                }
                 Err(error) => {
                     println!("Error saving file.  {:?}", error);
-                },
+                }
             }
         }
     }
-
 
     // Perform topological sorting on the dirty nodes
     fn topological_sort(

@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct NodeSettings {
@@ -7,8 +7,6 @@ pub struct NodeSettings {
 
 impl NodeSettings {
     pub fn new(name: String) -> NodeSettings {
-        NodeSettings {
-            name,
-        }
+        NodeSettings { name }
     }
 }

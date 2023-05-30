@@ -1,5 +1,5 @@
-use crate::value::{Value, ValueType};
-use serde::{Serialize, Deserialize};
+use crate::value::Value;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Output {

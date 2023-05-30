@@ -1,7 +1,4 @@
-use eframe::{
-    egui::{self, Label},
-    epaint::Rounding,
-};
+use eframe::egui::{self, Label};
 use image::imageops::FilterType;
 use mangler::{
     input::Input,
@@ -10,8 +7,6 @@ use mangler::{
 use tokio::sync::mpsc::Sender;
 
 use crate::{graph::graph_node::GraphNode, SetNodeInputMessage};
-
-
 
 fn change_value(
     tx_input: Sender<SetNodeInputMessage>,
@@ -36,11 +31,7 @@ fn change_value(
     input.value = value;
 }
 
-pub fn show(
-    ui: &mut egui::Ui,
-    node: &mut GraphNode,
-    tx_input: Sender<SetNodeInputMessage>,
-) {
+pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInputMessage>) {
     let name = node.settings.name.clone();
     ui.vertical_centered(|ui| {
         ui.heading(name);
@@ -309,11 +300,7 @@ pub fn show(
                                     input.value = value;
                                 }
                                 if ui
-                                    .selectable_value(
-                                        &mut x,
-                                        ImageFormat::ImageRgb16,
-                                        "RGB 16 bit",
-                                    )
+                                    .selectable_value(&mut x, ImageFormat::ImageRgb16, "RGB 16 bit")
                                     .changed()
                                 {
                                     let value = Value::ImageFormat(x);
@@ -345,11 +332,7 @@ pub fn show(
                                     input.value = value;
                                 }
                                 if ui
-                                    .selectable_value(
-                                        &mut x,
-                                        ImageFormat::ImageRgb8,
-                                        "RGB 8 bit",
-                                    )
+                                    .selectable_value(&mut x, ImageFormat::ImageRgb8, "RGB 8 bit")
                                     .changed()
                                 {
                                     let value = Value::ImageFormat(x);
@@ -399,11 +382,7 @@ pub fn show(
                                     input.value = value;
                                 }
                                 if ui
-                                    .selectable_value(
-                                        &mut x,
-                                        ImageFormat::ImageRgba8,
-                                        "RGBA 8 bit",
-                                    )
+                                    .selectable_value(&mut x, ImageFormat::ImageRgba8, "RGBA 8 bit")
                                     .changed()
                                 {
                                     let value = Value::ImageFormat(x);
@@ -433,8 +412,8 @@ pub fn show(
                             );
                         }
                     }
-                },
-                Value::DynamicImage(_) => {},
+                }
+                Value::DynamicImage(_) => {}
             }
         });
     }

@@ -47,7 +47,7 @@
 //             if response.hovered() {
 //                 background_color = BACKGROUND_COLOR_HOVER;
 //             }
-            
+
 //             ui.painter().add(egui::Shape::rect_filled(
 //                 rect.shrink(1.0),
 //                 rounding,
@@ -71,8 +71,6 @@
 //                 FontId::default(),
 //                 Color32::from_gray(220),
 //             );
-
-            
 
 //             if response.clicked() {
 //             } else if response.drag_started() {

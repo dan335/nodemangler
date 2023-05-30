@@ -1,5 +1,3 @@
-use std::fmt::Debug;
-use std::time::Duration;
 use crate::graph::graph_input::draw_graph_input;
 use crate::graph::graph_output::draw_graph_output;
 use crate::{graph_to_view_space_pos2, view_to_graph_space_pos2};
@@ -8,15 +6,17 @@ use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect, Vec2};
 use mangler::input::Input;
 use mangler::node_settings::NodeSettings;
-use mangler::operation::{ConnectionSettings, Operation};
+use mangler::operation::Operation;
 use mangler::output::Output;
 use mangler::value::Value;
+use std::fmt::Debug;
+use std::time::Duration;
 
-use super::graph_editor::{TempConnection};
+use super::graph_editor::TempConnection;
 use super::graph_output::draw_graph_output_highlighted;
 
 pub const NODE_SIZE: Vec2 = Vec2::new(132.0, 132.0);
-pub const THUMBNAIL_SIZE: [u32; 2] = [128, 128];
+//pub const THUMBNAIL_SIZE: [u32; 2] = [128, 128];
 const NODE_ROUNDING: f32 = 2.0;
 
 #[derive(Clone)]
@@ -33,11 +33,7 @@ pub struct GraphNode {
 }
 
 impl GraphNode {
-    pub fn new(
-        id: String,
-        position: Pos2,
-        operation: Operation,
-    ) -> GraphNode {
+    pub fn new(id: String, position: Pos2, operation: Operation) -> GraphNode {
         GraphNode {
             id,
             position,
@@ -55,8 +51,10 @@ impl GraphNode {
         let node_view_pos = graph_to_view_space_pos2(graph_zoom, self.position);
         let graph_view_pos = graph_to_view_space_pos2(graph_zoom, graph_position);
 
-
-        let graph_pos = Pos2::new(graph_view_pos.x + node_view_pos.x, graph_view_pos.y + node_view_pos.y);
+        let graph_pos = Pos2::new(
+            graph_view_pos.x + node_view_pos.x,
+            graph_view_pos.y + node_view_pos.y,
+        );
         //println!("graph pos node {:?}", graph_pos);
         //let view_pos = graph_to_view_space_pos2(graph_zoom, graph_pos);
         let view_size = graph_to_view_space_pos2(graph_zoom, NODE_SIZE.to_pos2());
@@ -78,7 +76,11 @@ impl GraphNode {
 
         if self.is_dragging {
             if let Some(last_drag_position) = self.last_drag_position {
-                self.position += view_to_graph_space_pos2(graph_zoom, panel_cursor_position - last_drag_position.to_vec2()).to_vec2();
+                self.position += view_to_graph_space_pos2(
+                    graph_zoom,
+                    panel_cursor_position - last_drag_position.to_vec2(),
+                )
+                .to_vec2();
                 graph_node_response.new_position = Some(self.position);
             }
 
@@ -107,8 +109,6 @@ impl GraphNode {
         }
 
         graph_node_response.is_cursor_inside = bg_response.hovered();
-
-        
 
         // bg
         ui.painter().add(egui::Shape::rect_filled(
@@ -211,7 +211,6 @@ impl GraphNode {
 
         // image format
         if let Value::DynamicImage(image) = self.outputs[0].value.clone() {
-
             let bits = image.color().bits_per_pixel() / image.color().channel_count() as u16;
             let channels = match image.color().channel_count() {
                 1 => "r".to_string(),
@@ -272,7 +271,7 @@ impl GraphNode {
                     show_output_text(ui, node_rect.center(), format!("{:?}", value), graph_zoom)
                 }
                 Value::UiButton(_) => todo!(),
-                Value::DynamicImage(_) => {},
+                Value::DynamicImage(_) => {}
             }
         }
 
@@ -417,7 +416,6 @@ impl GraphNodeResponse {
             is_left_click: false,
             is_cursor_inside: false,
             new_position: None,
-
         }
     }
 }

@@ -1,15 +1,13 @@
-use std::time::Duration;
-use tokio::sync::mpsc::Sender;
+use crate::operation::Operation;
 use glam::f32::Vec2;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
-use crate::operation::Operation;
+use std::time::Duration;
+use tokio::sync::mpsc::Sender;
 
 use crate::{input::Input, output::Output, value::Value, NodeOutputChangedMessage};
 
-use super::{
-    node_settings::NodeSettings,
-};
+use super::node_settings::NodeSettings;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Node {
@@ -36,12 +34,7 @@ impl PartialEq for Node {
 // impl Eq for Node {}
 
 impl Node {
-
-    pub fn new(
-        id: String,
-        operation: Operation,
-        position: glam::f32::Vec2,
-    ) -> Node {
+    pub fn new(id: String, operation: Operation, position: glam::f32::Vec2) -> Node {
         Node {
             id,
             inputs: operation.create_inputs(),
@@ -104,21 +97,21 @@ impl Node {
     pub async fn run(&mut self, tx_output: Sender<NodeOutputChangedMessage>) {
         if let Ok(operation_response) = self.operation.run(&self.inputs).await {
             self.time = Some(operation_response.time);
-            
+
             for (index, response) in operation_response.responses.into_iter().enumerate() {
                 let node_output_message = NodeOutputChangedMessage {
                     node_id: self.id.clone(),
                     output_index: index,
                     thumbnail: response.value.create_thumbnail(),
                     value: response.value.clone(),
-                    time: operation_response.time, 
+                    time: operation_response.time,
                 };
 
                 match tx_output.try_send(node_output_message.clone()) {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(err) => {
                         println!("Error sending NodeOutputChangedMessage: {:?}", err);
-                    },
+                    }
                 }
 
                 if let Some(output) = self.outputs.get_mut(index) {

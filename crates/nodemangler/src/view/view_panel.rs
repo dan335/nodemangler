@@ -1,9 +1,8 @@
 use eframe::{
     egui,
-    epaint::{ColorImage, Rounding, Stroke},
+    epaint::{Rounding, Stroke},
 };
 use egui::{Color32, Pos2, Rect};
-use image::DynamicImage;
 
 use crate::graph::graph_node::GraphNode;
 
@@ -75,11 +74,10 @@ impl ViewPanel {
         ui.painter().add(egui::Shape::line(points.clone(), stroke));
     }
 
-
     pub fn draw_background_grid(&self, ui: &mut egui::Ui, rect: Rect, graph_position: Pos2) {
         let stroke = Stroke::new(1.0, GRID_COLOR);
         let grid_size: f32 = 50.0;
-        
+
         let mut x = rect.min.x + (graph_position.x % grid_size);
         let mut y = rect.min.y + (graph_position.y % grid_size);
         while x <= rect.max.x {
@@ -100,7 +98,6 @@ impl ViewPanel {
             y += grid_size;
         }
     }
-
 
     // fn create_thumbnail(&mut self, ui: &mut egui::Ui, node: &GraphNode) {
     //     let color_image = match &node.outputs[0].value {

@@ -1,5 +1,5 @@
 use image::{imageops::FilterType, DynamicImage, ImageBuffer, Rgba};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 pub const THUMBNAIL_SIZE: [u32; 2] = [128, 128];
 
@@ -11,28 +11,31 @@ pub enum Value {
     String(String),
     DynamicImage(DynamicImage), // switch to using dynamicimage
 
-    #[serde(serialize_with = "serialize_filter_type", deserialize_with = "deserialize_filter_type")]
+    #[serde(
+        serialize_with = "serialize_filter_type",
+        deserialize_with = "deserialize_filter_type"
+    )]
     FilterType(FilterType),
-    
+
     ImageFormat(ImageFormat),
     UiButton(bool),
 }
 
-
 impl Value {
-
     pub fn create_thumbnail(&self) -> Option<ImageBuffer<Rgba<u8>, Vec<u8>>> {
         match &self {
-            Value::Bool(_) |
-            Value::Integer(_) |
-            Value::Decimal(_) |
-            Value::String(_) |
-            Value::FilterType(_) |
-            Value::ImageFormat(_) => {
-                None
-            },
+            Value::Bool(_)
+            | Value::Integer(_)
+            | Value::Decimal(_)
+            | Value::String(_)
+            | Value::FilterType(_)
+            | Value::ImageFormat(_) => None,
             Value::UiButton(_) => todo!(),
-            Value::DynamicImage(value) =>  Some(value.thumbnail(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]).to_rgba8()),
+            Value::DynamicImage(value) => Some(
+                value
+                    .thumbnail(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1])
+                    .to_rgba8(),
+            ),
         }
     }
 
@@ -49,7 +52,7 @@ impl Value {
         }
     }
 
-    pub fn value_name(&self) -> String {        
+    pub fn value_name(&self) -> String {
         match self {
             Value::Bool(_) => "bool".to_string(),
             Value::Integer(_) => "integer".to_string(),
@@ -61,7 +64,6 @@ impl Value {
             Value::DynamicImage(_) => "image".to_string(),
         }
     }
-
 
     pub fn try_convert_to(&self, other: ValueType) -> Result<Value, ConversionError> {
         match self {
@@ -171,7 +173,7 @@ impl Value {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
             },
-            Value::FilterType(a) => match other {
+            Value::FilterType(_a) => match other {
                 ValueType::Bool => Err(ConversionError {
                     message: "Unable to convert filter type to bool.".to_string(),
                 }),
@@ -216,7 +218,7 @@ impl Value {
                 ValueType::DynamicImage => todo!(),
             },
             Value::UiButton(_) => todo!(),
-            Value::DynamicImage(a) => match other {
+            Value::DynamicImage(_a) => match other {
                 ValueType::Bool => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
@@ -256,7 +258,6 @@ pub enum ValueType {
     DynamicImage,
 }
 
-
 #[derive(Debug)]
 pub struct ConversionError {
     pub message: String,
@@ -276,10 +277,8 @@ pub enum ImageFormat {
     ImageGray8,
 }
 
-
 #[derive(Debug, Clone)]
 pub struct UiButton(bool);
-
 
 fn serialize_filter_type<S>(value: &FilterType, serializer: S) -> Result<S::Ok, S::Error>
 where

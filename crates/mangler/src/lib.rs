@@ -1,26 +1,23 @@
-use std::{time::Duration, path::PathBuf, collections::HashMap};
 use glam::f32::Vec2;
 use image::{ImageBuffer, Rgba};
 use nanoid::nanoid;
 use node::Node;
-use node_settings::NodeSettings;
 use operation::Operation;
-use serde::{Serialize, Deserialize};
-use value::{Value, ValueType};
-use crate::operation::ConnectionSettings;
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
+use value::Value;
 
 #[macro_use]
 extern crate lazy_static;
 
-pub mod input;
-pub mod output;
-pub mod value;
 pub mod graph;
+pub mod input;
+pub mod node;
 pub mod node_settings;
 pub mod operation;
-pub mod node;
 pub mod operations;
-
+pub mod output;
+pub mod value;
 
 pub fn get_id() -> String {
     nanoid!()
@@ -51,8 +48,8 @@ pub struct NodeOutputChangedMessage {
     pub output_index: usize,
     pub value: Value,
     //pub value_type: ValueType,
-    pub time: Duration, 
-    pub thumbnail: Option< ImageBuffer<Rgba<u8>, Vec<u8>>>,
+    pub time: Duration,
+    pub thumbnail: Option<ImageBuffer<Rgba<u8>, Vec<u8>>>,
 }
 
 #[derive(Debug)]
@@ -124,18 +121,16 @@ pub struct NodePosition {
     pub position: glam::f32::Vec2,
 }
 
-
 #[derive(Debug, Clone)]
 pub enum OperationListItem {
     Category {
         name: String,
-        operations: Vec<OperationListItem>,
+        operation_list_items: Vec<OperationListItem>,
     },
     Operation {
-        operation: Operation
+        operation: Operation,
     },
 }
-
 
 #[derive(Debug)]
 pub struct NewGraphError(pub String);
@@ -147,11 +142,19 @@ pub struct GraphSaveData {
     pub nodes: HashMap<String, Node>,
 }
 
-
 lazy_static! {
     pub static ref OPERATION_LIST: Vec<OperationListItem> = vec![
-        OperationListItem::Category { name: "Numbers".to_string(), operations: vec![
-            OperationListItem::Operation { operation: Operation::InputInteger }
+        OperationListItem::Category { name: "Numbers".to_string(), operation_list_items: vec![
+            OperationListItem::Operation { operation: Operation::InputInteger },
+            OperationListItem::Category { name: "Numbers".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::InputInteger },
+                OperationListItem::Operation { operation: Operation::InputInteger },
+            ]},
+            OperationListItem::Operation { operation: Operation::InputInteger },
+        ]},
+        OperationListItem::Category { name: "Numbers".to_string(), operation_list_items: vec![
+            OperationListItem::Operation { operation: Operation::InputInteger },
+            OperationListItem::Operation { operation: Operation::InputInteger },
         ]},
         // OperationCategory {
         //     name: "Images".to_string(),
@@ -168,10 +171,4 @@ lazy_static! {
         //     ]
         // }
     ];
-}
-
-impl OperationListItem {
-    pub fn show(&self) {
-        
-    }
 }

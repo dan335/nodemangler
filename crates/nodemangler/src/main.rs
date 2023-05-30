@@ -1,22 +1,19 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use app_bar::bar;
-use eframe::egui::{self, Layout};
-use epaint::{Rect, Rounding, Color32, Stroke};
-use std::collections::HashMap;
-use mangler::{
-    SetNodeInputMessage, get_id,
-};
+use eframe::egui;
+use mangler::SetNodeInputMessage;
 use program::Program;
+use std::collections::HashMap;
 use std::path::Path;
+mod app_bar;
 mod graph;
 mod menu;
+mod program;
 mod settings;
 mod title_bar;
 mod view;
-mod program;
-mod app_bar;
-use egui::{Pos2};
+use egui::Pos2;
 
 pub const PROFILE: bool = false;
 pub const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
@@ -75,7 +72,6 @@ struct ManglerApp {
     current_program: Option<String>,
 }
 
-
 impl eframe::App for ManglerApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         if PROFILE {
@@ -97,7 +93,7 @@ impl eframe::App for ManglerApp {
             if let Some(current_program) = bar_response.current_program {
                 self.current_program = Some(current_program);
             }
-            
+
             if let Some(current_program) = &self.current_program {
                 if let Some(program) = self.programs.get_mut(current_program) {
                     program.show(ctx, frame, ui);
@@ -132,11 +128,8 @@ impl ManglerApp {
             programs: HashMap::new(),
             current_program: None,
         }
-    } 
-
-    
+    }
 }
-
 
 #[derive(Debug)]
 pub struct NewConnection {
@@ -162,13 +155,15 @@ impl NewConnection {
     }
 }
 
-
 pub fn view_to_graph_space(zoom: f32, n: f32) -> f32 {
     n * zoom
 }
 
 pub fn view_to_graph_space_pos2(zoom: f32, n: Pos2) -> Pos2 {
-    Pos2::new(view_to_graph_space(zoom, n.x), view_to_graph_space(zoom, n.y))
+    Pos2::new(
+        view_to_graph_space(zoom, n.x),
+        view_to_graph_space(zoom, n.y),
+    )
 }
 
 pub fn graph_to_view_space(zoom: f32, n: f32) -> f32 {
@@ -176,5 +171,8 @@ pub fn graph_to_view_space(zoom: f32, n: f32) -> f32 {
 }
 
 pub fn graph_to_view_space_pos2(zoom: f32, n: Pos2) -> Pos2 {
-    Pos2::new(graph_to_view_space(zoom, n.x), graph_to_view_space(zoom, n.y))
+    Pos2::new(
+        graph_to_view_space(zoom, n.x),
+        graph_to_view_space(zoom, n.y),
+    )
 }
