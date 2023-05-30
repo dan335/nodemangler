@@ -1,5 +1,9 @@
+use crate::operations::images::transform::resize::OperationImageTransformResize;
+use crate::operations::images::inputs::url::OperationImageInputUrl;
+use crate::operations::numbers::math::add::OperationNumberMathAdd;
+use crate::operations::numbers::inputs::{integer::OperationNumberInputInteger, decimal::OperationNumberInputDecimal};
 use crate::node_settings::NodeSettings;
-use crate::operations::input_integer::OperationInputInteger;
+use crate::operations::sub_graph::OperationSubgraph;
 use crate::value::Value;
 use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
@@ -9,90 +13,59 @@ use crate::{input::Input, output::Output, value::ValueType};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Operation {
-    InputInteger,
+    NumberInputInteger,
+    NumberInputDecimal,
+    NumberMathAdd,
+    ImageInputUrl,
+    ImageTransformResize,
+    Subgraph,
 }
 
 impl Operation {
     pub fn settings(&self) -> NodeSettings {
         match self {
-            Operation::InputInteger => OperationInputInteger::settings(),
+            Operation::NumberInputInteger => OperationNumberInputInteger::settings(),
+            Operation::NumberInputDecimal => OperationNumberInputDecimal::settings(),
+            Operation::NumberMathAdd => OperationNumberMathAdd::settings(),
+            Operation::ImageInputUrl => OperationImageInputUrl::settings(),
+            Operation::ImageTransformResize => OperationImageTransformResize::settings(),
+            Operation::Subgraph => OperationSubgraph::settings(),
         }
     }
 
     pub fn create_inputs(&self) -> Vec<Input> {
         match self {
-            Operation::InputInteger => OperationInputInteger::create_inputs(),
+            Operation::NumberInputInteger => OperationNumberInputInteger::create_inputs(),
+            Operation::NumberInputDecimal => OperationNumberInputDecimal::create_inputs(),
+            Operation::NumberMathAdd => OperationNumberMathAdd::create_inputs(),
+            Operation::ImageInputUrl => OperationImageInputUrl::create_inputs(),
+            Operation::ImageTransformResize => OperationImageTransformResize::create_inputs(),
+            Operation::Subgraph => OperationSubgraph::create_inputs(),
         }
     }
 
     pub fn create_outputs(&self) -> Vec<Output> {
         match self {
-            Operation::InputInteger => OperationInputInteger::create_outputs(),
+            Operation::NumberInputInteger => OperationNumberInputInteger::create_outputs(),
+            Operation::NumberInputDecimal => OperationNumberInputDecimal::create_outputs(),
+            Operation::NumberMathAdd => OperationNumberMathAdd::create_outputs(),
+            Operation::ImageInputUrl => OperationImageInputUrl::create_outputs(),
+            Operation::ImageTransformResize => OperationImageTransformResize::create_outputs(),
+            Operation::Subgraph => OperationSubgraph::create_outputs(),
         }
     }
 
     pub async fn run(&self, inputs: &[Input]) -> Result<OperationResponse, OperationError> {
         match self {
-            Operation::InputInteger => OperationInputInteger::run(inputs).await,
+            Operation::NumberInputInteger => OperationNumberInputInteger::run(inputs).await,
+            Operation::NumberInputDecimal => OperationNumberInputDecimal::run(inputs).await,
+            Operation::NumberMathAdd => OperationNumberMathAdd::run(inputs).await,
+            Operation::ImageInputUrl => OperationImageInputUrl::run(inputs).await,
+            Operation::ImageTransformResize => OperationImageTransformResize::run(inputs).await,
+            Operation::Subgraph => OperationSubgraph::run(inputs).await,
         }
     }
 }
-
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// pub enum Operation {
-//     Add,
-//     Subtract,
-//     Float,
-//     Integer,
-//     ImageFromUrl,
-//     ImageResize,
-//     ImageFromClipboard,
-//     TextFromClipboard,
-// }
-
-// impl Operation {
-//     pub async fn run(&self, node_id: &String, inputs: &Vec<Input>, outputs: &mut Vec<Output>, tx_output: Sender<NodeOutputChangedMessage>) -> Duration {
-//         let p_operation_response: Result<OperationResponse, OperationError> = match self {
-//             Operation::Float => new_float(inputs).await,
-//             Operation::Integer => OperationInputInteger::run(inputs).await,
-//             Operation::Add => add(inputs).await,
-//             Operation::Subtract => subtract(inputs).await,
-//             Operation::ImageFromUrl => image_from_url(inputs).await,
-//             Operation::ImageResize => image_resize(inputs).await,
-//             Operation::ImageFromClipboard => image_from_clipboard(inputs).await,
-//             Operation::TextFromClipboard => text_from_clipboard(inputs).await,
-//         };
-
-//         if let Ok(operation_response) = p_operation_response {
-//             let time = operation_response.time;
-
-//             for (index, output) in operation_response.outputs.into_iter().enumerate() {
-
-//                 let node_output_message = NodeOutputChangedMessage {
-//                     node_id: node_id.clone(),
-//                     output_index: index,
-//                     value: output.value.clone(),
-//                     value_type: output.value.value_type(),
-//                     time: operation_response.time,
-//                     thumbnail: output.value.create_thumbnail(),
-//                 };
-
-//                 outputs[index].value = output.value;
-
-//                 match tx_output.try_send(node_output_message.clone()) {
-//                     Ok(_) => {},
-//                     Err(err) => {
-//                         println!("Error sending NodeOutputChangedMessage: {:?}", err);
-//                     },
-//                 }
-//             }
-
-//             return time;
-//         }
-
-//         Duration::ZERO
-//     }
-// }
 
 #[derive(Debug, Clone)]
 pub struct ConnectionSettings {

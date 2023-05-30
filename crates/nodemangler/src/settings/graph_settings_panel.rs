@@ -44,7 +44,7 @@ pub fn show(
                 sanitize_filename::sanitize_with_options(program_name, options);
 
             // remove whitespace
-            starting_file_name = starting_file_name.replace(" ", "_");
+            starting_file_name = starting_file_name.replace(' ', "_");
 
             if let Some(save_path) = rfd::FileDialog::new()
                 .set_file_name(&starting_file_name)

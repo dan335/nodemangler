@@ -213,7 +213,7 @@ impl Value {
                 ValueType::FilterType => Err(ConversionError {
                     message: "Unable to convert image type to image.".to_string(),
                 }),
-                ValueType::ImageFormat => Ok(Value::ImageFormat(a.clone())),
+                ValueType::ImageFormat => Ok(Value::ImageFormat(*a)),
                 ValueType::UiButton => todo!(),
                 ValueType::DynamicImage => todo!(),
             },

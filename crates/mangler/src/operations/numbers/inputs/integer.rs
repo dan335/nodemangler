@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationInputInteger {}
+pub struct OperationNumberInputInteger {}
 
-impl OperationInputInteger {
+impl OperationNumberInputInteger {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "Integer".to_string(),

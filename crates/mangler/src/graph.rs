@@ -239,7 +239,7 @@ impl Graph {
 
         if let Some(node) = self.nodes.get_mut(&node_id) {
             if let Some((output_node_id, output_index)) = &node.get_input(input_index).connection {
-                output = Some((output_node_id.clone(), output_index.clone()));
+                output = Some((output_node_id.clone(), *output_index));
             }
 
             node.clear_input_connection(input_index);
@@ -248,9 +248,9 @@ impl Graph {
 
         if let Some((output_node_id, output_index)) = output {
             if let Some(node) = self.nodes.get_mut(&output_node_id) {
-                if let Some(c) = node.outputs.get_mut(output_index.clone()) {
+                if let Some(c) = node.outputs.get_mut(output_index) {
                     let d = c.connection.as_mut().unwrap();
-                    d.remove(output_index.clone());
+                    d.remove(output_index);
                 }
             }
         }
@@ -350,7 +350,7 @@ impl Graph {
                         for (connected_node_id, input_index) in connections.iter() {
                             output_data.push((
                                 connected_node_id.clone(),
-                                input_index.clone(),
+                                *input_index,
                                 output.value.clone(),
                             ));
                         }
@@ -379,7 +379,7 @@ impl Graph {
 
                     let node_input_changed_message = NodeInputChangedMessage {
                         node_id: connected_node_id.clone(),
-                        input_index: input_index.clone(),
+                        input_index: *input_index,
                         value: value.clone(),
                     };
 
@@ -428,7 +428,7 @@ impl Graph {
 
         for node_id in dirty_nodes {
             if !visited.contains(node_id) {
-                self.visit_node(nodes, &node_id, &mut visited, &mut sorted_order);
+                self.visit_node(nodes, node_id, &mut visited, &mut sorted_order);
             }
         }
 

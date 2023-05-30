@@ -210,33 +210,36 @@ impl GraphNode {
         }
 
         // image format
-        if let Value::DynamicImage(image) = self.outputs[0].value.clone() {
-            let bits = image.color().bits_per_pixel() / image.color().channel_count() as u16;
-            let channels = match image.color().channel_count() {
-                1 => "r".to_string(),
-                2 => "rg".to_string(),
-                3 => "rgb".to_string(),
-                4 => "rgba".to_string(),
-                _ => "".to_string(),
-            };
+        if self.outputs.len() > 0 {
+            if let Value::DynamicImage(image) = self.outputs[0].value.clone() {
+                let bits = image.color().bits_per_pixel() / image.color().channel_count() as u16;
+                let channels = match image.color().channel_count() {
+                    1 => "r".to_string(),
+                    2 => "rg".to_string(),
+                    3 => "rgb".to_string(),
+                    4 => "rgba".to_string(),
+                    _ => "".to_string(),
+                };
 
-            // if image.color().has_alpha() {
-            //     channels = format!("{}a", channels);
-            // }
+                // if image.color().has_alpha() {
+                //     channels = format!("{}a", channels);
+                // }
 
-            let pos = Pos2 {
-                x: node_rect.right_bottom().x,
-                y: node_rect.right_bottom().y + 20.0,
-            };
-            let text = format!("{}{}", channels, bits);
-            ui.painter().text(
-                pos,
-                Align2::RIGHT_TOP,
-                text,
-                egui::FontId::monospace(10.0),
-                egui::Color32::from_gray(200),
-            );
+                let pos = Pos2 {
+                    x: node_rect.right_bottom().x,
+                    y: node_rect.right_bottom().y + 20.0,
+                };
+                let text = format!("{}{}", channels, bits);
+                ui.painter().text(
+                    pos,
+                    Align2::RIGHT_TOP,
+                    text,
+                    egui::FontId::monospace(10.0),
+                    egui::Color32::from_gray(200),
+                );
+            }
         }
+        
 
         // show output result on node
         if let Some(thumbnail) = &self.thumbnail {
@@ -250,28 +253,30 @@ impl GraphNode {
                 Color32::WHITE,
             );
         } else {
-            match &self.outputs[0].value {
-                Value::Bool(value) => {
-                    show_output_text(ui, node_rect.center(), value.to_string(), graph_zoom)
-                }
-                Value::Integer(value) => {
-                    show_output_text(ui, node_rect.center(), value.to_string(), graph_zoom)
-                }
-                Value::Decimal(value) => {
-                    show_output_text(ui, node_rect.center(), value.to_string(), graph_zoom)
-                }
-                Value::String(value) => {
-                    show_output_text(ui, node_rect.center(), value.to_string(), graph_zoom)
-                }
+            if self.outputs.len() > 0 {
+                match &self.outputs[0].value {
+                    Value::Bool(value) => {
+                        show_output_text(ui, node_rect.center(), value.to_string(), graph_zoom)
+                    }
+                    Value::Integer(value) => {
+                        show_output_text(ui, node_rect.center(), value.to_string(), graph_zoom)
+                    }
+                    Value::Decimal(value) => {
+                        show_output_text(ui, node_rect.center(), value.to_string(), graph_zoom)
+                    }
+                    Value::String(value) => {
+                        show_output_text(ui, node_rect.center(), value.to_string(), graph_zoom)
+                    }
 
-                Value::FilterType(value) => {
-                    show_output_text(ui, node_rect.center(), format!("{:?}", value), graph_zoom)
+                    Value::FilterType(value) => {
+                        show_output_text(ui, node_rect.center(), format!("{:?}", value), graph_zoom)
+                    }
+                    Value::ImageFormat(value) => {
+                        show_output_text(ui, node_rect.center(), format!("{:?}", value), graph_zoom)
+                    }
+                    Value::UiButton(_) => todo!(),
+                    Value::DynamicImage(_) => {}
                 }
-                Value::ImageFormat(value) => {
-                    show_output_text(ui, node_rect.center(), format!("{:?}", value), graph_zoom)
-                }
-                Value::UiButton(_) => todo!(),
-                Value::DynamicImage(_) => {}
             }
         }
 

@@ -81,18 +81,20 @@ impl ViewPanel {
         let mut x = rect.min.x + (graph_position.x % grid_size);
         let mut y = rect.min.y + (graph_position.y % grid_size);
         while x <= rect.max.x {
-            let mut points: Vec<Pos2> = Vec::with_capacity(2);
-            points.push(Pos2::new(x, rect.min.y));
-            points.push(Pos2::new(x, rect.max.y));
+            let points: Vec<Pos2> = vec![
+                Pos2::new(x, rect.min.y),
+                Pos2::new(x, rect.max.y),
+            ];
             ui.painter().add(egui::Shape::line(points.clone(), stroke));
 
             x += grid_size;
         }
 
         while y <= rect.max.y {
-            let mut points: Vec<Pos2> = Vec::with_capacity(2);
-            points.push(Pos2::new(rect.min.x, y));
-            points.push(Pos2::new(rect.max.x, y));
+            let points: Vec<Pos2> = vec![
+                Pos2::new(rect.min.x, y),
+                Pos2::new(rect.max.x, y),
+            ];
             ui.painter().add(egui::Shape::line(points.clone(), stroke));
 
             y += grid_size;

@@ -401,16 +401,14 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                 Value::UiButton(a) => {
                     if input.connection.is_some() {
                         ui.label(format!("{:?}", a));
-                    } else {
-                        if ui.add(egui::Button::new(input.name.clone())).clicked() {
-                            change_value(
-                                tx_input.clone(),
-                                node.id.clone(),
-                                input_index,
-                                input,
-                                Value::UiButton(true),
-                            );
-                        }
+                    } else if ui.add(egui::Button::new(input.name.clone())).clicked() {
+                        change_value(
+                            tx_input.clone(),
+                            node.id.clone(),
+                            input_index,
+                            input,
+                            Value::UiButton(true),
+                        );
                     }
                 }
                 Value::DynamicImage(_) => {}

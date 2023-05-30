@@ -185,7 +185,7 @@ impl GraphEditor {
             // node moved
             if let Some(new_position) = graph_node_response.new_position {
                 graph_editor_response.new_node_position =
-                    Some((graph_node_id.clone(), new_position.clone()));
+                    Some((graph_node_id.clone(), new_position));
             }
 
             // mouse over it?
@@ -350,17 +350,15 @@ impl GraphEditor {
 
         // deleting connections
         ui.input(|i| {
-            if i.modifiers.command {
-                if cursor_primary_went_down {
-                    for (curve, input_node_id, input_index) in connection_curves.iter() {
-                        if curve.visual_bounding_rect().contains(cursor_position) {
-                            let distance =
-                                distance_to_cubic_bezier_curve(cursor_position, curve.points);
-                            if distance < 15.0 {
-                                graph_editor_response
-                                    .connections_to_delete
-                                    .push((input_node_id.clone(), input_index.clone()));
-                            }
+            if i.modifiers.command && cursor_primary_went_down {
+                for (curve, input_node_id, input_index) in connection_curves.iter() {
+                    if curve.visual_bounding_rect().contains(cursor_position) {
+                        let distance =
+                            distance_to_cubic_bezier_curve(cursor_position, curve.points);
+                        if distance < 15.0 {
+                            graph_editor_response
+                                .connections_to_delete
+                                .push((input_node_id.clone(), *input_index));
                         }
                     }
                 }
@@ -378,11 +376,12 @@ impl GraphEditor {
         let size = 2.0;
         let stroke = Stroke::new(size, egui::Color32::from_gray(10));
 
-        let mut points: Vec<Pos2> = Vec::with_capacity(2);
-        points.push(Pos2::new(rect.left(), rect.top() + (size * 0.5)));
-        points.push(Pos2::new(rect.right(), rect.top() + (size * 0.5)));
+        let points: Vec<Pos2> = vec![
+            Pos2::new(rect.left(), rect.top() + (size * 0.5)),
+            Pos2::new(rect.right(), rect.top() + (size * 0.5)),
+        ];
 
-        ui.painter().add(egui::Shape::line(points.clone(), stroke));
+        ui.painter().add(egui::Shape::line(points, stroke));
     }
 
     pub fn draw_background_grid(&self, ui: &mut egui::Ui, editor_rect: Rect, graph_position: Pos2) {
@@ -393,18 +392,20 @@ impl GraphEditor {
         let mut y = graph_to_view_space(self.zoom, graph_position.y % grid_size);
 
         while x <= editor_rect.max.x {
-            let mut points: Vec<Pos2> = Vec::with_capacity(2);
-            points.push(Pos2::new(x, editor_rect.min.y));
-            points.push(Pos2::new(x, editor_rect.max.y));
+            let points: Vec<Pos2> = vec![
+                Pos2::new(x, editor_rect.min.y),
+                Pos2::new(x, editor_rect.max.y),
+            ];
             ui.painter().add(egui::Shape::line(points.clone(), stroke));
 
             x += graph_to_view_space(self.zoom, grid_size);
         }
 
         while y <= editor_rect.max.y {
-            let mut points: Vec<Pos2> = Vec::with_capacity(2);
-            points.push(Pos2::new(editor_rect.min.x, y));
-            points.push(Pos2::new(editor_rect.max.x, y));
+            let points: Vec<Pos2> = vec![
+                Pos2::new(editor_rect.min.x, y),
+                Pos2::new(editor_rect.max.x, y),
+            ];
             ui.painter().add(egui::Shape::line(points.clone(), stroke));
 
             y += graph_to_view_space(self.zoom, grid_size);

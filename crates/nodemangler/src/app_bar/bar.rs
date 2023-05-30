@@ -173,10 +173,8 @@ pub fn show_window_control_menu(ctx: &egui::Context, frame: &mut eframe::Frame, 
                         if ui.add(egui::Button::new("🗗").frame(false)).clicked() {
                             frame.set_maximized(false);
                         }
-                    } else {
-                        if ui.add(egui::Button::new("🗖").frame(false)).clicked() {
-                            frame.set_maximized(true);
-                        }
+                    } else if ui.add(egui::Button::new("🗖").frame(false)).clicked() {
+                        frame.set_maximized(true);
                     }
 
                     if ui.add(egui::Button::new("🗕").frame(false)).clicked() {

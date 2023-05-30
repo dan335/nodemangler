@@ -11,71 +11,64 @@ const BACKGROUND_COLOR_HOVER: Color32 = egui::Color32::from_gray(80);
 pub enum MenuItem {
     Category {
         name: String,
+        level: usize,
         is_collapsed: bool,
-        index: usize,
         items: Vec<MenuItem>,
     },
     Button {
         name: String,
+        level: usize,
         operation: Operation,
-        index: usize,
     },
 }
 
 impl MenuItem {
-    pub fn new(operation_item: OperationListItem, index: usize) -> (usize, MenuItem) {
+    pub fn new(operation_item: OperationListItem, level: usize) -> MenuItem {
         match operation_item {
             OperationListItem::Category {
                 name,
                 operation_list_items,
             } => {
                 let mut items: Vec<MenuItem> = Vec::new();
-                let mut next_index = index.clone() + 1;
-                let mut cat_index = index.clone();
 
                 for item in operation_list_items.iter() {
-                    let (i, r) = MenuItem::new(item.clone(), next_index);
-                    next_index = i;
-                    items.push(r);
+                    items.push( MenuItem::new(item.clone(), level + 1));
                 }
 
-                (
-                    next_index,
-                    MenuItem::Category {
-                        name,
-                        items,
-                        is_collapsed: true,
-                        index: cat_index,
-                    },
-                )
+                MenuItem::Category {
+                    name,
+                    items,
+                    is_collapsed: true,
+                    level,
+                }
             }
             OperationListItem::Operation { operation } => {
-                let mi = MenuItem::Button {
+                MenuItem::Button {
                     name: operation.settings().name,
                     operation,
-                    index: index,
-                };
-
-                (index + 1, mi)
+                    level,
+                }
             }
         }
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui) -> MenuItemsResult {
+    pub fn show(&mut self, ui: &mut egui::Ui, mut index: i32) -> (i32, MenuItemsResult) {
         let mut result = MenuItemsResult {
             operation_being_created: None,
         };
+
+        index += 1;
 
         match self {
             MenuItem::Category {
                 name,
                 items,
                 is_collapsed,
-                index,
+                level,
             } => {
                 let container_rect = ui.max_rect();
                 let button_top_position =
-                    container_rect.top() + (BUTTON_HEIGHT * index.clone() as f32);
+                    container_rect.top() + (BUTTON_HEIGHT * index as f32);
                 let button_min = Pos2::new(container_rect.left(), button_top_position);
                 let button_max =
                     Pos2::new(container_rect.right(), button_top_position + BUTTON_HEIGHT);
@@ -112,16 +105,18 @@ impl MenuItem {
                     // points.push(Pos2::new(rect.right(), rect.bottom() + 1.0));
                     // ui.painter().add(egui::Shape::line(points, stroke));
 
+                    let mut offset = Vec2::new(*level as f32 * 18.0, 0.0);
+
                     let mut points: Vec<Pos2> = Vec::new();
 
                     if *is_collapsed {
-                        points.push(rect.left_center() + Vec2::new(10.0, -5.0));
-                        points.push(rect.left_center() + Vec2::new(15.0, 0.0));
-                        points.push(rect.left_center() + Vec2::new(10.0, 5.0));
+                        points.push(rect.left_center() + Vec2::new(10.0, -5.0) + offset);
+                        points.push(rect.left_center() + Vec2::new(15.0, 0.0) + offset);
+                        points.push(rect.left_center() + Vec2::new(10.0, 5.0) + offset);
                     } else {
-                        points.push(rect.left_center() + Vec2::new(5.0, 0.0));
-                        points.push(rect.left_center() + Vec2::new(15.0, 0.0));
-                        points.push(rect.left_center() + Vec2::new(10.0, 5.0));
+                        points.push(rect.left_center() + Vec2::new(5.0, 0.0) + offset);
+                        points.push(rect.left_center() + Vec2::new(15.0, 0.0) + offset);
+                        points.push(rect.left_center() + Vec2::new(10.0, 5.0) + offset);
                     }
 
                     let triangle =
@@ -129,8 +124,10 @@ impl MenuItem {
 
                     ui.painter().add(triangle);
 
+                    offset.x += 25.0;
+
                     ui.painter().text(
-                        Pos2::new(rect.left() + 25.0, rect.center().y),
+                        Pos2::new(rect.left() + offset.x, rect.center().y),
                         Align2::LEFT_CENTER,
                         name.clone(),
                         FontId::default(),
@@ -140,33 +137,35 @@ impl MenuItem {
                     let response = ui.allocate_rect(rect, egui::Sense::click());
 
                     if response.clicked() {
-                        if *is_collapsed {
-                            *is_collapsed = false;
-                        } else {
-                            *is_collapsed = true;
-                        }
+                        *is_collapsed = !(*is_collapsed);
                     }
 
+                    
+                });
+
+                if !(*is_collapsed) {
                     for item in items.iter_mut() {
-                        let r = item.show(ui);
+                        let (i, r) = item.show(ui, index);
+                        index = i;
 
                         if let Some(operation_being_created) = r.operation_being_created {
                             result.operation_being_created = Some(operation_being_created);
                         }
                     }
-                });
+                }
+                
 
-                result
+                (index, result)
             }
 
             MenuItem::Button {
                 name,
                 operation,
-                index,
+                level,
             } => {
                 let container_rect = ui.max_rect();
                 let button_top_position =
-                    container_rect.top() + (BUTTON_HEIGHT * index.clone() as f32);
+                    container_rect.top() + (BUTTON_HEIGHT * index as f32);
                 let button_min = Pos2::new(container_rect.left(), button_top_position);
                 let button_max =
                     Pos2::new(container_rect.right(), button_top_position + BUTTON_HEIGHT);
@@ -206,8 +205,10 @@ impl MenuItem {
                     // points.push(Pos2::new(rect.right(), rect.bottom() + 1.0));
                     // ui.painter().add(egui::Shape::line(points, stroke));
 
+                    let indention = *level as f32 * 25.0;
+
                     ui.painter().text(
-                        Pos2::new(rect.left() + 40.0, rect.center().y),
+                        Pos2::new(rect.left() + indention, rect.center().y),
                         Align2::LEFT_CENTER,
                         name,
                         FontId::default(),
@@ -221,7 +222,7 @@ impl MenuItem {
                     }
                 });
 
-                result
+                (index, result)
             }
         }
     }

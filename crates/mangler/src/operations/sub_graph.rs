@@ -1,34 +1,43 @@
+
+use crate::Value;
+use crate::output::Output;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType};
-use crate::value::{Value, ValueType};
+use crate::operation::{OperationError, OperationResponse};
+
 use std::time::Instant;
 
 
-lazy_static! {
-    pub static ref SETTINGS: NodeSettings = NodeSettings::new("Sub Graph".to_string());
-    pub static ref INPUT_SETTINGS: Vec<ConnectionSettings> = vec![ConnectionSettings {
-        name: "integer".to_string(),
-        default_value: Value::Integer(0),
-        valid_types: vec![ValueType::Decimal, ValueType::Integer, ValueType::String],
-        ui_type: Some(UiType::DragValue),
-    },];
-    pub static ref OUTPUT_SETTINGS: Vec<ConnectionSettings> = vec![ConnectionSettings {
-        name: "integer".to_string(),
-        default_value: Value::Integer(0),
-        valid_types: vec![ValueType::Integer],
-        ui_type: None,
-    },];
-}
+pub struct OperationSubgraph {}
 
-pub async fn new_integer(inputs: &[Input]) -> Result<Vec<OperationResponse>, OperationError> {
-    let start_time = Instant::now();
+impl OperationSubgraph {
+    pub fn settings() -> NodeSettings {
+        NodeSettings {
+            name: "subgraph".to_string(),
+        }
+    }
 
-    let node_output_message = OperationResponse {
-        index: 0,
-        value,
-        time: Instant::now().duration_since(start_time),
-    };
+    pub fn create_inputs() -> Vec<Input> {
+        vec![
+            Input {
+                name: "file path".to_string(),
+                value: Value::String("C:\\temp\\New_Graph.mangle".to_string()),
+                connection: None,
+                valid_types: vec![],
+            }
+        ]
+    }
 
-    Ok(vec![node_output_message]) 
+    pub fn create_outputs() -> Vec<Output> {
+        vec![]
+    }
+
+    pub async fn run(_inputs: &[Input]) -> Result<OperationResponse, OperationError> {
+        let start_time = Instant::now();
+
+        Ok(OperationResponse {
+            time: Instant::now().duration_since(start_time),
+            responses: vec![],
+        })
+    }
 }

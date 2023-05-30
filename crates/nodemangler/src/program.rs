@@ -356,7 +356,7 @@ impl Program {
                 if let Some((output_node_id, output_index)) =
                     &node.inputs[removed_connection_message.input_index].connection
                 {
-                    output = Some((output_node_id.clone(), output_index.clone()));
+                    output = Some((output_node_id.clone(), *output_index));
                 }
 
                 node.clear_input_connection(removed_connection_message.input_index);
@@ -365,9 +365,9 @@ impl Program {
 
             if let Some((output_node_id, output_index)) = output {
                 if let Some(node) = self.graph_editor.graph_nodes.get_mut(&output_node_id) {
-                    if let Some(c) = node.outputs.get_mut(output_index.clone()) {
+                    if let Some(c) = node.outputs.get_mut(output_index) {
                         let d = c.connection.as_mut().unwrap();
-                        d.remove(output_index.clone());
+                        d.remove(output_index);
                     }
                 }
             }
@@ -548,7 +548,7 @@ impl Program {
             }
 
             for (node_id, input_index) in graph_editor_response.connections_to_delete.iter() {
-                self.remove_connection(node_id.clone(), input_index.clone());
+                self.remove_connection(node_id.clone(), *input_index);
             }
 
             for node_id in graph_editor_response.nodes_to_delete.iter() {
@@ -608,7 +608,7 @@ impl Program {
 
         // show help in bottom left
         let pos = Pos2::new(app_rect.left() + 10.0, app_rect.bottom() - 10.0);
-        let txt = format!("left click: edit      right click: view      ctrl + left click: delete");
+        let txt = "left click: edit      right click: view      ctrl + left click: delete".to_string();
         ui.painter().text(
             pos,
             egui::Align2::LEFT_BOTTOM,
@@ -622,8 +622,8 @@ impl Program {
         let node_id = get_id();
 
         let add_node_message = AddNodeMessage {
-            node_id: node_id.clone(),
-            operation: operation.clone(),
+            node_id,
+            operation,
             position: glam::f32::Vec2::new(position_graph_space.x, position_graph_space.y),
         };
 
@@ -646,7 +646,7 @@ impl Program {
 
     pub fn remove_node(&mut self, node_id: String) {
         let remove_node_message = RemoveNodeMessage {
-            node_id: node_id.clone(),
+            node_id,
         };
 
         match self.tx_remove_node.try_send(remove_node_message) {
@@ -675,9 +675,9 @@ impl Program {
         output_connection_index: usize,
     ) {
         let add_connection_message = AddConnectionMessage {
-            input_node_id: input_node_id.clone(),
+            input_node_id,
             input_connection_index,
-            output_node_id: output_node_id.clone(),
+            output_node_id,
             output_connection_index,
         };
 

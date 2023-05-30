@@ -25,10 +25,6 @@ impl PartialEq for Node {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
-
-    fn ne(&self, other: &Self) -> bool {
-        self.id != other.id
-    }
 }
 
 // impl Eq for Node {}

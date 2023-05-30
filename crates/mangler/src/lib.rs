@@ -7,9 +7,6 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use value::Value;
 
-#[macro_use]
-extern crate lazy_static;
-
 pub mod graph;
 pub mod input;
 pub mod node;
@@ -142,36 +139,25 @@ pub struct GraphSaveData {
     pub nodes: HashMap<String, Node>,
 }
 
-lazy_static! {
-    pub static ref OPERATION_LIST: Vec<OperationListItem> = vec![
-
-        OperationListItem::Category { name: "Numbers".to_string(), operation_list_items: vec![
-            OperationListItem::Operation { operation: Operation::InputInteger },
-            OperationListItem::Category { name: "Numbers".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::InputInteger },
-                OperationListItem::Operation { operation: Operation::InputInteger },
+pub fn operation_list() -> Vec<OperationListItem> {
+    vec![
+        OperationListItem::Category { name: "Number".to_string(), operation_list_items: vec![
+            OperationListItem::Category { name: "Input".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::NumberInputDecimal },
+                OperationListItem::Operation { operation: Operation::NumberInputInteger },
             ]},
-            OperationListItem::Operation { operation: Operation::InputInteger },
+            OperationListItem::Category { name: "Math".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::NumberMathAdd },
+            ]},
         ]},
-        OperationListItem::Category { name: "Numbers".to_string(), operation_list_items: vec![
-            OperationListItem::Operation { operation: Operation::InputInteger },
-            OperationListItem::Operation { operation: Operation::InputInteger },
-        ]},
-
-
-        // OperationCategory {
-        //     name: "Images".to_string(),
-        //     operations: vec![
-        //         OperationDescription { operation: Operation::ImageFromUrl },
-        //         OperationDescription { operation: Operation::ImageResize },
-        //         OperationDescription { operation: Operation::ImageFromClipboard },
-        //     ]
-        // },
-        // OperationCategory {
-        //     name: "Text".to_string(),
-        //     operations: vec![
-        //         OperationDescription { operation: Operation::TextFromClipboard },
-        //     ]
-        // }
-    ];
+        OperationListItem::Category { name: "Image".to_string(), operation_list_items: vec![
+            OperationListItem::Category { name: "Input".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::ImageInputUrl },
+            ]},
+            OperationListItem::Category { name: "Transform".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::ImageTransformResize },
+            ]},
+        ]}, 
+        OperationListItem::Operation { operation: Operation::Subgraph },
+    ]
 }
