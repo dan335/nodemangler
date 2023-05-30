@@ -33,7 +33,7 @@ fn change_value(
         }
     }
 
-    input.set_value(value);
+    input.value = value;
 }
 
 pub fn show(
@@ -54,7 +54,7 @@ pub fn show(
             ui.label(input.name.clone());
             // todo: redo this
             // each value type should only have one option
-            match input.get_value().clone() {
+            match input.value.clone() {
                 Value::Bool(a) => {
                     if input.connection.is_some() {
                         ui.label(a.to_string());
@@ -69,7 +69,7 @@ pub fn show(
                                 input,
                                 value.clone(),
                             );
-                            input.set_value(value);
+                            input.value = value;
                         }
                     }
                 }
@@ -87,7 +87,7 @@ pub fn show(
                                 input,
                                 value.clone(),
                             );
-                            input.set_value(value);
+                            input.value = value;
                         }
                     }
                 }
@@ -105,7 +105,7 @@ pub fn show(
                                 input,
                                 value.clone(),
                             );
-                            input.set_value(value);
+                            input.value = value;
                         }
                     }
                 }
@@ -123,7 +123,7 @@ pub fn show(
                                 input,
                                 value.clone(),
                             );
-                            input.set_value(value);
+                            input.value = value;
                         }
                     }
                 }
@@ -151,7 +151,7 @@ pub fn show(
                                         input,
                                         value.clone(),
                                     );
-                                    input.set_value(value);
+                                    input.value = value;
                                 }
                                 if ui
                                     .selectable_value(
@@ -169,7 +169,7 @@ pub fn show(
                                         input,
                                         value.clone(),
                                     );
-                                    input.set_value(value);
+                                    input.value = value;
                                 }
                                 if ui
                                     .selectable_value(
@@ -187,7 +187,7 @@ pub fn show(
                                         input,
                                         value.clone(),
                                     );
-                                    input.set_value(value);
+                                    input.value = value;
                                 }
                                 if ui
                                     .selectable_value(
@@ -205,7 +205,7 @@ pub fn show(
                                         input,
                                         value.clone(),
                                     );
-                                    input.set_value(value);
+                                    input.value = value;
                                 }
                                 if ui
                                     .selectable_value(
@@ -223,7 +223,7 @@ pub fn show(
                                         input,
                                         value.clone(),
                                     );
-                                    input.set_value(value);
+                                    input.value = value;
                                 }
                             });
                     }
@@ -252,7 +252,7 @@ pub fn show(
                                         input,
                                         value.clone(),
                                     );
-                                    input.set_value(value);
+                                    input.value = value;
                                 }
                                 if ui
                                     .selectable_value(
@@ -270,7 +270,7 @@ pub fn show(
                                         input,
                                         value.clone(),
                                     );
-                                    input.set_value(value);
+                                    input.value = value;
                                 }
                                 if ui
                                     .selectable_value(
@@ -288,7 +288,7 @@ pub fn show(
                                         input,
                                         value.clone(),
                                     );
-                                    input.set_value(value);
+                                    input.value = value;
                                 }
                                 if ui
                                     .selectable_value(
@@ -306,7 +306,7 @@ pub fn show(
                                         input,
                                         value.clone(),
                                     );
-                                    input.set_value(value);
+                                    input.value = value;
                                 }
                                 if ui
                                     .selectable_value(
@@ -324,7 +324,7 @@ pub fn show(
                                         input,
                                         value.clone(),
                                     );
-                                    input.set_value(value);
+                                    input.value = value;
                                 }
                                 if ui
                                     .selectable_value(
@@ -342,7 +342,7 @@ pub fn show(
                                         input,
                                         value.clone(),
                                     );
-                                    input.set_value(value);
+                                    input.value = value;
                                 }
                                 if ui
                                     .selectable_value(
@@ -360,7 +360,7 @@ pub fn show(
                                         input,
                                         value.clone(),
                                     );
-                                    input.set_value(value);
+                                    input.value = value;
                                 }
                                 if ui
                                     .selectable_value(
@@ -378,7 +378,7 @@ pub fn show(
                                         input,
                                         value.clone(),
                                     );
-                                    input.set_value(value);
+                                    input.value = value;
                                 }
                                 if ui
                                     .selectable_value(
@@ -396,7 +396,7 @@ pub fn show(
                                         input,
                                         value.clone(),
                                     );
-                                    input.set_value(value);
+                                    input.value = value;
                                 }
                                 if ui
                                     .selectable_value(
@@ -414,7 +414,7 @@ pub fn show(
                                         input,
                                         value.clone(),
                                     );
-                                    input.set_value(value);
+                                    input.value = value;
                                 }
                             });
                     }

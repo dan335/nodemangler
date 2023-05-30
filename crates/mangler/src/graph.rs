@@ -112,18 +112,12 @@ impl Graph  {
     pub async fn add_node(
         &mut self,
         node_id: String,
-        node_settings: NodeSettings,
-        input_settings: Vec<ConnectionSettings>,
-        output_settings: Vec<ConnectionSettings>,
         operation: Operation,
         position: Vec2,
     ) {
         let node = Node::new(
             node_id.clone(),
-            node_settings.clone(),
-            input_settings.clone(),
-            output_settings.clone(),
-            operation,
+            operation.clone(),
             position,
         );
 
@@ -131,11 +125,9 @@ impl Graph  {
         self.is_dirty = true;
 
         let added_node_message = AddedNodeMessage {
-            node_id: node_id,
-            node_settings,
-            input_settings,
-            output_settings,
+            node_id,
             position,
+            operation,
         };
 
         match self.tx_added_node.try_send(added_node_message) {
@@ -286,7 +278,7 @@ impl Graph  {
     pub fn set_input(&mut self, node_id: String, input_index: usize, value: Value) {
         if let Some(node) = self.nodes.get_mut(&node_id) {
             if let Some(input) = node.inputs.get_mut(input_index) {
-                input.set_value(value);
+                input.value = value;
                 node.is_dirty = true;
                 self.save_to_file();
             }

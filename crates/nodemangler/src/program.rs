@@ -31,12 +31,7 @@ pub struct Program {
     menu_panel: MenuPanel,
     editing_node_id: Option<String>,
     viewing_node_id: Option<String>,
-    dragging_menu_button: Option<(
-        NodeSettings,
-        Vec<ConnectionSettings>,
-        Vec<ConnectionSettings>,
-        Operation,
-    )>,
+    dragging_menu_button: Option<Operation>,
 }
 
 impl Program {
@@ -81,9 +76,6 @@ impl Program {
                         while let Ok(add_node_message) = rx_add_node.try_recv() {
                             graph.add_node(
                                 add_node_message.node_id,
-                                add_node_message.node_settings,
-                                add_node_message.input_settings,
-                                add_node_message.output_settings,
                                 add_node_message.operation,
                                 add_node_message.position,
                             ).await;
@@ -231,7 +223,7 @@ impl Program {
             {
                 if let Some(input) = node.inputs.get_mut(node_input_changed_message.input_index)
                 {
-                    input.set_value(node_input_changed_message.value);
+                    input.value = node_input_changed_message.value;
                     //self.needs_to_save = true;
                 }
             }
@@ -240,9 +232,7 @@ impl Program {
         while let Ok(added_node_message) = self.rx_added_node.try_recv() {
             self.graph_editor.add_node(
                 added_node_message.node_id.clone(),
-                added_node_message.node_settings.clone(),
-                added_node_message.input_settings.clone(),
-                added_node_message.output_settings.clone(),
+                added_node_message.operation,
                 Pos2::new(added_node_message.position.x, added_node_message.position.y),
             );
             //self.needs_to_save = true;
@@ -516,19 +506,13 @@ impl Program {
         // release mouse button after dragging menu button
         ui.input(|i| {
             if i.pointer.primary_released() {
-                if let Some(dragging_settings) = &self.dragging_menu_button {
+                if let Some(operation) = &self.dragging_menu_button {
                     if bottom_panel_rect.contains(cursor_position) {
-                        let node_settings = dragging_settings.0.clone();
-                        let input_sttings = dragging_settings.1.clone();
-                        let output_settings = dragging_settings.2.clone();
 
                         //let node_position_view_space = Pos2::new(cursor_position.x - bottom_panel_rect.min.x, cursor_position.y - bottom_panel_rect.min.y);
 //println!("{:?}", cursor_position);
                         self.add_node(
-                            node_settings,
-                            input_sttings,
-                            output_settings,
-                            dragging_settings.3.clone(),
+                            operation.clone(),
                             view_to_graph_space_pos2(self.graph_editor.zoom, cursor_position) - self.graph_editor.position.to_vec2(),
                         );
                     }
@@ -578,9 +562,6 @@ impl Program {
 
     pub fn add_node(
         &mut self,
-        node_settings: NodeSettings,
-        input_settings: Vec<ConnectionSettings>,
-        output_settings: Vec<ConnectionSettings>,
         operation: Operation,
         position_graph_space: Pos2,
     ) {
@@ -588,9 +569,6 @@ impl Program {
 
         let add_node_message = AddNodeMessage {
             node_id: node_id.clone(),
-            node_settings: node_settings.clone(),
-            input_settings: input_settings.clone(),
-            output_settings: output_settings.clone(),
             operation: operation.clone(),
             position: glam::f32::Vec2::new(position_graph_space.x, position_graph_space.y),
         };

@@ -45,7 +45,7 @@ impl OperationInputInteger {
             Ok(new_value) => {
                 Ok(OperationResponse {
                     time: Instant::now().duration_since(start_time),
-                    outputs: vec![OutputResponse{
+                    responses: vec![OutputResponse{
                         value: new_value.clone()
                     }],
                 })

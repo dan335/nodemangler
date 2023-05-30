@@ -8,7 +8,7 @@ use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect, Vec2};
 use mangler::input::Input;
 use mangler::node_settings::NodeSettings;
-use mangler::operation::ConnectionSettings;
+use mangler::operation::{ConnectionSettings, Operation};
 use mangler::output::Output;
 use mangler::value::Value;
 
@@ -36,45 +36,18 @@ impl GraphNode {
     pub fn new(
         id: String,
         position: Pos2,
-        settings: NodeSettings,
-        input_settings: Vec<ConnectionSettings>,
-        output_settings: Vec<ConnectionSettings>,
+        operation: Operation,
     ) -> GraphNode {
-        // same as in node.rs
-        // todo: improve this?
-        let inputs: Vec<Input> = input_settings
-            .iter()
-            // .map(|settings| Input {
-            //     name: settings.name.to_owned(),
-            //     value: settings.default_value.clone(),
-            //     connection: None,
-            //     valid_types: settings.valid_types.to_vec(),
-            //     ui_type: settings.ui_type.clone(),
-            // })
-            .map(|settings| Input::new(settings.clone()))
-            .collect();
-
-        let outputs: Vec<Output> = output_settings
-            .iter()
-            .map(|settings| Output {
-                name: settings.name.to_owned(),
-                value: settings.default_value.clone(),
-                connection: None,
-                value_type: settings.default_value.value_type(),
-            })
-            .collect();
-
         GraphNode {
             id,
             position,
-            settings,
+            settings: operation.settings(),
             is_dragging: false,
             last_drag_position: None,
             thumbnail: None,
-            //is_dirty: true,
-            inputs,
-            outputs,
-            time: None, // what it is does not matter
+            inputs: operation.create_inputs(),
+            outputs: operation.create_outputs(),
+            time: None,
         }
     }
 

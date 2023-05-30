@@ -1,19 +1,10 @@
 use serde::{Serialize, Deserialize};
-use tokio::sync::mpsc::Sender;
 use crate::node_settings::NodeSettings;
 use crate::operations::input_integer::OperationInputInteger;
-use crate::{NodeOutputChangedMessage, value::Value};
+use crate::value::Value;
 use core::fmt::Debug;
 use std::time::Duration;
-use crate::operations::{
-    float::new_float,
-    add::add,
-    image_from_clipboard::image_from_clipboard,
-    image_from_url::image_from_url,
-    image_resize::image_resize,
-    subtract::subtract,
-    text_from_clipboard::text_from_clipboard,
-};
+
 
 use crate::{
     input::Input,
@@ -130,7 +121,7 @@ pub enum UiType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OperationResponse {
-    pub outputs: Vec<OutputResponse>,
+    pub responses: Vec<OutputResponse>,
     pub time: Duration,
 }
 

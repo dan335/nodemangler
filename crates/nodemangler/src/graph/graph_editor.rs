@@ -3,7 +3,7 @@ use crate::{graph::graph_node::GraphNode, NewConnection, view_to_graph_space_pos
 use eframe::{egui::{self}, epaint::{Rect, Stroke, Color32, Rounding}};
 use egui::epaint::CubicBezierShape;
 use egui::Pos2;
-use mangler::{node_settings::NodeSettings, operation::ConnectionSettings};
+use mangler::{node_settings::NodeSettings, operation::{ConnectionSettings, Operation}};
 use std::{
     collections::HashMap,
     time::Instant,
@@ -436,9 +436,7 @@ impl GraphEditor {
     pub fn add_node(
         &mut self,
         node_id: String,
-        node_settings: NodeSettings,
-        input_settings: Vec<ConnectionSettings>,
-        output_settings: Vec<ConnectionSettings>,
+        operation: Operation,
         position_graph_space: Pos2,
     ) {
         //let inverse_zoom = 1.0 / self.zoom;
@@ -447,9 +445,7 @@ impl GraphEditor {
         let node = GraphNode::new(
             node_id.clone(),
             position_graph_space,
-            node_settings,
-            input_settings,
-            output_settings,
+            operation,
         );
 
         self.graph_nodes.insert(node_id, node);

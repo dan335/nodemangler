@@ -3,12 +3,12 @@ use tokio::sync::mpsc::Sender;
 use glam::f32::Vec2;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
+use crate::operation::Operation;
 
 use crate::{input::Input, output::Output, value::Value, NodeOutputChangedMessage};
 
 use super::{
     node_settings::NodeSettings,
-    operation::{ConnectionSettings, Operation},
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -39,41 +39,16 @@ impl Node {
 
     pub fn new(
         id: String,
-        settings: NodeSettings,
-        input_settings: Vec<ConnectionSettings>,
-        output_settings: Vec<ConnectionSettings>,
         operation: Operation,
         position: glam::f32::Vec2,
     ) -> Node {
-        let inputs: Vec<Input> = input_settings
-            .iter()
-            // .map(|settings| Input {
-            //     name: settings.name.to_owned(),
-            //     value: settings.default_value.clone(),
-            //     connection: None,
-            //     valid_types: settings.valid_types.to_vec(),
-            //     ui_type: settings.ui_type.clone(),
-            // })
-            .map(|settings| Input::new(settings.clone()))
-            .collect();
-
-        let outputs: Vec<Output> = output_settings
-            .iter()
-            .map(|settings| Output {
-                name: settings.name.to_owned(),
-                value_type: settings.default_value.value_type(),
-                value: settings.default_value.clone(),
-                connection: None,
-            })
-            .collect();
-
         Node {
             id,
-            inputs,
-            outputs,
+            inputs: operation.create_inputs(),
+            outputs: operation.create_outputs(),
+            settings: operation.settings(),
             time: None,
             operation,
-            settings,
             is_dirty: true,
             position,
         }
@@ -81,7 +56,7 @@ impl Node {
 
     pub fn set_input_value(&mut self, index: usize, value: Value) {
         if let Some(input) = self.inputs.get_mut(index) {
-            input.set_value(value); //value = value;
+            input.value = value; //value = value;
             self.is_dirty = true;
         } else {
             panic!("Invalid input index: {}", index);
@@ -127,12 +102,29 @@ impl Node {
     }
 
     pub async fn run(&mut self, tx_output: Sender<NodeOutputChangedMessage>) {
-        // self.time = Some(
-        //     self.operation
-        //         .run(&self.id, &self.inputs, &mut self.outputs, tx_output)
-        //         .await,
-        // );
+        if let Ok(operation_response) = self.operation.run(&self.inputs).await {
+            self.time = Some(operation_response.time);
+            
+            for (index, response) in operation_response.responses.into_iter().enumerate() {
+                let node_output_message = NodeOutputChangedMessage {
+                    node_id: self.id.clone(),
+                    output_index: index,
+                    thumbnail: response.value.create_thumbnail(),
+                    value: response.value.clone(),
+                    time: operation_response.time, 
+                };
 
-        self.operation.run(&self.inputs);
+                match tx_output.try_send(node_output_message.clone()) {
+                    Ok(_) => {},
+                    Err(err) => {
+                        println!("Error sending NodeOutputChangedMessage: {:?}", err);
+                    },
+                }
+
+                if let Some(output) = self.outputs.get_mut(index) {
+                    output.value = response.value;
+                }
+            }
+        }
     }
 }
