@@ -144,6 +144,7 @@ pub struct GraphSaveData {
 
 lazy_static! {
     pub static ref OPERATION_LIST: Vec<OperationListItem> = vec![
+
         OperationListItem::Category { name: "Numbers".to_string(), operation_list_items: vec![
             OperationListItem::Operation { operation: Operation::InputInteger },
             OperationListItem::Category { name: "Numbers".to_string(), operation_list_items: vec![
@@ -156,6 +157,8 @@ lazy_static! {
             OperationListItem::Operation { operation: Operation::InputInteger },
             OperationListItem::Operation { operation: Operation::InputInteger },
         ]},
+
+
         // OperationCategory {
         //     name: "Images".to_string(),
         //     operations: vec![

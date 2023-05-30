@@ -19,7 +19,7 @@ impl MenuPanel {
             items.push(item);
             index = returned_index;
         }
-        println!("{:?}", items);
+        println!("{:#?}", items);
         MenuPanel { items }
     }
 

@@ -11,9 +11,9 @@ const BACKGROUND_COLOR_HOVER: Color32 = egui::Color32::from_gray(80);
 pub enum MenuItem {
     Category {
         name: String,
-        items: Vec<MenuItem>,
         is_collapsed: bool,
         index: usize,
+        items: Vec<MenuItem>,
     },
     Button {
         name: String,
@@ -30,21 +30,22 @@ impl MenuItem {
                 operation_list_items,
             } => {
                 let mut items: Vec<MenuItem> = Vec::new();
-                let mut returned_index = index.clone();
+                let mut next_index = index.clone() + 1;
+                let mut cat_index = index.clone();
 
                 for item in operation_list_items.iter() {
-                    let (i, r) = MenuItem::new(item.clone(), returned_index + 1);
-                    returned_index = i;
+                    let (i, r) = MenuItem::new(item.clone(), next_index);
+                    next_index = i;
                     items.push(r);
                 }
 
                 (
-                    returned_index,
+                    next_index,
                     MenuItem::Category {
                         name,
                         items,
                         is_collapsed: true,
-                        index,
+                        index: cat_index,
                     },
                 )
             }
