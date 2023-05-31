@@ -24,34 +24,80 @@ pub fn get_id() -> String {
     nanoid!()
 }
 
-// set a node's input to a value
-// node will run next time graph runs
+
 #[derive(Debug)]
-pub struct SetNodeInputMessage {
-    pub node_id: String,
-    pub input_index: usize,
-    pub value: Value,
+pub enum ChangeNodeMessage {
+    SetInput {
+        node_id: String,
+        input_index: usize,
+        value: Value,
+    },
+    SetExposeInput {
+        node_id: String,
+        input_index: usize,
+        set_to: bool,
+    },
+    SetExposeOutput {
+        node_id: String,
+        output_index: usize,
+        set_to: bool,
+    }
 }
 
-// when a node's input changes because of a node connection
-// this will let the ui know
 #[derive(Debug)]
-pub struct NodeInputChangedMessage {
-    pub node_id: String,
-    pub input_index: usize,
-    pub value: Value,
+pub enum NodeChangedMessage {
+    InputChanged {
+        node_id: String,
+        input_index: usize,
+        value: Value,
+    },
+    OutputChanged {
+        node_id: String,
+        output_index: usize,
+        value: Value,
+        time: Duration,
+        thumbnail: Option<ImageBuffer<Rgba<u8>, Vec<u8>>>,
+    },
+    ExposeInputChanged {
+        node_id: String,
+        input_index: usize,
+        set_to: bool,
+    },
+    ExposeOutputChanged {
+        node_id: String,
+        output_index: usize,
+        set_to: bool,
+    }
 }
 
-// a node has run and it's output has changed
-#[derive(Debug, Clone)]
-pub struct NodeOutputChangedMessage {
-    pub node_id: String,
-    pub output_index: usize,
-    pub value: Value,
-    //pub value_type: ValueType,
-    pub time: Duration,
-    pub thumbnail: Option<ImageBuffer<Rgba<u8>, Vec<u8>>>,
-}
+// // set a node's input to a value
+// // node will run next time graph runs
+// #[derive(Debug)]
+// pub struct SetNodeInputMessage {
+//     pub node_id: String,
+//     pub input_index: usize,
+//     pub value: Value,
+// }
+
+// // when a node's input changes because of a node connection
+// // this will let the ui know
+// #[derive(Debug)]
+// pub struct NodeInputChangedMessage {
+//     pub node_id: String,
+//     pub input_index: usize,
+//     pub value: Value,
+// }
+
+// // a node has run and it's output has changed
+// #[derive(Debug, Clone)]
+// pub struct NodeOutputChangedMessage {
+//     pub node_id: String,
+//     pub output_index: usize,
+//     pub value: Value,
+//     //pub value_type: ValueType,
+//     pub time: Duration,
+//     pub thumbnail: Option<ImageBuffer<Rgba<u8>, Vec<u8>>>,
+// }
 
 #[derive(Debug)]
 pub struct AddNodeMessage {

@@ -1,13 +1,11 @@
 use crate::graph::graph_input::draw_graph_input;
 use crate::graph::graph_output::draw_graph_output;
 use crate::{graph_to_view_space_pos2, view_to_graph_space_pos2};
-use eframe::egui::accesskit::Node;
 use eframe::epaint::{Color32, FontId, Rounding};
 use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect, Vec2};
 use mangler::input::Input;
 use mangler::node_settings::NodeSettings;
-use mangler::operation::Operation;
 use mangler::output::Output;
 use mangler::value::Value;
 use std::fmt::Debug;

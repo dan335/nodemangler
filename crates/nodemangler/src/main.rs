@@ -2,7 +2,6 @@
 
 use app_bar::bar;
 use eframe::egui;
-use mangler::SetNodeInputMessage;
 use program::Program;
 use std::collections::HashMap;
 use std::path::Path;

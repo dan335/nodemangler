@@ -1,6 +1,6 @@
 use tokio::sync::mpsc::Sender;
 use tokio::time::{Duration};
-use crate::AddNodeType;
+use crate::{AddNodeType, NodeChangedMessage};
 use crate::graph::Graph;
 use crate::node_type::NodeType;
 use glam::f32::Vec2;
@@ -9,7 +9,7 @@ use std::fmt::Debug;
 use std::path::PathBuf;
 
 
-use crate::{input::Input, output::Output, value::Value, NodeOutputChangedMessage};
+use crate::{input::Input, output::Output, value::Value};
 
 use super::node_settings::NodeSettings;
 
@@ -106,7 +106,7 @@ impl Node {
         }
     }
 
-    pub async fn run(&mut self, tx_output: Option<Sender<NodeOutputChangedMessage>>) {
+    pub async fn run(&mut self, tx_output: Option<Sender<NodeChangedMessage>>) {
         match &mut self.node_type {
             NodeType::Operation { operation } => {
                 if let Ok(operation_response) = operation.run(&self.inputs).await {
@@ -114,15 +114,22 @@ impl Node {
 
                     for (index, response) in operation_response.responses.into_iter().enumerate() {
                         if let Some(tx) = tx_output.clone() {
-                            let node_output_message = NodeOutputChangedMessage {
+                            let message = NodeChangedMessage::OutputChanged {
                                 node_id: self.id.clone(),
                                 output_index: index,
-                                thumbnail: response.value.create_thumbnail(),
                                 value: response.value.clone(),
                                 time: operation_response.time,
+                                thumbnail: response.value.create_thumbnail(),
                             };
+                            // let node_output_message = NodeOutputChangedMessage {
+                            //     node_id: self.id.clone(),
+                            //     output_index: index,
+                            //     thumbnail: response.value.create_thumbnail(),
+                            //     value: response.value.clone(),
+                            //     time: operation_response.time,
+                            // };
             
-                            match tx.try_send(node_output_message.clone()) {
+                            match tx.try_send(message) {
                                 Ok(_) => {}
                                 Err(err) => {
                                     println!("Error sending NodeOutputChangedMessage: {:?}", err);
@@ -138,7 +145,7 @@ impl Node {
             },
             NodeType::Subgraph { path, graph: graph_option } => {
                 if graph_option.is_none() {
-                    if let Ok(graph) = Graph::load(path.clone(), None, None, None, None, None, None, None) {
+                    if let Ok(graph) = Graph::load(path.clone(), None, None, None, None, None, None) {
                         self.node_type = NodeType::Subgraph { path: path.to_path_buf(), graph: Some(graph) };
                     }
                 }

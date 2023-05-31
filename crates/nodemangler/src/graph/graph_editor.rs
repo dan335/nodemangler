@@ -9,7 +9,7 @@ use eframe::{
 };
 use egui::epaint::CubicBezierShape;
 use egui::Pos2;
-use mangler::{operation::Operation, AddNodeType, node_settings::NodeSettings, input::Input, output::Output};
+use mangler::{node_settings::NodeSettings, input::Input, output::Output};
 use std::{collections::HashMap, time::Instant};
 
 const BACKGROUND_COLOR: Color32 = egui::Color32::from_gray(35);

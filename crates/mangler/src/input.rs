@@ -1,4 +1,4 @@
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

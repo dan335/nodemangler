@@ -1,8 +1,8 @@
-use crate::AddNodeType;
+use crate::{AddNodeType, NodeChangedMessage};
 use crate::{
-    node::Node, operation::Operation, value::Value, AddedConnectionMessage, AddedNodeMessage,
-    GraphSaveData, LoadedNodeMessage, NewGraphError, NodeInputChangedMessage,
-    NodeOutputChangedMessage, RemovedConnectionMessage, RemovedNodeMessage,
+    node::Node, value::Value, AddedConnectionMessage, AddedNodeMessage,
+    GraphSaveData, LoadedNodeMessage, NewGraphError,
+    RemovedConnectionMessage, RemovedNodeMessage,
 };
 use glam::f32::Vec2;
 use std::fs;
@@ -17,8 +17,9 @@ use async_recursion::async_recursion;
 pub struct Graph {
     pub id: String,
     pub name: String,
-    pub tx_output_changed: Option<Sender<NodeOutputChangedMessage>>,
-    pub tx_input_changed: Option<Sender<NodeInputChangedMessage>>,
+    pub tx_node_changed: Option<Sender<NodeChangedMessage>>,
+    // pub tx_output_changed: Option<Sender<NodeOutputChangedMessage>>,
+    // pub tx_input_changed: Option<Sender<NodeInputChangedMessage>>,
     pub tx_added_node: Option<Sender<AddedNodeMessage>>,
     pub tx_removed_node: Option<Sender<RemovedNodeMessage>>,
     pub tx_loaded_node: Option<Sender<LoadedNodeMessage>>,
@@ -32,8 +33,9 @@ pub struct Graph {
 impl Graph {
     pub fn new(
         id: String,
-        tx_output_changed: Sender<NodeOutputChangedMessage>,
-        tx_input_changed: Sender<NodeInputChangedMessage>,
+        tx_node_changed: Sender<NodeChangedMessage>,
+        // tx_output_changed: Sender<NodeOutputChangedMessage>,
+        // tx_input_changed: Sender<NodeInputChangedMessage>,
         tx_added_node: Sender<AddedNodeMessage>,
         tx_removed_node: Sender<RemovedNodeMessage>,
         tx_loaded_node: Sender<LoadedNodeMessage>,
@@ -43,8 +45,9 @@ impl Graph {
         Ok(Graph {
             nodes: HashMap::new(),
             is_dirty: false,
-            tx_output_changed: Some(tx_output_changed),
-            tx_input_changed: Some(tx_input_changed),
+            tx_node_changed: Some(tx_node_changed),
+            // tx_output_changed: Some(tx_output_changed),
+            // tx_input_changed: Some(tx_input_changed),
             tx_added_node: Some(tx_added_node),
             tx_removed_node: Some(tx_removed_node),
             tx_loaded_node: Some(tx_loaded_node),
@@ -58,8 +61,9 @@ impl Graph {
 
     pub fn load(
         save_path: PathBuf,
-        tx_output_changed: Option<Sender<NodeOutputChangedMessage>>,
-        tx_input_changed: Option<Sender<NodeInputChangedMessage>>,
+        tx_node_changed: Option<Sender<NodeChangedMessage>>,
+        // tx_output_changed: Option<Sender<NodeOutputChangedMessage>>,
+        // tx_input_changed: Option<Sender<NodeInputChangedMessage>>,
         tx_added_node: Option<Sender<AddedNodeMessage>>,
         tx_removed_node: Option<Sender<RemovedNodeMessage>>,
         tx_loaded_node: Option<Sender<LoadedNodeMessage>>,
@@ -71,8 +75,9 @@ impl Graph {
                 Ok(json) => {
                     let mut graph = Graph {
                         is_dirty: false,
-                        tx_output_changed,
-                        tx_input_changed,
+                        tx_node_changed,
+                        // tx_output_changed,
+                        // tx_input_changed,
                         tx_added_node,
                         tx_removed_node,
                         tx_loaded_node,
@@ -361,7 +366,7 @@ impl Graph {
 
             if let Some(node) = self.nodes.get_mut(&node_id) {
                 // run
-                node.run(self.tx_output_changed.clone()).await;
+                node.run(self.tx_node_changed.clone()).await;
 
                 // gather data to pass to connections
                 for output in node.outputs.iter() {
@@ -383,14 +388,21 @@ impl Graph {
 
                     connected_node.set_input_value(*input_index, value.clone());
 
-                    if let Some(tx) = &self.tx_input_changed {
-                        let node_input_changed_message = NodeInputChangedMessage {
+                    if let Some(tx) = &self.tx_node_changed {
+                        let message = NodeChangedMessage::InputChanged {
                             node_id: connected_node_id.clone(),
                             input_index: *input_index,
                             value: value.clone(),
                         };
+
+                    // if let Some(tx) = &self.tx_input_changed {
+                    //     let node_input_changed_message = NodeInputChangedMessage {
+                    //         node_id: connected_node_id.clone(),
+                    //         input_index: *input_index,
+                    //         value: value.clone(),
+                    //     };
     
-                        match tx.try_send(node_input_changed_message) {
+                        match tx.try_send(message) {
                             Ok(_) => {}
                             Err(err) => {
                                 println!("Error sending NodeInputChangedMessage: {:?}", err);

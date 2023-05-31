@@ -1,10 +1,10 @@
 use eframe::egui;
 use epaint::{ColorImage, Pos2, Rect, Rounding, Vec2};
 use mangler::{
-    get_id, graph::Graph, operation::Operation, AddConnectionMessage, AddNodeMessage,
+    get_id, graph::Graph, AddConnectionMessage, AddNodeMessage,
     AddedConnectionMessage, AddedNodeMessage, GraphMessage, LoadedNodeMessage, NewGraphError,
-    NodeInputChangedMessage, NodeOutputChangedMessage, NodePosition, RemoveConnectionMessage,
-    RemoveNodeMessage, RemovedConnectionMessage, RemovedNodeMessage, SetNodeInputMessage, AddNodeType,
+    NodePosition, RemoveConnectionMessage,
+    RemoveNodeMessage, RemovedConnectionMessage, RemovedNodeMessage, AddNodeType, NodeChangedMessage, ChangeNodeMessage,
 };
 use std::path::PathBuf;
 use tokio::{
@@ -34,9 +34,11 @@ pub struct Program {
     tx_remove_node: mpsc::Sender<RemoveNodeMessage>,
     tx_add_connection: mpsc::Sender<AddConnectionMessage>,
     tx_remove_connection: mpsc::Sender<RemoveConnectionMessage>,
-    tx_set_input: mpsc::Sender<SetNodeInputMessage>,
-    rx_input_changed: mpsc::Receiver<NodeInputChangedMessage>,
-    rx_output_changed: mpsc::Receiver<NodeOutputChangedMessage>,
+    tx_change_node: mpsc::Sender<ChangeNodeMessage>,
+    rx_node_changed: mpsc::Receiver<NodeChangedMessage>,
+    // tx_set_input: mpsc::Sender<SetNodeInputMessage>,
+    // rx_input_changed: mpsc::Receiver<NodeInputChangedMessage>,
+    // rx_output_changed: mpsc::Receiver<NodeOutputChangedMessage>,
     rx_added_node: mpsc::Receiver<AddedNodeMessage>,
     rx_removed_node: mpsc::Receiver<RemovedNodeMessage>,
     rx_loaded_node: mpsc::Receiver<LoadedNodeMessage>,
@@ -59,9 +61,11 @@ impl Program {
         let (tx_add_connection, mut rx_add_connection) = mpsc::channel::<AddConnectionMessage>(32);
         let (tx_remove_connection, mut rx_remove_connection) =
             mpsc::channel::<RemoveConnectionMessage>(32);
-        let (tx_set_input, mut rx_set_input) = mpsc::channel::<SetNodeInputMessage>(32);
-        let (tx_input_changed, rx_input_changed) = mpsc::channel::<NodeInputChangedMessage>(32);
-        let (tx_output_changed, rx_output_changed) = mpsc::channel::<NodeOutputChangedMessage>(32);
+        let (tx_change_node, rx_change_node) = mpsc::channel::<ChangeNodeMessage>(32);
+        let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
+        // let (tx_set_input, mut rx_set_input) = mpsc::channel::<SetNodeInputMessage>(32);
+        // let (tx_input_changed, rx_input_changed) = mpsc::channel::<NodeInputChangedMessage>(32);
+        // let (tx_output_changed, rx_output_changed) = mpsc::channel::<NodeOutputChangedMessage>(32);
         let (tx_added_node, rx_added_node) = mpsc::channel::<AddedNodeMessage>(32);
         let (tx_removed_node, rx_removed_node) = mpsc::channel::<RemovedNodeMessage>(32);
         let (tx_loaded_node, rx_loaded_node) = mpsc::channel::<LoadedNodeMessage>(32);
@@ -75,8 +79,9 @@ impl Program {
         let graph_result = match save_file {
             Some(path) => Graph::load(
                 path,
-                Some(tx_output_changed),
-                Some(tx_input_changed),
+                Some(tx_node_changed),
+                // Some(tx_output_changed),
+                // Some(tx_input_changed),
                 Some(tx_added_node),
                 Some(tx_removed_node),
                 Some(tx_loaded_node),
@@ -91,8 +96,7 @@ impl Program {
 
                 Graph::new(
                     graph_id,
-                    tx_output_changed,
-                    tx_input_changed,
+                    tx_node_changed,
                     tx_added_node,
                     tx_removed_node,
                     tx_loaded_node,
@@ -146,13 +150,31 @@ impl Program {
                                 .await;
                         }
 
-                        while let Ok(node_input_message) = rx_set_input.try_recv() {
-                            graph.set_input(
-                                node_input_message.node_id,
-                                node_input_message.input_index,
-                                node_input_message.value,
-                            );
+                        while let Ok(change_node_message) = rx_change_node.try_recv() {
+                            match change_node_message {
+                                ChangeNodeMessage::SetInput { node_id, input_index, value } => {
+                                    graph.set_input(
+                                        node_id,
+                                        input_index,
+                                        value,
+                                    );
+                                },
+                                ChangeNodeMessage::SetExposeInput { node_id, input_index, set_to } => {
+
+                                },
+                                ChangeNodeMessage::SetExposeOutput { node_id, output_index, set_to } => {
+
+                                },
+                            }
                         }
+
+                        // while let Ok(node_input_message) = rx_set_input.try_recv() {
+                        //     graph.set_input(
+                        //         node_input_message.node_id,
+                        //         node_input_message.input_index,
+                        //         node_input_message.value,
+                        //     );
+                        // }
 
                         while let Ok(graph_message) = rx_graph_setting.try_recv() {
                             match graph_message {
@@ -185,9 +207,6 @@ impl Program {
                     tx_remove_node,
                     tx_add_connection,
                     tx_remove_connection,
-                    tx_set_input,
-                    rx_input_changed,
-                    rx_output_changed,
                     id,
                     name,
                     save_path,
@@ -205,6 +224,8 @@ impl Program {
                     tx_graph_setting,
                     tx_node_position,
                     rx_loaded_node,
+                    rx_node_changed,
+                    tx_change_node,
                 })
             }
             Err(error) => Err(NewGraphError(format!(
@@ -220,6 +241,15 @@ impl Program {
 
     pub fn show(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame, ui: &mut egui::Ui) {
         puffin::profile_scope!("central panel show");
+
+        while let Ok(node_changed_message) = self.rx_node_changed.try_recv() {
+            match node_changed_message {
+                NodeChangedMessage::InputChanged { node_id, input_index, value } => todo!(),
+                NodeChangedMessage::OutputChanged { node_id, output_index, value, time, thumbnail } => todo!(),
+                NodeChangedMessage::ExposeInputChanged { node_id, input_index, set_to } => todo!(),
+                NodeChangedMessage::ExposeOutputChanged { node_id, output_index, set_to } => todo!(),
+            }
+        }
 
         // messages for when node output changes
         while let Ok(node_output_message) = self.rx_output_changed.try_recv() {

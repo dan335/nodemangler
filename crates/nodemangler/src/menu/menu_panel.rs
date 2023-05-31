@@ -1,5 +1,4 @@
 use eframe::egui;
-use mangler::operation::Operation;
 
 use super::menu_item::{MenuItem, MenuItemsResult};
 
@@ -43,6 +42,6 @@ impl MenuPanel {
     }
 }
 
-pub struct MenuResult {
-    pub dragging_menu_button: Option<Operation>,
-}
+// pub struct MenuResult {
+//     pub dragging_menu_button: Option<Operation>,
+// }
