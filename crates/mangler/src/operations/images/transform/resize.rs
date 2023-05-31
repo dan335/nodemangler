@@ -20,48 +20,21 @@ impl OperationImageTransformResize {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input {
-                name: "image".to_string(),
-                value: Value::DynamicImage(image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32))),
-                connection: None,
-                valid_types: vec![],
-            },
-            Input {
-                name: "width".to_string(),
-                value:  Value::Integer(32),
-                connection: None,
-                valid_types: vec![],
-            },
-            Input {
-                name: "height".to_string(),
-                value:  Value::Integer(32),
-                connection: None,
-                valid_types: vec![],
-            },
+            Input::new("image".to_string(),  Value::DynamicImage(image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)))),
+            Input::new("width".to_string(), Value::Integer(i32::default())),
+            Input::new("height".to_string(), Value::Integer(i32::default())),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output {
-                name: "image".to_string(),
-                value: Value::DynamicImage(image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32))),
-                connection: None,
-            },
-            Output {
-                name: "width".to_string(),
-                value: Value::Integer(32),
-                connection: None,
-            },
-            Output {
-                name: "height".to_string(),
-                value: Value::Integer(32),
-                connection: None,
-            },
+            Output::new("image".to_string(), Value::DynamicImage(image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)))),
+            Output::new("width".to_string(), Value::Integer(i32::default())),
+            Output::new("height".to_string(), Value::Integer(i32::default())),
         ]
     }
 
-    pub async fn run(inputs: &[Input]) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
 
         let Ok(Value::Integer(mut width)) = inputs[1].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};

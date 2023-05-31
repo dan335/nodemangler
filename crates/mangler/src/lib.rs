@@ -1,8 +1,11 @@
 use glam::f32::Vec2;
 use image::{ImageBuffer, Rgba};
+use input::Input;
 use nanoid::nanoid;
 use node::Node;
+use node_settings::NodeSettings;
 use operation::Operation;
+use output::Output;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use value::Value;
@@ -15,6 +18,7 @@ pub mod operation;
 pub mod operations;
 pub mod output;
 pub mod value;
+pub mod node_type;
 
 pub fn get_id() -> String {
     nanoid!()
@@ -52,15 +56,23 @@ pub struct NodeOutputChangedMessage {
 #[derive(Debug)]
 pub struct AddNodeMessage {
     pub node_id: String,
-    pub operation: Operation,
+    pub node_type: AddNodeType,
     pub position: Vec2,
 }
 
 #[derive(Debug)]
 pub struct AddedNodeMessage {
     pub node_id: String,
-    pub operation: Operation,
+    pub settings: NodeSettings,
+    pub inputs: Vec<Input>,
+    pub outputs: Vec<Output>,
     pub position: Vec2,
+}
+
+#[derive(Debug, Clone)]
+pub enum AddNodeType {
+    Operation(Operation),
+    Subgraph
 }
 
 #[derive(Debug)]
@@ -127,6 +139,7 @@ pub enum OperationListItem {
     Operation {
         operation: Operation,
     },
+    Subgraph
 }
 
 #[derive(Debug)]
@@ -146,6 +159,9 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::NumberInputDecimal },
                 OperationListItem::Operation { operation: Operation::NumberInputInteger },
             ]},
+            OperationListItem::Category { name: "Output".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::NumberOutputInteger },
+            ]},
             OperationListItem::Category { name: "Math".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::NumberMathAdd },
             ]},
@@ -158,6 +174,6 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::ImageTransformResize },
             ]},
         ]}, 
-        OperationListItem::Operation { operation: Operation::Subgraph },
+        OperationListItem::Subgraph,
     ]
 }

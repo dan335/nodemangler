@@ -4,7 +4,7 @@ use mangler::{
     get_id, graph::Graph, operation::Operation, AddConnectionMessage, AddNodeMessage,
     AddedConnectionMessage, AddedNodeMessage, GraphMessage, LoadedNodeMessage, NewGraphError,
     NodeInputChangedMessage, NodeOutputChangedMessage, NodePosition, RemoveConnectionMessage,
-    RemoveNodeMessage, RemovedConnectionMessage, RemovedNodeMessage, SetNodeInputMessage,
+    RemoveNodeMessage, RemovedConnectionMessage, RemovedNodeMessage, SetNodeInputMessage, AddNodeType,
 };
 use std::path::PathBuf;
 use tokio::{
@@ -18,7 +18,7 @@ use crate::{
         graph_editor::{GraphEditor, GraphEditorResponse},
         graph_node::GraphNode,
     },
-    menu::menu_panel::MenuPanel,
+    menu::{menu_panel::MenuPanel, menu_item::MenuItemsResult},
     settings::{graph_settings_panel, node_settings_panel},
     view::view_panel::ViewPanel,
     view_to_graph_space_pos2, APP_MENU_HEIGHT,
@@ -49,7 +49,7 @@ pub struct Program {
     menu_panel: MenuPanel,
     editing_node_id: Option<String>,
     viewing_node_id: Option<String>,
-    dragging_menu_button: Option<Operation>,
+    dragging_menu_button: MenuItemsResult,
 }
 
 impl Program {
@@ -75,13 +75,13 @@ impl Program {
         let graph_result = match save_file {
             Some(path) => Graph::load(
                 path,
-                tx_output_changed,
-                tx_input_changed,
-                tx_added_node,
-                tx_removed_node,
-                tx_loaded_node,
-                tx_added_connection,
-                tx_removed_connection,
+                Some(tx_output_changed),
+                Some(tx_input_changed),
+                Some(tx_added_node),
+                Some(tx_removed_node),
+                Some(tx_loaded_node),
+                Some(tx_added_connection),
+                Some(tx_removed_connection),
             ),
             None => {
                 let graph_id = match id {
@@ -116,7 +116,7 @@ impl Program {
                             graph
                                 .add_node(
                                     add_node_message.node_id,
-                                    add_node_message.operation,
+                                    add_node_message.node_type,
                                     add_node_message.position,
                                 )
                                 .await;
@@ -195,7 +195,7 @@ impl Program {
                     graph_editor: GraphEditor::new(),
                     view_panel: ViewPanel::new(),
                     menu_panel: MenuPanel::new(),
-                    dragging_menu_button: None,
+                    dragging_menu_button: MenuItemsResult::default(),
                     editing_node_id: None,
                     viewing_node_id: None,
                     rx_added_node,
@@ -272,10 +272,13 @@ impl Program {
             }
         }
 
+        // message for when node was added
         while let Ok(added_node_message) = self.rx_added_node.try_recv() {
             self.graph_editor.add_node(
-                added_node_message.node_id.clone(),
-                added_node_message.operation,
+                added_node_message.node_id,
+                added_node_message.settings,
+                added_node_message.inputs,
+                added_node_message.outputs,
                 Pos2::new(added_node_message.position.x, added_node_message.position.y),
             );
             //self.needs_to_save = true;
@@ -393,12 +396,20 @@ impl Program {
         );
         ui.allocate_ui_at_rect(menu_panel_rect, |ui| {
             puffin::profile_scope!("menu panel");
-            let menu_result = self.menu_panel.show(ui);
-
-            // dragging from menu
-            if menu_result.dragging_menu_button.is_some() {
-                self.dragging_menu_button = menu_result.dragging_menu_button;
+            let r = self.menu_panel.show(ui);
+            
+            if r.subgraph_being_created {
+                self.dragging_menu_button.subgraph_being_created = true;
             }
+            
+            if r.operation_being_created.is_some() {
+                self.dragging_menu_button.operation_being_created = r.operation_being_created;
+            }
+
+            // // dragging from menu
+            // if menu_result.dragging_menu_button.is_some() {
+            //     self.dragging_menu_button = menu_result.dragging_menu_button;
+            // }
         });
 
         // -------------------------
@@ -560,31 +571,36 @@ impl Program {
         // mouse leaves app
         // stop dragging
         if !cursor_inside {
-            self.dragging_menu_button = None;
+            self.dragging_menu_button.operation_being_created = None;
+            self.dragging_menu_button.subgraph_being_created = false;
         }
 
         // release mouse button after dragging menu button
         ui.input(|i| {
             if i.pointer.primary_released() {
-                if let Some(operation) = &self.dragging_menu_button {
+                if let Some(operation) = &self.dragging_menu_button.operation_being_created {
                     if bottom_panel_rect.contains(cursor_position) {
                         //let node_position_view_space = Pos2::new(cursor_position.x - bottom_panel_rect.min.x, cursor_position.y - bottom_panel_rect.min.y);
                         //println!("{:?}", cursor_position);
                         self.add_node(
-                            operation.clone(),
+                            AddNodeType::Operation(operation.clone()),
                             view_to_graph_space_pos2(self.graph_editor.zoom, cursor_position)
                                 - self.graph_editor.position.to_vec2(),
                         );
                     }
+                } else if  self.dragging_menu_button.subgraph_being_created {
+                    if bottom_panel_rect.contains(cursor_position) {
+                        self.add_node(AddNodeType::Subgraph, view_to_graph_space_pos2(self.graph_editor.zoom, cursor_position) - self.graph_editor.position.to_vec2());
+                    }
                 }
 
-                self.dragging_menu_button = None;
+                self.dragging_menu_button = MenuItemsResult::default();
             }
         });
 
         // dragging node from menu
         // draw shape behind mouse being dragged
-        if let Some(_dragging_settings) = &self.dragging_menu_button {
+        if self.dragging_menu_button.subgraph_being_created || self.dragging_menu_button.operation_being_created.is_some() {
             let drag_rect = Rect::from_center_size(cursor_position, Vec2::new(80.0, 80.0));
             ui.painter().add(egui::Shape::rect_filled(
                 drag_rect,
@@ -618,12 +634,12 @@ impl Program {
         );
     }
 
-    pub fn add_node(&mut self, operation: Operation, position_graph_space: Pos2) {
+    pub fn add_node(&mut self, node_type: AddNodeType, position_graph_space: Pos2) {
         let node_id = get_id();
 
         let add_node_message = AddNodeMessage {
             node_id,
-            operation,
+            node_type,
             position: glam::f32::Vec2::new(position_graph_space.x, position_graph_space.y),
         };
 

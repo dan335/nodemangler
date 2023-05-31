@@ -18,30 +18,18 @@ impl OperationNumberMathAdd {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input {
-                name: "a".to_string(),
-                value: Value::Integer(i32::default()),
-                connection: None,
-                valid_types: vec![],
-            },
-            Input {
-                name: "b".to_string(),
-                value: Value::Integer(i32::default()),
-                connection: None,
-                valid_types: vec![],
-            },
+            Input::new("a".to_string(), Value::Integer(i32::default())),
+            Input::new("b".to_string(), Value::Integer(i32::default())),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
-        vec![Output {
-            name: "Result".to_string(),
-            value: Value::Integer(i32::default()),
-            connection: None,
-        }]
+        vec![
+            Output::new("result".to_string(), Value::Integer(i32::default()))
+        ]
     }
 
-    pub async fn run(inputs: &[Input]) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
 
         let value = match (&inputs[0].value, &inputs[1].value) {

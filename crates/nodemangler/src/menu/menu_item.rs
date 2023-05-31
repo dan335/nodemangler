@@ -15,11 +15,15 @@ pub enum MenuItem {
         is_collapsed: bool,
         items: Vec<MenuItem>,
     },
-    Button {
+    OperationButton {
         name: String,
         level: usize,
         operation: Operation,
     },
+    SubgraphButton {
+        name: String,
+        level: usize,
+    }
 }
 
 impl MenuItem {
@@ -43,18 +47,22 @@ impl MenuItem {
                 }
             }
             OperationListItem::Operation { operation } => {
-                MenuItem::Button {
+                MenuItem::OperationButton {
                     name: operation.settings().name,
                     operation,
                     level,
                 }
             }
+            OperationListItem::Subgraph => {
+                MenuItem::SubgraphButton { name: "Subgraph".to_string(), level }
+            },
         }
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui, mut index: i32) -> (i32, MenuItemsResult) {
         let mut result = MenuItemsResult {
             operation_being_created: None,
+            subgraph_being_created: false,
         };
 
         index += 1;
@@ -158,7 +166,7 @@ impl MenuItem {
                 (index, result)
             }
 
-            MenuItem::Button {
+            MenuItem::OperationButton {
                 name,
                 operation,
                 level,
@@ -224,10 +232,73 @@ impl MenuItem {
 
                 (index, result)
             }
+            MenuItem::SubgraphButton { name, level } => {
+                let container_rect = ui.max_rect();
+                let button_top_position =
+                    container_rect.top() + (BUTTON_HEIGHT * index as f32);
+                let button_min = Pos2::new(container_rect.left(), button_top_position);
+                let button_max =
+                    Pos2::new(container_rect.right(), button_top_position + BUTTON_HEIGHT);
+                let button_rect = Rect::from_two_pos(button_min, button_max);
+                let rounding = Rounding::same(2.0);
+                //let stroke = Stroke::new(1.0, egui::Color32::from_gray(90));
+
+                ui.centered_and_justified(|ui| {
+                    //ui.centered(|ui| {
+
+                    let rect = Rect::from_min_max(
+                        button_rect.min,
+                        Pos2::new(button_rect.max.x, button_rect.max.y),
+                    );
+
+                    let response =
+                        ui.allocate_rect(rect, egui::Sense::drag().union(egui::Sense::hover()));
+
+                    let mut background_color = BACKGROUND_COLOR;
+                    if response.hovered() {
+                        background_color = BACKGROUND_COLOR_HOVER;
+                    }
+
+                    ui.painter().add(egui::Shape::rect_filled(
+                        rect.shrink(1.0),
+                        rounding,
+                        background_color,
+                    ));
+
+                    let indention = *level as f32 * 25.0;
+
+                    ui.painter().text(
+                        Pos2::new(rect.left() + indention, rect.center().y),
+                        Align2::LEFT_CENTER,
+                        name,
+                        FontId::default(),
+                        Color32::from_gray(220),
+                    );
+
+                    if response.clicked() {
+                    } else if response.drag_started() {
+                        result.subgraph_being_created = true;
+                    } else if response.drag_released() {
+                    }
+                });
+
+                (index, result)
+            },
         }
     }
 }
 
 pub struct MenuItemsResult {
     pub operation_being_created: Option<Operation>,
+    pub subgraph_being_created: bool,
+}
+
+
+impl Default for MenuItemsResult {
+    fn default() -> Self {
+        MenuItemsResult {
+            operation_being_created: None,
+            subgraph_being_created: false,
+        }
+    }
 }

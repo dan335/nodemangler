@@ -1,7 +1,7 @@
 use eframe::egui;
 use mangler::operation::Operation;
 
-use super::menu_item::MenuItem;
+use super::menu_item::{MenuItem, MenuItemsResult};
 
 pub struct MenuPanel {
     pub items: Vec<MenuItem>,
@@ -20,8 +20,8 @@ impl MenuPanel {
         MenuPanel { items }
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui) -> MenuResult {
-        let mut dragging_menu_button: Option<Operation> = None;
+    pub fn show(&mut self, ui: &mut egui::Ui) -> MenuItemsResult {
+        let mut menu_result = MenuItemsResult::default();
         let mut index = -1;
 
         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -29,15 +29,17 @@ impl MenuPanel {
                 let (i, result) = item.show(ui, index);
                 index = i;
 
-                if let Some(operation_being_created) = result.operation_being_created {
-                    dragging_menu_button = Some(operation_being_created);
+                if result.operation_being_created.is_some() {
+                    menu_result.operation_being_created = result.operation_being_created;
+                }
+
+                if result.subgraph_being_created {
+                    menu_result.subgraph_being_created = true;
                 }
             }
         });
 
-        MenuResult {
-            dragging_menu_button,
-        }
+        menu_result
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::graph::graph_input::draw_graph_input;
 use crate::graph::graph_output::draw_graph_output;
 use crate::{graph_to_view_space_pos2, view_to_graph_space_pos2};
+use eframe::egui::accesskit::Node;
 use eframe::epaint::{Color32, FontId, Rounding};
 use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect, Vec2};
@@ -33,16 +34,16 @@ pub struct GraphNode {
 }
 
 impl GraphNode {
-    pub fn new(id: String, position: Pos2, operation: Operation) -> GraphNode {
+    pub fn new(id: String, position: Pos2, settings: NodeSettings, inputs: Vec<Input>, outputs: Vec<Output>) -> GraphNode {
         GraphNode {
             id,
             position,
-            settings: operation.settings(),
+            settings,
             is_dragging: false,
             last_drag_position: None,
             thumbnail: None,
-            inputs: operation.create_inputs(),
-            outputs: operation.create_outputs(),
+            inputs,
+            outputs,
             time: None,
         }
     }

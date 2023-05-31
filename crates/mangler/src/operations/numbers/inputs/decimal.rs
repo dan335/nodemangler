@@ -17,23 +17,18 @@ impl OperationNumberInputDecimal {
     }
 
     pub fn create_inputs() -> Vec<Input> {
-        vec![Input {
-            name: "Decimal".to_string(),
-            value: Value::Decimal(f32::default()),
-            connection: None,
-            valid_types: vec![],
-        }]
+        vec![
+            Input::new("decimal".to_string(), Value::Decimal(f32::default()))
+        ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
-        vec![Output {
-            name: "Integer".to_string(),
-            value: Value::Decimal(f32::default()),
-            connection: None,
-        }]
+        vec![
+            Output::new("decimal".to_string(), Value::Decimal(f32::default()))
+        ]
     }
 
-    pub async fn run(inputs: &[Input]) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
 
         match &inputs[0].value.try_convert_to(ValueType::Decimal) {

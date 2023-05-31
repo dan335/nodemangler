@@ -8,4 +8,4 @@
 // pub mod text_from_clipboard;
 pub mod numbers;
 pub mod images;
-pub mod sub_graph;
+//pub mod sub_graph;

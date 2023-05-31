@@ -7,18 +7,18 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationNumberInputInteger {}
+pub struct OperationNumberOutputInteger {}
 
-impl OperationNumberInputInteger {
+impl OperationNumberOutputInteger {
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "integer input".to_string(),
+            name: "integer output".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("integer".to_string(), Value::Integer(i32::default())),
+            Input::new("integer".to_string(), Value::Integer(i32::default()))
         ]
     }
 

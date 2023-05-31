@@ -18,28 +18,23 @@ impl OperationImageInputUrl {
     }
 
     pub fn create_inputs() -> Vec<Input> {
-        vec![Input {
-            name: "URL".to_string(),
-            value: Value::String("https://i.imgur.com/3aDSTiBl.jpg".to_string()),
-            connection: None,
-            valid_types: vec![],
-        }]
+        vec![
+            Input::new("URL".to_string(), Value::String("https://i.imgur.com/3aDSTiBl.jpg".to_string())),
+        ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
-        vec![Output {
-            name: "Image".to_string(),
-            value: Value::DynamicImage(image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32))),
-            connection: None,
-        }]
+        vec![
+            Output::new("image".to_string(), Value::DynamicImage(image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32))))
+        ]
     }
 
-    pub async fn run(inputs: &[Input]) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
 
         let value = match &inputs[0].value {
             Value::String(url) => {
-                if let Ok(image_response) = reqwest::get(url).await {
+                if let Ok(image_response) =  reqwest::get(url).await {
                     if let Ok(image_bytes) = image_response.bytes().await {
                         if let Ok(image) = image::load_from_memory(&image_bytes) {
                             Value::DynamicImage(image)
