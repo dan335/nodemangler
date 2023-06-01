@@ -121,18 +121,11 @@ impl Node {
                                 time: operation_response.time,
                                 thumbnail: response.value.create_thumbnail(),
                             };
-                            // let node_output_message = NodeOutputChangedMessage {
-                            //     node_id: self.id.clone(),
-                            //     output_index: index,
-                            //     thumbnail: response.value.create_thumbnail(),
-                            //     value: response.value.clone(),
-                            //     time: operation_response.time,
-                            // };
             
                             match tx.try_send(message) {
                                 Ok(_) => {}
                                 Err(err) => {
-                                    println!("Error sending NodeOutputChangedMessage: {:?}", err);
+                                    println!("Error sending NodeChangedMessage::OutputChanged: {:?}", err);
                                 }
                             }
                         }
@@ -143,51 +136,17 @@ impl Node {
                     }
                 }
             },
-            NodeType::Subgraph { path, graph: graph_option } => {
-                if graph_option.is_none() {
-                    if let Ok(graph) = Graph::load(path.clone(), None, None, None, None, None, None) {
-                        self.node_type = NodeType::Subgraph { path: path.to_path_buf(), graph: Some(graph) };
-                    }
-                }
 
-                if let NodeType::Subgraph { path: _path, graph: graph_option } = &mut self.node_type {
-                    if let Some(graph) = graph_option {
+            NodeType::Subgraph { path:_, graph: graph_option } => {                
+                match graph_option {
+                    Some(graph) => {
                         graph.run().await;
-                    }
+                        println!("subgraph run");
+                    },
+                    None => {},
                 }
             },
         };
-
-        // if let Ok(operation_response) = response {
-
-        // }
-
-        // if let Ok(operation_response) = self.operation.run(&self.inputs).await {
-        //     self.time = Some(operation_response.time);
-
-        //     for (index, response) in operation_response.responses.into_iter().enumerate() {
-        //         if let Some(tx) = tx_output.clone() {
-        //             let node_output_message = NodeOutputChangedMessage {
-        //                 node_id: self.id.clone(),
-        //                 output_index: index,
-        //                 thumbnail: response.value.create_thumbnail(),
-        //                 value: response.value.clone(),
-        //                 time: operation_response.time,
-        //             };
-    
-        //             match tx.try_send(node_output_message.clone()) {
-        //                 Ok(_) => {}
-        //                 Err(err) => {
-        //                     println!("Error sending NodeOutputChangedMessage: {:?}", err);
-        //                 }
-        //             }
-        //         }
-
-        //         if let Some(output) = self.outputs.get_mut(index) {
-        //             output.value = response.value;
-        //         }
-        //     }
-        // }
     }
 }
 

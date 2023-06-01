@@ -6,7 +6,7 @@ pub struct Output {
     pub name: String,
     pub value: Value,
     pub connection: Option<Vec<(String, usize)>>, // id of input node, index of input
-    pub expose: bool,
+    pub is_exposed: bool,
 }
 
 impl Output {
@@ -15,7 +15,7 @@ impl Output {
             name,
             value,
             connection: None,
-            expose: false,
+            is_exposed: false,
         }
     }
 }

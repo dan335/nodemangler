@@ -6,7 +6,7 @@ pub struct Input {
     pub name: String,
     pub value: Value,
     pub connection: Option<(String, usize)>, // id of node with output, index of output
-    pub expose: bool,
+    pub is_exposed: bool,
 }
 
 impl Input {
@@ -15,7 +15,7 @@ impl Input {
             name,
             value,
             connection: None,
-            expose: false,
+            is_exposed: false,
         }
     }
 }

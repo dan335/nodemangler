@@ -1,27 +1,26 @@
+use std::path::PathBuf;
+
 use eframe::egui::{self, Label};
+use epaint::vec2;
 use image::imageops::FilterType;
 use mangler::{
     input::Input,
-    value::{ImageFormat, Value},
+    value::{ImageFormat, Value}, ChangeNodeMessage,
 };
 use tokio::sync::mpsc::Sender;
 
-use crate::{graph::graph_node::GraphNode, SetNodeInputMessage};
+use crate::{graph::graph_node::GraphNode};
 
 fn change_value(
-    tx_input: Sender<SetNodeInputMessage>,
+    tx_change_node: Sender<ChangeNodeMessage>,
     node_id: String,
     input_index: usize,
     input: &mut Input,
     value: Value,
 ) {
-    let set_node_input_message = SetNodeInputMessage {
-        node_id,
-        input_index,
-        value: value.clone(),
-    };
+    let message = ChangeNodeMessage::SetInput { node_id, input_index, value: value.clone() };
 
-    match tx_input.try_send(set_node_input_message) {
+    match tx_change_node.try_send(message) {
         Ok(_) => {}
         Err(err) => {
             println!("Error sending SetNodeInputMessage: {:?}", err);
@@ -31,14 +30,14 @@ fn change_value(
     input.value = value;
 }
 
-pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInputMessage>) {
+pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<ChangeNodeMessage>) {
     let name = node.settings.name.clone();
     ui.vertical_centered(|ui| {
         ui.heading(name);
     });
 
     ui.heading("Inputs");
-
+    
     // show properties
     for (input_index, input) in node.inputs.iter_mut().enumerate() {
         ui.horizontal(|ui| {
@@ -54,7 +53,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                         if ui.add(egui::Checkbox::new(&mut x, "")).changed() {
                             let value = Value::Bool(x);
                             change_value(
-                                tx_input.clone(),
+                                tx_change_node.clone(),
                                 node.id.clone(),
                                 input_index,
                                 input,
@@ -72,7 +71,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                         if ui.add(egui::DragValue::new(&mut x)).changed() {
                             let value = Value::Integer(x);
                             change_value(
-                                tx_input.clone(),
+                                tx_change_node.clone(),
                                 node.id.clone(),
                                 input_index,
                                 input,
@@ -90,7 +89,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                         if ui.add(egui::DragValue::new(&mut x)).changed() {
                             let value = Value::Decimal(x);
                             change_value(
-                                tx_input.clone(),
+                                tx_change_node.clone(),
                                 node.id.clone(),
                                 input_index,
                                 input,
@@ -108,7 +107,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                         if ui.text_edit_singleline(&mut x).changed() {
                             let value = Value::String(x);
                             change_value(
-                                tx_input.clone(),
+                                tx_change_node.clone(),
                                 node.id.clone(),
                                 input_index,
                                 input,
@@ -136,7 +135,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                                 {
                                     let value = Value::FilterType(x);
                                     change_value(
-                                        tx_input.clone(),
+                                        tx_change_node.clone(),
                                         node.id.clone(),
                                         input_index,
                                         input,
@@ -154,7 +153,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                                 {
                                     let value = Value::FilterType(x);
                                     change_value(
-                                        tx_input.clone(),
+                                        tx_change_node.clone(),
                                         node.id.clone(),
                                         input_index,
                                         input,
@@ -172,7 +171,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                                 {
                                     let value = Value::FilterType(x);
                                     change_value(
-                                        tx_input.clone(),
+                                        tx_change_node.clone(),
                                         node.id.clone(),
                                         input_index,
                                         input,
@@ -190,7 +189,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                                 {
                                     let value = Value::FilterType(x);
                                     change_value(
-                                        tx_input.clone(),
+                                        tx_change_node.clone(),
                                         node.id.clone(),
                                         input_index,
                                         input,
@@ -208,7 +207,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                                 {
                                     let value = Value::FilterType(x);
                                     change_value(
-                                        tx_input.clone(),
+                                        tx_change_node.clone(),
                                         node.id.clone(),
                                         input_index,
                                         input,
@@ -237,7 +236,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                                 {
                                     let value = Value::ImageFormat(x);
                                     change_value(
-                                        tx_input.clone(),
+                                        tx_change_node.clone(),
                                         node.id.clone(),
                                         input_index,
                                         input,
@@ -255,7 +254,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                                 {
                                     let value = Value::ImageFormat(x);
                                     change_value(
-                                        tx_input.clone(),
+                                        tx_change_node.clone(),
                                         node.id.clone(),
                                         input_index,
                                         input,
@@ -273,7 +272,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                                 {
                                     let value = Value::ImageFormat(x);
                                     change_value(
-                                        tx_input.clone(),
+                                        tx_change_node.clone(),
                                         node.id.clone(),
                                         input_index,
                                         input,
@@ -291,7 +290,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                                 {
                                     let value = Value::ImageFormat(x);
                                     change_value(
-                                        tx_input.clone(),
+                                        tx_change_node.clone(),
                                         node.id.clone(),
                                         input_index,
                                         input,
@@ -305,7 +304,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                                 {
                                     let value = Value::ImageFormat(x);
                                     change_value(
-                                        tx_input.clone(),
+                                        tx_change_node.clone(),
                                         node.id.clone(),
                                         input_index,
                                         input,
@@ -323,7 +322,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                                 {
                                     let value = Value::ImageFormat(x);
                                     change_value(
-                                        tx_input.clone(),
+                                        tx_change_node.clone(),
                                         node.id.clone(),
                                         input_index,
                                         input,
@@ -337,7 +336,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                                 {
                                     let value = Value::ImageFormat(x);
                                     change_value(
-                                        tx_input.clone(),
+                                        tx_change_node.clone(),
                                         node.id.clone(),
                                         input_index,
                                         input,
@@ -355,7 +354,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                                 {
                                     let value = Value::ImageFormat(x);
                                     change_value(
-                                        tx_input.clone(),
+                                        tx_change_node.clone(),
                                         node.id.clone(),
                                         input_index,
                                         input,
@@ -373,7 +372,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                                 {
                                     let value = Value::ImageFormat(x);
                                     change_value(
-                                        tx_input.clone(),
+                                        tx_change_node.clone(),
                                         node.id.clone(),
                                         input_index,
                                         input,
@@ -387,7 +386,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                                 {
                                     let value = Value::ImageFormat(x);
                                     change_value(
-                                        tx_input.clone(),
+                                        tx_change_node.clone(),
                                         node.id.clone(),
                                         input_index,
                                         input,
@@ -403,7 +402,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                         ui.label(format!("{:?}", a));
                     } else if ui.add(egui::Button::new(input.name.clone())).clicked() {
                         change_value(
-                            tx_input.clone(),
+                            tx_change_node.clone(),
                             node.id.clone(),
                             input_index,
                             input,
@@ -412,6 +411,63 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                     }
                 }
                 Value::DynamicImage(_) => {}
+                Value::Path(a) => {
+                    if input.connection.is_some() {
+                        ui.label(a.into_os_string().into_string().unwrap());
+                    } else {
+                        // let mut x = a.into_os_string().into_string().unwrap();
+                        // if ui.text_edit_singleline(&mut x).changed() {
+                        //     let value = Value::Path(PathBuf::from(x));
+                        //     change_value(
+                        //         tx_change_node.clone(),
+                        //         node.id.clone(),
+                        //         input_index,
+                        //         input,
+                        //         value.clone(),
+                        //     );
+                        //     input.value = value;
+                        // }
+
+                        ui.allocate_ui(
+                            vec2(ui.available_width() - 20.0, ui.available_height()),
+                            |ui| {
+                                ui.add_enabled_ui(false, |ui| ui.text_edit_singleline(&mut a.into_os_string().into_string().unwrap()));
+                            },
+                        );
+                
+                        if ui.button("🗀").clicked() {
+                            if let Some(save_path) = rfd::FileDialog::new()
+                                .add_filter("mangler", &["mangle"])
+                                .pick_file()
+                            {
+                                let value = Value::Path(save_path);
+                                change_value(
+                                    tx_change_node.clone(),
+                                    node.id.clone(),
+                                    input_index,
+                                    input,
+                                    value.clone(),
+                                );
+                                input.value = value;
+                            }
+                        }
+                    }
+                },
+            }
+
+            // exposed checkbox
+            let mut is_exposed = input.is_exposed.clone();
+            if ui.add(egui::Checkbox::new(&mut is_exposed, "expose")).changed() {
+                let message = ChangeNodeMessage::SetExposeInput { node_id: node.id.clone(), input_index, set_to: is_exposed.clone() };
+                
+                match tx_change_node.try_send(message) {
+                    Ok(_) => {
+                        input.is_exposed = is_exposed;
+                    }
+                    Err(err) => {
+                        println!("Error sending SetNodeInputMessage: {:?}", err);
+                    }
+                }
             }
         });
     }
@@ -420,7 +476,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
     ui.heading("Outputs");
 
     // outputs
-    for output in node.outputs.iter() {
+    for (output_index, output) in node.outputs.iter_mut().enumerate() {
         ui.horizontal(|ui| {
             ui.add(Label::new(output.name.clone()));
             match &output.value {
@@ -434,6 +490,21 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_input: Sender<SetNodeInp
                     ui.add(Label::new(v.to_string()));
                 }
                 _ => {}
+            }
+
+            // exposed checkbox
+            let mut is_exposed = output.is_exposed.clone();
+            if ui.add(egui::Checkbox::new(&mut is_exposed, "expose")).changed() {
+                let message = ChangeNodeMessage::SetExposeOutput { node_id: node.id.clone(), output_index, set_to: is_exposed.clone() };
+                
+                match tx_change_node.try_send(message) {
+                    Ok(_) => {
+                        output.is_exposed = is_exposed;
+                    }
+                    Err(err) => {
+                        println!("Error sending SetNodeInputMessage: {:?}", err);
+                    }
+                }
             }
         });
     }

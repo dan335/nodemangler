@@ -1,3 +1,6 @@
+use crate::input::Input;
+use crate::node_type::NodeType;
+use crate::output::Output;
 use crate::{AddNodeType, NodeChangedMessage};
 use crate::{
     node::Node, value::Value, AddedConnectionMessage, AddedNodeMessage,
@@ -10,8 +13,10 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
 };
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{Sender, self};
 use async_recursion::async_recursion;
+use crate::NodeChangedMessage::SubgraphLoaded;
+
 
 #[derive(Debug)]
 pub struct Graph {
@@ -131,7 +136,14 @@ impl Graph {
     }
 
     pub async fn add_node(&mut self, node_id: String, node_type: AddNodeType, position: Vec2) {
-        let node = Node::new(node_id.clone(), node_type.clone(), position);
+        let mut node = Node::new(node_id.clone(), node_type.clone(), position);
+
+        match node_type {
+            AddNodeType::Subgraph => {
+                node.inputs.push(Input::new("file path".to_string(), Value::Path(PathBuf::new())));
+            },
+            _ => {}
+        }
 
         if let Some(tx) = &self.tx_added_node {
             let added_node_message = AddedNodeMessage {
@@ -299,7 +311,54 @@ impl Graph {
     pub fn set_input(&mut self, node_id: String, input_index: usize, value: Value) {
         if let Some(node) = self.nodes.get_mut(&node_id) {
             if let Some(input) = node.inputs.get_mut(input_index) {
-                input.value = value;
+                input.value = value.clone();
+
+                // special case for subgraphs
+                // load graph
+                if let Value::Path(path) = value {
+                    if let NodeType::Subgraph { path:_, graph:_ } = &node.node_type {
+                        // create graph from path
+                        // ---------------!!!!!!!!!!!!!!!!!!!!!!-----------
+                        // who gets rx_node_changed???????
+                        let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
+                        
+                        if let Ok(graph) = Graph::load(path.clone(), Some(tx_node_changed), None, None, None, None, None) {
+                            for (_n_id, n) in graph.nodes.iter() {
+                                for (_input_index, input) in n.inputs.iter().enumerate() {
+                                    if input.is_exposed {
+                                        node.inputs.push(Input::new(input.name.clone(), input.value.clone()));
+                                    }
+                                }
+
+                                for (_output_index, output) in n.outputs.iter().enumerate() {
+                                    if output.is_exposed {
+                                        node.outputs.push(Output::new(output.name.clone(), output.value.clone()));
+                                    }
+                                }
+                            }
+
+                            node.settings.name = graph.name.clone();
+                            node.node_type = NodeType::Subgraph { path: path.to_path_buf(), graph: Some(graph) };
+
+                            if let Some(tx) = &self.tx_node_changed {
+                                let message = SubgraphLoaded {
+                                    node_id,
+                                    settings: node.settings.clone(),
+                                    inputs: node.inputs.clone(),
+                                    outputs: node.outputs.clone(),
+                                };
+    
+                                match tx.try_send(message) {
+                                    Ok(_) => {}
+                                    Err(err) => {
+                                        println!("Error sending SubgraphLoaded: {:?}", err);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } 
+
                 node.is_dirty = true;
                 self.save_to_file();
             }
@@ -405,7 +464,7 @@ impl Graph {
                         match tx.try_send(message) {
                             Ok(_) => {}
                             Err(err) => {
-                                println!("Error sending NodeInputChangedMessage: {:?}", err);
+                                println!("Error sending NodeChangedMessage::InputChanged: {:?}", err);
                             }
                         }
                     }

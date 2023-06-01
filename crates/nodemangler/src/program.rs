@@ -61,7 +61,7 @@ impl Program {
         let (tx_add_connection, mut rx_add_connection) = mpsc::channel::<AddConnectionMessage>(32);
         let (tx_remove_connection, mut rx_remove_connection) =
             mpsc::channel::<RemoveConnectionMessage>(32);
-        let (tx_change_node, rx_change_node) = mpsc::channel::<ChangeNodeMessage>(32);
+        let (tx_change_node, mut rx_change_node) = mpsc::channel::<ChangeNodeMessage>(32);
         let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
         // let (tx_set_input, mut rx_set_input) = mpsc::channel::<SetNodeInputMessage>(32);
         // let (tx_input_changed, rx_input_changed) = mpsc::channel::<NodeInputChangedMessage>(32);
@@ -160,10 +160,20 @@ impl Program {
                                     );
                                 },
                                 ChangeNodeMessage::SetExposeInput { node_id, input_index, set_to } => {
-
+                                    if let Some(node) = graph.nodes.get_mut(&node_id) {
+                                        if let Some(input) = node.inputs.get_mut(input_index) {
+                                            input.is_exposed = set_to;
+                                            graph.save_to_file();
+                                        }
+                                    }
                                 },
                                 ChangeNodeMessage::SetExposeOutput { node_id, output_index, set_to } => {
-
+                                    if let Some(node) = graph.nodes.get_mut(&node_id) {
+                                        if let Some(output) = node.outputs.get_mut(output_index) {
+                                            output.is_exposed = set_to;
+                                            graph.save_to_file();
+                                        }
+                                    }
                                 },
                             }
                         }
@@ -244,63 +254,115 @@ impl Program {
 
         while let Ok(node_changed_message) = self.rx_node_changed.try_recv() {
             match node_changed_message {
-                NodeChangedMessage::InputChanged { node_id, input_index, value } => todo!(),
-                NodeChangedMessage::OutputChanged { node_id, output_index, value, time, thumbnail } => todo!(),
+                NodeChangedMessage::InputChanged { node_id, input_index, value } => {
+                    if let Some(node) = self
+                        .graph_editor
+                        .graph_nodes
+                        .get_mut(&node_id)
+                    {
+                        if let Some(input) = node.inputs.get_mut(input_index) {
+                            input.value = value;
+                            //self.needs_to_save = true;
+                        }
+                    }
+                },
+
+                NodeChangedMessage::OutputChanged { node_id, output_index, value, time, thumbnail } => {
+                    if let Some(node) = self
+                        .graph_editor
+                        .graph_nodes
+                        .get_mut(&node_id)
+                    {
+                        if let Some(output) = node.outputs.get_mut(output_index) {
+                            output.value = value;
+
+                            if output_index == 0 {
+                                node.thumbnail = match thumbnail {
+                                    Some(thumbnail) => {
+                                        let pixels = thumbnail.as_flat_samples();
+                                        let size =
+                                            [thumbnail.width() as usize, thumbnail.height() as usize];
+                                        let color_image =
+                                            ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                                        Some(ui.ctx().load_texture(
+                                            node.id.clone(),
+                                            color_image,
+                                            Default::default(),
+                                        ))
+                                    }
+                                    None => None,
+                                };
+                            }
+
+                            // thumbnail
+                            //node.is_dirty = true;
+                            node.time = Some(time);
+                        }
+                    }
+                },
+
                 NodeChangedMessage::ExposeInputChanged { node_id, input_index, set_to } => todo!(),
                 NodeChangedMessage::ExposeOutputChanged { node_id, output_index, set_to } => todo!(),
+                NodeChangedMessage::SubgraphLoaded { node_id, settings, inputs, outputs } => {
+                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
+                        node.settings = settings;
+                        node.inputs = inputs;
+                        node.outputs = outputs;
+                    }
+                },
             }
         }
 
         // messages for when node output changes
-        while let Ok(node_output_message) = self.rx_output_changed.try_recv() {
-            puffin::profile_scope!("ui receive output messages");
-            if let Some(node) = self
-                .graph_editor
-                .graph_nodes
-                .get_mut(&node_output_message.node_id)
-            {
-                if let Some(output) = node.outputs.get_mut(node_output_message.output_index) {
-                    output.value = node_output_message.value;
+        // while let Ok(node_output_message) = self.rx_output_changed.try_recv() {
+        //     puffin::profile_scope!("ui receive output messages");
+        //     if let Some(node) = self
+        //         .graph_editor
+        //         .graph_nodes
+        //         .get_mut(&node_output_message.node_id)
+        //     {
+        //         if let Some(output) = node.outputs.get_mut(node_output_message.output_index) {
+        //             output.value = node_output_message.value;
 
-                    if node_output_message.output_index == 0 {
-                        node.thumbnail = match node_output_message.thumbnail {
-                            Some(thumbnail) => {
-                                let pixels = thumbnail.as_flat_samples();
-                                let size =
-                                    [thumbnail.width() as usize, thumbnail.height() as usize];
-                                let color_image =
-                                    ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-                                Some(ui.ctx().load_texture(
-                                    node.id.clone(),
-                                    color_image,
-                                    Default::default(),
-                                ))
-                            }
-                            None => None,
-                        };
-                    }
+        //             if node_output_message.output_index == 0 {
+        //                 node.thumbnail = match node_output_message.thumbnail {
+        //                     Some(thumbnail) => {
+        //                         let pixels = thumbnail.as_flat_samples();
+        //                         let size =
+        //                             [thumbnail.width() as usize, thumbnail.height() as usize];
+        //                         let color_image =
+        //                             ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+        //                         Some(ui.ctx().load_texture(
+        //                             node.id.clone(),
+        //                             color_image,
+        //                             Default::default(),
+        //                         ))
+        //                     }
+        //                     None => None,
+        //                 };
+        //             }
 
-                    // thumbnail
-                    //node.is_dirty = true;
-                    node.time = Some(node_output_message.time);
-                }
-            }
-        }
+        //             // thumbnail
+        //             //node.is_dirty = true;
+        //             node.time = Some(node_output_message.time);
+        //         }
+        //     }
+        // }
 
-        // messages for when node input changes
-        while let Ok(node_input_changed_message) = self.rx_input_changed.try_recv() {
-            puffin::profile_scope!("ui receive input messages");
-            if let Some(node) = self
-                .graph_editor
-                .graph_nodes
-                .get_mut(&node_input_changed_message.node_id)
-            {
-                if let Some(input) = node.inputs.get_mut(node_input_changed_message.input_index) {
-                    input.value = node_input_changed_message.value;
-                    //self.needs_to_save = true;
-                }
-            }
-        }
+        // // messages for when node input changes
+        // while let Ok(node_input_changed_message) = self.rx_input_changed.try_recv() {
+        //     puffin::profile_scope!("ui receive input messages");
+        //     if let Some(node) = self
+        //         .graph_editor
+        //         .graph_nodes
+        //         .get_mut(&node_input_changed_message.node_id)
+        //     {
+        //         if let Some(input) = node.inputs.get_mut(node_input_changed_message.input_index) {
+        //             input.value = node_input_changed_message.value;
+        //             //self.needs_to_save = true;
+        //         }
+        //     }
+        // }
 
         // message for when node was added
         while let Ok(added_node_message) = self.rx_added_node.try_recv() {
@@ -488,7 +550,7 @@ impl Program {
                 // show node settings
                 if let Some(editing_node_id) = &self.editing_node_id {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(editing_node_id) {
-                        node_settings_panel::show(ui, node, self.tx_set_input.clone());
+                        node_settings_panel::show(ui, node, self.tx_change_node.clone());
                         show_graph_settings = false;
                     }
                 }

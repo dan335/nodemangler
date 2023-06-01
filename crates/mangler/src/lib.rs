@@ -67,6 +67,12 @@ pub enum NodeChangedMessage {
         node_id: String,
         output_index: usize,
         set_to: bool,
+    },
+    SubgraphLoaded {
+        node_id: String,
+        settings: NodeSettings,
+        inputs: Vec<Input>,
+        outputs: Vec<Output>,
     }
 }
 

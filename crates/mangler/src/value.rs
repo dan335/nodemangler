@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use image::{imageops::FilterType, DynamicImage, ImageBuffer, Rgba};
 use serde::{Deserialize, Serialize};
 
@@ -10,6 +12,7 @@ pub enum Value {
     Decimal(f32),
     String(String),
     DynamicImage(DynamicImage), // switch to using dynamicimage
+    Path(PathBuf),
 
     #[serde(
         serialize_with = "serialize_filter_type",
@@ -29,6 +32,7 @@ impl Value {
             | Value::Decimal(_)
             | Value::String(_)
             | Value::FilterType(_)
+            | Value::Path(_)
             | Value::ImageFormat(_) => None,
             Value::UiButton(_) => todo!(),
             Value::DynamicImage(value) => Some(
@@ -48,7 +52,8 @@ impl Value {
             Value::ImageFormat(_) => ValueType::ImageFormat,
             Value::UiButton(_) => ValueType::UiButton,
             Value::DynamicImage(_) => ValueType::DynamicImage,
-            Value::FilterType(_) => todo!(),
+            Value::FilterType(_) => ValueType::FilterType,
+            Value::Path(_) => ValueType::Path,
         }
     }
 
@@ -62,6 +67,7 @@ impl Value {
             Value::ImageFormat(_) => "image format".to_string(),
             Value::UiButton(_) => "button".to_string(),
             Value::DynamicImage(_) => "image".to_string(),
+            Value::Path(_) => "path".to_string(),
         }
     }
 
@@ -94,6 +100,9 @@ impl Value {
                 ValueType::DynamicImage => Err(ConversionError {
                     message: "Unable to convert bool to image format.".to_string(),
                 }),
+                ValueType::Path => Err(ConversionError {
+                    message: "Unable to convert bool to image format.".to_string(),
+                }),
             },
             Value::Integer(a) => match other {
                 ValueType::Bool => Ok(Value::Bool(*a != 0)),
@@ -112,6 +121,9 @@ impl Value {
                 ValueType::DynamicImage => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
+                ValueType::Path => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
             },
             Value::Decimal(a) => match other {
                 ValueType::Bool => Ok(Value::Bool(*a != 0.0)),
@@ -128,6 +140,9 @@ impl Value {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
                 ValueType::DynamicImage => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::Path => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
             },
@@ -172,6 +187,10 @@ impl Value {
                 ValueType::DynamicImage => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
+                ValueType::Path => {
+                    let path = PathBuf::from(a.clone());
+                    Ok(Value::Path(path))
+                }
             },
             Value::FilterType(_a) => match other {
                 ValueType::Bool => Err(ConversionError {
@@ -196,6 +215,7 @@ impl Value {
                 ValueType::DynamicImage => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
+                ValueType::Path => todo!(),
             },
             Value::ImageFormat(a) => match other {
                 ValueType::Bool => Err(ConversionError {
@@ -216,6 +236,7 @@ impl Value {
                 ValueType::ImageFormat => Ok(Value::ImageFormat(*a)),
                 ValueType::UiButton => todo!(),
                 ValueType::DynamicImage => todo!(),
+                ValueType::Path => todo!(),
             },
             Value::UiButton(_) => todo!(),
             Value::DynamicImage(_a) => match other {
@@ -241,7 +262,43 @@ impl Value {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
                 ValueType::DynamicImage => todo!(),
+                ValueType::Path => todo!(),
             },
+            Value::Path(a) => match other {
+                ValueType::Bool => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::Integer => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::Decimal => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::String => {
+                    if let Ok(path_string) = a.clone().into_os_string().into_string() {
+                        Ok(Value::String(path_string))
+                    } else {
+                        Err(ConversionError {
+                            message: "Unable to convert integer to image format.".to_string(),
+                        })
+                    }
+                },
+                ValueType::FilterType => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::ImageFormat => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::UiButton => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::DynamicImage => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::Path => {
+                    Ok(Value::Path(a.clone()))
+                },
+            }
         }
     }
 }
@@ -256,6 +313,7 @@ pub enum ValueType {
     ImageFormat,
     UiButton,
     DynamicImage,
+    Path,
 }
 
 #[derive(Debug)]

@@ -7,6 +7,7 @@ members = [
 # Enable a small amount of optimization in debug mode
 [profile.dev]
 opt-level = 1
+panic = "abort"
 
 # Enable high optimizations for dependencies (incl. Bevy), but not for our code:
 [profile.dev.package."*"]

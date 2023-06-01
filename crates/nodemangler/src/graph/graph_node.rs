@@ -275,6 +275,7 @@ impl GraphNode {
                     }
                     Value::UiButton(_) => todo!(),
                     Value::DynamicImage(_) => {}
+                    Value::Path(_) => todo!(),
                 }
             }
         }
