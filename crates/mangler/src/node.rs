@@ -140,8 +140,38 @@ impl Node {
             NodeType::Subgraph { path:_, graph: graph_option } => {                
                 match graph_option {
                     Some(graph) => {
+                        // todo:
+                        // need to pass this node's inputs to inputs that are exposed in graph
+                        // send message that this node's inputs changed
+                        
                         graph.run().await;
-                        println!("subgraph run");
+                        // todo
+                        // need to pass exposed graph's outputs to this node's outputs
+                        // also need to send message that node changed
+                    println!("run");    
+                    println!("{:#?}", self.inputs);
+                        // let ui know that outputs changed
+                        if let Some(tx) = tx_output {
+                            println!("has output");
+                            for (output_index, output) in self.outputs.iter().enumerate() {
+                                println!("output {}", output_index);
+                                let message = NodeChangedMessage::OutputChanged {
+                                    node_id: self.id.clone(),
+                                    output_index,
+                                    value: output.value.clone(),
+                                    time: self.time.unwrap_or_default(),
+                                    thumbnail: output.value.create_thumbnail(),
+                                };
+    println!("{:#?}", message);
+                                match tx.try_send(message) {
+                                    Ok(_) => {}
+                                    Err(err) => {
+                                        println!("Error sending NodeChangedMessage::OutputChanged: {:?}", err);
+                                    }
+                                }
+                            }
+                        }
+                        
                     },
                     None => {},
                 }

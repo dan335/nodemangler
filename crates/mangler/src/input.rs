@@ -7,6 +7,8 @@ pub struct Input {
     pub value: Value,
     pub connection: Option<(String, usize)>, // id of node with output, index of output
     pub is_exposed: bool,
+    // todo: need to link this somehow with exposed input
+    // maybe it needs an id?
 }
 
 impl Input {

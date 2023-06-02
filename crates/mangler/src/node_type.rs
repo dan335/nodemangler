@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
-use crate::{operation::Operation, graph::Graph};
+use tokio::sync::mpsc::{Receiver, Sender};
+use crate::{operation::Operation, graph::Graph, NodeChangedMessage};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum NodeType {
@@ -10,7 +11,9 @@ pub enum NodeType {
     Subgraph {
         path: PathBuf,
         #[serde(skip)]
-        graph: Option<Graph>
+        graph: Option<Graph>,
+        // #[serde(skip)]
+        // tx_node_changed: Option<Sender<NodeChangedMessage>>,
     }
 }
 

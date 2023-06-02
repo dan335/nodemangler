@@ -318,11 +318,9 @@ impl Graph {
                 if let Value::Path(path) = value {
                     if let NodeType::Subgraph { path:_, graph:_ } = &node.node_type {
                         // create graph from path
-                        // ---------------!!!!!!!!!!!!!!!!!!!!!!-----------
-                        // who gets rx_node_changed???????
-                        let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
+                        //let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
                         
-                        if let Ok(graph) = Graph::load(path.clone(), Some(tx_node_changed), None, None, None, None, None) {
+                        if let Ok(graph) = Graph::load(path.clone(), None, None, None, None, None, None) {
                             for (_n_id, n) in graph.nodes.iter() {
                                 for (_input_index, input) in n.inputs.iter().enumerate() {
                                     if input.is_exposed {
