@@ -11,7 +11,7 @@ pub enum Value {
     Integer(i32),
     Decimal(f32),
     String(String),
-    DynamicImage(DynamicImage), // switch to using dynamicimage
+    DynamicImage(DynamicImage),
     Path(PathBuf),
 
     #[serde(

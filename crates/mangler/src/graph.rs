@@ -1,11 +1,11 @@
 use crate::input::{Input, InputLink};
 use crate::node_type::NodeType;
 use crate::output::{Output, OutputLink};
-use crate::{AddNodeType, NodeChangedMessage, node};
+use crate::{AddNodeType, NodeChangedMessage, GraphChangedMessage};
 use crate::{
-    node::Node, value::Value, AddedConnectionMessage, AddedNodeMessage,
-    GraphSaveData, LoadedNodeMessage, NewGraphError,
-    RemovedConnectionMessage, RemovedNodeMessage,
+    node::Node, value::Value, AddedConnectionMessage,
+    GraphSaveData, NewGraphError,
+    RemovedConnectionMessage,
 };
 use glam::f32::Vec2;
 use std::fs;
@@ -23,11 +23,7 @@ pub struct Graph {
     pub id: String,
     pub name: String,
     pub tx_node_changed: Option<Sender<NodeChangedMessage>>,
-    // pub tx_output_changed: Option<Sender<NodeOutputChangedMessage>>,
-    // pub tx_input_changed: Option<Sender<NodeInputChangedMessage>>,
-    pub tx_added_node: Option<Sender<AddedNodeMessage>>,
-    pub tx_removed_node: Option<Sender<RemovedNodeMessage>>,
-    pub tx_loaded_node: Option<Sender<LoadedNodeMessage>>,
+    pub tx_graph_changed: Option<Sender<GraphChangedMessage>>,
     pub tx_added_connection: Option<Sender<AddedConnectionMessage>>,
     pub tx_removed_connection: Option<Sender<RemovedConnectionMessage>>,
     pub nodes: HashMap<String, Node>, // node_id, node
@@ -39,11 +35,7 @@ impl Graph {
     pub fn new(
         id: String,
         tx_node_changed: Sender<NodeChangedMessage>,
-        // tx_output_changed: Sender<NodeOutputChangedMessage>,
-        // tx_input_changed: Sender<NodeInputChangedMessage>,
-        tx_added_node: Sender<AddedNodeMessage>,
-        tx_removed_node: Sender<RemovedNodeMessage>,
-        tx_loaded_node: Sender<LoadedNodeMessage>,
+        tx_graph_changed: Sender<GraphChangedMessage>,
         tx_added_connection: Sender<AddedConnectionMessage>,
         tx_removed_connection: Sender<RemovedConnectionMessage>,
     ) -> Result<Graph, NewGraphError> {
@@ -51,11 +43,7 @@ impl Graph {
             nodes: HashMap::new(),
             is_dirty: false,
             tx_node_changed: Some(tx_node_changed),
-            // tx_output_changed: Some(tx_output_changed),
-            // tx_input_changed: Some(tx_input_changed),
-            tx_added_node: Some(tx_added_node),
-            tx_removed_node: Some(tx_removed_node),
-            tx_loaded_node: Some(tx_loaded_node),
+            tx_graph_changed: Some(tx_graph_changed),
             tx_added_connection: Some(tx_added_connection),
             tx_removed_connection: Some(tx_removed_connection),
             save_path: None,
@@ -67,11 +55,7 @@ impl Graph {
     pub fn load(
         save_path: PathBuf,
         tx_node_changed: Option<Sender<NodeChangedMessage>>,
-        // tx_output_changed: Option<Sender<NodeOutputChangedMessage>>,
-        // tx_input_changed: Option<Sender<NodeInputChangedMessage>>,
-        tx_added_node: Option<Sender<AddedNodeMessage>>,
-        tx_removed_node: Option<Sender<RemovedNodeMessage>>,
-        tx_loaded_node: Option<Sender<LoadedNodeMessage>>,
+        tx_graph_changed: Option<Sender<GraphChangedMessage>>,
         tx_added_connection: Option<Sender<AddedConnectionMessage>>,
         tx_removed_connection: Option<Sender<RemovedConnectionMessage>>,
     ) -> Result<Graph, NewGraphError> {
@@ -81,31 +65,23 @@ impl Graph {
                     let mut graph = Graph {
                         is_dirty: false,
                         tx_node_changed,
-                        // tx_output_changed,
-                        // tx_input_changed,
-                        tx_added_node,
-                        tx_removed_node,
-                        tx_loaded_node,
                         tx_added_connection,
                         tx_removed_connection,
                         save_path: Some(save_path),
                         nodes: json.nodes,
                         id: json.id,
                         name: json.name,
+                        tx_graph_changed,
                     };
 
                     for (_node_id, node) in graph.nodes.iter_mut() {
                         node.is_dirty = true;
 
-                        // load data for node
-                        // data is not cloneable
-                        //node.data = node.operation.create_data();
-
                         // let ui know node was created
-                        if let Some(tx) = &graph.tx_loaded_node {
-                            let added_node_message = LoadedNodeMessage { node: node.clone() };
+                        if let Some(tx) = &graph.tx_graph_changed {
+                            let message = GraphChangedMessage::LoadedNode { node: node.clone() };
 
-                            match tx.try_send(added_node_message) {
+                            match tx.try_send(message) {
                                 Ok(_) => {}
                                 Err(err) => {
                                     println!("Error sending added_node_message: {:?}", err);
@@ -145,8 +121,8 @@ impl Graph {
             _ => {}
         }
 
-        if let Some(tx) = &self.tx_added_node {
-            let added_node_message = AddedNodeMessage {
+        if let Some(tx) = &self.tx_graph_changed {
+            let message = GraphChangedMessage::AddedNode {
                 node_id: node_id.clone(),
                 position,
                 settings: node.settings.clone(),
@@ -154,10 +130,10 @@ impl Graph {
                 outputs: node.outputs.clone(),
             };
     
-            match tx.try_send(added_node_message) {
+            match tx.try_send(message) {
                 Ok(_) => {}
                 Err(err) => {
-                    println!("Error sending added_node_message: {:?}", err);
+                    println!("Error sending GraphChangedMessage::AddedNode: {:?}", err);
                 }
             }
         }
@@ -200,12 +176,12 @@ impl Graph {
         // remove node
         self.nodes.remove(&node_id);
 
-        if let Some(tx) = &self.tx_removed_node {
-            let removed_node_message = RemovedNodeMessage {
+        if let Some(tx) = &self.tx_graph_changed {
+            let message = GraphChangedMessage::RemovedNode {
                 node_id: node_id.clone(),
             };
 
-            match tx.try_send(removed_node_message) {
+            match tx.try_send(message) {
                 Ok(_) => {}
                 Err(err) => {
                     println!("Error sending removed_node_message: {:?}", err);
@@ -278,7 +254,6 @@ impl Graph {
             }
 
             node.clear_input_connection(input_index);
-            //node.inputs[input_index].connection = None;
         }
 
         if let Some((output_node_id, output_index)) = output {
@@ -312,13 +287,15 @@ impl Graph {
     // when getting message that input should change
     // not passed from other node
     pub fn set_input(&mut self, node_id: String, input_index: usize, value: Value) {
-        println!("set input {:?}", node_id);
         if let Some(node) = self.nodes.get_mut(&node_id) {
             if let Some(input) = node.inputs.get_mut(input_index) {
+                // set value
                 input.value = value.clone();
+
+                // mark node as dirty so that it will run next time graph runs
                 node.is_dirty = true;
 
-                // todo: if input has a link then pass to linked input
+                // if input has a link then pass value to linked input
                 if let Some(link) = &input.link {
                     if let NodeType::Subgraph { path:_, graph:possible_subgraph, rx_node_changed:_ } = &mut node.node_type {
                         if let Some(subgraph) = possible_subgraph {
@@ -334,20 +311,28 @@ impl Graph {
                 }
             }
 
+            // if this node is a subgraph
             if let NodeType::Subgraph { path:_, graph:_, rx_node_changed:_ } = &node.node_type {
+                // if value is subgraph location
+                // load subgraph
                 if let Value::Path(path) = value {
                     
                     // create graph from path
                     let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
-                    match Graph::load(path.clone(), Some(tx_node_changed), None, None, None, None, None) {
+                    match Graph::load(path.clone(), Some(tx_node_changed), None, None, None) {
                         Ok(subgraph) => {
+                            
                             for (subgraph_node_id, subgraph_node) in subgraph.nodes.iter() {
+                                // create inputs for node
+                                // from subgraph's exposed inputs
                                 for (_input_index, subgraph_input) in subgraph_node.inputs.iter().enumerate() {
                                     if subgraph_input.is_exposed {
                                         node.inputs.push(Input::new(subgraph_input.name.clone(), subgraph_input.value.clone(), Some(InputLink {node_id: subgraph_node_id.clone(), input_id: subgraph_input.id.clone()})));
                                     }
                                 }
 
+                                // create outputs for node
+                                // from subgraph's exposed outputs
                                 for (output_index, subgraph_output) in subgraph_node.outputs.iter().enumerate() {
                                     if subgraph_output.is_exposed {
                                         node.outputs.push(Output::new(subgraph_output.name.clone(), subgraph_output.value.clone(), Some(OutputLink { node_id: subgraph_node_id.clone(), output_index })));
@@ -355,10 +340,14 @@ impl Graph {
                                 }
                             }
 
+                            // other settings for node
                             node.settings.name = subgraph.name.clone();
                             node.node_type = NodeType::Subgraph { path: path.to_path_buf(), graph: Some(subgraph), rx_node_changed: Some(rx_node_changed) };
+
+                            // mark dirty so that it runs
                             node.is_dirty = true;
 
+                            // send message to ui
                             if let Some(tx) = &self.tx_node_changed {
                                 let message = SubgraphLoaded {
                                     node_id,
@@ -394,11 +383,6 @@ impl Graph {
         self.save_path = Some(save_path);
         self.save_to_file();
     }
-
-    // https://github.com/emilk/egui/discussions/484
-    // pub async fn run_async(&mut self) -> HashSet<String> {
-    //     self.run().await
-    // }
 
     // returns a list of node_ids that ran
     // so that their thumbnails will know to update

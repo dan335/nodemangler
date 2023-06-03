@@ -76,70 +76,39 @@ pub enum NodeChangedMessage {
     }
 }
 
-// // set a node's input to a value
-// // node will run next time graph runs
-// #[derive(Debug)]
-// pub struct SetNodeInputMessage {
-//     pub node_id: String,
-//     pub input_index: usize,
-//     pub value: Value,
-// }
-
-// // when a node's input changes because of a node connection
-// // this will let the ui know
-// #[derive(Debug)]
-// pub struct NodeInputChangedMessage {
-//     pub node_id: String,
-//     pub input_index: usize,
-//     pub value: Value,
-// }
-
-// // a node has run and it's output has changed
-// #[derive(Debug, Clone)]
-// pub struct NodeOutputChangedMessage {
-//     pub node_id: String,
-//     pub output_index: usize,
-//     pub value: Value,
-//     //pub value_type: ValueType,
-//     pub time: Duration,
-//     pub thumbnail: Option<ImageBuffer<Rgba<u8>, Vec<u8>>>,
-// }
-
 #[derive(Debug)]
-pub struct AddNodeMessage {
-    pub node_id: String,
-    pub node_type: AddNodeType,
-    pub position: Vec2,
+pub enum ChangeGraphMessage {
+    AddNode {
+        node_id: String,
+        node_type: AddNodeType,
+        position: Vec2,
+    },
+    RemoveNode {
+        node_id: String,
+    }
 }
 
 #[derive(Debug)]
-pub struct AddedNodeMessage {
-    pub node_id: String,
-    pub settings: NodeSettings,
-    pub inputs: Vec<Input>,
-    pub outputs: Vec<Output>,
-    pub position: Vec2,
+pub enum GraphChangedMessage {
+    AddedNode {
+        node_id: String,
+        settings: NodeSettings,
+        inputs: Vec<Input>,
+        outputs: Vec<Output>,
+        position: Vec2,
+    },
+    LoadedNode {
+        node: Node,
+    },
+    RemovedNode {
+        node_id: String,
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum AddNodeType {
     Operation(Operation),
     Subgraph
-}
-
-#[derive(Debug)]
-pub struct LoadedNodeMessage {
-    pub node: Node,
-}
-
-#[derive(Debug)]
-pub struct RemoveNodeMessage {
-    pub node_id: String,
-}
-
-#[derive(Debug)]
-pub struct RemovedNodeMessage {
-    pub node_id: String,
 }
 
 #[derive(Debug)]

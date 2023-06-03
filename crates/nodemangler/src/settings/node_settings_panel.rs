@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use eframe::egui::{self, Label};
 use epaint::vec2;
 use image::imageops::FilterType;

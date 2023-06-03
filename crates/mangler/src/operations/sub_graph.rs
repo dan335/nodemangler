@@ -70,8 +70,6 @@ impl OperationSubgraph {
                         None,
                     );
         
-                    println!("{:#?}", graph_result);
-        
                     match graph_result {
                         Ok(graph) => {
                             // let id = graph.id.clone();
