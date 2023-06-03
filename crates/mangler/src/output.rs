@@ -12,6 +12,12 @@ pub struct Output {
     pub link: Option<OutputLink>,
 }
 
+impl PartialEq for Output {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
 impl Output {
     pub fn new(name: String, value: Value, link: Option<OutputLink>) -> Output {
         Output {

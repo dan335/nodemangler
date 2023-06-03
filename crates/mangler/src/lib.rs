@@ -85,7 +85,19 @@ pub enum ChangeGraphMessage {
     },
     RemoveNode {
         node_id: String,
-    }
+    },
+    AddConnection {
+        input_node_id: String,
+        input_connection_index: usize,
+        output_node_id: String,
+        output_connection_index: usize,
+    },
+    RemoveConnection {
+        node_id: String,
+        input_index: usize,
+    },
+    SetSavePath(PathBuf),
+    SetGraphName(String),
 }
 
 #[derive(Debug)]
@@ -96,53 +108,30 @@ pub enum GraphChangedMessage {
         inputs: Vec<Input>,
         outputs: Vec<Output>,
         position: Vec2,
+        is_subgraph: bool,
     },
     LoadedNode {
         node: Node,
     },
     RemovedNode {
         node_id: String,
-    }
+    },
+    AddedConnection {
+        input_node_id: String,
+        input_connection_index: usize,
+        output_node_id: String,
+        output_connection_index: usize,
+    },
+    RemovedConnection {
+        node_id: String,
+        input_index: usize,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub enum AddNodeType {
     Operation(Operation),
     Subgraph
-}
-
-#[derive(Debug)]
-pub struct AddConnectionMessage {
-    pub input_node_id: String,
-    pub input_connection_index: usize,
-    pub output_node_id: String,
-    pub output_connection_index: usize,
-}
-
-#[derive(Debug)]
-pub struct AddedConnectionMessage {
-    pub input_node_id: String,
-    pub input_connection_index: usize,
-    pub output_node_id: String,
-    pub output_connection_index: usize,
-}
-
-#[derive(Debug)]
-pub struct RemoveConnectionMessage {
-    pub node_id: String,
-    pub input_index: usize,
-}
-
-#[derive(Debug)]
-pub struct RemovedConnectionMessage {
-    pub node_id: String,
-    pub input_index: usize,
-}
-
-#[derive(Debug)]
-pub enum GraphMessage {
-    SavePath(PathBuf),
-    GraphName(String),
 }
 
 #[derive(Debug)]

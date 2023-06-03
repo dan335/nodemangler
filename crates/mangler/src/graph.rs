@@ -3,9 +3,8 @@ use crate::node_type::NodeType;
 use crate::output::{Output, OutputLink};
 use crate::{AddNodeType, NodeChangedMessage, GraphChangedMessage};
 use crate::{
-    node::Node, value::Value, AddedConnectionMessage,
+    node::Node, value::Value,
     GraphSaveData, NewGraphError,
-    RemovedConnectionMessage,
 };
 use glam::f32::Vec2;
 use std::fs;
@@ -24,11 +23,10 @@ pub struct Graph {
     pub name: String,
     pub tx_node_changed: Option<Sender<NodeChangedMessage>>,
     pub tx_graph_changed: Option<Sender<GraphChangedMessage>>,
-    pub tx_added_connection: Option<Sender<AddedConnectionMessage>>,
-    pub tx_removed_connection: Option<Sender<RemovedConnectionMessage>>,
     pub nodes: HashMap<String, Node>, // node_id, node
     pub is_dirty: bool,               // needs to run
     pub save_path: Option<PathBuf>,
+    pub is_subgraph: bool,
 }
 
 impl Graph {
@@ -36,19 +34,17 @@ impl Graph {
         id: String,
         tx_node_changed: Sender<NodeChangedMessage>,
         tx_graph_changed: Sender<GraphChangedMessage>,
-        tx_added_connection: Sender<AddedConnectionMessage>,
-        tx_removed_connection: Sender<RemovedConnectionMessage>,
+        is_subgraph: bool,
     ) -> Result<Graph, NewGraphError> {
         Ok(Graph {
             nodes: HashMap::new(),
             is_dirty: false,
             tx_node_changed: Some(tx_node_changed),
             tx_graph_changed: Some(tx_graph_changed),
-            tx_added_connection: Some(tx_added_connection),
-            tx_removed_connection: Some(tx_removed_connection),
             save_path: None,
             id,
             name: "New Graph".to_string(),
+            is_subgraph,
         })
     }
 
@@ -56,8 +52,7 @@ impl Graph {
         save_path: PathBuf,
         tx_node_changed: Option<Sender<NodeChangedMessage>>,
         tx_graph_changed: Option<Sender<GraphChangedMessage>>,
-        tx_added_connection: Option<Sender<AddedConnectionMessage>>,
-        tx_removed_connection: Option<Sender<RemovedConnectionMessage>>,
+        is_subgraph: bool,
     ) -> Result<Graph, NewGraphError> {
         match fs::read_to_string(&save_path) {
             Ok(data) => match serde_json::from_str::<GraphSaveData>(&data) {
@@ -65,13 +60,12 @@ impl Graph {
                     let mut graph = Graph {
                         is_dirty: false,
                         tx_node_changed,
-                        tx_added_connection,
-                        tx_removed_connection,
                         save_path: Some(save_path),
                         nodes: json.nodes,
                         id: json.id,
                         name: json.name,
                         tx_graph_changed,
+                        is_subgraph
                     };
 
                     for (_node_id, node) in graph.nodes.iter_mut() {
@@ -113,10 +107,14 @@ impl Graph {
 
     pub async fn add_node(&mut self, node_id: String, node_type: AddNodeType, position: Vec2) {
         let mut node = Node::new(node_id.clone(), node_type.clone(), position);
+        let mut is_subgraph = false;
 
         match node_type {
             AddNodeType::Subgraph => {
+                node.inputs.clear();
+                node.outputs.clear();
                 node.inputs.push(Input::new("file path".to_string(), Value::Path(PathBuf::new()), None));
+                is_subgraph = true;
             },
             _ => {}
         }
@@ -128,6 +126,7 @@ impl Graph {
                 settings: node.settings.clone(),
                 inputs: node.inputs.clone(),
                 outputs: node.outputs.clone(),
+                is_subgraph,
             };
     
             match tx.try_send(message) {
@@ -225,15 +224,15 @@ impl Graph {
             // mark graph as dirty
             self.is_dirty = true;
 
-            if let Some(tx) = &self.tx_added_connection {
-                let added_connection_message = AddedConnectionMessage {
+            if let Some(tx) = &self.tx_graph_changed {
+                let message = GraphChangedMessage::AddedConnection {
                     input_node_id,
                     input_connection_index,
                     output_node_id,
                     output_connection_index,
                 };
 
-                match tx.try_send(added_connection_message) {
+                match tx.try_send(message) {
                     Ok(_) => {}
                     Err(err) => {
                         println!("Error sending added_connection_message: {:?}", err);
@@ -265,17 +264,17 @@ impl Graph {
             }
         }
 
-        if let Some(tx) = &self.tx_removed_connection {
-            let removed_connection_message = RemovedConnectionMessage {
+        if let Some(tx) = &self.tx_graph_changed {
+            let message = GraphChangedMessage::RemovedConnection {
                 node_id,
                 input_index,
             };
     
-            match tx.try_send(removed_connection_message)
+            match tx.try_send(message)
             {
                 Ok(_) => {}
                 Err(err) => {
-                    println!("Error sending removed_connection_message: {:?}", err);
+                    println!("Error sending GraphChangedMessage::RemovedConnection: {:?}", err);
                 }
             }
         }        
@@ -319,9 +318,9 @@ impl Graph {
                     
                     // create graph from path
                     let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
-                    match Graph::load(path.clone(), Some(tx_node_changed), None, None, None) {
+                    match Graph::load(path.clone(), Some(tx_node_changed), None, true) {
                         Ok(subgraph) => {
-                            
+
                             for (subgraph_node_id, subgraph_node) in subgraph.nodes.iter() {
                                 // create inputs for node
                                 // from subgraph's exposed inputs
@@ -476,7 +475,13 @@ impl Graph {
         self.save_to_file();
     }
 
+    // save graph to disk
+    // unless this is a subgraph
     pub fn save_to_file(&self) {
+        if self.is_subgraph {
+            return;
+        }
+        
         if let Some(save_path) = &self.save_path {
             let data = GraphSaveData {
                 nodes: self.nodes.clone(),

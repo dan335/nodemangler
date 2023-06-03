@@ -16,6 +16,12 @@ pub struct Input {
     pub link: Option<InputLink>,
 }
 
+impl PartialEq for Input {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
 impl Input {
     pub fn new(name: String, value: Value, link: Option<InputLink>) -> Input {
         Input {

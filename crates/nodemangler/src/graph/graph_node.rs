@@ -29,10 +29,11 @@ pub struct GraphNode {
     pub is_dragging: bool,
     pub last_drag_position: Option<Pos2>,
     pub thumbnail: Option<egui::TextureHandle>,
+    pub is_subgraph: bool,
 }
 
 impl GraphNode {
-    pub fn new(id: String, position: Pos2, settings: NodeSettings, inputs: Vec<Input>, outputs: Vec<Output>) -> GraphNode {
+    pub fn new(id: String, position: Pos2, settings: NodeSettings, inputs: Vec<Input>, outputs: Vec<Output>, is_subgraph: bool) -> GraphNode {
         GraphNode {
             id,
             position,
@@ -43,6 +44,7 @@ impl GraphNode {
             inputs,
             outputs,
             time: None,
+            is_subgraph,
         }
     }
 
@@ -311,10 +313,17 @@ impl GraphNode {
         // ));
 
         // text - name
+        let mut name = self.settings.name.clone();
+
+        if self.is_subgraph {
+            name += " (subgraph)";
+        }
+
+
         ui.painter().text(
             Pos2::new(node_rect.center().x, node_rect.top() - 20.0),
             Align2::CENTER_TOP,
-            self.settings.name.clone(),
+            name,
             egui::FontId::default(),
             egui::Color32::from_gray(220),
         );

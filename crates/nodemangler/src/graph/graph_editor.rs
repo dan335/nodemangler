@@ -455,11 +455,11 @@ impl GraphEditor {
         self.last_drag_position = None;
     }
 
-    pub fn add_node(&mut self, node_id: String, settings: NodeSettings, inputs: Vec<Input>, outputs: Vec<Output>, position_graph_space: Pos2) {
+    pub fn add_node(&mut self, node_id: String, settings: NodeSettings, inputs: Vec<Input>, outputs: Vec<Output>, position_graph_space: Pos2, is_subgraph: bool) {
         //let inverse_zoom = 1.0 / self.zoom;
         //let position = Pos2::new(position_graph_space.x, position_graph_space.y);
 
-        let node = GraphNode::new(node_id.clone(), position_graph_space, settings, inputs, outputs);
+        let node = GraphNode::new(node_id.clone(), position_graph_space, settings, inputs, outputs, is_subgraph);
 
         self.graph_nodes.insert(node_id, node);
     }
