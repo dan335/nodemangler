@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{Receiver};
 use crate::{operation::Operation, graph::Graph, NodeChangedMessage};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -12,8 +12,8 @@ pub enum NodeType {
         path: PathBuf,
         #[serde(skip)]
         graph: Option<Graph>,
-        // #[serde(skip)]
-        // tx_node_changed: Option<Sender<NodeChangedMessage>>,
+        #[serde(skip)]
+        rx_node_changed: Option<Receiver<NodeChangedMessage>>,
     }
 }
 
@@ -23,8 +23,8 @@ impl Clone for NodeType {
             NodeType::Operation { operation } => {
                 NodeType::Operation { operation: operation.clone() }
             },
-            NodeType::Subgraph {path, graph } => {
-                NodeType::Subgraph { path: path.clone(), graph: None }
+            NodeType::Subgraph {path, graph:_, rx_node_changed:_ } => {
+                NodeType::Subgraph { path: path.clone(), graph: None, rx_node_changed: None }
             }
         }
     }

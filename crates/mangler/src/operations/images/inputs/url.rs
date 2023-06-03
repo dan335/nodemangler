@@ -19,13 +19,13 @@ impl OperationImageInputUrl {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("URL".to_string(), Value::String("https://i.imgur.com/3aDSTiBl.jpg".to_string())),
+            Input::new("URL".to_string(), Value::String("https://i.imgur.com/3aDSTiBl.jpg".to_string()), None),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("image".to_string(), Value::DynamicImage(image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32))))
+            Output::new("image".to_string(), Value::DynamicImage(image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32))), None)
         ]
     }
 

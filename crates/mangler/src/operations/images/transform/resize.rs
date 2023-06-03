@@ -20,17 +20,17 @@ impl OperationImageTransformResize {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::DynamicImage(image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)))),
-            Input::new("width".to_string(), Value::Integer(i32::default())),
-            Input::new("height".to_string(), Value::Integer(i32::default())),
+            Input::new("image".to_string(),  Value::DynamicImage(image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32))), None),
+            Input::new("width".to_string(), Value::Integer(i32::default()), None),
+            Input::new("height".to_string(), Value::Integer(i32::default()), None),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("image".to_string(), Value::DynamicImage(image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)))),
-            Output::new("width".to_string(), Value::Integer(i32::default())),
-            Output::new("height".to_string(), Value::Integer(i32::default())),
+            Output::new("image".to_string(), Value::DynamicImage(image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32))), None),
+            Output::new("width".to_string(), Value::Integer(i32::default()), None),
+            Output::new("height".to_string(), Value::Integer(i32::default()), None),
         ]
     }
 

@@ -1,7 +1,7 @@
-use crate::input::Input;
+use crate::input::{Input, InputLink};
 use crate::node_type::NodeType;
-use crate::output::Output;
-use crate::{AddNodeType, NodeChangedMessage};
+use crate::output::{Output, OutputLink};
+use crate::{AddNodeType, NodeChangedMessage, node};
 use crate::{
     node::Node, value::Value, AddedConnectionMessage, AddedNodeMessage,
     GraphSaveData, LoadedNodeMessage, NewGraphError,
@@ -140,7 +140,7 @@ impl Graph {
 
         match node_type {
             AddNodeType::Subgraph => {
-                node.inputs.push(Input::new("file path".to_string(), Value::Path(PathBuf::new())));
+                node.inputs.push(Input::new("file path".to_string(), Value::Path(PathBuf::new()), None));
             },
             _ => {}
         }
@@ -308,35 +308,56 @@ impl Graph {
         self.save_to_file();
     }
 
+
+    // when getting message that input should change
+    // not passed from other node
     pub fn set_input(&mut self, node_id: String, input_index: usize, value: Value) {
+        println!("set input {:?}", node_id);
         if let Some(node) = self.nodes.get_mut(&node_id) {
             if let Some(input) = node.inputs.get_mut(input_index) {
                 input.value = value.clone();
+                node.is_dirty = true;
 
-                // special case for subgraphs
-                // load graph
+                // todo: if input has a link then pass to linked input
+                if let Some(link) = &input.link {
+                    if let NodeType::Subgraph { path:_, graph:possible_subgraph, rx_node_changed:_ } = &mut node.node_type {
+                        if let Some(subgraph) = possible_subgraph {
+                            if let Some(subgraph_node) = subgraph.nodes.get_mut(&link.node_id) {
+
+                                if let Some(i) = subgraph_node.inputs.iter_mut().position(|i| i.id == link.input_id) {
+                                    subgraph_node.set_input_value(i, value.clone());
+                                }
+                            }
+                            
+                        }
+                    }
+                }
+            }
+
+            if let NodeType::Subgraph { path:_, graph:_, rx_node_changed:_ } = &node.node_type {
                 if let Value::Path(path) = value {
-                    if let NodeType::Subgraph { path:_, graph:_ } = &node.node_type {
-                        // create graph from path
-                        //let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
-                        
-                        if let Ok(graph) = Graph::load(path.clone(), None, None, None, None, None, None) {
-                            for (_n_id, n) in graph.nodes.iter() {
-                                for (_input_index, input) in n.inputs.iter().enumerate() {
-                                    if input.is_exposed {
-                                        node.inputs.push(Input::new(input.name.clone(), input.value.clone()));
+                    
+                    // create graph from path
+                    let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
+                    match Graph::load(path.clone(), Some(tx_node_changed), None, None, None, None, None) {
+                        Ok(subgraph) => {
+                            for (subgraph_node_id, subgraph_node) in subgraph.nodes.iter() {
+                                for (_input_index, subgraph_input) in subgraph_node.inputs.iter().enumerate() {
+                                    if subgraph_input.is_exposed {
+                                        node.inputs.push(Input::new(subgraph_input.name.clone(), subgraph_input.value.clone(), Some(InputLink {node_id: subgraph_node_id.clone(), input_id: subgraph_input.id.clone()})));
                                     }
                                 }
 
-                                for (_output_index, output) in n.outputs.iter().enumerate() {
-                                    if output.is_exposed {
-                                        node.outputs.push(Output::new(output.name.clone(), output.value.clone()));
+                                for (output_index, subgraph_output) in subgraph_node.outputs.iter().enumerate() {
+                                    if subgraph_output.is_exposed {
+                                        node.outputs.push(Output::new(subgraph_output.name.clone(), subgraph_output.value.clone(), Some(OutputLink { node_id: subgraph_node_id.clone(), output_index })));
                                     }
                                 }
                             }
 
-                            node.settings.name = graph.name.clone();
-                            node.node_type = NodeType::Subgraph { path: path.to_path_buf(), graph: Some(graph) };
+                            node.settings.name = subgraph.name.clone();
+                            node.node_type = NodeType::Subgraph { path: path.to_path_buf(), graph: Some(subgraph), rx_node_changed: Some(rx_node_changed) };
+                            node.is_dirty = true;
 
                             if let Some(tx) = &self.tx_node_changed {
                                 let message = SubgraphLoaded {
@@ -354,12 +375,18 @@ impl Graph {
                                 }
                             }
                         }
+                        Err(error) => {
+                            println!("Error loading subgraph. {:#?}", error);
+                        },
+                        
                     }
-                } 
+                }
 
-                node.is_dirty = true;
-                self.save_to_file();
-            }
+                
+            } 
+
+            
+            self.save_to_file();
         }
     }
 
@@ -442,7 +469,6 @@ impl Graph {
             for (connected_node_id, input_index, value) in output_data.iter() {
                 if let Some(connected_node) = self.nodes.get_mut(&connected_node_id.clone()) {
 
-
                     connected_node.set_input_value(*input_index, value.clone());
 
                     if let Some(tx) = &self.tx_node_changed {
@@ -451,13 +477,6 @@ impl Graph {
                             input_index: *input_index,
                             value: value.clone(),
                         };
-
-                    // if let Some(tx) = &self.tx_input_changed {
-                    //     let node_input_changed_message = NodeInputChangedMessage {
-                    //         node_id: connected_node_id.clone(),
-                    //         input_index: *input_index,
-                    //         value: value.clone(),
-                    //     };
     
                         match tx.try_send(message) {
                             Ok(_) => {}

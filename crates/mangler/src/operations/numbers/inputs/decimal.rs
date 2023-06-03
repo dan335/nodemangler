@@ -18,13 +18,13 @@ impl OperationNumberInputDecimal {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("decimal".to_string(), Value::Decimal(f32::default()))
+            Input::new("decimal".to_string(), Value::Decimal(f32::default()), None)
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("decimal".to_string(), Value::Decimal(f32::default()))
+            Output::new("decimal".to_string(), Value::Decimal(f32::default()), None)
         ]
     }
 

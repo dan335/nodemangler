@@ -18,14 +18,14 @@ impl OperationNumberMathAdd {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Integer(i32::default())),
-            Input::new("b".to_string(), Value::Integer(i32::default())),
+            Input::new("a".to_string(), Value::Integer(i32::default()), None),
+            Input::new("b".to_string(), Value::Integer(i32::default()), None),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("result".to_string(), Value::Integer(i32::default()))
+            Output::new("result".to_string(), Value::Integer(i32::default()), None)
         ]
     }
 

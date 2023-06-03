@@ -18,13 +18,13 @@ impl OperationNumberInputInteger {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("integer".to_string(), Value::Integer(i32::default())),
+            Input::new("integer".to_string(), Value::Integer(i32::default()), None),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("integer".to_string(), Value::Integer(i32::default()))
+            Output::new("integer".to_string(), Value::Integer(i32::default()), None)
         ]
     }
 

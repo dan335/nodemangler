@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 pub const THUMBNAIL_SIZE: [u32; 2] = [128, 128];
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Value {
     Bool(bool),
     Integer(i32),
