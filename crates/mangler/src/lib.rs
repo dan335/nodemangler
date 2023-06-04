@@ -19,6 +19,7 @@ pub mod operations;
 pub mod output;
 pub mod value;
 pub mod node_type;
+mod graph_tests;
 
 pub fn get_id() -> String {
     nanoid!()

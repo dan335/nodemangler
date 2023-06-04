@@ -105,7 +105,7 @@ impl Graph {
         }
     }
 
-    pub async fn add_node(&mut self, node_id: String, node_type: AddNodeType, position: Vec2) {
+    pub async fn add_node(&mut self, node_id: String, node_type: AddNodeType, position: Vec2) -> String {
         let mut node = Node::new(node_id.clone(), node_type.clone(), position);
         let mut is_subgraph = false;
 
@@ -138,9 +138,11 @@ impl Graph {
         }
 
         self.is_dirty = true;
-        self.nodes.insert(node_id, node);
+        self.nodes.insert(node_id.clone(), node);
 
         self.save_to_file();
+
+        node_id
     }
 
     pub async fn remove_node(&mut self, node_id: String) {
