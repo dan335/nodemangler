@@ -1,3 +1,3 @@
-set RUST_BACKTRACE=1
-# cargo watch --quiet --clear --exec test --exec clippy --exec run
-cargo watch --quiet --clear --exec test
+set RUST_BACKTRACE=0
+cargo watch --quiet --clear --exec test --exec clippy --exec run
+# cargo watch --quiet --clear --exec test

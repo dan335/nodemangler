@@ -6,22 +6,46 @@ use eframe::{
 };
 use mangler::input::Input;
 
+use super::{graph_editor::TempConnection, graph_node::ConnectionType};
+
+const COLOR: Color32 = Color32::from_gray(150);
+const COLOR_HOVER: Color32 = Color32::from_gray(200);
+const COLOR_DISABLED: Color32 = Color32::from_gray(50);
+
 pub fn draw_graph_input(
+    node_id: &String,
     input: &Input,
     input_position: Pos2,
     input_rect: Rect,
-    _index: usize,
+    index: usize,
     _node_rect: Rect,
     ui: &mut egui::Ui,
     show_names: bool,
+    temp_connection: Option<TempConnection>,
 ) -> InputOutputResponse {
     let mut response = InputOutputResponse::new();
-    let mut color = Color32::from_gray(150);
+    let mut color = COLOR;
+    let mut is_disabled = false;
     let input_response =
         ui.allocate_rect(input_rect, egui::Sense::drag().union(egui::Sense::hover()));
 
-    if input_response.hovered() {
-        color = Color32::from_gray(200);
+    if let Some(temp) = temp_connection {
+        // if we're dragging from this node
+        if node_id == &temp.from_node_id {
+            if temp.from_connection_type == ConnectionType::Output || temp.from_connection_index != index {
+                is_disabled = true;
+            }
+        } else {
+            if temp.from_connection_type == ConnectionType::Input || !input.value.valid_conversions().contains(&temp.from_value_type) {
+                is_disabled = true;
+            }
+        }
+    }
+
+    if is_disabled {
+        color = COLOR_DISABLED;
+    } else  if  input_response.hovered() {
+        color = COLOR_HOVER;
     }
 
     let shape = Shape::circle_filled(input_position, 5.0, color);

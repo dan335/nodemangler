@@ -4,11 +4,15 @@ use eframe::{
     epaint::{Color32, Pos2, Rect, Shape},
 };
 
-const OUTPUT_BG_COLOR: Color32 = Color32::from_gray(150);
-const OUTPUT_BG_COLOR_HOVER: Color32 = Color32::from_gray(200);
-const OUTPUT_TEXT: Color32 = Color32::from_gray(200);
+use super::graph_editor::TempConnection;
+
+const COLOR: Color32 = Color32::from_gray(150);
+const COLOR_HOVER: Color32 = Color32::from_gray(200);
+const COLOR_DISABLED: Color32 = Color32::from_gray(50);
+const COLOR_TEXT: Color32 = Color32::from_gray(200);
 
 pub fn draw_graph_output(
+    node_id: &String,
     output_name: &String,
     output_value_name: &String,
     output_position: Pos2,
@@ -17,16 +21,17 @@ pub fn draw_graph_output(
     _rect: Rect,
     ui: &mut egui::Ui,
     show_type: bool,
+    temp_connection: Option<TempConnection>,
 ) -> InputOutputResponse {
     puffin::profile_scope!("graph node.draw_graph_output()");
     let mut response = InputOutputResponse::new();
-    let mut color = OUTPUT_BG_COLOR;
+    let mut color = COLOR;
     let output_response =
         ui.allocate_rect(input_rect, egui::Sense::drag().union(egui::Sense::hover()));
 
     // highlight when hovering
     if output_response.hovered() {
-        color = OUTPUT_BG_COLOR_HOVER;
+        color = COLOR_HOVER;
     }
 
     // draw bg
@@ -52,7 +57,7 @@ pub fn draw_graph_output(
             egui::Align2::LEFT_CENTER,
             txt,
             egui::FontId::proportional(12.0),
-            OUTPUT_TEXT,
+            COLOR_TEXT,
         );
     }
 

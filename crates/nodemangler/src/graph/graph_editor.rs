@@ -9,7 +9,7 @@ use eframe::{
 };
 use egui::epaint::CubicBezierShape;
 use egui::Pos2;
-use mangler::{node_settings::NodeSettings, input::Input, output::Output};
+use mangler::{node_settings::NodeSettings, input::Input, output::Output, value::ValueType};
 use std::{collections::HashMap, time::Instant};
 
 const BACKGROUND_COLOR: Color32 = egui::Color32::from_gray(35);
@@ -180,6 +180,7 @@ impl GraphEditor {
                 cursor_position,
                 is_editing,
                 is_viewing,
+                self.temp_connection.clone(),
             );
 
             // node moved
@@ -477,6 +478,7 @@ pub struct TempConnection {
     pub from_node_id: String,
     pub from_connection_index: usize,
     pub from_connection_type: ConnectionType,
+    pub from_value_type: ValueType,
 }
 
 pub struct GraphEditorResponse {

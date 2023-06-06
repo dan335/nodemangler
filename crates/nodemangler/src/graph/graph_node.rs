@@ -70,6 +70,7 @@ impl GraphNode {
         panel_cursor_position: Pos2,
         is_editing: bool,
         is_viewing: bool,
+        temp_connection: Option<TempConnection>,
     ) -> GraphNodeResponse {
         puffin::profile_scope!("graph node.show()");
         let mut graph_node_response = GraphNodeResponse::default();
@@ -124,6 +125,7 @@ impl GraphNode {
             puffin::profile_scope!("graph node.inputs.iter()");
             // draw input
             let input_output_response = draw_graph_input(
+                &self.id,
                 input,
                 self.get_input_position(index, node_rect),
                 self.get_input_rect(index, node_rect),
@@ -131,6 +133,7 @@ impl GraphNode {
                 node_rect,
                 ui,
                 bg_response.hovered(),
+                temp_connection.clone(),
             );
 
             if input_output_response.has_started_creating_connection {
@@ -139,6 +142,7 @@ impl GraphNode {
                     from_node_id: self.id.clone(),
                     from_connection_index: index,
                     from_connection_type: ConnectionType::Input,
+                    from_value_type: input.value.value_type(),
                 });
             }
 
@@ -157,6 +161,7 @@ impl GraphNode {
         for (index, output) in self.outputs.iter().enumerate() {
             puffin::profile_scope!("graph node.outputs.iter()");
             let input_output_response = draw_graph_output(
+                &self.id,
                 &output.name,
                 &output.value.value_name(),
                 self.get_output_position(index, node_rect),
@@ -165,6 +170,7 @@ impl GraphNode {
                 node_rect,
                 ui,
                 bg_response.hovered(),
+                temp_connection.clone(),
             );
 
             // started dragging from connection
@@ -175,6 +181,7 @@ impl GraphNode {
                     from_node_id: self.id.clone(),
                     from_connection_index: index,
                     from_connection_type: ConnectionType::Output,
+                    from_value_type: output.value.value_type(),
                 });
             }
 
@@ -454,7 +461,7 @@ impl InputOutputResponse {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionType {
     Input,
     Output,

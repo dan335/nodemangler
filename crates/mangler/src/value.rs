@@ -71,6 +71,20 @@ impl Value {
         }
     }
 
+    pub fn valid_conversions(&self) -> Vec<ValueType> {
+        match self {
+            Value::Bool(_) => vec![ValueType::Bool, ValueType::Integer, ValueType::Decimal, ValueType::String],
+            Value::Integer(_) => vec![ValueType::Bool, ValueType::Integer, ValueType::Decimal, ValueType::String],
+            Value::Decimal(_) => vec![ValueType::Bool, ValueType::Integer, ValueType::Decimal, ValueType::String],
+            Value::String(_) => vec![ValueType::String, ValueType::Path],
+            Value::DynamicImage(_) => vec![ValueType::DynamicImage],
+            Value::Path(_) => vec![ValueType::String, ValueType::Path],
+            Value::FilterType(_) => vec![ValueType::FilterType, ValueType::String],
+            Value::ImageFormat(_) => vec![ValueType::FilterType, ValueType::String],
+            Value::UiButton(_) => vec![],
+        }
+    }
+
     pub fn try_convert_to(&self, other: ValueType) -> Result<Value, ConversionError> {
         match self {
             Value::Bool(a) => match other {
@@ -303,7 +317,7 @@ impl Value {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ValueType {
     Bool,
     Integer,
