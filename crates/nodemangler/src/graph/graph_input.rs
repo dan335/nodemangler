@@ -25,31 +25,38 @@ pub fn draw_graph_input(
 ) -> InputOutputResponse {
     let mut response = InputOutputResponse::new();
     let mut color = COLOR;
-    let mut is_disabled = false;
     let input_response =
         ui.allocate_rect(input_rect, egui::Sense::drag().union(egui::Sense::hover()));
 
     if let Some(temp) = temp_connection {
         // if we're dragging from this node
         if node_id == &temp.from_node_id {
-            if temp.from_connection_type == ConnectionType::Output || temp.from_connection_index != index {
-                is_disabled = true;
+            if temp.from_connection_type == ConnectionType::Output
+                || temp.from_connection_index != index
+            {
+                response.is_disabled = true;
             }
         } else {
-            if temp.from_connection_type == ConnectionType::Input || !input.value.valid_conversions().contains(&temp.from_value_type) {
-                is_disabled = true;
+            if temp.from_connection_type == ConnectionType::Input
+                || !input
+                    .value
+                    .valid_conversions()
+                    .contains(&temp.from_value_type)
+            {
+                response.is_disabled = true;
             }
         }
     }
 
-    if is_disabled {
+    response.is_cursor_over = input_response.hovered();
+
+    if response.is_disabled {
         color = COLOR_DISABLED;
-    } else  if  input_response.hovered() {
+    } else if input_response.hovered() {
         color = COLOR_HOVER;
     }
 
     let shape = Shape::circle_filled(input_position, 5.0, color);
-    response.is_cursor_over = input_response.hovered();
     ui.painter().add(shape);
 
     if input_response.drag_started() {

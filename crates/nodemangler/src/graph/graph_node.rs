@@ -1,22 +1,22 @@
 use crate::graph::graph_input::draw_graph_input;
+use crate::graph::graph_node_header::show_graph_node_header;
+use crate::graph::graph_node_info::show_graph_node_info;
+use crate::graph::graph_node_thumbnail::show_graph_node_thumbnail;
 use crate::graph::graph_output::draw_graph_output;
 use crate::{graph_to_view_space_pos2, view_to_graph_space_pos2};
-use eframe::epaint::{Color32, FontId, Rounding};
-use eframe::{egui, emath::Align2};
+use eframe::egui;
 use egui::{Pos2, Rect, Vec2};
 use mangler::input::Input;
 use mangler::node_settings::NodeSettings;
 use mangler::output::Output;
-use mangler::value::Value;
 use std::fmt::Debug;
 use std::time::Duration;
 
 use super::graph_editor::TempConnection;
 use super::graph_output::draw_graph_output_highlighted;
 
-pub const NODE_SIZE: Vec2 = Vec2::new(132.0, 132.0);
+pub const NODE_SIZE: Vec2 = Vec2::new(128.0, 40.0);
 //pub const THUMBNAIL_SIZE: [u32; 2] = [128, 128];
-const NODE_ROUNDING: f32 = 2.0;
 
 #[derive(Clone)]
 pub struct GraphNode {
@@ -33,7 +33,14 @@ pub struct GraphNode {
 }
 
 impl GraphNode {
-    pub fn new(id: String, position: Pos2, settings: NodeSettings, inputs: Vec<Input>, outputs: Vec<Output>, is_subgraph: bool) -> GraphNode {
+    pub fn new(
+        id: String,
+        position: Pos2,
+        settings: NodeSettings,
+        inputs: Vec<Input>,
+        outputs: Vec<Output>,
+        is_subgraph: bool,
+    ) -> GraphNode {
         GraphNode {
             id,
             position,
@@ -74,7 +81,6 @@ impl GraphNode {
     ) -> GraphNodeResponse {
         puffin::profile_scope!("graph node.show()");
         let mut graph_node_response = GraphNodeResponse::default();
-        let rounding = Rounding::same(NODE_ROUNDING);
 
         if self.is_dragging {
             if let Some(last_drag_position) = self.last_drag_position {
@@ -112,12 +118,23 @@ impl GraphNode {
 
         graph_node_response.is_cursor_inside = bg_response.hovered();
 
-        // bg
-        ui.painter().add(egui::Shape::rect_filled(
+        show_graph_node_header(
+            ui,
+            self.settings.name.clone(),
             node_rect,
-            rounding,
-            egui::Color32::from_gray(70),
-        ));
+            is_editing,
+            self.is_subgraph,
+        );
+
+        show_graph_node_info(ui, self.time, node_rect, &self.outputs);
+
+        show_graph_node_thumbnail(
+            ui,
+            &self.outputs,
+            self.thumbnail.clone(),
+            self.get_rect(graph_position, graph_zoom).center_bottom(),
+            graph_zoom,
+        );
 
         // ------------
         // inputs
@@ -146,13 +163,15 @@ impl GraphNode {
                 });
             }
 
-            if input_output_response.has_stopped_creating_connection {
+            if !input_output_response.is_disabled
+                && input_output_response.has_stopped_creating_connection
+            {
                 graph_node_response.has_stopped_creating_connection = true;
                 graph_node_response.connection_to_position =
                     input_output_response.connection_to_position;
             }
 
-            if input_output_response.is_cursor_over {
+            if !input_output_response.is_disabled && input_output_response.is_cursor_over {
                 graph_node_response.is_cursor_inside = true;
             }
         }
@@ -162,7 +181,7 @@ impl GraphNode {
             puffin::profile_scope!("graph node.outputs.iter()");
             let input_output_response = draw_graph_output(
                 &self.id,
-                &output.name,
+                &output,
                 &output.value.value_name(),
                 self.get_output_position(index, node_rect),
                 self.get_output_rect(index, node_rect),
@@ -185,7 +204,9 @@ impl GraphNode {
                 });
             }
 
-            if input_output_response.has_stopped_creating_connection {
+            if !input_output_response.is_disabled
+                && input_output_response.has_stopped_creating_connection
+            {
                 graph_node_response.has_stopped_creating_connection = true;
                 graph_node_response.connection_to_position =
                     input_output_response.connection_to_position;
@@ -195,145 +216,10 @@ impl GraphNode {
                 draw_graph_output_highlighted(self.get_output_position(index, node_rect), ui);
             }
 
-            if input_output_response.is_cursor_over {
+            if !input_output_response.is_disabled && input_output_response.is_cursor_over {
                 graph_node_response.is_cursor_inside = true;
             }
         }
-
-        // ms
-        if let Some(time) = self.time {
-            puffin::profile_scope!("graph node.inputs show time");
-            let pos = Pos2 {
-                x: node_rect.right_bottom().x,
-                y: node_rect.right_bottom().y + 5.0,
-            };
-            let text = format!("{:.4} ms", time.as_nanos() as f64 / 1_000_000.0);
-            ui.painter().text(
-                pos,
-                Align2::RIGHT_TOP,
-                text,
-                egui::FontId::monospace(10.0),
-                egui::Color32::from_gray(200),
-            );
-        }
-
-        // image format
-        if self.outputs.len() > 0 {
-            if let Value::DynamicImage(image) = self.outputs[0].value.clone() {
-                let bits = image.color().bits_per_pixel() / image.color().channel_count() as u16;
-                let channels = match image.color().channel_count() {
-                    1 => "r".to_string(),
-                    2 => "rg".to_string(),
-                    3 => "rgb".to_string(),
-                    4 => "rgba".to_string(),
-                    _ => "".to_string(),
-                };
-
-                // if image.color().has_alpha() {
-                //     channels = format!("{}a", channels);
-                // }
-
-                let pos = Pos2 {
-                    x: node_rect.right_bottom().x,
-                    y: node_rect.right_bottom().y + 20.0,
-                };
-                let text = format!("{}{}", channels, bits);
-                ui.painter().text(
-                    pos,
-                    Align2::RIGHT_TOP,
-                    text,
-                    egui::FontId::monospace(10.0),
-                    egui::Color32::from_gray(200),
-                );
-            }
-        }
-        
-
-        // show output result on node
-        if let Some(thumbnail) = &self.thumbnail {
-            ui.painter().image(
-                thumbnail.id(),
-                Rect::from_center_size(
-                    self.get_rect(graph_position, graph_zoom).center(),
-                    graph_to_view_space_pos2(graph_zoom, thumbnail.size_vec2().to_pos2()).to_vec2(),
-                ),
-                Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)),
-                Color32::WHITE,
-            );
-        } else {
-            if self.outputs.len() > 0 {
-                match &self.outputs[0].value {
-                    Value::Bool(value) => {
-                        show_output_text(ui, node_rect.center(), value.to_string(), graph_zoom)
-                    }
-                    Value::Integer(value) => {
-                        show_output_text(ui, node_rect.center(), value.to_string(), graph_zoom)
-                    }
-                    Value::Decimal(value) => {
-                        show_output_text(ui, node_rect.center(), value.to_string(), graph_zoom)
-                    }
-                    Value::String(value) => {
-                        show_output_text(ui, node_rect.center(), value.to_string(), graph_zoom)
-                    }
-
-                    Value::FilterType(value) => {
-                        show_output_text(ui, node_rect.center(), format!("{:?}", value), graph_zoom)
-                    }
-                    Value::ImageFormat(value) => {
-                        show_output_text(ui, node_rect.center(), format!("{:?}", value), graph_zoom)
-                    }
-                    Value::UiButton(_) => todo!(),
-                    Value::DynamicImage(_) => {}
-                    Value::Path(_) => todo!(),
-                }
-            }
-        }
-
-        fn show_output_text(ui: &mut egui::Ui, position: Pos2, txt: String, graph_zoom: f32) {
-            puffin::profile_scope!("graph node.show_output_text()");
-            ui.painter().text(
-                position,
-                Align2::CENTER_CENTER,
-                txt,
-                FontId::proportional(20.0 * graph_zoom),
-                Color32::from_gray(200),
-            );
-        }
-
-        // outline
-        if is_editing {
-            puffin::profile_scope!("graph node.show_is_editing");
-            ui.painter().add(egui::Shape::rect_stroke(
-                node_rect,
-                rounding,
-                egui::Stroke::new(4.0, Color32::from_rgb(30, 150, 90)),
-            ));
-        }
-
-        //if is_viewing {
-        //ui.painter().add(egui::Shape::rect_stroke(self.get_rect(graph_position).expand(10.0), rounding, egui::Stroke::new(2.0, Color32::GREEN)));
-        //}
-        // ui.painter().add(egui::Shape::rect_stroke(
-        //     rect,
-        //     rounding,
-        //     stroke
-        // ));
-
-        // text - name
-        let mut name = self.settings.name.clone();
-
-        if self.is_subgraph {
-            name += " (subgraph)";
-        }
-
-
-        ui.painter().text(
-            Pos2::new(node_rect.center().x, node_rect.top() - 20.0),
-            Align2::CENTER_TOP,
-            name,
-            egui::FontId::default(),
-            egui::Color32::from_gray(220),
-        );
 
         graph_node_response
     }
@@ -447,6 +333,7 @@ pub struct InputOutputResponse {
     pub has_stopped_creating_connection: bool,
     pub connection_to_position: Pos2,
     pub is_cursor_over: bool,
+    pub is_disabled: bool,
 }
 
 impl InputOutputResponse {
@@ -457,6 +344,7 @@ impl InputOutputResponse {
             has_stopped_creating_connection: false,
             connection_to_position: Pos2::ZERO,
             is_cursor_over: false,
+            is_disabled: false,
         }
     }
 }

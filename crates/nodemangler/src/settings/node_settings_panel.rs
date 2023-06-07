@@ -3,11 +3,12 @@ use epaint::vec2;
 use image::imageops::FilterType;
 use mangler::{
     input::Input,
-    value::{ImageFormat, Value}, ChangeNodeMessage,
+    value::{ImageFormat, Value},
+    ChangeNodeMessage,
 };
 use tokio::sync::mpsc::Sender;
 
-use crate::{graph::graph_node::GraphNode};
+use crate::graph::graph_node::GraphNode;
 
 fn change_value(
     tx_change_node: Sender<ChangeNodeMessage>,
@@ -16,7 +17,11 @@ fn change_value(
     input: &mut Input,
     value: Value,
 ) {
-    let message = ChangeNodeMessage::SetInput { node_id, input_index, value: value.clone() };
+    let message = ChangeNodeMessage::SetInput {
+        node_id,
+        input_index,
+        value: value.clone(),
+    };
 
     match tx_change_node.try_send(message) {
         Ok(_) => {}
@@ -35,7 +40,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
     });
 
     ui.heading("Inputs");
-    
+
     // show properties
     for (input_index, input) in node.inputs.iter_mut().enumerate() {
         ui.horizontal(|ui| {
@@ -429,10 +434,14 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                         ui.allocate_ui(
                             vec2(ui.available_width() - 20.0, ui.available_height()),
                             |ui| {
-                                ui.add_enabled_ui(false, |ui| ui.text_edit_singleline(&mut a.into_os_string().into_string().unwrap()));
+                                ui.add_enabled_ui(false, |ui| {
+                                    ui.text_edit_singleline(
+                                        &mut a.into_os_string().into_string().unwrap(),
+                                    )
+                                });
                             },
                         );
-                
+
                         if ui.button("🗀").clicked() {
                             if let Some(save_path) = rfd::FileDialog::new()
                                 .add_filter("mangler", &["mangle"])
@@ -450,14 +459,21 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                             }
                         }
                     }
-                },
+                }
             }
 
             // exposed checkbox
-            let mut is_exposed = input.is_exposed.clone();
-            if ui.add(egui::Checkbox::new(&mut is_exposed, "expose")).changed() {
-                let message = ChangeNodeMessage::SetExposeInput { node_id: node.id.clone(), input_index, set_to: is_exposed.clone() };
-                
+            let mut is_exposed = input.is_exposed;
+            if ui
+                .add(egui::Checkbox::new(&mut is_exposed, "expose"))
+                .changed()
+            {
+                let message = ChangeNodeMessage::SetExposeInput {
+                    node_id: node.id.clone(),
+                    input_index,
+                    set_to: is_exposed,
+                };
+
                 match tx_change_node.try_send(message) {
                     Ok(_) => {
                         input.is_exposed = is_exposed;
@@ -491,10 +507,17 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
             }
 
             // exposed checkbox
-            let mut is_exposed = output.is_exposed.clone();
-            if ui.add(egui::Checkbox::new(&mut is_exposed, "expose")).changed() {
-                let message = ChangeNodeMessage::SetExposeOutput { node_id: node.id.clone(), output_index, set_to: is_exposed.clone() };
-                
+            let mut is_exposed = output.is_exposed;
+            if ui
+                .add(egui::Checkbox::new(&mut is_exposed, "expose"))
+                .changed()
+            {
+                let message = ChangeNodeMessage::SetExposeOutput {
+                    node_id: node.id.clone(),
+                    output_index,
+                    set_to: is_exposed,
+                };
+
                 match tx_change_node.try_send(message) {
                     Ok(_) => {
                         output.is_exposed = is_exposed;

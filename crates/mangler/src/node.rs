@@ -1,12 +1,11 @@
-use tokio::sync::mpsc::Sender;
-use tokio::time::{Duration};
-use crate::{AddNodeType, NodeChangedMessage};
 use crate::node_type::NodeType;
+use crate::{AddNodeType, NodeChangedMessage};
 use glam::f32::Vec2;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::path::PathBuf;
-
+use tokio::sync::mpsc::Sender;
+use tokio::time::Duration;
 
 use crate::{input::Input, output::Output, value::Value};
 
@@ -24,13 +23,11 @@ pub struct Node {
     pub node_type: NodeType,
 }
 
-
 impl PartialEq for Node {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
 }
-
 
 impl Node {
     pub fn new(id: String, node_type: AddNodeType, position: glam::f32::Vec2) -> Node {
@@ -43,17 +40,23 @@ impl Node {
                 time: None,
                 is_dirty: true,
                 position,
-                node_type: NodeType::Operation { operation }
+                node_type: NodeType::Operation { operation },
             },
             AddNodeType::Subgraph => Node {
                 id,
-                settings: NodeSettings { name: "subgraph".to_string() },
+                settings: NodeSettings {
+                    name: "subgraph".to_string(),
+                },
                 inputs: Vec::new(),
                 outputs: Vec::new(),
                 time: None,
                 is_dirty: true,
                 position,
-                node_type: NodeType::Subgraph { path: PathBuf::new(), graph: None, rx_node_changed: None }
+                node_type: NodeType::Subgraph {
+                    path: PathBuf::new(),
+                    graph: None,
+                    rx_node_changed: None,
+                },
             },
         }
     }
@@ -125,43 +128,55 @@ impl Node {
                                 time: operation_response.time,
                                 thumbnail: response.value.create_thumbnail(),
                             };
-            
+
                             match tx.try_send(message) {
                                 Ok(_) => {}
                                 Err(err) => {
-                                    println!("Error sending NodeChangedMessage::OutputChanged: {:?}", err);
+                                    println!(
+                                        "Error sending NodeChangedMessage::OutputChanged: {:?}",
+                                        err
+                                    );
                                 }
                             }
                         }
-        
+
                         // set output's value
                         if let Some(output) = self.outputs.get_mut(index) {
                             output.value = response.value;
                         }
                     }
                 }
-            },
+            }
 
             // if node is a subgraph
-            NodeType::Subgraph { path:_, graph: subgraph_option, rx_node_changed } => {                
+            NodeType::Subgraph {
+                path: _,
+                graph: subgraph_option,
+                rx_node_changed,
+            } => {
                 match subgraph_option {
                     Some(subgraph) => {
-
                         // pass node's input to subgraph's input before running
                         for (_input_index, input) in self.inputs.iter().enumerate() {
                             if let Value::Path(_) = input.value {
                                 // nothing
                             } else {
                                 if let Some(link) = &input.link {
-                                    if let Some(subgraph_node) = subgraph.nodes.get_mut(&link.node_id) {
-                                        if let Some(i) = subgraph_node.inputs.iter_mut().position(|i| i.id == link.input_id) {
+                                    if let Some(subgraph_node) =
+                                        subgraph.nodes.get_mut(&link.node_id)
+                                    {
+                                        if let Some(i) = subgraph_node
+                                            .inputs
+                                            .iter_mut()
+                                            .position(|i| i.id == link.input_id)
+                                        {
                                             subgraph_node.set_input_value(i, input.value.clone());
                                         }
                                     }
                                 }
                             }
                         }
-                        
+
                         // run subgraph
                         subgraph.run().await;
 
@@ -171,11 +186,21 @@ impl Node {
                             // receive messages
                             while let Ok(node_changed_message) = rx.try_recv() {
                                 match node_changed_message {
-                                    NodeChangedMessage::OutputChanged { node_id: subgraph_node_id, output_index: subgraph_output_index, value: subgraph_value, time: subgraph_time, thumbnail: subgraph_thumbnail } => {
+                                    NodeChangedMessage::OutputChanged {
+                                        node_id: subgraph_node_id,
+                                        output_index: subgraph_output_index,
+                                        value: subgraph_value,
+                                        time: subgraph_time,
+                                        thumbnail: _subgraph_thumbnail,
+                                    } => {
                                         // find output that is linked to subgraph output that changed
-                                        for (_output_index, output) in self.outputs.iter_mut().enumerate() {
+                                        for (_output_index, output) in
+                                            self.outputs.iter_mut().enumerate()
+                                        {
                                             if let Some(link) = &mut output.link {
-                                                if link.node_id == subgraph_node_id && link.output_index == subgraph_output_index {                                    
+                                                if link.node_id == subgraph_node_id
+                                                    && link.output_index == subgraph_output_index
+                                                {
                                                     // set output value to subgraph's new value
                                                     output.value = subgraph_value.clone();
                                                 }
@@ -183,12 +208,12 @@ impl Node {
                                         }
 
                                         self.time = Some(subgraph_time);
-                                    },
+                                    }
                                     // don't care about other messages
                                     _ => {}
                                 }
                             }
-                        } 
+                        }
 
                         // let ui know that outputs changed
                         if let Some(tx) = tx_output {
@@ -204,16 +229,18 @@ impl Node {
                                 match tx.try_send(message) {
                                     Ok(_) => {}
                                     Err(err) => {
-                                        println!("Error sending NodeChangedMessage::OutputChanged: {:?}", err);
+                                        println!(
+                                            "Error sending NodeChangedMessage::OutputChanged: {:?}",
+                                            err
+                                        );
                                     }
                                 }
                             }
                         }
-                        
-                    },
-                    None => {},
+                    }
+                    None => {}
                 }
-            },
+            }
         };
     }
 }

@@ -1,4 +1,7 @@
-pub mod graph_node;
 pub mod graph_editor;
 pub mod graph_input;
+pub mod graph_node;
+pub mod graph_node_header;
+pub mod graph_node_info;
+pub mod graph_node_thumbnail;
 pub mod graph_output;

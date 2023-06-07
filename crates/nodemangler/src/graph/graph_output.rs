@@ -4,7 +4,8 @@ use eframe::{
     epaint::{Color32, Pos2, Rect, Shape},
 };
 
-use super::graph_editor::TempConnection;
+use super::{graph_editor::TempConnection, graph_node::ConnectionType};
+use mangler::output::Output;
 
 const COLOR: Color32 = Color32::from_gray(150);
 const COLOR_HOVER: Color32 = Color32::from_gray(200);
@@ -13,11 +14,11 @@ const COLOR_TEXT: Color32 = Color32::from_gray(200);
 
 pub fn draw_graph_output(
     node_id: &String,
-    output_name: &String,
+    output: &Output,
     output_value_name: &String,
     output_position: Pos2,
     input_rect: Rect,
-    _index: usize,
+    index: usize,
     _rect: Rect,
     ui: &mut egui::Ui,
     show_type: bool,
@@ -29,8 +30,30 @@ pub fn draw_graph_output(
     let output_response =
         ui.allocate_rect(input_rect, egui::Sense::drag().union(egui::Sense::hover()));
 
+    if let Some(temp) = temp_connection {
+        // if we're dragging from this node
+        if node_id == &temp.from_node_id {
+            if temp.from_connection_type == ConnectionType::Input
+                || temp.from_connection_index != index
+            {
+                response.is_disabled = true;
+            }
+        } else {
+            if temp.from_connection_type == ConnectionType::Output
+                || !output
+                    .value
+                    .valid_conversions()
+                    .contains(&temp.from_value_type)
+            {
+                response.is_disabled = true;
+            }
+        }
+    }
+
     // highlight when hovering
-    if output_response.hovered() {
+    if response.is_disabled {
+        color = COLOR_DISABLED;
+    } else if output_response.hovered() {
         color = COLOR_HOVER;
     }
 
@@ -51,7 +74,7 @@ pub fn draw_graph_output(
     // show type when hovering
     if show_type || response.is_cursor_over {
         puffin::profile_scope!("graph node.show type when hovering");
-        let txt = format!("{} - {}", output_name, output_value_name);
+        let txt = format!("{} - {}", output.name, output_value_name);
         ui.painter().text(
             Pos2::new(output_position.x + 10.0, output_position.y),
             egui::Align2::LEFT_CENTER,

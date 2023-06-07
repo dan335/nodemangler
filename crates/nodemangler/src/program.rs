@@ -1,10 +1,8 @@
 use eframe::egui;
 use epaint::{ColorImage, Pos2, Rect, Rounding, Vec2};
 use mangler::{
-    get_id, graph::Graph,
-    NewGraphError,
-    NodePosition,
-    AddNodeType, NodeChangedMessage, ChangeNodeMessage, ChangeGraphMessage, GraphChangedMessage, node_type::NodeType,
+    get_id, graph::Graph, node_type::NodeType, AddNodeType, ChangeGraphMessage, ChangeNodeMessage,
+    GraphChangedMessage, NewGraphError, NodeChangedMessage, NodePosition,
 };
 use std::path::PathBuf;
 use tokio::{
@@ -18,7 +16,7 @@ use crate::{
         graph_editor::{GraphEditor, GraphEditorResponse},
         graph_node::GraphNode,
     },
-    menu::{menu_panel::MenuPanel, menu_item::MenuItemsResult},
+    menu::{menu_item::MenuItemsResult, menu_panel::MenuPanel},
     settings::{graph_settings_panel, node_settings_panel},
     view::view_panel::ViewPanel,
     view_to_graph_space_pos2, APP_MENU_HEIGHT,
@@ -54,24 +52,14 @@ impl Program {
         let (tx_node_position, mut rx_node_position) = mpsc::channel::<NodePosition>(32);
 
         let graph_result = match save_file {
-            Some(path) => Graph::load(
-                path,
-                Some(tx_node_changed),
-                Some(tx_graph_changed),
-                false,
-            ),
+            Some(path) => Graph::load(path, Some(tx_node_changed), Some(tx_graph_changed), false),
             None => {
                 let graph_id = match id {
                     Some(graph_id) => graph_id,
                     None => get_id(),
                 };
 
-                Graph::new(
-                    graph_id,
-                    tx_node_changed,
-                    tx_graph_changed,
-                    false,
-                )
+                Graph::new(graph_id, tx_node_changed, tx_graph_changed, false)
             }
         };
 
@@ -87,66 +75,80 @@ impl Program {
 
                         while let Ok(change_graph_message) = rx_change_graph.try_recv() {
                             match change_graph_message {
-                                ChangeGraphMessage::AddNode { node_id, node_type, position } => {
-                                    graph.add_node(
-                                        node_id,
-                                        node_type,
-                                        position,
-                                    ).await;
-                                },
+                                ChangeGraphMessage::AddNode {
+                                    node_id,
+                                    node_type,
+                                    position,
+                                } => {
+                                    graph.add_node(node_id, node_type, position).await;
+                                }
                                 ChangeGraphMessage::RemoveNode { node_id } => {
                                     graph.remove_node(node_id).await;
-                                },
-                                ChangeGraphMessage::AddConnection { input_node_id, input_connection_index, output_node_id, output_connection_index } => {
-                                    graph.add_connection(
-                                        input_node_id,
-                                        input_connection_index,
-                                        output_node_id,
-                                        output_connection_index,
-                                    ).await;
-                                },
-                                ChangeGraphMessage::RemoveConnection { node_id, input_index } => {
-                                    graph.remove_connection(
-                                        node_id,
-                                        input_index,
-                                    ).await;
-                                },
+                                }
+                                ChangeGraphMessage::AddConnection {
+                                    input_node_id,
+                                    input_connection_index,
+                                    output_node_id,
+                                    output_connection_index,
+                                } => {
+                                    graph
+                                        .add_connection(
+                                            input_node_id,
+                                            input_connection_index,
+                                            output_node_id,
+                                            output_connection_index,
+                                        )
+                                        .await;
+                                }
+                                ChangeGraphMessage::RemoveConnection {
+                                    node_id,
+                                    input_index,
+                                } => {
+                                    graph.remove_connection(node_id, input_index).await;
+                                }
                                 ChangeGraphMessage::SetSavePath(save_path) => {
                                     graph.set_save_path(save_path);
-                                },
+                                }
                                 ChangeGraphMessage::SetGraphName(graph_name) => {
                                     graph.name = graph_name;
                                     graph.save_to_file();
-                                },
+                                }
                             }
-                            
                         }
 
                         while let Ok(change_node_message) = rx_change_node.try_recv() {
                             match change_node_message {
-                                ChangeNodeMessage::SetInput { node_id, input_index, value } => {
-                                    graph.set_input(
-                                        node_id,
-                                        input_index,
-                                        value,
-                                    );
-                                },
-                                ChangeNodeMessage::SetExposeInput { node_id, input_index, set_to } => {
+                                ChangeNodeMessage::SetInput {
+                                    node_id,
+                                    input_index,
+                                    value,
+                                } => {
+                                    graph.set_input(node_id, input_index, value);
+                                }
+                                ChangeNodeMessage::SetExposeInput {
+                                    node_id,
+                                    input_index,
+                                    set_to,
+                                } => {
                                     if let Some(node) = graph.nodes.get_mut(&node_id) {
                                         if let Some(input) = node.inputs.get_mut(input_index) {
                                             input.is_exposed = set_to;
                                             graph.save_to_file();
                                         }
                                     }
-                                },
-                                ChangeNodeMessage::SetExposeOutput { node_id, output_index, set_to } => {
+                                }
+                                ChangeNodeMessage::SetExposeOutput {
+                                    node_id,
+                                    output_index,
+                                    set_to,
+                                } => {
                                     if let Some(node) = graph.nodes.get_mut(&node_id) {
                                         if let Some(output) = node.outputs.get_mut(output_index) {
                                             output.is_exposed = set_to;
                                             graph.save_to_file();
                                         }
                                     }
-                                },
+                                }
                             }
                         }
 
@@ -206,25 +208,27 @@ impl Program {
 
         while let Ok(node_changed_message) = self.rx_node_changed.try_recv() {
             match node_changed_message {
-                NodeChangedMessage::InputChanged { node_id, input_index, value } => {
-                    if let Some(node) = self
-                        .graph_editor
-                        .graph_nodes
-                        .get_mut(&node_id)
-                    {
+                NodeChangedMessage::InputChanged {
+                    node_id,
+                    input_index,
+                    value,
+                } => {
+                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
                         if let Some(input) = node.inputs.get_mut(input_index) {
                             input.value = value;
                             //self.needs_to_save = true;
                         }
                     }
-                },
+                }
 
-                NodeChangedMessage::OutputChanged { node_id, output_index, value, time, thumbnail } => {
-                    if let Some(node) = self
-                        .graph_editor
-                        .graph_nodes
-                        .get_mut(&node_id)
-                    {
+                NodeChangedMessage::OutputChanged {
+                    node_id,
+                    output_index,
+                    value,
+                    time,
+                    thumbnail,
+                } => {
+                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
                         if let Some(output) = node.outputs.get_mut(output_index) {
                             output.value = value;
 
@@ -232,10 +236,14 @@ impl Program {
                                 node.thumbnail = match thumbnail {
                                     Some(thumbnail) => {
                                         let pixels = thumbnail.as_flat_samples();
-                                        let size =
-                                            [thumbnail.width() as usize, thumbnail.height() as usize];
-                                        let color_image =
-                                            ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                                        let size = [
+                                            thumbnail.width() as usize,
+                                            thumbnail.height() as usize,
+                                        ];
+                                        let color_image = ColorImage::from_rgba_unmultiplied(
+                                            size,
+                                            pixels.as_slice(),
+                                        );
                                         Some(ui.ctx().load_texture(
                                             node.id.clone(),
                                             color_image,
@@ -251,17 +259,30 @@ impl Program {
                             node.time = Some(time);
                         }
                     }
-                },
+                }
 
-                NodeChangedMessage::ExposeInputChanged { node_id, input_index, set_to } => todo!(),
-                NodeChangedMessage::ExposeOutputChanged { node_id, output_index, set_to } => todo!(),
-                NodeChangedMessage::SubgraphLoaded { node_id, settings, inputs, outputs } => {
+                NodeChangedMessage::ExposeInputChanged {
+                    node_id,
+                    input_index,
+                    set_to,
+                } => todo!(),
+                NodeChangedMessage::ExposeOutputChanged {
+                    node_id,
+                    output_index,
+                    set_to,
+                } => todo!(),
+                NodeChangedMessage::SubgraphLoaded {
+                    node_id,
+                    settings,
+                    inputs,
+                    outputs,
+                } => {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
                         node.settings = settings;
                         node.inputs = inputs;
                         node.outputs = outputs;
                     }
-                },
+                }
             }
         }
 
@@ -318,7 +339,14 @@ impl Program {
 
         while let Ok(graph_changed_message) = self.rx_graph_changed.try_recv() {
             match graph_changed_message {
-                GraphChangedMessage::AddedNode { node_id, settings, inputs, outputs, position, is_subgraph } => {
+                GraphChangedMessage::AddedNode {
+                    node_id,
+                    settings,
+                    inputs,
+                    outputs,
+                    position,
+                    is_subgraph,
+                } => {
                     self.graph_editor.add_node(
                         node_id,
                         settings,
@@ -328,34 +356,43 @@ impl Program {
                         is_subgraph,
                     );
                     //self.needs_to_save = true;
-                },
+                }
                 GraphChangedMessage::LoadedNode { node } => {
                     let mut is_subgraph = false;
 
-                    if let NodeType::Subgraph { path:_, graph:_, rx_node_changed:_ } = node.node_type {
+                    if let NodeType::Subgraph {
+                        path: _,
+                        graph: _,
+                        rx_node_changed: _,
+                    } = node.node_type
+                    {
                         is_subgraph = true;
                     }
 
-                    let graph_node = GraphNode {
-                        id: node.id.clone(),
-                        position: Pos2::new(
-                            node.position.x,
-                            node.position.y,
-                        ),
-                        settings: node.settings,
-                        inputs: node.inputs,
-                        outputs: node.outputs,
-                        time: None,
-                        is_dragging: false,
-                        last_drag_position: None,
-                        thumbnail: None,
+                    let graph_node = GraphNode::new(
+                        node.id.clone(),
+                        Pos2::new(node.position.x, node.position.y),
+                        node.settings,
+                        node.inputs,
+                        node.outputs,
                         is_subgraph,
-                    };
-        
-                    self.graph_editor
-                        .graph_nodes
-                        .insert(node.id, graph_node);
-                },
+                    );
+
+                    // GraphNode {
+                    //     id: node.id.clone(),
+                    //     position: Pos2::new(node.position.x, node.position.y),
+                    //     settings: node.settings,
+                    //     inputs: node.inputs,
+                    //     outputs: node.outputs,
+                    //     time: None,
+                    //     is_dragging: false,
+                    //     last_drag_position: None,
+                    //     thumbnail: None,
+                    //     is_subgraph,
+                    // };
+
+                    self.graph_editor.graph_nodes.insert(node.id, graph_node);
+                }
                 GraphChangedMessage::RemovedNode { node_id } => {
                     if self.editing_node_id == Some(node_id.clone()) {
                         self.editing_node_id = None;
@@ -365,14 +402,15 @@ impl Program {
                     };
                     self.graph_editor.remove_node(&node_id);
                     //self.needs_to_save = true;
-                },
-                GraphChangedMessage::AddedConnection { input_node_id, input_connection_index, output_node_id, output_connection_index } => {
+                }
+                GraphChangedMessage::AddedConnection {
+                    input_node_id,
+                    input_connection_index,
+                    output_node_id,
+                    output_connection_index,
+                } => {
                     // set output connection
-                    if let Some(from) = self
-                        .graph_editor
-                        .graph_nodes
-                        .get_mut(&output_node_id)
-                    {
+                    if let Some(from) = self.graph_editor.graph_nodes.get_mut(&output_node_id) {
                         from.set_output_connection(
                             output_connection_index,
                             input_node_id.clone(),
@@ -383,11 +421,7 @@ impl Program {
                     }
 
                     // set input connection
-                    if let Some(to) = self
-                        .graph_editor
-                        .graph_nodes
-                        .get_mut(&input_node_id)
-                    {
+                    if let Some(to) = self.graph_editor.graph_nodes.get_mut(&input_node_id) {
                         to.set_input_connection(
                             input_connection_index,
                             output_node_id,
@@ -396,15 +430,14 @@ impl Program {
                     }
 
                     //self.needs_to_save = true;
-                },
-                GraphChangedMessage::RemovedConnection { node_id, input_index } => {
+                }
+                GraphChangedMessage::RemovedConnection {
+                    node_id,
+                    input_index,
+                } => {
                     let mut output: Option<(String, usize)> = None;
 
-                    if let Some(node) = self
-                        .graph_editor
-                        .graph_nodes
-                        .get_mut(&node_id)
-                    {
+                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
                         if let Some((output_node_id, output_index)) =
                             &node.inputs[input_index].connection
                         {
@@ -425,9 +458,8 @@ impl Program {
                     }
 
                     //self.needs_to_save = true;
-                },
+                }
             }
-            
         }
 
         let app_rect = ctx.screen_rect();
@@ -449,11 +481,11 @@ impl Program {
         ui.allocate_ui_at_rect(menu_panel_rect, |ui| {
             puffin::profile_scope!("menu panel");
             let r = self.menu_panel.show(ui);
-            
+
             if r.subgraph_being_created {
                 self.dragging_menu_button.subgraph_being_created = true;
             }
-            
+
             if r.operation_being_created.is_some() {
                 self.dragging_menu_button.operation_being_created = r.operation_being_created;
             }
@@ -639,9 +671,13 @@ impl Program {
                                 - self.graph_editor.position.to_vec2(),
                         );
                     }
-                } else if  self.dragging_menu_button.subgraph_being_created {
+                } else if self.dragging_menu_button.subgraph_being_created {
                     if bottom_panel_rect.contains(cursor_position) {
-                        self.add_node(AddNodeType::Subgraph, view_to_graph_space_pos2(self.graph_editor.zoom, cursor_position) - self.graph_editor.position.to_vec2());
+                        self.add_node(
+                            AddNodeType::Subgraph,
+                            view_to_graph_space_pos2(self.graph_editor.zoom, cursor_position)
+                                - self.graph_editor.position.to_vec2(),
+                        );
                     }
                 }
 
@@ -651,7 +687,9 @@ impl Program {
 
         // dragging node from menu
         // draw shape behind mouse being dragged
-        if self.dragging_menu_button.subgraph_being_created || self.dragging_menu_button.operation_being_created.is_some() {
+        if self.dragging_menu_button.subgraph_being_created
+            || self.dragging_menu_button.operation_being_created.is_some()
+        {
             let drag_rect = Rect::from_center_size(cursor_position, Vec2::new(80.0, 80.0));
             ui.painter().add(egui::Shape::rect_filled(
                 drag_rect,
@@ -675,7 +713,8 @@ impl Program {
 
         // show help in bottom left
         let pos = Pos2::new(app_rect.left() + 10.0, app_rect.bottom() - 10.0);
-        let txt = "left click: edit      right click: view      ctrl + left click: delete".to_string();
+        let txt =
+            "left click: edit      right click: view      ctrl + left click: delete".to_string();
         ui.painter().text(
             pos,
             egui::Align2::LEFT_BOTTOM,
@@ -703,9 +742,7 @@ impl Program {
     }
 
     pub fn remove_node(&mut self, node_id: String) {
-        let remove_node_message = ChangeGraphMessage::RemoveNode {
-            node_id,
-        };
+        let remove_node_message = ChangeGraphMessage::RemoveNode { node_id };
 
         match self.tx_change_graph.try_send(remove_node_message) {
             Ok(_) => {}
@@ -753,13 +790,13 @@ impl Program {
             input_index,
         };
 
-        match self
-            .tx_change_graph
-            .try_send(message)
-        {
+        match self.tx_change_graph.try_send(message) {
             Ok(_) => {}
             Err(err) => {
-                println!("Error sending ChangeGraphMessage::RemoveConnection: {:?}", err);
+                println!(
+                    "Error sending ChangeGraphMessage::RemoveConnection: {:?}",
+                    err
+                );
             }
         }
     }

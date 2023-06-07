@@ -1,9 +1,12 @@
 #[cfg(test)]
 
 mod graph_tests {
-    use tokio::{sync::mpsc, runtime::Runtime};
+    use tokio::sync::mpsc;
 
-    use crate::{graph::Graph, get_id, ChangeGraphMessage, ChangeNodeMessage, GraphChangedMessage, NodePosition, NodeChangedMessage, operation::Operation, node_type::NodeType, AddNodeType, value::Value};
+    use crate::{
+        get_id, graph::Graph, operation::Operation, value::Value, AddNodeType, GraphChangedMessage,
+        NodeChangedMessage,
+    };
 
     #[tokio::test]
     async fn test_add() {
@@ -13,7 +16,13 @@ mod graph_tests {
         let graph_option = Graph::new(get_id(), tx_node_changed, tx_graph_changed, false);
         assert!(graph_option.is_ok());
         let mut graph = graph_option.unwrap();
-        let add_node_id = graph.add_node(get_id(), AddNodeType::Operation(Operation::NumberMathAdd), glam::Vec2::ZERO).await;
+        let add_node_id = graph
+            .add_node(
+                get_id(),
+                AddNodeType::Operation(Operation::NumberMathAdd),
+                glam::Vec2::ZERO,
+            )
+            .await;
 
         let add_node_option = graph.nodes.get_mut(&add_node_id);
         assert!(add_node_option.is_some());
@@ -31,6 +40,5 @@ mod graph_tests {
         assert!(add_node_option.is_some());
         let add_node = add_node_option.unwrap();
         assert_eq!(add_node.outputs[0].value, Value::Integer(15));
-        
     }
 }
