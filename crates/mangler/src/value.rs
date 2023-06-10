@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use image::{imageops::FilterType, DynamicImage, ImageBuffer, Rgba};
 use serde::{Deserialize, Serialize};
 
+use crate::thumbnail::Thumbnail;
+
 pub const THUMBNAIL_SIZE: [u32; 2] = [128, 128];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -25,21 +27,17 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn create_thumbnail(&self) -> Option<ImageBuffer<Rgba<u8>, Vec<u8>>> {
+    pub fn create_thumbnail(&self) -> Option<Thumbnail> {
         match &self {
-            Value::Bool(_)
-            | Value::Integer(_)
-            | Value::Decimal(_)
-            | Value::String(_)
-            | Value::FilterType(_)
-            | Value::Path(_)
-            | Value::ImageFormat(_) => None,
-            Value::UiButton(_) => todo!(),
-            Value::DynamicImage(value) => Some(
-                value
-                    .thumbnail(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1])
-                    .to_rgba8(),
-            ),
+            Value::DynamicImage(value) => Some(Thumbnail::Image(value.thumbnail(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]).to_rgba8())),
+            Value::Bool(value) => Some(Thumbnail::Text(value.to_string())),
+            Value::Integer(value) => Some(Thumbnail::Text(value.to_string())),
+            Value::Decimal(value) => Some(Thumbnail::Text(value.to_string())),
+            Value::String(value) => Some(Thumbnail::Text(value.clone())),
+            Value::Path(value) => Some(Thumbnail::Text(value.to_str().unwrap_or("None").to_string())),
+            Value::FilterType(value) => Some(Thumbnail::Text(format!("{:?}", value))),
+            Value::ImageFormat(value) => Some(Thumbnail::Text(format!("{:?}", value))),
+            Value::UiButton(value) => Some(Thumbnail::Text(format!("{:?}", value))),
         }
     }
 

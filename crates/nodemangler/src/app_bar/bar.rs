@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use eframe::egui::{self, Layout};
 use epaint::{Color32, Pos2, Rect, Rounding};
 
-use crate::{program::Program, APP_MENU_HEIGHT};
+use crate::{program::Program, APP_MENU_HEIGHT, theme::{DARK, set_theme, LIGHT}};
 
 pub fn show(
     ctx: &egui::Context,
@@ -163,6 +163,17 @@ pub fn show_window_control_menu(ctx: &egui::Context, frame: &mut eframe::Frame, 
             Layout::right_to_left(egui::Align::Center),
             |ui| {
                 ui.horizontal(|ui| {
+
+                    if ui.button("theme").clicked() {
+                        let theme = if ui.visuals().dark_mode {
+                            LIGHT
+                        } else {
+                            
+                            DARK
+                        };
+                        set_theme(ctx, theme);
+                    }
+
                     ui.add_space(15.0);
 
                     if ui.add(egui::Button::new("🗙").frame(false)).clicked() {

@@ -7,6 +7,7 @@ use node_settings::NodeSettings;
 use operation::Operation;
 use output::Output;
 use serde::{Deserialize, Serialize};
+use thumbnail::Thumbnail;
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use value::Value;
 
@@ -19,6 +20,7 @@ pub mod operations;
 pub mod output;
 pub mod value;
 pub mod node_type;
+pub mod thumbnail;
 mod graph_tests;
 
 pub fn get_id() -> String {
@@ -57,7 +59,7 @@ pub enum NodeChangedMessage {
         output_index: usize,
         value: Value,
         time: Duration,
-        thumbnail: Option<ImageBuffer<Rgba<u8>, Vec<u8>>>,
+        thumbnail: Option<Thumbnail>,
     },
     ExposeInputChanged {
         node_id: String,

@@ -14,7 +14,7 @@ use tokio::{
 use crate::{
     graph::{
         graph_editor::{GraphEditor, GraphEditorResponse},
-        graph_node::GraphNode,
+        graph_node::GraphNode, graph_node_thumbnail::GraphNodeThumbnail,
     },
     menu::{menu_item::MenuItemsResult, menu_panel::MenuPanel},
     settings::{graph_settings_panel, node_settings_panel},
@@ -206,137 +206,6 @@ impl Program {
     pub fn show(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame, ui: &mut egui::Ui) {
         puffin::profile_scope!("central panel show");
 
-        while let Ok(node_changed_message) = self.rx_node_changed.try_recv() {
-            match node_changed_message {
-                NodeChangedMessage::InputChanged {
-                    node_id,
-                    input_index,
-                    value,
-                } => {
-                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
-                        if let Some(input) = node.inputs.get_mut(input_index) {
-                            input.value = value;
-                            //self.needs_to_save = true;
-                        }
-                    }
-                }
-
-                NodeChangedMessage::OutputChanged {
-                    node_id,
-                    output_index,
-                    value,
-                    time,
-                    thumbnail,
-                } => {
-                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
-                        if let Some(output) = node.outputs.get_mut(output_index) {
-                            output.value = value;
-
-                            if output_index == 0 {
-                                node.thumbnail = match thumbnail {
-                                    Some(thumbnail) => {
-                                        let pixels = thumbnail.as_flat_samples();
-                                        let size = [
-                                            thumbnail.width() as usize,
-                                            thumbnail.height() as usize,
-                                        ];
-                                        let color_image = ColorImage::from_rgba_unmultiplied(
-                                            size,
-                                            pixels.as_slice(),
-                                        );
-                                        Some(ui.ctx().load_texture(
-                                            node.id.clone(),
-                                            color_image,
-                                            Default::default(),
-                                        ))
-                                    }
-                                    None => None,
-                                };
-                            }
-
-                            // thumbnail
-                            //node.is_dirty = true;
-                            node.time = Some(time);
-                        }
-                    }
-                }
-
-                NodeChangedMessage::ExposeInputChanged {
-                    node_id,
-                    input_index,
-                    set_to,
-                } => todo!(),
-                NodeChangedMessage::ExposeOutputChanged {
-                    node_id,
-                    output_index,
-                    set_to,
-                } => todo!(),
-                NodeChangedMessage::SubgraphLoaded {
-                    node_id,
-                    settings,
-                    inputs,
-                    outputs,
-                } => {
-                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
-                        node.settings = settings;
-                        node.inputs = inputs;
-                        node.outputs = outputs;
-                    }
-                }
-            }
-        }
-
-        // messages for when node output changes
-        // while let Ok(node_output_message) = self.rx_output_changed.try_recv() {
-        //     puffin::profile_scope!("ui receive output messages");
-        //     if let Some(node) = self
-        //         .graph_editor
-        //         .graph_nodes
-        //         .get_mut(&node_output_message.node_id)
-        //     {
-        //         if let Some(output) = node.outputs.get_mut(node_output_message.output_index) {
-        //             output.value = node_output_message.value;
-
-        //             if node_output_message.output_index == 0 {
-        //                 node.thumbnail = match node_output_message.thumbnail {
-        //                     Some(thumbnail) => {
-        //                         let pixels = thumbnail.as_flat_samples();
-        //                         let size =
-        //                             [thumbnail.width() as usize, thumbnail.height() as usize];
-        //                         let color_image =
-        //                             ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-        //                         Some(ui.ctx().load_texture(
-        //                             node.id.clone(),
-        //                             color_image,
-        //                             Default::default(),
-        //                         ))
-        //                     }
-        //                     None => None,
-        //                 };
-        //             }
-
-        //             // thumbnail
-        //             //node.is_dirty = true;
-        //             node.time = Some(node_output_message.time);
-        //         }
-        //     }
-        // }
-
-        // // messages for when node input changes
-        // while let Ok(node_input_changed_message) = self.rx_input_changed.try_recv() {
-        //     puffin::profile_scope!("ui receive input messages");
-        //     if let Some(node) = self
-        //         .graph_editor
-        //         .graph_nodes
-        //         .get_mut(&node_input_changed_message.node_id)
-        //     {
-        //         if let Some(input) = node.inputs.get_mut(node_input_changed_message.input_index) {
-        //             input.value = node_input_changed_message.value;
-        //             //self.needs_to_save = true;
-        //         }
-        //     }
-        // }
-
         while let Ok(graph_changed_message) = self.rx_graph_changed.try_recv() {
             match graph_changed_message {
                 GraphChangedMessage::AddedNode {
@@ -461,6 +330,139 @@ impl Program {
                 }
             }
         }
+
+        while let Ok(node_changed_message) = self.rx_node_changed.try_recv() {
+            match node_changed_message {
+                NodeChangedMessage::InputChanged {
+                    node_id,
+                    input_index,
+                    value,
+                } => {
+                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
+                        if let Some(input) = node.inputs.get_mut(input_index) {
+                            input.value = value;
+                            //self.needs_to_save = true;
+                        }
+                    }
+                }
+
+                NodeChangedMessage::OutputChanged {
+                    node_id,
+                    output_index,
+                    value,
+                    time,
+                    thumbnail,
+                } => {
+                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
+                        if let Some(output) = node.outputs.get_mut(output_index) {
+                            output.value = value;
+                            if output_index == 0 {
+                                node.thumbnail = match thumbnail {
+                                    Some(thumb) => match thumb {
+                                        mangler::thumbnail::Thumbnail::Image(thumbnail) => {
+                                            let pixels = thumbnail.as_flat_samples();
+                                            let size = [
+                                                thumbnail.width() as usize,
+                                                thumbnail.height() as usize,
+                                            ];
+                                            let color_image = ColorImage::from_rgba_unmultiplied(
+                                                size,
+                                                pixels.as_slice(),
+                                            );
+                                            Some(GraphNodeThumbnail::Image(ui.ctx().load_texture(
+                                                node.id.clone(),
+                                                color_image,
+                                                Default::default(),
+                                            )))
+                                        },
+                                        mangler::thumbnail::Thumbnail::Text(v) => Some(GraphNodeThumbnail::Text(v)),
+                                    },
+                                    None => Some(GraphNodeThumbnail::Text("None".to_string())),
+                                };
+                            }
+
+                            node.time = Some(time);
+                        }
+                    }
+                }
+
+                NodeChangedMessage::ExposeInputChanged {
+                    node_id,
+                    input_index,
+                    set_to,
+                } => todo!(),
+                NodeChangedMessage::ExposeOutputChanged {
+                    node_id,
+                    output_index,
+                    set_to,
+                } => todo!(),
+                NodeChangedMessage::SubgraphLoaded {
+                    node_id,
+                    settings,
+                    inputs,
+                    outputs,
+                } => {
+                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
+                        node.settings = settings;
+                        node.inputs = inputs;
+                        node.outputs = outputs;
+                    }
+                }
+            }
+        }
+
+        // messages for when node output changes
+        // while let Ok(node_output_message) = self.rx_output_changed.try_recv() {
+        //     puffin::profile_scope!("ui receive output messages");
+        //     if let Some(node) = self
+        //         .graph_editor
+        //         .graph_nodes
+        //         .get_mut(&node_output_message.node_id)
+        //     {
+        //         if let Some(output) = node.outputs.get_mut(node_output_message.output_index) {
+        //             output.value = node_output_message.value;
+
+        //             if node_output_message.output_index == 0 {
+        //                 node.thumbnail = match node_output_message.thumbnail {
+        //                     Some(thumbnail) => {
+        //                         let pixels = thumbnail.as_flat_samples();
+        //                         let size =
+        //                             [thumbnail.width() as usize, thumbnail.height() as usize];
+        //                         let color_image =
+        //                             ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+        //                         Some(ui.ctx().load_texture(
+        //                             node.id.clone(),
+        //                             color_image,
+        //                             Default::default(),
+        //                         ))
+        //                     }
+        //                     None => None,
+        //                 };
+        //             }
+
+        //             // thumbnail
+        //             //node.is_dirty = true;
+        //             node.time = Some(node_output_message.time);
+        //         }
+        //     }
+        // }
+
+        // // messages for when node input changes
+        // while let Ok(node_input_changed_message) = self.rx_input_changed.try_recv() {
+        //     puffin::profile_scope!("ui receive input messages");
+        //     if let Some(node) = self
+        //         .graph_editor
+        //         .graph_nodes
+        //         .get_mut(&node_input_changed_message.node_id)
+        //     {
+        //         if let Some(input) = node.inputs.get_mut(node_input_changed_message.input_index) {
+        //             input.value = node_input_changed_message.value;
+        //             //self.needs_to_save = true;
+        //         }
+        //     }
+        // }
+
+        
 
         let app_rect = ctx.screen_rect();
         let cursor_position = ui

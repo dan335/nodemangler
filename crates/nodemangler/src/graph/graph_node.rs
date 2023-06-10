@@ -1,7 +1,6 @@
 use crate::graph::graph_input::draw_graph_input;
 use crate::graph::graph_node_header::show_graph_node_header;
 use crate::graph::graph_node_info::show_graph_node_info;
-use crate::graph::graph_node_thumbnail::show_graph_node_thumbnail;
 use crate::graph::graph_output::draw_graph_output;
 use crate::{graph_to_view_space_pos2, view_to_graph_space_pos2};
 use eframe::egui;
@@ -13,6 +12,7 @@ use std::fmt::Debug;
 use std::time::Duration;
 
 use super::graph_editor::TempConnection;
+use super::graph_node_thumbnail::GraphNodeThumbnail;
 use super::graph_output::draw_graph_output_highlighted;
 
 pub const NODE_SIZE: Vec2 = Vec2::new(128.0, 40.0);
@@ -28,7 +28,7 @@ pub struct GraphNode {
     pub time: Option<Duration>,
     pub is_dragging: bool,
     pub last_drag_position: Option<Pos2>,
-    pub thumbnail: Option<egui::TextureHandle>,
+    pub thumbnail: Option<GraphNodeThumbnail>,
     pub is_subgraph: bool,
 }
 
@@ -124,17 +124,14 @@ impl GraphNode {
             node_rect,
             is_editing,
             self.is_subgraph,
-        );
-
-        show_graph_node_info(ui, self.time, node_rect, &self.outputs);
-
-        show_graph_node_thumbnail(
-            ui,
-            &self.outputs,
-            self.thumbnail.clone(),
-            self.get_rect(graph_position, graph_zoom).center_bottom(),
             graph_zoom,
         );
+
+        show_graph_node_info(ui, self.time, node_rect, &self.outputs, graph_zoom);
+
+        if let Some(thumbnail) = self.thumbnail.clone() {
+            thumbnail.show(ui, self.get_rect(graph_position, graph_zoom).center_bottom(), graph_zoom);
+        }
 
         // ------------
         // inputs

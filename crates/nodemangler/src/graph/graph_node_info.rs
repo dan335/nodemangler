@@ -4,11 +4,14 @@ use mangler::output::Output;
 use mangler::value::Value;
 use std::time::Duration;
 
+use crate::graph_to_view_space;
+
 pub fn show_graph_node_info(
     ui: &mut egui::Ui,
     time_option: Option<Duration>,
     node_rect: Rect,
     outputs: &Vec<Output>,
+    graph_zoom: f32,
 ) {
     // ms
     if let Some(time) = time_option {
@@ -22,7 +25,7 @@ pub fn show_graph_node_info(
             pos,
             Align2::RIGHT_BOTTOM,
             text,
-            egui::FontId::monospace(10.0),
+            egui::FontId::monospace(graph_to_view_space(graph_zoom, 10.0)),
             egui::Color32::from_gray(200),
         );
     }
