@@ -1,4 +1,5 @@
 use super::graph_node::ConnectionType;
+use crate::Theme;
 use crate::{
     graph::graph_node::GraphNode, graph_to_view_space, view_to_graph_space,
     view_to_graph_space_pos2, NewConnection,
@@ -9,10 +10,10 @@ use eframe::{
 };
 use egui::epaint::CubicBezierShape;
 use egui::Pos2;
-use mangler::{node_settings::NodeSettings, input::Input, output::Output, value::ValueType};
+use mangler::{input::Input, node_settings::NodeSettings, output::Output, value::ValueType};
 use std::{collections::HashMap, time::Instant};
 
-const BACKGROUND_COLOR: Color32 = egui::Color32::from_gray(35);
+//const BACKGROUND_COLOR: Color32 = egui::Color32::from_gray(35);
 const GRID_COLOR: Color32 = egui::Color32::from_gray(45);
 const ZOOM_MULTIPLIER: f32 = 0.001;
 const ZOOM_BOUNDS: [f32; 2] = [0.15, 5.0];
@@ -52,6 +53,7 @@ impl GraphEditor {
         cursor_primary_down: bool,
         editing_node_id: &Option<String>,
         viewing_node_id: &Option<String>,
+        theme: &Theme,
     ) -> GraphEditorResponse {
         puffin::profile_scope!("graph panel.show()");
         let mut graph_editor_response = GraphEditorResponse::default();
@@ -91,12 +93,12 @@ impl GraphEditor {
 
         ui.set_clip_rect(editor_rect);
 
-        // bg
-        ui.painter().add(egui::Shape::rect_filled(
-            editor_rect,
-            Rounding::none(),
-            BACKGROUND_COLOR,
-        ));
+        // // bg
+        // ui.painter().add(egui::Shape::rect_filled(
+        //     editor_rect,
+        //     Rounding::none(),
+        //     theme.grid_bg,
+        // ));
 
         self.draw_background_grid(ui, editor_rect, self.position);
 
@@ -456,11 +458,26 @@ impl GraphEditor {
         self.last_drag_position = None;
     }
 
-    pub fn add_node(&mut self, node_id: String, settings: NodeSettings, inputs: Vec<Input>, outputs: Vec<Output>, position_graph_space: Pos2, is_subgraph: bool) {
+    pub fn add_node(
+        &mut self,
+        node_id: String,
+        settings: NodeSettings,
+        inputs: Vec<Input>,
+        outputs: Vec<Output>,
+        position_graph_space: Pos2,
+        is_subgraph: bool,
+    ) {
         //let inverse_zoom = 1.0 / self.zoom;
         //let position = Pos2::new(position_graph_space.x, position_graph_space.y);
 
-        let node = GraphNode::new(node_id.clone(), position_graph_space, settings, inputs, outputs, is_subgraph);
+        let node = GraphNode::new(
+            node_id.clone(),
+            position_graph_space,
+            settings,
+            inputs,
+            outputs,
+            is_subgraph,
+        );
 
         self.graph_nodes.insert(node_id, node);
     }

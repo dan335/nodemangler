@@ -3,7 +3,11 @@ use std::collections::HashMap;
 use eframe::egui::{self, Layout};
 use epaint::{Color32, Pos2, Rect, Rounding};
 
-use crate::{program::Program, APP_MENU_HEIGHT, theme::{DARK, set_theme, LIGHT}};
+use crate::{
+    program::Program,
+    theme::{set_theme, Theme, DARK, LIGHT},
+    APP_MENU_HEIGHT,
+};
 
 pub fn show(
     ctx: &egui::Context,
@@ -163,14 +167,8 @@ pub fn show_window_control_menu(ctx: &egui::Context, frame: &mut eframe::Frame, 
             Layout::right_to_left(egui::Align::Center),
             |ui| {
                 ui.horizontal(|ui| {
-
                     if ui.button("theme").clicked() {
-                        let theme = if ui.visuals().dark_mode {
-                            LIGHT
-                        } else {
-                            
-                            DARK
-                        };
+                        let theme = if ui.visuals().dark_mode { LIGHT } else { DARK };
                         set_theme(ctx, theme);
                     }
 
@@ -201,6 +199,7 @@ pub struct BarResponse {
     pub new_program: Option<Program>,
     pub current_program: Option<String>,
     pub program_to_close: Option<String>,
+    pub theme_changed_to: Option<Theme>,
 }
 
 impl BarResponse {
@@ -209,6 +208,7 @@ impl BarResponse {
             new_program: None,
             current_program: None,
             program_to_close: None,
+            theme_changed_to: None,
         }
     }
 }

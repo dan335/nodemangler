@@ -14,10 +14,12 @@ use tokio::{
 use crate::{
     graph::{
         graph_editor::{GraphEditor, GraphEditorResponse},
-        graph_node::GraphNode, graph_node_thumbnail::GraphNodeThumbnail,
+        graph_node::GraphNode,
+        graph_node_thumbnail::GraphNodeThumbnail,
     },
     menu::{menu_item::MenuItemsResult, menu_panel::MenuPanel},
     settings::{graph_settings_panel, node_settings_panel},
+    theme::Theme,
     view::view_panel::ViewPanel,
     view_to_graph_space_pos2, APP_MENU_HEIGHT,
 };
@@ -203,7 +205,13 @@ impl Program {
         self.thread_handle.abort();
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame, ui: &mut egui::Ui) {
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        frame: &mut eframe::Frame,
+        ui: &mut egui::Ui,
+        theme: &Theme,
+    ) {
         puffin::profile_scope!("central panel show");
 
         while let Ok(graph_changed_message) = self.rx_graph_changed.try_recv() {
@@ -374,8 +382,10 @@ impl Program {
                                                 color_image,
                                                 Default::default(),
                                             )))
-                                        },
-                                        mangler::thumbnail::Thumbnail::Text(v) => Some(GraphNodeThumbnail::Text(v)),
+                                        }
+                                        mangler::thumbnail::Thumbnail::Text(v) => {
+                                            Some(GraphNodeThumbnail::Text(v))
+                                        }
                                     },
                                     None => Some(GraphNodeThumbnail::Text("None".to_string())),
                                 };
@@ -461,8 +471,6 @@ impl Program {
         //         }
         //     }
         // }
-
-        
 
         let app_rect = ctx.screen_rect();
         let cursor_position = ui
@@ -599,6 +607,7 @@ impl Program {
                 cursor_primary_down,
                 &self.editing_node_id,
                 &self.viewing_node_id,
+                theme,
             );
 
             if let Some(new_node_position) = graph_editor_response.new_node_position {

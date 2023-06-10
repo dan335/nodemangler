@@ -3,17 +3,17 @@
 use app_bar::bar;
 use eframe::egui;
 use program::Program;
-use theme::set_theme;
 use std::collections::HashMap;
 use std::path::Path;
+use theme::{set_theme, Theme, DARK};
 mod app_bar;
 mod graph;
 mod menu;
 mod program;
 mod settings;
+mod theme;
 mod title_bar;
 mod view;
-mod theme;
 use egui::Pos2;
 
 pub const PROFILE: bool = false;
@@ -71,6 +71,7 @@ fn load_icon(path: &str) -> eframe::IconData {
 struct ManglerApp {
     programs: HashMap<String, Program>,
     current_program: Option<String>,
+    current_theme: Theme,
 }
 
 impl eframe::App for ManglerApp {
@@ -80,8 +81,6 @@ impl eframe::App for ManglerApp {
             puffin::GlobalProfiler::lock().new_frame(); // call once per frame!
             puffin_egui::profiler_window(ctx);
         }
-
-        //set_theme(ctx);
 
         egui::CentralPanel::default().show(ctx, |ui| {
             let bar_response = bar::show(ctx, frame, ui, &self.programs, &self.current_program);
@@ -96,9 +95,13 @@ impl eframe::App for ManglerApp {
                 self.current_program = Some(current_program);
             }
 
+            if let Some(theme) = bar_response.theme_changed_to {
+                self.current_theme = theme.clone();
+            }
+
             if let Some(current_program) = &self.current_program {
                 if let Some(program) = self.programs.get_mut(current_program) {
-                    program.show(ctx, frame, ui);
+                    program.show(ctx, frame, ui, &self.current_theme);
                 }
             }
 
@@ -168,6 +171,7 @@ impl ManglerApp {
         Self {
             programs: HashMap::new(),
             current_program: None,
+            current_theme: DARK,
         }
     }
 }
