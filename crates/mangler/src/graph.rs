@@ -203,46 +203,62 @@ impl Graph {
         if self.nodes.get_mut(&input_node_id).is_some()
             && self.nodes.get_mut(&output_node_id).is_some()
         {
-            // set output connection
-            if let Some(from) = self.nodes.get_mut(&output_node_id) {
-                from.set_output_connection(
-                    output_connection_index,
-                    input_node_id.clone(),
-                    input_connection_index,
-                );
-
-                from.is_dirty = true;
-            }
-
-            // set input connection
-            if let Some(to) = self.nodes.get_mut(&input_node_id) {
-                to.set_input_connection(
-                    input_connection_index,
-                    output_node_id.clone(),
-                    output_connection_index,
-                );
-            }
-
-            // mark graph as dirty
-            self.is_dirty = true;
-
-            if let Some(tx) = &self.tx_graph_changed {
-                let message = GraphChangedMessage::AddedConnection {
-                    input_node_id,
-                    input_connection_index,
-                    output_node_id,
-                    output_connection_index,
-                };
-
-                match tx.try_send(message) {
-                    Ok(_) => {}
-                    Err(err) => {
-                        println!("Error sending added_connection_message: {:?}", err);
+            let mut is_valid = false;
+            
+            // check if valid connection
+            if let Some(from_output) = self.nodes.get(&output_node_id) {
+                if let Some(to_input) = self.nodes.get(&input_node_id) {
+                    if from_output.outputs.len() >= output_connection_index && to_input.inputs.len() >= input_connection_index {
+                        if from_output.outputs[output_connection_index].is_valid_connection(&to_input.inputs[input_connection_index]) {
+                            is_valid = true;
+                        }
                     }
                 }
             }
 
-            self.save_to_file();
+            if is_valid {
+                // set output connection
+                if let Some(from_output) = self.nodes.get_mut(&output_node_id) {
+                    from_output.set_output_connection(
+                        output_connection_index,
+                        input_node_id.clone(),
+                        input_connection_index,
+                    );
+    
+                    from_output.is_dirty = true;
+                }
+
+                // set input connection
+                if let Some(to) = self.nodes.get_mut(&input_node_id) {
+                    to.set_input_connection(
+                        input_connection_index,
+                        output_node_id.clone(),
+                        output_connection_index,
+                    );
+                }
+
+                // mark graph as dirty
+                self.is_dirty = true;
+
+                // send message ot ui
+                if let Some(tx) = &self.tx_graph_changed {
+                    let message = GraphChangedMessage::AddedConnection {
+                        input_node_id,
+                        input_connection_index,
+                        output_node_id,
+                        output_connection_index,
+                    };
+    
+                    match tx.try_send(message) {
+                        Ok(_) => {}
+                        Err(err) => {
+                            println!("Error sending added_connection_message: {:?}", err);
+                        }
+                    }
+                }
+    
+                self.save_to_file();
+            }
         }
     }
 

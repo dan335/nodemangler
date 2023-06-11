@@ -1,4 +1,4 @@
-use crate::{value::Value, get_id};
+use crate::{value::Value, get_id, Output};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,6 +32,10 @@ impl Input {
             is_exposed: false,
             link,
         }
+    }
+
+    pub fn is_valid_connection(&self, output: &Output) -> bool {
+        self.value.valid_conversions().contains(&output.value.value_type())
     }
 }
 
