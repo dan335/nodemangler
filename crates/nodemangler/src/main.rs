@@ -2,6 +2,7 @@
 
 use app_bar::bar;
 use eframe::egui;
+use epaint::Rounding;
 use program::Program;
 use std::collections::HashMap;
 use std::path::Path;
@@ -71,7 +72,7 @@ fn load_icon(path: &str) -> eframe::IconData {
 struct ManglerApp {
     programs: HashMap<String, Program>,
     current_program: Option<String>,
-    current_theme: Theme,
+    theme: Theme,
 }
 
 impl eframe::App for ManglerApp {
@@ -83,7 +84,14 @@ impl eframe::App for ManglerApp {
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            let bar_response = bar::show(ctx, frame, ui, &self.programs, &self.current_program);
+            // bg
+            ui.painter().add(egui::Shape::rect_filled(
+                ui.max_rect(),
+                Rounding::same(0.0),
+                self.theme.panel_fill,
+            ));
+
+            let bar_response = bar::show(ctx, frame, ui, &self.programs, &self.current_program, &self.theme);
 
             if let Some(new_program) = bar_response.new_program {
                 let program_id = new_program.id.clone();
@@ -96,12 +104,12 @@ impl eframe::App for ManglerApp {
             }
 
             if let Some(theme) = bar_response.theme_changed_to {
-                self.current_theme = theme.clone();
+                self.theme = theme.clone();
             }
 
             if let Some(current_program) = &self.current_program {
                 if let Some(program) = self.programs.get_mut(current_program) {
-                    program.show(ctx, frame, ui, &self.current_theme);
+                    program.show(ctx, frame, ui, &self.theme);
                 }
             }
 
@@ -142,14 +150,14 @@ impl eframe::App for ManglerApp {
         egui::Vec2::INFINITY
     }
 
-    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        // NOTE: a bright gray makes the shadows of the windows look weird.
-        // We use a bit of transparency so that if the user switches on the
-        // `transparent()` option they get immediate results.
-        egui::Color32::from_rgba_unmultiplied(12, 12, 12, 180).to_normalized_gamma_f32()
+    // fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+    //     // NOTE: a bright gray makes the shadows of the windows look weird.
+    //     // We use a bit of transparency so that if the user switches on the
+    //     // `transparent()` option they get immediate results.
+    //     egui::Color32::from_rgba_unmultiplied(12, 12, 12, 180).to_normalized_gamma_f32()
 
-        // _visuals.window_fill() would also be a natural choice
-    }
+    //     // _visuals.window_fill() would also be a natural choice
+    // }
 
     fn persist_native_window(&self) -> bool {
         true
@@ -171,7 +179,7 @@ impl ManglerApp {
         Self {
             programs: HashMap::new(),
             current_program: None,
-            current_theme: DARK,
+            theme: DARK,
         }
     }
 }

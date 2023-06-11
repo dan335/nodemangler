@@ -1,4 +1,4 @@
-use crate::graph::graph_node::InputOutputResponse;
+use crate::{graph::graph_node::InputOutputResponse, theme::Theme};
 use eframe::{
     egui,
     emath::Align2,
@@ -8,9 +8,6 @@ use mangler::input::Input;
 
 use super::{graph_editor::TempConnection, graph_node::ConnectionType};
 
-const COLOR: Color32 = Color32::from_gray(150);
-const COLOR_HOVER: Color32 = Color32::from_gray(200);
-const COLOR_DISABLED: Color32 = Color32::from_gray(50);
 
 pub fn draw_graph_input(
     node_id: &String,
@@ -22,9 +19,10 @@ pub fn draw_graph_input(
     ui: &mut egui::Ui,
     show_names: bool,
     temp_connection: Option<TempConnection>,
+    theme: &Theme,
 ) -> InputOutputResponse {
     let mut response = InputOutputResponse::new();
-    let mut color = COLOR;
+    let mut color = theme.grid_connection_dot;
     let input_response =
         ui.allocate_rect(input_rect, egui::Sense::drag().union(egui::Sense::hover()));
 
@@ -51,9 +49,9 @@ pub fn draw_graph_input(
     response.is_cursor_over = input_response.hovered();
 
     if response.is_disabled {
-        color = COLOR_DISABLED;
+        color = theme.grid_connection_dot_disabled;
     } else if input_response.hovered() {
-        color = COLOR_HOVER;
+        color = theme.grid_connection_dot_hover;
     }
 
     let shape = Shape::circle_filled(input_position, 5.0, color);
@@ -73,7 +71,7 @@ pub fn draw_graph_input(
             Align2::RIGHT_CENTER,
             input.name.clone(),
             FontId::proportional(12.0),
-            Color32::from_gray(200),
+            Color32::from(theme.override_text_color),
         );
     }
 

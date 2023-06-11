@@ -13,8 +13,6 @@ use egui::Pos2;
 use mangler::{input::Input, node_settings::NodeSettings, output::Output, value::ValueType};
 use std::{collections::HashMap, time::Instant};
 
-//const BACKGROUND_COLOR: Color32 = egui::Color32::from_gray(35);
-const GRID_COLOR: Color32 = egui::Color32::from_gray(45);
 const ZOOM_MULTIPLIER: f32 = 0.001;
 const ZOOM_BOUNDS: [f32; 2] = [0.15, 5.0];
 
@@ -93,14 +91,14 @@ impl GraphEditor {
 
         ui.set_clip_rect(editor_rect);
 
-        // // bg
-        // ui.painter().add(egui::Shape::rect_filled(
-        //     editor_rect,
-        //     Rounding::none(),
-        //     theme.grid_bg,
-        // ));
+        // bg
+        ui.painter().add(egui::Shape::rect_filled(
+            editor_rect,
+            Rounding::none(),
+            theme.grid_bg,
+        ));
 
-        self.draw_background_grid(ui, editor_rect, self.position);
+        self.draw_background_grid(ui, editor_rect, self.position, theme);
 
         let cursor_inside = editor_rect.contains(cursor_position);
 
@@ -183,6 +181,7 @@ impl GraphEditor {
                 is_editing,
                 is_viewing,
                 self.temp_connection.clone(),
+                theme,
             );
 
             // node moved
@@ -288,10 +287,10 @@ impl GraphEditor {
         if let Some(temp_connection) = &self.temp_connection {
             match temp_connection.from_connection_type {
                 ConnectionType::Input => {
-                    self.draw_connection_line(ui, cursor_position, temp_connection.from_position)
+                    self.draw_connection_line(ui, cursor_position, temp_connection.from_position, theme)
                 }
                 ConnectionType::Output => {
-                    self.draw_connection_line(ui, temp_connection.from_position, cursor_position)
+                    self.draw_connection_line(ui, temp_connection.from_position, cursor_position, theme)
                 }
             };
         }
@@ -317,6 +316,7 @@ impl GraphEditor {
                                     output_node_rect,
                                 ),
                                 input_graph_node.get_input_position(input_index, input_node_rect),
+                                theme,
                             );
 
                             connection_curves.push((curve, node_id.clone(), input_index));
@@ -368,16 +368,16 @@ impl GraphEditor {
             }
         });
 
-        self.draw_top_border(ui, editor_rect);
+        self.draw_top_border(ui, editor_rect, theme);
 
         self.previous_cursor_primary_down = Some(cursor_primary_down);
 
         graph_editor_response
     }
 
-    pub fn draw_top_border(&self, ui: &mut egui::Ui, rect: Rect) {
+    pub fn draw_top_border(&self, ui: &mut egui::Ui, rect: Rect, theme: &Theme) {
         let size = 2.0;
-        let stroke = Stroke::new(size, egui::Color32::from_gray(10));
+        let stroke = Stroke::new(size, egui::Color32::from(theme.panel_border_lines));
 
         let points: Vec<Pos2> = vec![
             Pos2::new(rect.left(), rect.top() + (size * 0.5)),
@@ -387,8 +387,8 @@ impl GraphEditor {
         ui.painter().add(egui::Shape::line(points, stroke));
     }
 
-    pub fn draw_background_grid(&self, ui: &mut egui::Ui, editor_rect: Rect, graph_position: Pos2) {
-        let stroke = Stroke::new(1.0, GRID_COLOR);
+    pub fn draw_background_grid(&self, ui: &mut egui::Ui, editor_rect: Rect, graph_position: Pos2, theme: &Theme) {
+        let stroke = Stroke::new(1.0, theme.grid_lines);
         let grid_size: f32 = 50.0;
 
         let mut x = graph_to_view_space(self.zoom, graph_position.x % grid_size);
@@ -421,10 +421,11 @@ impl GraphEditor {
         ui: &mut egui::Ui,
         from: Pos2,
         to: Pos2,
+        theme: &Theme,
     ) -> CubicBezierShape {
         let offset_max = 150.0;
-        let color = egui::Color32::from_gray(150);
-        let stroke = egui::Stroke::new(2.0, color);
+        let color = egui::Color32::from(theme.grid_connection_line);
+        let stroke = egui::Stroke::new(theme.grid_connection_line_width, color);
 
         let distance = from.distance(to);
         let offset = (distance / 2.0).min(offset_max);
@@ -436,7 +437,6 @@ impl GraphEditor {
             to,
         ];
 
-        //let curve_shape = CubicBezierShape::from_points_stroke(points, false, color, stroke);
         let curve_shape = CubicBezierShape {
             points,
             closed: false,

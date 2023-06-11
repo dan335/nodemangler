@@ -3,9 +3,9 @@ use epaint::{emath::Align2, Color32, FontId, PathShape, Pos2, Rect, Rounding, St
 use mangler::operation::Operation;
 use mangler::OperationListItem;
 
+use crate::theme::Theme;
+
 const BUTTON_HEIGHT: f32 = 36.0;
-const BACKGROUND_COLOR: Color32 = egui::Color32::from_gray(50);
-const BACKGROUND_COLOR_HOVER: Color32 = egui::Color32::from_gray(80);
 
 #[derive(Debug)]
 pub enum MenuItem {
@@ -59,7 +59,7 @@ impl MenuItem {
         }
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, mut index: i32) -> (i32, MenuItemsResult) {
+    pub fn show(&mut self, ui: &mut egui::Ui, mut index: i32, theme: &Theme) -> (i32, MenuItemsResult) {
         let mut result = MenuItemsResult {
             operation_being_created: None,
             subgraph_being_created: false,
@@ -82,7 +82,6 @@ impl MenuItem {
                     Pos2::new(container_rect.right(), button_top_position + BUTTON_HEIGHT);
                 let button_rect = Rect::from_two_pos(button_min, button_max);
                 let rounding = Rounding::same(2.0);
-                let stroke = Stroke::new(1.0, egui::Color32::from_gray(90));
 
                 ui.centered_and_justified(|ui| {
                     let rect = Rect::from_min_max(
@@ -92,9 +91,9 @@ impl MenuItem {
 
                     let response = ui.allocate_rect(rect, egui::Sense::hover());
 
-                    let mut background_color = BACKGROUND_COLOR;
+                    let mut background_color = theme.node_menu_bg;
                     if response.hovered() {
-                        background_color = BACKGROUND_COLOR_HOVER;
+                        background_color = theme.node_menu_bg_hover;
                     }
 
                     ui.painter().add(egui::Shape::rect_filled(
@@ -128,7 +127,7 @@ impl MenuItem {
                     }
 
                     let triangle =
-                        PathShape::convex_polygon(points, Color32::from_gray(150), stroke);
+                        PathShape::convex_polygon(points, Color32::from(theme.override_text_color), Stroke::new(1.0, theme.override_text_color));
 
                     ui.painter().add(triangle);
 
@@ -139,7 +138,7 @@ impl MenuItem {
                         Align2::LEFT_CENTER,
                         name.clone(),
                         FontId::default(),
-                        Color32::from_gray(220),
+                        Color32::from(theme.override_text_color),
                     );
 
                     let response = ui.allocate_rect(rect, egui::Sense::click());
@@ -153,7 +152,7 @@ impl MenuItem {
 
                 if !(*is_collapsed) {
                     for item in items.iter_mut() {
-                        let (i, r) = item.show(ui, index);
+                        let (i, r) = item.show(ui, index, theme);
                         index = i;
 
                         if let Some(operation_being_created) = r.operation_being_created {
@@ -179,7 +178,6 @@ impl MenuItem {
                     Pos2::new(container_rect.right(), button_top_position + BUTTON_HEIGHT);
                 let button_rect = Rect::from_two_pos(button_min, button_max);
                 let rounding = Rounding::same(2.0);
-                //let stroke = Stroke::new(1.0, egui::Color32::from_gray(90));
 
                 ui.centered_and_justified(|ui| {
                     //ui.centered(|ui| {
@@ -192,9 +190,9 @@ impl MenuItem {
                     let response =
                         ui.allocate_rect(rect, egui::Sense::drag().union(egui::Sense::hover()));
 
-                    let mut background_color = BACKGROUND_COLOR;
+                    let mut background_color = theme.node_menu_bg;
                     if response.hovered() {
-                        background_color = BACKGROUND_COLOR_HOVER;
+                        background_color = theme.node_menu_bg_hover;
                     }
 
                     ui.painter().add(egui::Shape::rect_filled(
@@ -220,7 +218,7 @@ impl MenuItem {
                         Align2::LEFT_CENTER,
                         name,
                         FontId::default(),
-                        Color32::from_gray(220),
+                        Color32::from(theme.override_text_color),
                     );
 
                     if response.clicked() {
@@ -241,7 +239,6 @@ impl MenuItem {
                     Pos2::new(container_rect.right(), button_top_position + BUTTON_HEIGHT);
                 let button_rect = Rect::from_two_pos(button_min, button_max);
                 let rounding = Rounding::same(2.0);
-                //let stroke = Stroke::new(1.0, egui::Color32::from_gray(90));
 
                 ui.centered_and_justified(|ui| {
                     //ui.centered(|ui| {
@@ -254,9 +251,9 @@ impl MenuItem {
                     let response =
                         ui.allocate_rect(rect, egui::Sense::drag().union(egui::Sense::hover()));
 
-                    let mut background_color = BACKGROUND_COLOR;
+                    let mut background_color = theme.node_menu_bg;
                     if response.hovered() {
-                        background_color = BACKGROUND_COLOR_HOVER;
+                        background_color = theme.node_menu_bg_hover;
                     }
 
                     ui.painter().add(egui::Shape::rect_filled(
@@ -272,7 +269,7 @@ impl MenuItem {
                         Align2::LEFT_CENTER,
                         name,
                         FontId::default(),
-                        Color32::from_gray(220),
+                        Color32::from(theme.override_text_color),
                     );
 
                     if response.clicked() {

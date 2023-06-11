@@ -1,5 +1,7 @@
 use eframe::egui;
 
+use crate::theme::Theme;
+
 use super::menu_item::{MenuItem, MenuItemsResult};
 
 pub struct MenuPanel {
@@ -19,13 +21,13 @@ impl MenuPanel {
         MenuPanel { items }
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui) -> MenuItemsResult {
+    pub fn show(&mut self, ui: &mut egui::Ui, theme: &Theme) -> MenuItemsResult {
         let mut menu_result = MenuItemsResult::default();
         let mut index = -1;
 
         egui::ScrollArea::vertical().show(ui, |ui| {
             for item in self.items.iter_mut() {
-                let (i, result) = item.show(ui, index);
+                let (i, result) = item.show(ui, index, theme);
                 index = i;
 
                 if result.operation_being_created.is_some() {

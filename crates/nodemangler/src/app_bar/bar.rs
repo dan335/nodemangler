@@ -15,17 +15,17 @@ pub fn show(
     ui: &mut egui::Ui,
     programs: &HashMap<String, Program>,
     current_program: &Option<String>,
+    theme: &Theme,
 ) -> BarResponse {
     let app_rect = ctx.screen_rect();
     let app_menu_rect = Rect::from_two_pos(Pos2::ZERO, Pos2::new(app_rect.max.x, APP_MENU_HEIGHT));
 
     let rounding = Rounding::none();
-    let background_color = Color32::from_gray(20);
 
     ui.painter().add(egui::Shape::rect_filled(
         app_menu_rect,
         rounding,
-        background_color,
+        theme.menu_bar,
     ));
 
     let input_response = ui.allocate_rect(
@@ -33,8 +33,11 @@ pub fn show(
         egui::Sense::drag().union(egui::Sense::click()),
     );
 
-    let bar_response = show_menu(ui, programs, current_program, app_menu_rect);
-    show_window_control_menu(ctx, frame, ui);
+    let mut bar_response = show_menu(ui, programs, current_program, app_menu_rect, theme);
+
+    if let Some(new_theme) = show_window_control_menu(ctx, frame, ui) {
+        bar_response.theme_changed_to = Some(new_theme);
+    }
 
     if input_response.dragged_by(egui::PointerButton::Primary) {
         frame.drag_window();
@@ -56,6 +59,7 @@ pub fn show_menu(
     programs: &HashMap<String, Program>,
     current_program: &Option<String>,
     app_menu_rect: Rect,
+    theme: &Theme,
 ) -> BarResponse {
     let mut bar_response = BarResponse::new();
 
@@ -114,12 +118,10 @@ pub fn show_menu(
 
                     // show programs
                     for (program_id, program_name) in program_list.iter() {
-                        //let mut stroke = Stroke::NONE;
-                        let mut bg_color = Color32::from_gray(30);
+                        let mut bg_color = Color32::from(theme.menu_bar_button);
 
                         if current_program == &Some(program_id.clone()) {
-                            //stroke = Stroke::new(2.0, Color32::from_gray(150))
-                            bg_color = Color32::from_gray(60);
+                            bg_color = Color32::from(theme.menu_bar_button_selected);
                         }
 
                         egui::Frame::none()
@@ -152,7 +154,9 @@ pub fn show_menu(
     bar_response
 }
 
-pub fn show_window_control_menu(ctx: &egui::Context, frame: &mut eframe::Frame, ui: &mut egui::Ui) {
+pub fn show_window_control_menu(ctx: &egui::Context, frame: &mut eframe::Frame, ui: &mut egui::Ui) -> Option<Theme> {
+    let mut new_theme = None;
+    
     let app_rect = ctx.screen_rect();
     let app_menu_rect = Rect::from_two_pos(
         Pos2::new(app_rect.max.x, 0.0),
@@ -169,7 +173,8 @@ pub fn show_window_control_menu(ctx: &egui::Context, frame: &mut eframe::Frame, 
                 ui.horizontal(|ui| {
                     if ui.button("theme").clicked() {
                         let theme = if ui.visuals().dark_mode { LIGHT } else { DARK };
-                        set_theme(ctx, theme);
+                        set_theme(ctx, theme.clone());
+                        new_theme = Some(theme);
                     }
 
                     ui.add_space(15.0);
@@ -193,6 +198,8 @@ pub fn show_window_control_menu(ctx: &egui::Context, frame: &mut eframe::Frame, 
             },
         );
     });
+
+    new_theme
 }
 
 pub struct BarResponse {

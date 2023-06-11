@@ -473,14 +473,19 @@ impl Program {
         // }
 
         let app_rect = ctx.screen_rect();
+
         let cursor_position = ui
             .ctx()
             .input(|i| i.pointer.hover_pos())
             .unwrap_or(Pos2::ZERO);
+
         let cursor_primary_down: bool = ui.ctx().input(|i| i.pointer.primary_down());
+        
         let cursor_inside = app_rect.contains(cursor_position);
 
-        //let mouse_response = ui.allocate_rect(app_rect, Sense::drag());
+
+        
+    
 
         // -------------------------
         // menu panel
@@ -490,7 +495,7 @@ impl Program {
         );
         ui.allocate_ui_at_rect(menu_panel_rect, |ui| {
             puffin::profile_scope!("menu panel");
-            let r = self.menu_panel.show(ui);
+            let r = self.menu_panel.show(ui, theme);
 
             if r.subgraph_being_created {
                 self.dragging_menu_button.subgraph_being_created = true;
@@ -499,11 +504,6 @@ impl Program {
             if r.operation_being_created.is_some() {
                 self.dragging_menu_button.operation_being_created = r.operation_being_created;
             }
-
-            // // dragging from menu
-            // if menu_result.dragging_menu_button.is_some() {
-            //     self.dragging_menu_button = menu_result.dragging_menu_button;
-            // }
         });
 
         // -------------------------
@@ -517,12 +517,12 @@ impl Program {
 
             if let Some(viewing_node_id) = &self.viewing_node_id {
                 if let Some(graph_node) = self.graph_editor.graph_nodes.get(viewing_node_id) {
-                    self.view_panel.show(ui, Some(graph_node));
+                    self.view_panel.show(ui, Some(graph_node), theme);
                 } else {
-                    self.view_panel.show(ui, None);
+                    self.view_panel.show(ui, None, theme);
                 }
             } else {
-                self.view_panel.show(ui, None);
+                self.view_panel.show(ui, None, theme);
             }
         });
 
@@ -718,7 +718,7 @@ impl Program {
                 egui::Align2::RIGHT_BOTTOM,
                 txt,
                 egui::FontId::monospace(8.0),
-                egui::Color32::from_gray(150),
+                egui::Color32::from(theme.text_faint),
             );
         }
 
@@ -731,7 +731,7 @@ impl Program {
             egui::Align2::LEFT_BOTTOM,
             txt,
             egui::FontId::proportional(12.0),
-            egui::Color32::from_gray(150),
+            egui::Color32::from(theme.text_faint),
         );
     }
 

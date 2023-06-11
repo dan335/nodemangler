@@ -1,10 +1,12 @@
 use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect};
+use epaint::Color32;
 use mangler::output::Output;
 use mangler::value::Value;
 use std::time::Duration;
 
 use crate::graph_to_view_space;
+use crate::theme::Theme;
 
 pub fn show_graph_node_info(
     ui: &mut egui::Ui,
@@ -12,6 +14,7 @@ pub fn show_graph_node_info(
     node_rect: Rect,
     outputs: &Vec<Output>,
     graph_zoom: f32,
+    theme: &Theme,
 ) {
     // ms
     if let Some(time) = time_option {
@@ -26,7 +29,7 @@ pub fn show_graph_node_info(
             Align2::RIGHT_BOTTOM,
             text,
             egui::FontId::monospace(graph_to_view_space(graph_zoom, 10.0)),
-            egui::Color32::from_gray(200),
+            Color32::from(theme.text_faint),
         );
     }
 
@@ -56,7 +59,7 @@ pub fn show_graph_node_info(
                 Align2::RIGHT_BOTTOM,
                 text,
                 egui::FontId::monospace(10.0),
-                egui::Color32::from_gray(200),
+                Color32::from(theme.text_faint),
             );
         }
     }

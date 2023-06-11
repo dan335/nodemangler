@@ -1,4 +1,4 @@
-use crate::graph::graph_node::InputOutputResponse;
+use crate::{graph::graph_node::InputOutputResponse, theme::Theme};
 use eframe::{
     egui,
     epaint::{Color32, Pos2, Rect, Shape},
@@ -6,11 +6,6 @@ use eframe::{
 
 use super::{graph_editor::TempConnection, graph_node::ConnectionType};
 use mangler::output::Output;
-
-const COLOR: Color32 = Color32::from_gray(150);
-const COLOR_HOVER: Color32 = Color32::from_gray(200);
-const COLOR_DISABLED: Color32 = Color32::from_gray(50);
-const COLOR_TEXT: Color32 = Color32::from_gray(200);
 
 pub fn draw_graph_output(
     node_id: &String,
@@ -23,10 +18,11 @@ pub fn draw_graph_output(
     ui: &mut egui::Ui,
     show_type: bool,
     temp_connection: Option<TempConnection>,
+    theme: &Theme,
 ) -> InputOutputResponse {
     puffin::profile_scope!("graph node.draw_graph_output()");
     let mut response = InputOutputResponse::new();
-    let mut color = COLOR;
+    let mut color = theme.grid_connection_dot;
     let output_response =
         ui.allocate_rect(input_rect, egui::Sense::drag().union(egui::Sense::hover()));
 
@@ -52,9 +48,9 @@ pub fn draw_graph_output(
 
     // highlight when hovering
     if response.is_disabled {
-        color = COLOR_DISABLED;
+        color = theme.grid_connection_dot_disabled;
     } else if output_response.hovered() {
-        color = COLOR_HOVER;
+        color = theme.grid_connection_dot_hover;
     }
 
     // draw bg
@@ -80,19 +76,17 @@ pub fn draw_graph_output(
             egui::Align2::LEFT_CENTER,
             txt,
             egui::FontId::proportional(12.0),
-            COLOR_TEXT,
+            Color32::from(theme.override_text_color),
         );
     }
 
     response
 }
 
-pub fn draw_graph_output_highlighted(output_position: Pos2, ui: &mut egui::Ui) {
-    puffin::profile_scope!("graph node.draw_graph_output_highlighted()");
-    let color = Color32::from_rgb(222, 214, 90);
+pub fn draw_graph_output_highlighted(output_position: Pos2, ui: &mut egui::Ui, theme: &Theme) {
     ui.painter().add(Shape::circle_stroke(
         output_position,
         6.0,
-        egui::Stroke::new(4.0, color),
+        egui::Stroke::new(4.0, theme.grid_connection_dot_viewing),
     ));
 }

@@ -2,6 +2,7 @@ use crate::graph::graph_input::draw_graph_input;
 use crate::graph::graph_node_header::show_graph_node_header;
 use crate::graph::graph_node_info::show_graph_node_info;
 use crate::graph::graph_output::draw_graph_output;
+use crate::theme::Theme;
 use crate::{graph_to_view_space_pos2, view_to_graph_space_pos2};
 use eframe::egui;
 use egui::{Pos2, Rect, Vec2};
@@ -78,6 +79,7 @@ impl GraphNode {
         is_editing: bool,
         is_viewing: bool,
         temp_connection: Option<TempConnection>,
+        theme: &Theme,
     ) -> GraphNodeResponse {
         puffin::profile_scope!("graph node.show()");
         let mut graph_node_response = GraphNodeResponse::default();
@@ -125,12 +127,13 @@ impl GraphNode {
             is_editing,
             self.is_subgraph,
             graph_zoom,
+            theme,
         );
 
-        show_graph_node_info(ui, self.time, node_rect, &self.outputs, graph_zoom);
+        show_graph_node_info(ui, self.time, node_rect, &self.outputs, graph_zoom, theme);
 
         if let Some(thumbnail) = self.thumbnail.clone() {
-            thumbnail.show(ui, self.get_rect(graph_position, graph_zoom).center_bottom(), graph_zoom);
+            thumbnail.show(ui, self.get_rect(graph_position, graph_zoom).center_bottom(), graph_zoom, theme);
         }
 
         // ------------
@@ -148,6 +151,7 @@ impl GraphNode {
                 ui,
                 bg_response.hovered(),
                 temp_connection.clone(),
+                theme,
             );
 
             if input_output_response.has_started_creating_connection {
@@ -187,6 +191,7 @@ impl GraphNode {
                 ui,
                 bg_response.hovered(),
                 temp_connection.clone(),
+                theme,
             );
 
             // started dragging from connection
@@ -210,7 +215,7 @@ impl GraphNode {
             }
 
             if is_viewing && index == 0 {
-                draw_graph_output_highlighted(self.get_output_position(index, node_rect), ui);
+                draw_graph_output_highlighted(self.get_output_position(index, node_rect), ui, theme);
             }
 
             if !input_output_response.is_disabled && input_output_response.is_cursor_over {

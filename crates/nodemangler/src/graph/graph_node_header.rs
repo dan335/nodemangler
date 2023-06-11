@@ -2,12 +2,10 @@ use eframe::epaint::{Color32, Rounding};
 use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect};
 
+use crate::theme::Theme;
 use crate::{graph_to_view_space_pos2, graph_to_view_space};
 
 const ROUNDING: f32 = 2.0;
-const COLOR_BG: Color32 = egui::Color32::from_gray(70);
-const COLOR_TEXT: Color32 = egui::Color32::from_gray(220);
-const COLOR_BORDER_EDITING: Color32 = egui::Color32::from_gray(200);
 
 pub fn show_graph_node_header(
     ui: &mut egui::Ui,
@@ -16,12 +14,13 @@ pub fn show_graph_node_header(
     is_editing: bool,
     is_subgraph: bool,
     graph_zoom: f32,
+    theme: &Theme,
 ) {
     // bg
     ui.painter().add(egui::Shape::rect_filled(
         node_rect,
         Rounding::same(ROUNDING),
-        COLOR_BG,
+        theme.node_header_bg,
     ));
 
     // outline
@@ -29,7 +28,7 @@ pub fn show_graph_node_header(
         ui.painter().add(egui::Shape::rect_stroke(
             node_rect,
             ROUNDING,
-            egui::Stroke::new(2.0, COLOR_BORDER_EDITING),
+            egui::Stroke::new(2.0, theme.node_header_selected_border),
         ));
     }
 
@@ -40,7 +39,7 @@ pub fn show_graph_node_header(
         name,
         //egui::style::Style::text_styles(),
         egui::FontId::proportional(graph_to_view_space(graph_zoom, 12.0)),
-        egui::Color32::from_gray(220),
+        Color32::from(theme.override_text_color),
     );
 
     // subgraph
@@ -50,7 +49,7 @@ pub fn show_graph_node_header(
             Align2::CENTER_TOP,
             "subgraph",
             egui::FontId::default(),
-            COLOR_TEXT,
+            Color32::from(theme.override_text_color),
         );
     }
 }

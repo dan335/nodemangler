@@ -1,3 +1,4 @@
+use crate::theme::Theme;
 use crate::{graph_to_view_space_pos2, graph_to_view_space};
 use eframe::epaint::{Color32, FontId};
 use eframe::{egui, emath::Align2};
@@ -16,7 +17,8 @@ impl GraphNodeThumbnail {
         &self,
         ui: &mut egui::Ui,
         top_center_pos: Pos2,
-        graph_zoom: f32
+        graph_zoom: f32,
+        theme: &Theme,
     ) {
         match self {
             GraphNodeThumbnail::Image(thumbnail) => {
@@ -39,7 +41,7 @@ impl GraphNodeThumbnail {
                     Align2::CENTER_TOP,
                     txt,
                     FontId::proportional(graph_to_view_space(graph_zoom, 20.0)),
-                    Color32::from_gray(200),
+                    Color32::from(theme.override_text_color),
                 );
             },
         }

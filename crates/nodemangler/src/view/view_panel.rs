@@ -4,10 +4,7 @@ use eframe::{
 };
 use egui::{Color32, Pos2, Rect};
 
-use crate::graph::graph_node::GraphNode;
-
-const BACKGROUND_COLOR: Color32 = egui::Color32::from_gray(35);
-const GRID_COLOR: Color32 = egui::Color32::from_gray(45);
+use crate::{graph::graph_node::GraphNode, theme::Theme};
 
 pub struct ViewPanel {
     image: Option<egui::TextureHandle>,
@@ -24,17 +21,17 @@ impl ViewPanel {
         }
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, viewing_node: Option<&GraphNode>) {
+    pub fn show(&mut self, ui: &mut egui::Ui, viewing_node: Option<&GraphNode>, theme: &Theme) {
         let rect = ui.max_rect();
 
         // bg
         ui.painter().add(egui::Shape::rect_filled(
             rect,
             Rounding::none(),
-            BACKGROUND_COLOR,
+            theme.grid_bg,
         ));
 
-        self.draw_background_grid(ui, rect, self.position);
+        self.draw_background_grid(ui, rect, self.position, theme);
 
         if let Some(node) = viewing_node {
             if self.image_node_id.is_none() || self.image_node_id.clone().unwrap() != node.id {
@@ -53,12 +50,12 @@ impl ViewPanel {
             }
         }
 
-        self.draw_left_right_borders(ui, rect);
+        self.draw_left_right_borders(ui, rect, theme);
     }
 
-    pub fn draw_left_right_borders(&self, ui: &mut egui::Ui, rect: Rect) {
+    pub fn draw_left_right_borders(&self, ui: &mut egui::Ui, rect: Rect, theme: &Theme) {
         let size = 2.0;
-        let stroke = Stroke::new(size, egui::Color32::from_gray(10));
+        let stroke = Stroke::new(size, egui::Color32::from(theme.panel_border_lines));
 
         let mut points: Vec<Pos2> = Vec::with_capacity(2);
         points.push(Pos2::new(rect.left() + (size * 0.5), rect.top()));
@@ -74,8 +71,8 @@ impl ViewPanel {
         ui.painter().add(egui::Shape::line(points.clone(), stroke));
     }
 
-    pub fn draw_background_grid(&self, ui: &mut egui::Ui, rect: Rect, graph_position: Pos2) {
-        let stroke = Stroke::new(1.0, GRID_COLOR);
+    pub fn draw_background_grid(&self, ui: &mut egui::Ui, rect: Rect, graph_position: Pos2, theme: &Theme) {
+        let stroke = Stroke::new(1.0, theme.grid_lines);
         let grid_size: f32 = 50.0;
 
         let mut x = rect.min.x + (graph_position.x % grid_size);
@@ -100,64 +97,4 @@ impl ViewPanel {
             y += grid_size;
         }
     }
-
-    // fn create_thumbnail(&mut self, ui: &mut egui::Ui, node: &GraphNode) {
-    //     let color_image = match &node.outputs[0].value {
-    //         mangler::value::Value::Rgba32FImage(value) => {
-    //             let image_buffer = DynamicImage::ImageRgba32F(value.clone())
-    //                 .resize(
-    //                     ui.max_rect().width() as u32,
-    //                     ui.max_rect().height() as u32,
-    //                     image::imageops::FilterType::Triangle,
-    //                 )
-    //                 .to_rgba8();
-    //             let pixels = image_buffer.as_flat_samples();
-    //             let size = [
-    //                 image_buffer.width() as usize,
-    //                 image_buffer.height() as usize,
-    //             ];
-    //             Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
-    //         }
-    //         mangler::value::Value::RgbaImage(value) => {
-    //             let image_buffer = DynamicImage::ImageRgba8(value.clone())
-    //                 .resize(
-    //                     ui.max_rect().width() as u32,
-    //                     ui.max_rect().height() as u32,
-    //                     image::imageops::FilterType::Triangle,
-    //                 )
-    //                 .to_rgba8();
-    //             let pixels = image_buffer.as_flat_samples();
-    //             let size = [
-    //                 image_buffer.width() as usize,
-    //                 image_buffer.height() as usize,
-    //             ];
-    //             Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
-    //         }
-    //         mangler::value::Value::GrayImage(value) => {
-    //             let image_buffer = DynamicImage::ImageLuma8(value.clone())
-    //                 .resize(
-    //                     ui.max_rect().width() as u32,
-    //                     ui.max_rect().height() as u32,
-    //                     image::imageops::FilterType::Triangle,
-    //                 )
-    //                 .to_rgba8();
-    //             let pixels = image_buffer.as_flat_samples();
-    //             let size = [
-    //                 image_buffer.width() as usize,
-    //                 image_buffer.height() as usize,
-    //             ];
-    //             Some(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
-    //         }
-    //         _ => None,
-    //     };
-
-    //     if let Some(img) = color_image {
-    //         self.image = Some(ui.ctx().load_texture(
-    //             node.id.clone(),
-    //             img,
-    //             Default::default(),
-    //         ));
-    //         self.image_node_id = Some(node.id.clone());
-    //     }
-    // }
 }
