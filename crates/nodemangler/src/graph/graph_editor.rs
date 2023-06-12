@@ -153,6 +153,37 @@ impl GraphEditor {
         let mut has_stopped_creating_connection = false;
         //let mut connection_to_position = Pos2::ZERO;
 
+        // connections
+        // collect curves to tell if we clicked on one to delete it
+        // curve, input node id, input index
+        let mut connection_curves: Vec<(CubicBezierShape, String, usize)> = Vec::new();
+        for (node_id, node) in self.graph_nodes.iter() {
+            for (input_index, input) in node.inputs.iter().enumerate() {
+                if let Some((output_node_id, output_connection_index)) = &input.connection {
+                    if let Some(input_graph_node) = &self.graph_nodes.get(node_id) {
+                        if let Some(output_graph_node) = &self.graph_nodes.get(output_node_id) {
+                            let input_node_rect =
+                                input_graph_node.get_rect(self.position, self.zoom);
+                            let output_node_rect =
+                                output_graph_node.get_rect(self.position, self.zoom);
+
+                            let curve = self.draw_connection_line(
+                                ui,
+                                output_graph_node.get_output_position(
+                                    *output_connection_index,
+                                    output_node_rect,
+                                ),
+                                input_graph_node.get_input_position(input_index, input_node_rect),
+                                theme,
+                            );
+
+                            connection_curves.push((curve, node_id.clone(), input_index));
+                        }
+                    }
+                }
+            }
+        }
+
         for (graph_node_id, graph_node) in self.graph_nodes.iter_mut() {
             puffin::profile_scope!("graph panel.graph_nodes.iter()");
 
@@ -293,37 +324,6 @@ impl GraphEditor {
                     self.draw_connection_line(ui, temp_connection.from_position, cursor_position, theme)
                 }
             };
-        }
-
-        // connections
-        // collect curves to tell if we clicked on one to delete it
-        // curve, input node id, input index
-        let mut connection_curves: Vec<(CubicBezierShape, String, usize)> = Vec::new();
-        for (node_id, node) in self.graph_nodes.iter() {
-            for (input_index, input) in node.inputs.iter().enumerate() {
-                if let Some((output_node_id, output_connection_index)) = &input.connection {
-                    if let Some(input_graph_node) = &self.graph_nodes.get(node_id) {
-                        if let Some(output_graph_node) = &self.graph_nodes.get(output_node_id) {
-                            let input_node_rect =
-                                input_graph_node.get_rect(self.position, self.zoom);
-                            let output_node_rect =
-                                output_graph_node.get_rect(self.position, self.zoom);
-
-                            let curve = self.draw_connection_line(
-                                ui,
-                                output_graph_node.get_output_position(
-                                    *output_connection_index,
-                                    output_node_rect,
-                                ),
-                                input_graph_node.get_input_position(input_index, input_node_rect),
-                                theme,
-                            );
-
-                            connection_curves.push((curve, node_id.clone(), input_index));
-                        }
-                    }
-                }
-            }
         }
 
         // ------------------------

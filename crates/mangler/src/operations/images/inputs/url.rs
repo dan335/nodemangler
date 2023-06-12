@@ -26,18 +26,24 @@ impl OperationImageInputUrl {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id() }, None)
+            Output::new("output".to_string(), Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id() }, None),
+            Output::new("width".to_string(), Value::Integer(i32::default()), None),
+            Output::new("height".to_string(), Value::Integer(i32::default()), None),
         ]
     }
 
     pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
+        let mut width = 0;
+        let mut height = 0;
 
         let value = match &inputs[0].value {
             Value::String(url) => {
                 if let Ok(image_response) =  reqwest::get(url).await {
                     if let Ok(image_bytes) = image_response.bytes().await {
                         if let Ok(image) = image::load_from_memory(&image_bytes) {
+                            width = image.width();
+                            height = image.height();
                             Value::DynamicImage { data:image, change_id: get_id() }
                         } else {
                             return Err(OperationError{ message: "Format not supported".to_string() });
@@ -55,9 +61,11 @@ impl OperationImageInputUrl {
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
-            responses: vec![OutputResponse {
-                value: value,
-            }],
+            responses: vec![
+                OutputResponse { value: value },
+                OutputResponse { value: Value::Integer(width as i32) },
+                OutputResponse { value: Value::Integer(height as i32) },
+            ],
         })
     }
 }

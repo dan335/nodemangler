@@ -3,6 +3,7 @@ use eframe::{
     egui,
     epaint::{Color32, Pos2, Rect, Shape},
 };
+use epaint::Rounding;
 
 use super::{graph_editor::TempConnection, graph_node::ConnectionType};
 use mangler::output::Output;
@@ -67,16 +68,27 @@ pub fn draw_graph_output(
         response.connection_to_position = output_position;
     }
 
-    // show type when hovering
+    // show name and type when hovering
     if show_type || response.is_cursor_over {
         puffin::profile_scope!("graph node.show type when hovering");
+
         let txt = format!("{} ({})", output.name, output_value_name);
+        let font_id = egui::FontId::proportional(12.0);
+        let color = theme.get().override_text_color;
+        let pos = Pos2::new(output_position.x + 10.0, output_position.y);
+
+        let galley = ui.painter().layout_no_wrap(txt.clone(), font_id.clone(), color);
+        
+        // bg
+        ui.painter().rect_filled(Rect::from_min_size(Pos2::new(pos.x, pos.y - (galley.rect.height() * 0.5)), galley.rect.size()), Rounding::same(1.0), theme.get().grid_bg);
+
+        // text
         ui.painter().text(
-            Pos2::new(output_position.x + 10.0, output_position.y),
+            pos,
             egui::Align2::LEFT_CENTER,
             txt,
-            egui::FontId::proportional(12.0),
-            Color32::from(theme.get().override_text_color),
+            font_id,
+            color,
         );
     }
 

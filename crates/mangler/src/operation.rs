@@ -1,3 +1,4 @@
+use crate::operations::images::adjustments::blur::OperationImageAdjustmentBlur;
 use crate::operations::images::transform::resize::OperationImageTransformResize;
 use crate::operations::images::inputs::url::OperationImageInputUrl;
 use crate::operations::numbers::math::add::OperationNumberMathAdd;
@@ -17,6 +18,9 @@ pub enum Operation {
     NumberMathAdd,
     ImageInputUrl,
     ImageTransformResize,
+    ImageAdjustmentBlur,
+    ImageAdjustmentContrast,
+    IMageAdjustmentGrayscale,
 }
 
 impl Operation {
@@ -27,6 +31,9 @@ impl Operation {
             Operation::NumberMathAdd => OperationNumberMathAdd::settings(),
             Operation::ImageInputUrl => OperationImageInputUrl::settings(),
             Operation::ImageTransformResize => OperationImageTransformResize::settings(),
+            Operation::ImageAdjustmentBlur => OperationImageAdjustmentBlur::settings(),
+            Operation::ImageAdjustmentContrast => crate::operations::images::adjustments::contrast::OperationImageAdjustmentContrast::settings(),
+            Operation::IMageAdjustmentGrayscale => crate::operations::images::adjustments::grayscale::OperationImageAdjustmentGrayscale::settings(),
         }
     }
 
@@ -37,6 +44,9 @@ impl Operation {
             Operation::NumberMathAdd => OperationNumberMathAdd::create_inputs(),
             Operation::ImageInputUrl => OperationImageInputUrl::create_inputs(),
             Operation::ImageTransformResize => OperationImageTransformResize::create_inputs(),
+            Operation::ImageAdjustmentBlur => OperationImageAdjustmentBlur::create_inputs(),
+            Operation::ImageAdjustmentContrast => crate::operations::images::adjustments::contrast::OperationImageAdjustmentContrast::create_inputs(),
+            Operation::IMageAdjustmentGrayscale => crate::operations::images::adjustments::grayscale::OperationImageAdjustmentGrayscale::create_inputs(),
         }
     }
 
@@ -47,6 +57,9 @@ impl Operation {
             Operation::NumberMathAdd => OperationNumberMathAdd::create_outputs(),
             Operation::ImageInputUrl => OperationImageInputUrl::create_outputs(),
             Operation::ImageTransformResize => OperationImageTransformResize::create_outputs(),
+            Operation::ImageAdjustmentBlur => OperationImageAdjustmentBlur::create_outputs(),
+            Operation::ImageAdjustmentContrast => crate::operations::images::adjustments::contrast::OperationImageAdjustmentContrast::create_outputs(),
+            Operation::IMageAdjustmentGrayscale => crate::operations::images::adjustments::grayscale::OperationImageAdjustmentGrayscale::create_outputs(),
         }
     }
 
@@ -57,6 +70,9 @@ impl Operation {
             Operation::NumberMathAdd => OperationNumberMathAdd::run(inputs).await,
             Operation::ImageInputUrl => OperationImageInputUrl::run(inputs).await,
             Operation::ImageTransformResize => OperationImageTransformResize::run(inputs).await,
+            Operation::ImageAdjustmentBlur => OperationImageAdjustmentBlur::run(inputs).await,
+            Operation::ImageAdjustmentContrast => crate::operations::images::adjustments::contrast::OperationImageAdjustmentContrast::run(inputs).await,
+            Operation::IMageAdjustmentGrayscale => crate::operations::images::adjustments::grayscale::OperationImageAdjustmentGrayscale::run(inputs).await,
         }
     }
 }

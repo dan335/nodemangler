@@ -66,13 +66,31 @@ pub fn draw_graph_input(
     }
 
     if show_names || response.is_cursor_over {
+        let font_id = egui::FontId::proportional(12.0);
+        let color = theme.get().override_text_color;
+        let pos = Pos2::new(input_position.x - 10.0, input_position.y);
+
+        let galley = ui.painter().layout_no_wrap(input.name.clone(), font_id.clone(), color);
+        
+        // bg
+        ui.painter().rect_filled(Rect::from_min_size(Pos2::new(pos.x - galley.rect.width(), pos.y - (galley.rect.height() * 0.5)), galley.rect.size()), egui::Rounding::same(1.0), theme.get().grid_bg);
+
+        // text
         ui.painter().text(
-            Pos2::new(input_position.x - 10.0, input_position.y),
-            Align2::RIGHT_CENTER,
+            pos,
+            egui::Align2::RIGHT_CENTER,
             input.name.clone(),
-            FontId::proportional(12.0),
-            Color32::from(theme.get().override_text_color),
+            font_id,
+            color,
         );
+
+        // ui.painter().text(
+        //     Pos2::new(input_position.x - 10.0, input_position.y),
+        //     Align2::RIGHT_CENTER,
+        //     input.name.clone(),
+        //     FontId::proportional(12.0),
+        //     Color32::from(theme.get().override_text_color),
+        // );
     }
 
     response

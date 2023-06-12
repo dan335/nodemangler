@@ -183,6 +183,11 @@ pub fn operation_list() -> Vec<OperationListItem> {
             OperationListItem::Category { name: "transform".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::ImageTransformResize },
             ]},
+            OperationListItem::Category { name: "adjustments".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::ImageAdjustmentBlur },
+                OperationListItem::Operation { operation: Operation::ImageAdjustmentContrast },
+                OperationListItem::Operation { operation: Operation::IMageAdjustmentGrayscale }
+            ]},
         ]}, 
         OperationListItem::Subgraph,
     ]
