@@ -1,4 +1,5 @@
 use image::RgbaImage;
+use crate::get_id;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
 use crate::operation::{OperationError, OperationResponse, OutputResponse};
@@ -13,19 +14,19 @@ pub struct OperationImageInputUrl {}
 impl OperationImageInputUrl {
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "From URL".to_string(),
+            name: "image from url".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("URL".to_string(), Value::String("https://i.imgur.com/3aDSTiBl.jpg".to_string()), None),
+            Input::new("url".to_string(), Value::String("https://i.imgur.com/3aDSTiBl.jpg".to_string()), None),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("image".to_string(), Value::DynamicImage(image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32))), None)
+            Output::new("output".to_string(), Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id() }, None)
         ]
     }
 
@@ -37,7 +38,7 @@ impl OperationImageInputUrl {
                 if let Ok(image_response) =  reqwest::get(url).await {
                     if let Ok(image_bytes) = image_response.bytes().await {
                         if let Ok(image) = image::load_from_memory(&image_bytes) {
-                            Value::DynamicImage(image)
+                            Value::DynamicImage { data:image, change_id: get_id() }
                         } else {
                             return Err(OperationError{ message: "Format not supported".to_string() });
                         }

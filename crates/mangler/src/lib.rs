@@ -167,23 +167,20 @@ pub struct GraphSaveData {
 
 pub fn operation_list() -> Vec<OperationListItem> {
     vec![
-        OperationListItem::Category { name: "Number".to_string(), operation_list_items: vec![
-            OperationListItem::Category { name: "Input".to_string(), operation_list_items: vec![
+        OperationListItem::Category { name: "numbers".to_string(), operation_list_items: vec![
+            OperationListItem::Category { name: "inputs".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::NumberInputDecimal },
                 OperationListItem::Operation { operation: Operation::NumberInputInteger },
             ]},
-            OperationListItem::Category { name: "Output".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::NumberOutputInteger },
-            ]},
-            OperationListItem::Category { name: "Math".to_string(), operation_list_items: vec![
+            OperationListItem::Category { name: "math".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::NumberMathAdd },
             ]},
         ]},
-        OperationListItem::Category { name: "Image".to_string(), operation_list_items: vec![
-            OperationListItem::Category { name: "Input".to_string(), operation_list_items: vec![
+        OperationListItem::Category { name: "images".to_string(), operation_list_items: vec![
+            OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::ImageInputUrl },
             ]},
-            OperationListItem::Category { name: "Transform".to_string(), operation_list_items: vec![
+            OperationListItem::Category { name: "transform".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::ImageTransformResize },
             ]},
         ]}, 

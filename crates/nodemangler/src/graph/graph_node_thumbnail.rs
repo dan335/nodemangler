@@ -3,7 +3,6 @@ use crate::{graph_to_view_space_pos2, graph_to_view_space};
 use eframe::epaint::{Color32, FontId};
 use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect, Vec2};
-use mangler::output::Output;
 
 
 #[derive(Clone)]
@@ -41,7 +40,7 @@ impl GraphNodeThumbnail {
                     Align2::CENTER_TOP,
                     txt,
                     FontId::proportional(graph_to_view_space(graph_zoom, 20.0)),
-                    Color32::from(theme.override_text_color),
+                    Color32::from(theme.get().override_text_color),
                 );
             },
         }

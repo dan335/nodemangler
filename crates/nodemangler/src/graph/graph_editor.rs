@@ -2,11 +2,11 @@ use super::graph_node::ConnectionType;
 use crate::Theme;
 use crate::{
     graph::graph_node::GraphNode, graph_to_view_space, view_to_graph_space,
-    view_to_graph_space_pos2, NewConnection,
+    view_to_graph_space_pos2, program::NewConnection,
 };
 use eframe::{
     egui,
-    epaint::{Color32, Rect, Rounding, Stroke},
+    epaint::{Rect, Rounding, Stroke},
 };
 use egui::epaint::CubicBezierShape;
 use egui::Pos2;
@@ -50,7 +50,7 @@ impl GraphEditor {
         cursor_position: Pos2,
         cursor_primary_down: bool,
         editing_node_id: &Option<String>,
-        viewing_node_id: &Option<String>,
+        viewing_node_id_index: &Option<(String, usize)>,
         theme: &Theme,
     ) -> GraphEditorResponse {
         puffin::profile_scope!("graph panel.show()");
@@ -95,7 +95,7 @@ impl GraphEditor {
         ui.painter().add(egui::Shape::rect_filled(
             editor_rect,
             Rounding::none(),
-            theme.grid_bg,
+            theme.get().grid_bg,
         ));
 
         self.draw_background_grid(ui, editor_rect, self.position, theme);
@@ -166,8 +166,8 @@ impl GraphEditor {
 
             // are we viewing node
             let mut is_viewing = false;
-            if let Some(n) = viewing_node_id {
-                if n == graph_node_id {
+            if let Some((viewing_node_id, viewing_output_index)) = viewing_node_id_index {
+                if viewing_node_id == graph_node_id {
                     is_viewing = true;
                 }
             }
@@ -228,7 +228,7 @@ impl GraphEditor {
             // right click on node
             // view node
             if graph_node_response.is_right_click {
-                graph_editor_response.viewing_node_id = Some(graph_node_id.clone());
+                graph_editor_response.viewing_node_id_index = Some((graph_node_id.clone(), 0));
             }
         }
 
@@ -368,27 +368,27 @@ impl GraphEditor {
             }
         });
 
-        self.draw_top_border(ui, editor_rect, theme);
+        //self.draw_top_border(ui, editor_rect, theme);
 
         self.previous_cursor_primary_down = Some(cursor_primary_down);
 
         graph_editor_response
     }
 
-    pub fn draw_top_border(&self, ui: &mut egui::Ui, rect: Rect, theme: &Theme) {
-        let size = 2.0;
-        let stroke = Stroke::new(size, egui::Color32::from(theme.panel_border_lines));
+    // pub fn draw_top_border(&self, ui: &mut egui::Ui, rect: Rect, theme: &Theme) {
+    //     let size = 2.0;
+    //     let stroke = Stroke::new(size, egui::Color32::from(theme.panel_border_lines));
 
-        let points: Vec<Pos2> = vec![
-            Pos2::new(rect.left(), rect.top() + (size * 0.5)),
-            Pos2::new(rect.right(), rect.top() + (size * 0.5)),
-        ];
+    //     let points: Vec<Pos2> = vec![
+    //         Pos2::new(rect.left(), rect.top() + (size * 0.5)),
+    //         Pos2::new(rect.right(), rect.top() + (size * 0.5)),
+    //     ];
 
-        ui.painter().add(egui::Shape::line(points, stroke));
-    }
+    //     ui.painter().add(egui::Shape::line(points, stroke));
+    // }
 
     pub fn draw_background_grid(&self, ui: &mut egui::Ui, editor_rect: Rect, graph_position: Pos2, theme: &Theme) {
-        let stroke = Stroke::new(1.0, theme.grid_lines);
+        let stroke = Stroke::new(1.0, theme.get().grid_lines);
         let grid_size: f32 = 50.0;
 
         let mut x = graph_to_view_space(self.zoom, graph_position.x % grid_size);
@@ -424,8 +424,8 @@ impl GraphEditor {
         theme: &Theme,
     ) -> CubicBezierShape {
         let offset_max = 150.0;
-        let color = egui::Color32::from(theme.grid_connection_line);
-        let stroke = egui::Stroke::new(theme.grid_connection_line_width, color);
+        let color = egui::Color32::from(theme.get().grid_connection_line);
+        let stroke = egui::Stroke::new(theme.get().grid_connection_line_width, color);
 
         let distance = from.distance(to);
         let offset = (distance / 2.0).min(offset_max);
@@ -504,7 +504,7 @@ pub struct GraphEditorResponse {
     pub is_right_click_node_id: Option<String>,
     pub request_redraw: bool,
     pub editing_node_id: Option<String>,
-    pub viewing_node_id: Option<String>,
+    pub viewing_node_id_index: Option<(String, usize)>,   // node id, output index
     pub clear_editing_node: bool,
     pub clear_viewing_node: bool,
     pub nodes_to_delete: Vec<String>,
@@ -520,7 +520,7 @@ impl GraphEditorResponse {
             is_right_click_node_id: None,
             request_redraw: false,
             editing_node_id: None,
-            viewing_node_id: None,
+            viewing_node_id_index: None,
             nodes_to_delete: Vec::new(),
             connections_to_delete: Vec::new(),
             clear_editing_node: false, // should editing node be cleared.  clicked on graph bg

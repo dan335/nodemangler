@@ -1,78 +1,120 @@
 use eframe::{
-    egui,
+    egui::{self, Pos2, Rect},
     epaint::{Rounding, Stroke},
 };
-use egui::{Color32, Pos2, Rect};
+use epaint::{Vec2, TextureHandle};
+use image::DynamicImage;
 
 use crate::{graph::graph_node::GraphNode, theme::Theme};
 
 pub struct ViewPanel {
-    image: Option<egui::TextureHandle>,
-    image_node_id: Option<String>,
+    image_texture_handle: Option<egui::TextureHandle>,
+    image_id_index: Option<(String, usize, String)>,  // node id, output index, change_id
     position: Pos2,
 }
 
 impl ViewPanel {
     pub fn new() -> ViewPanel {
         ViewPanel {
-            image: None,
-            image_node_id: None,
+            image_texture_handle: None,
+            image_id_index: None,
             position: Pos2::ZERO,
         }
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, viewing_node: Option<&GraphNode>, theme: &Theme) {
-        let rect = ui.max_rect();
+    pub fn show(&mut self, ui: &mut egui::Ui, graph_node: &GraphNode, output_index: usize, theme: &Theme) {
 
-        // bg
-        ui.painter().add(egui::Shape::rect_filled(
-            rect,
-            Rounding::none(),
-            theme.grid_bg,
-        ));
+        ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::LeftToRight), |ui| {
+            //ui.allocate_space(Vec2::new(300.0, 300.0));
 
-        self.draw_background_grid(ui, rect, self.position, theme);
+            let rect = ui.max_rect();
 
-        if let Some(node) = viewing_node {
-            if self.image_node_id.is_none() || self.image_node_id.clone().unwrap() != node.id {
-                //self.create_thumbnail(ui, node);
+            // bg
+            ui.painter().add(egui::Shape::rect_filled(
+                rect,
+                Rounding::none(),
+                theme.get().grid_bg,
+            ));
+
+            // bg grid
+            self.draw_background_grid(ui, rect, self.position, theme);
+
+            if let Some(output) = graph_node.outputs.get(output_index) {
+                match output.value.clone() {
+                    mangler::value::Value::Bool(value) => {
+                        ui.label(value.to_string());
+                    },
+                    mangler::value::Value::Integer(value) => {
+                        ui.label(value.to_string());
+                    },
+                    mangler::value::Value::Decimal(value) => {
+                        ui.label(value.to_string());
+                    },
+                    mangler::value::Value::String(value) => {
+                        ui.label(value);
+                    },
+                    mangler::value::Value::DynamicImage {data, change_id} => {
+                        match self.image_id_index.clone() {
+                            Some((image_node_id, image_output_index, image_change_id)) => {
+                                if image_node_id != graph_node.id || image_output_index != output_index || change_id != image_change_id {
+                                    let texture_handle = self.create_egui_image(ui, data, graph_node.id.clone());
+                                    self.image_texture_handle = Some(texture_handle);
+                                    self.image_id_index = Some((graph_node.id.clone(), output_index, change_id));
+                                }
+                            },
+                            None => {
+                                let texture_handle = self.create_egui_image(ui, data, graph_node.id.clone());
+                                self.image_texture_handle = Some(texture_handle);
+                                self.image_id_index = Some((graph_node.id.clone(), output_index, change_id));
+                            },
+                        }
+
+                        if let Some(texture_handle) = &self.image_texture_handle {
+                            ui.image(texture_handle, Vec2::new(texture_handle.size()[0] as f32, texture_handle.size()[1] as f32));
+                        }
+                    },
+                    mangler::value::Value::Path(value) => {
+                        ui.label(value.to_str().unwrap_or("None").to_string());
+                    },
+                    mangler::value::Value::FilterType(value) => {
+                        ui.label(format!("{:?}", value));
+                    },
+                    mangler::value::Value::ImageFormat(value) => {
+                        ui.label(format!("{:?}", value));
+                    },
+                    mangler::value::Value::UiButton(value) => {
+                        ui.label(format!("{:?}", value));
+                    },
+                }
             }
-
-            if let Some(image) = &self.image {
-                ui.centered_and_justified(|ui| {
-                    ui.painter().image(
-                        image.id(),
-                        Rect::from_center_size(ui.max_rect().center(), image.size_vec2()),
-                        Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)),
-                        Color32::WHITE,
-                    );
-                });
-            }
-        }
-
-        self.draw_left_right_borders(ui, rect, theme);
+        });
     }
 
-    pub fn draw_left_right_borders(&self, ui: &mut egui::Ui, rect: Rect, theme: &Theme) {
-        let size = 2.0;
-        let stroke = Stroke::new(size, egui::Color32::from(theme.panel_border_lines));
+    fn create_egui_image(&self, ui: &mut egui::Ui, dynamic_image: DynamicImage, name: String) -> TextureHandle {
+        let rgba_image = dynamic_image.to_rgba8();
 
-        let mut points: Vec<Pos2> = Vec::with_capacity(2);
-        points.push(Pos2::new(rect.left() + (size * 0.5), rect.top()));
-        points.push(Pos2::new(rect.left() + (size * 0.5), rect.bottom()));
+        let pixels = rgba_image.as_flat_samples();
 
-        ui.painter().add(egui::Shape::line(points.clone(), stroke));
+        let size = [
+            rgba_image.width() as usize,
+            rgba_image.height() as usize,
+        ];
 
-        points.clear();
+        let color_image = epaint::ColorImage::from_rgba_unmultiplied(
+            size,
+            pixels.as_slice(),
+        );
 
-        points.push(Pos2::new(rect.right() - (size * 0.5), rect.top()));
-        points.push(Pos2::new(rect.right() - (size * 0.5), rect.bottom()));
-
-        ui.painter().add(egui::Shape::line(points.clone(), stroke));
+        ui.ctx().load_texture(
+            name,
+            color_image,
+            Default::default(),
+        )
     }
+    
 
     pub fn draw_background_grid(&self, ui: &mut egui::Ui, rect: Rect, graph_position: Pos2, theme: &Theme) {
-        let stroke = Stroke::new(1.0, theme.grid_lines);
+        let stroke = Stroke::new(1.0, theme.get().grid_lines);
         let grid_size: f32 = 50.0;
 
         let mut x = rect.min.x + (graph_position.x % grid_size);

@@ -22,7 +22,7 @@ pub fn draw_graph_input(
     theme: &Theme,
 ) -> InputOutputResponse {
     let mut response = InputOutputResponse::new();
-    let mut color = theme.grid_connection_dot;
+    let mut color = theme.get().grid_connection_dot;
     let input_response =
         ui.allocate_rect(input_rect, egui::Sense::drag().union(egui::Sense::hover()));
 
@@ -49,9 +49,9 @@ pub fn draw_graph_input(
     response.is_cursor_over = input_response.hovered();
 
     if response.is_disabled {
-        color = theme.grid_connection_dot_disabled;
+        color = theme.get().grid_connection_dot_disabled;
     } else if input_response.hovered() {
-        color = theme.grid_connection_dot_hover;
+        color = theme.get().grid_connection_dot_hover;
     }
 
     let shape = Shape::circle_filled(input_position, 5.0, color);
@@ -71,7 +71,7 @@ pub fn draw_graph_input(
             Align2::RIGHT_CENTER,
             input.name.clone(),
             FontId::proportional(12.0),
-            Color32::from(theme.override_text_color),
+            Color32::from(theme.get().override_text_color),
         );
     }
 

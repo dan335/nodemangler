@@ -38,7 +38,7 @@ pub struct Program {
     view_panel: ViewPanel,
     menu_panel: MenuPanel,
     editing_node_id: Option<String>,
-    viewing_node_id: Option<String>,
+    viewing_node_id_index: Option<(String, usize)>,   // id and output index
     dragging_menu_button: MenuItemsResult,
 }
 
@@ -47,9 +47,6 @@ impl Program {
         let (tx_change_graph, mut rx_change_graph) = mpsc::channel::<ChangeGraphMessage>(32);
         let (tx_change_node, mut rx_change_node) = mpsc::channel::<ChangeNodeMessage>(32);
         let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
-        // let (tx_set_input, mut rx_set_input) = mpsc::channel::<SetNodeInputMessage>(32);
-        // let (tx_input_changed, rx_input_changed) = mpsc::channel::<NodeInputChangedMessage>(32);
-        // let (tx_output_changed, rx_output_changed) = mpsc::channel::<NodeOutputChangedMessage>(32);
         let (tx_graph_changed, rx_graph_changed) = mpsc::channel::<GraphChangedMessage>(32);
         let (tx_node_position, mut rx_node_position) = mpsc::channel::<NodePosition>(32);
 
@@ -187,7 +184,7 @@ impl Program {
                     menu_panel: MenuPanel::new(),
                     dragging_menu_button: MenuItemsResult::default(),
                     editing_node_id: None,
-                    viewing_node_id: None,
+                    viewing_node_id_index: None,
                     tx_node_position,
                     rx_node_changed,
                     tx_change_node,
@@ -274,9 +271,11 @@ impl Program {
                     if self.editing_node_id == Some(node_id.clone()) {
                         self.editing_node_id = None;
                     }
-                    if self.viewing_node_id == Some(node_id.clone()) {
-                        self.viewing_node_id = None;
-                    };
+                    if let Some((viewing_node_id, _viewing_node_output_index)) = self.viewing_node_id_index.clone() {
+                        if viewing_node_id == node_id.clone() {
+                            self.viewing_node_id_index = None;
+                        }
+                    }
                     self.graph_editor.remove_node(&node_id);
                     //self.needs_to_save = true;
                 }
@@ -421,56 +420,6 @@ impl Program {
             }
         }
 
-        // messages for when node output changes
-        // while let Ok(node_output_message) = self.rx_output_changed.try_recv() {
-        //     puffin::profile_scope!("ui receive output messages");
-        //     if let Some(node) = self
-        //         .graph_editor
-        //         .graph_nodes
-        //         .get_mut(&node_output_message.node_id)
-        //     {
-        //         if let Some(output) = node.outputs.get_mut(node_output_message.output_index) {
-        //             output.value = node_output_message.value;
-
-        //             if node_output_message.output_index == 0 {
-        //                 node.thumbnail = match node_output_message.thumbnail {
-        //                     Some(thumbnail) => {
-        //                         let pixels = thumbnail.as_flat_samples();
-        //                         let size =
-        //                             [thumbnail.width() as usize, thumbnail.height() as usize];
-        //                         let color_image =
-        //                             ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-        //                         Some(ui.ctx().load_texture(
-        //                             node.id.clone(),
-        //                             color_image,
-        //                             Default::default(),
-        //                         ))
-        //                     }
-        //                     None => None,
-        //                 };
-        //             }
-
-        //             // thumbnail
-        //             //node.is_dirty = true;
-        //             node.time = Some(node_output_message.time);
-        //         }
-        //     }
-        // }
-
-        // // messages for when node input changes
-        // while let Ok(node_input_changed_message) = self.rx_input_changed.try_recv() {
-        //     puffin::profile_scope!("ui receive input messages");
-        //     if let Some(node) = self
-        //         .graph_editor
-        //         .graph_nodes
-        //         .get_mut(&node_input_changed_message.node_id)
-        //     {
-        //         if let Some(input) = node.inputs.get_mut(node_input_changed_message.input_index) {
-        //             input.value = node_input_changed_message.value;
-        //             //self.needs_to_save = true;
-        //         }
-        //     }
-        // }
 
         let app_rect = ctx.screen_rect();
 
@@ -485,14 +434,26 @@ impl Program {
 
 
         
-    
+        let menu_panel_rect = Rect::from_two_pos(
+            Pos2::new(0.0, APP_MENU_HEIGHT),
+            Pos2::new(200.0, app_rect.height()),
+        );
+
+        let node_graph_rect = Rect::from_two_pos(
+            Pos2::new(200.0, APP_MENU_HEIGHT),
+            Pos2::new(app_rect.width() - 300.0, app_rect.height()),
+        );
+
+        let settings_panel_rect = Rect::from_two_pos(
+            Pos2::new(app_rect.width() - 300.0, APP_MENU_HEIGHT),
+            Pos2::new(app_rect.width(), app_rect.height()),
+        );
+
+        
 
         // -------------------------
         // menu panel
-        let menu_panel_rect = Rect::from_two_pos(
-            Pos2::new(0.0, APP_MENU_HEIGHT),
-            Pos2::new(200.0, app_rect.height() / 2.0),
-        );
+        
         ui.allocate_ui_at_rect(menu_panel_rect, |ui| {
             puffin::profile_scope!("menu panel");
             let r = self.menu_panel.show(ui, theme);
@@ -507,31 +468,8 @@ impl Program {
         });
 
         // -------------------------
-        // top panel
-        let top_panel_rect = Rect::from_two_pos(
-            Pos2::new(200.0, APP_MENU_HEIGHT),
-            Pos2::new(app_rect.width() - 300.0, app_rect.height() / 2.0),
-        );
-        ui.allocate_ui_at_rect(top_panel_rect, |ui| {
-            puffin::profile_scope!("top panel");
-
-            if let Some(viewing_node_id) = &self.viewing_node_id {
-                if let Some(graph_node) = self.graph_editor.graph_nodes.get(viewing_node_id) {
-                    self.view_panel.show(ui, Some(graph_node), theme);
-                } else {
-                    self.view_panel.show(ui, None, theme);
-                }
-            } else {
-                self.view_panel.show(ui, None, theme);
-            }
-        });
-
-        // -------------------------
         // settings panel - top right
-        let settings_panel_rect = Rect::from_two_pos(
-            Pos2::new(app_rect.width() - 300.0, APP_MENU_HEIGHT),
-            Pos2::new(app_rect.width(), app_rect.height() / 2.0),
-        );
+        
 
         ui.allocate_ui_at_rect(settings_panel_rect, |ui| {
             puffin::profile_scope!("settings panel");
@@ -594,19 +532,16 @@ impl Program {
 
         // -------------------------
         // bottom graph panel
-        let bottom_panel_rect = Rect::from_two_pos(
-            Pos2::new(0.0, app_rect.height() / 2.0),
-            Pos2::new(app_rect.width(), app_rect.height()),
-        );
+        
 
-        ui.allocate_ui_at_rect(bottom_panel_rect, |ui| {
+        ui.allocate_ui_at_rect(node_graph_rect, |ui| {
             puffin::profile_scope!("graph panel");
             let graph_editor_response: GraphEditorResponse = self.graph_editor.show(
                 ui,
                 cursor_position,
                 cursor_primary_down,
                 &self.editing_node_id,
-                &self.viewing_node_id,
+                &self.viewing_node_id_index,
                 theme,
             );
 
@@ -632,8 +567,8 @@ impl Program {
                 self.edit_node(editing_node_id);
             }
 
-            if let Some(viewing_node_id) = graph_editor_response.viewing_node_id {
-                self.view_node(viewing_node_id);
+            if let Some((viewing_node_id, viewing_output_index)) = graph_editor_response.viewing_node_id_index {
+                self.view_node(viewing_node_id, viewing_output_index);
             }
 
             if graph_editor_response.clear_editing_node {
@@ -641,7 +576,7 @@ impl Program {
             }
 
             if graph_editor_response.clear_viewing_node {
-                self.viewing_node_id = None;
+                self.viewing_node_id_index = None;
             }
 
             if let Some(new_connection) = graph_editor_response.new_connection {
@@ -674,7 +609,7 @@ impl Program {
         ui.input(|i| {
             if i.pointer.primary_released() {
                 if let Some(operation) = &self.dragging_menu_button.operation_being_created {
-                    if bottom_panel_rect.contains(cursor_position) {
+                    if node_graph_rect.contains(cursor_position) {
                         //let node_position_view_space = Pos2::new(cursor_position.x - bottom_panel_rect.min.x, cursor_position.y - bottom_panel_rect.min.y);
                         self.add_node(
                             AddNodeType::Operation(operation.clone()),
@@ -683,7 +618,7 @@ impl Program {
                         );
                     }
                 } else if self.dragging_menu_button.subgraph_being_created {
-                    if bottom_panel_rect.contains(cursor_position) {
+                    if node_graph_rect.contains(cursor_position) {
                         self.add_node(
                             AddNodeType::Subgraph,
                             view_to_graph_space_pos2(self.graph_editor.zoom, cursor_position)
@@ -705,7 +640,7 @@ impl Program {
             ui.painter().add(egui::Shape::rect_filled(
                 drag_rect,
                 Rounding::none(),
-                egui::Color32::from_gray(100),
+                theme.get().node_header_bg,
             ));
         }
 
@@ -718,12 +653,12 @@ impl Program {
                 egui::Align2::RIGHT_BOTTOM,
                 txt,
                 egui::FontId::monospace(8.0),
-                egui::Color32::from(theme.text_faint),
+                egui::Color32::from(theme.get().text_faint),
             );
         }
 
         // show help in bottom left
-        let pos = Pos2::new(app_rect.left() + 10.0, app_rect.bottom() - 10.0);
+        let pos = Pos2::new(app_rect.left() + 220.0, app_rect.bottom() - 10.0);
         let txt =
             "left click: edit      right click: view      ctrl + left click: delete".to_string();
         ui.painter().text(
@@ -731,8 +666,17 @@ impl Program {
             egui::Align2::LEFT_BOTTOM,
             txt,
             egui::FontId::proportional(12.0),
-            egui::Color32::from(theme.text_faint),
+            egui::Color32::from(theme.get().text_faint),
         );
+
+        if let Some((viewing_node_id, graph_node_output_index)) = &self.viewing_node_id_index {
+            if let Some(graph_node) = self.graph_editor.graph_nodes.get(viewing_node_id) {
+                egui::Window::new("asdf").show(ctx, |ui| {
+                    self.view_panel.show(ui, graph_node, graph_node_output_index.clone(), theme);
+                });
+            }
+        }
+        
     }
 
     pub fn add_node(&mut self, node_type: AddNodeType, position_graph_space: Pos2) {
@@ -763,8 +707,8 @@ impl Program {
         }
     }
 
-    pub fn view_node(&mut self, node_id: String) {
-        self.viewing_node_id = Some(node_id);
+    pub fn view_node(&mut self, node_id: String, output_index: usize) {
+        self.viewing_node_id_index = Some((node_id, output_index));
         //self.needs_to_save = true;
     }
 
@@ -809,6 +753,31 @@ impl Program {
                     err
                 );
             }
+        }
+    }
+}
+
+
+#[derive(Debug)]
+pub struct NewConnection {
+    pub input_node_id: String,
+    pub input_connection_index: usize,
+    pub output_node_id: String,
+    pub output_connection_index: usize,
+}
+
+impl NewConnection {
+    pub fn new(
+        input_node_id: String,
+        input_connection_index: usize,
+        output_node_id: String,
+        output_connection_index: usize,
+    ) -> NewConnection {
+        NewConnection {
+            input_node_id,
+            input_connection_index,
+            output_node_id,
+            output_connection_index,
         }
     }
 }

@@ -20,7 +20,7 @@ pub fn show_graph_node_header(
     ui.painter().add(egui::Shape::rect_filled(
         node_rect,
         Rounding::same(ROUNDING),
-        theme.node_header_bg,
+        theme.get().node_header_bg,
     ));
 
     // outline
@@ -28,7 +28,7 @@ pub fn show_graph_node_header(
         ui.painter().add(egui::Shape::rect_stroke(
             node_rect,
             ROUNDING,
-            egui::Stroke::new(2.0, theme.node_header_selected_border),
+            egui::Stroke::new(1.0, theme.get().node_header_selected_border),
         ));
     }
 
@@ -38,8 +38,8 @@ pub fn show_graph_node_header(
         Align2::CENTER_CENTER,
         name,
         //egui::style::Style::text_styles(),
-        egui::FontId::proportional(graph_to_view_space(graph_zoom, 12.0)),
-        Color32::from(theme.override_text_color),
+        egui::FontId::proportional(graph_to_view_space(graph_zoom, 14.0)),
+        Color32::from(theme.get().override_text_color),
     );
 
     // subgraph
@@ -49,7 +49,7 @@ pub fn show_graph_node_header(
             Align2::CENTER_TOP,
             "subgraph",
             egui::FontId::default(),
-            Color32::from(theme.override_text_color),
+            Color32::from(theme.get().override_text_color),
         );
     }
 }

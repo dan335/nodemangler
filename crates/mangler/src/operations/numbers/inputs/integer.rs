@@ -12,19 +12,19 @@ pub struct OperationNumberInputInteger {}
 impl OperationNumberInputInteger {
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "integer input".to_string(),
+            name: "integer".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("integer".to_string(), Value::Integer(i32::default()), None),
+            Input::new("input".to_string(), Value::Integer(i32::default()), None),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("integer".to_string(), Value::Integer(i32::default()), None)
+            Output::new("output".to_string(), Value::Integer(i32::default()), None)
         ]
     }
 

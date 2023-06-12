@@ -3,7 +3,6 @@ use crate::operations::images::inputs::url::OperationImageInputUrl;
 use crate::operations::numbers::math::add::OperationNumberMathAdd;
 use crate::operations::numbers::inputs::{integer::OperationNumberInputInteger, decimal::OperationNumberInputDecimal};
 use crate::node_settings::NodeSettings;
-use crate::operations::numbers::outputs::integer::OperationNumberOutputInteger;
 use crate::value::Value;
 use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
@@ -15,7 +14,6 @@ use crate::{input::Input, output::Output, value::ValueType};
 pub enum Operation {
     NumberInputInteger,
     NumberInputDecimal,
-    NumberOutputInteger,
     NumberMathAdd,
     ImageInputUrl,
     ImageTransformResize,
@@ -26,7 +24,6 @@ impl Operation {
         match self {
             Operation::NumberInputInteger => OperationNumberInputInteger::settings(),
             Operation::NumberInputDecimal => OperationNumberInputDecimal::settings(),
-            Operation::NumberOutputInteger => OperationNumberOutputInteger::settings(),
             Operation::NumberMathAdd => OperationNumberMathAdd::settings(),
             Operation::ImageInputUrl => OperationImageInputUrl::settings(),
             Operation::ImageTransformResize => OperationImageTransformResize::settings(),
@@ -37,7 +34,6 @@ impl Operation {
         match self {
             Operation::NumberInputInteger => OperationNumberInputInteger::create_inputs(),
             Operation::NumberInputDecimal => OperationNumberInputDecimal::create_inputs(),
-            Operation::NumberOutputInteger => OperationNumberOutputInteger::create_inputs(),
             Operation::NumberMathAdd => OperationNumberMathAdd::create_inputs(),
             Operation::ImageInputUrl => OperationImageInputUrl::create_inputs(),
             Operation::ImageTransformResize => OperationImageTransformResize::create_inputs(),
@@ -48,7 +44,6 @@ impl Operation {
         match self {
             Operation::NumberInputInteger => OperationNumberInputInteger::create_outputs(),
             Operation::NumberInputDecimal => OperationNumberInputDecimal::create_outputs(),
-            Operation::NumberOutputInteger => OperationNumberOutputInteger::create_outputs(),
             Operation::NumberMathAdd => OperationNumberMathAdd::create_outputs(),
             Operation::ImageInputUrl => OperationImageInputUrl::create_outputs(),
             Operation::ImageTransformResize => OperationImageTransformResize::create_outputs(),
@@ -59,7 +54,6 @@ impl Operation {
         match self {
             Operation::NumberInputInteger => OperationNumberInputInteger::run(inputs).await,
             Operation::NumberInputDecimal => OperationNumberInputDecimal::run(inputs).await,
-            Operation::NumberOutputInteger => OperationNumberOutputInteger::run(inputs).await,
             Operation::NumberMathAdd => OperationNumberMathAdd::run(inputs).await,
             Operation::ImageInputUrl => OperationImageInputUrl::run(inputs).await,
             Operation::ImageTransformResize => OperationImageTransformResize::run(inputs).await,

@@ -14,4 +14,5 @@ panic = "abort"
 opt-level = 2
 
 [patch.crates-io]
+# support for serde in image
 "image" = { git = 'https://github.com/oovm/image.git' }

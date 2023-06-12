@@ -5,7 +5,7 @@ use epaint::{Color32, Pos2, Rect, Rounding};
 
 use crate::{
     program::Program,
-    theme::{set_theme, Theme, DARK, LIGHT},
+    theme::{set_theme, Theme},
     APP_MENU_HEIGHT,
 };
 
@@ -25,7 +25,7 @@ pub fn show(
     ui.painter().add(egui::Shape::rect_filled(
         app_menu_rect,
         rounding,
-        theme.menu_bar,
+        theme.get().menu_bar,
     ));
 
     let input_response = ui.allocate_rect(
@@ -35,7 +35,7 @@ pub fn show(
 
     let mut bar_response = show_menu(ui, programs, current_program, app_menu_rect, theme);
 
-    if let Some(new_theme) = show_window_control_menu(ctx, frame, ui) {
+    if let Some(new_theme) = show_window_control_menu(ctx, frame, ui, theme) {
         bar_response.theme_changed_to = Some(new_theme);
     }
 
@@ -118,14 +118,14 @@ pub fn show_menu(
 
                     // show programs
                     for (program_id, program_name) in program_list.iter() {
-                        let mut bg_color = Color32::from(theme.menu_bar_button);
+                        let mut bg_color = Color32::from(theme.get().menu_bar_button);
 
                         if current_program == &Some(program_id.clone()) {
-                            bg_color = Color32::from(theme.menu_bar_button_selected);
+                            bg_color = Color32::from(theme.get().menu_bar_button_selected);
                         }
 
-                        egui::Frame::none()
-                            .fill(bg_color)
+                        let r = egui::Frame::none()
+                            //.fill(bg_color)
                             .inner_margin(8.0)
                             .show(ui, |ui| {
                                 let name = program_name.clone();
@@ -142,7 +142,11 @@ pub fn show_menu(
                                 if ui.add(egui::Button::new("X").frame(false)).clicked() {
                                     bar_response.program_to_close = Some(program_id.clone());
                                 }
-                            });
+                        });
+
+                        if current_program == &Some(program_id.clone()) {
+                            ui.painter().add(egui::Shape::rect_filled(egui::Rect::from_min_max(Pos2::new(r.response.rect.left(), r.response.rect.bottom() - 3.0), r.response.rect.right_bottom()), Rounding::none(), theme.get().menu_bar_button_selected));
+                        }
 
                         ui.add_space(10.0);
                     }
@@ -154,7 +158,7 @@ pub fn show_menu(
     bar_response
 }
 
-pub fn show_window_control_menu(ctx: &egui::Context, frame: &mut eframe::Frame, ui: &mut egui::Ui) -> Option<Theme> {
+pub fn show_window_control_menu(ctx: &egui::Context, frame: &mut eframe::Frame, ui: &mut egui::Ui, theme: &Theme) -> Option<Theme> {
     let mut new_theme = None;
     
     let app_rect = ctx.screen_rect();
@@ -171,11 +175,7 @@ pub fn show_window_control_menu(ctx: &egui::Context, frame: &mut eframe::Frame, 
             Layout::right_to_left(egui::Align::Center),
             |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button("theme").clicked() {
-                        let theme = if ui.visuals().dark_mode { LIGHT } else { DARK };
-                        set_theme(ctx, theme.clone());
-                        new_theme = Some(theme);
-                    }
+                    
 
                     ui.add_space(15.0);
 
@@ -193,6 +193,14 @@ pub fn show_window_control_menu(ctx: &egui::Context, frame: &mut eframe::Frame, 
 
                     if ui.add(egui::Button::new("🗕").frame(false)).clicked() {
                         frame.set_minimized(true);
+                    }
+
+                    ui.add_space(25.0);
+
+                    if ui.add(egui::Button::new("theme").frame(false)).clicked() {
+                        let theme = if ui.visuals().dark_mode { Theme::Light } else { Theme::DarkGreen };
+                        set_theme(ctx, theme.clone());
+                        new_theme = Some(theme);
                     }
                 });
             },

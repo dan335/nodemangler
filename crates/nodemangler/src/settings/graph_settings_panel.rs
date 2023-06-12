@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 extern crate sanitize_filename;
-use eframe::egui;
-use epaint::vec2;
+use eframe::egui::{self, Button};
+use epaint::{vec2, Vec2};
 
 pub fn show(
     ui: &mut egui::Ui,
@@ -10,7 +10,12 @@ pub fn show(
 ) -> GraphSettingsResponse {
     let mut graph_settings_response = GraphSettingsResponse::new();
 
+    ui.heading("Graph Settings");
+
+    ui.add_space(16.0);
+
     ui.label("Graph Name");
+    ui.add_space(3.0);
     if ui.text_edit_singleline(program_name).changed() {
         graph_settings_response.new_name = Some(program_name.clone());
     }
@@ -23,17 +28,14 @@ pub fn show(
     }
 
     ui.add_space(20.0);
-
     ui.label("Save Location");
-    ui.horizontal(|ui| {
-        ui.allocate_ui(
-            vec2(ui.available_width() - 20.0, ui.available_height()),
-            |ui| {
-                ui.add_enabled_ui(false, |ui| ui.text_edit_singleline(&mut path));
-            },
-        );
+    ui.add_space(3.0);
 
-        if ui.button("🗀").clicked() {
+    ui.add_enabled_ui(false, |ui| ui.text_edit_singleline(&mut path));
+    ui.add_space(4.0);
+
+    ui.vertical_centered(|ui| {
+        if ui.add(Button::new(egui::RichText::new(format!("Select Location"))).min_size(Vec2::new(ui.available_width(), 14.0))).clicked() {
             let options = sanitize_filename::Options {
                 truncate: true,  // true by default, truncates to 255 bytes
                 windows: true, // default value depends on the OS, removes reserved names like `con` from start of strings on Windows

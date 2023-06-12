@@ -12,7 +12,7 @@ pub struct OperationNumberMathAdd {}
 impl OperationNumberMathAdd {
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "Add".to_string(),
+            name: "add".to_string(),
         }
     }
 
@@ -25,7 +25,7 @@ impl OperationNumberMathAdd {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("result".to_string(), Value::Integer(i32::default()), None)
+            Output::new("output".to_string(), Value::Integer(i32::default()), None)
         ]
     }
 

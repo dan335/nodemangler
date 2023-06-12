@@ -13,7 +13,10 @@ pub enum Value {
     Integer(i32),
     Decimal(f32),
     String(String),
-    DynamicImage(DynamicImage),
+    DynamicImage {
+        data: DynamicImage,
+        change_id: String,  // new id each time image changes
+    },
     Path(PathBuf),
 
     #[serde(
@@ -29,7 +32,7 @@ pub enum Value {
 impl Value {
     pub fn create_thumbnail(&self) -> Option<Thumbnail> {
         match &self {
-            Value::DynamicImage(value) => Some(Thumbnail::Image(value.thumbnail(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]).to_rgba8())),
+            Value::DynamicImage { data, change_id:_ } => Some(Thumbnail::Image(data.thumbnail(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]).to_rgba8())),
             Value::Bool(value) => Some(Thumbnail::Text(value.to_string())),
             Value::Integer(value) => Some(Thumbnail::Text(value.to_string())),
             Value::Decimal(value) => Some(Thumbnail::Text(value.to_string())),
@@ -49,9 +52,9 @@ impl Value {
             Value::String(_) => ValueType::String,
             Value::ImageFormat(_) => ValueType::ImageFormat,
             Value::UiButton(_) => ValueType::UiButton,
-            Value::DynamicImage(_) => ValueType::DynamicImage,
             Value::FilterType(_) => ValueType::FilterType,
             Value::Path(_) => ValueType::Path,
+            Value::DynamicImage { data:_, change_id:_ } => ValueType::DynamicImage,
         }
     }
 
@@ -64,7 +67,7 @@ impl Value {
             Value::FilterType(_) => "filter type".to_string(),
             Value::ImageFormat(_) => "image format".to_string(),
             Value::UiButton(_) => "button".to_string(),
-            Value::DynamicImage(_) => "image".to_string(),
+            Value::DynamicImage { data:_, change_id:_ } => "image".to_string(),
             Value::Path(_) => "path".to_string(),
         }
     }
@@ -75,7 +78,7 @@ impl Value {
             Value::Integer(_) => vec![ValueType::Bool, ValueType::Integer, ValueType::Decimal, ValueType::String],
             Value::Decimal(_) => vec![ValueType::Bool, ValueType::Integer, ValueType::Decimal, ValueType::String],
             Value::String(_) => vec![ValueType::String, ValueType::Path],
-            Value::DynamicImage(_) => vec![ValueType::DynamicImage],
+            Value::DynamicImage { data:_, change_id:_ } => vec![ValueType::DynamicImage],
             Value::Path(_) => vec![ValueType::String, ValueType::Path],
             Value::FilterType(_) => vec![ValueType::FilterType, ValueType::String],
             Value::ImageFormat(_) => vec![ValueType::FilterType, ValueType::String],
@@ -251,7 +254,7 @@ impl Value {
                 ValueType::Path => todo!(),
             },
             Value::UiButton(_) => todo!(),
-            Value::DynamicImage(_a) => match other {
+            Value::DynamicImage { data:_, change_id:_ } => match other {
                 ValueType::Bool => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),

@@ -22,7 +22,7 @@ pub fn draw_graph_output(
 ) -> InputOutputResponse {
     puffin::profile_scope!("graph node.draw_graph_output()");
     let mut response = InputOutputResponse::new();
-    let mut color = theme.grid_connection_dot;
+    let mut color = theme.get().grid_connection_dot;
     let output_response =
         ui.allocate_rect(input_rect, egui::Sense::drag().union(egui::Sense::hover()));
 
@@ -48,9 +48,9 @@ pub fn draw_graph_output(
 
     // highlight when hovering
     if response.is_disabled {
-        color = theme.grid_connection_dot_disabled;
+        color = theme.get().grid_connection_dot_disabled;
     } else if output_response.hovered() {
-        color = theme.grid_connection_dot_hover;
+        color = theme.get().grid_connection_dot_hover;
     }
 
     // draw bg
@@ -70,13 +70,13 @@ pub fn draw_graph_output(
     // show type when hovering
     if show_type || response.is_cursor_over {
         puffin::profile_scope!("graph node.show type when hovering");
-        let txt = format!("{} - {}", output.name, output_value_name);
+        let txt = format!("{} ({})", output.name, output_value_name);
         ui.painter().text(
             Pos2::new(output_position.x + 10.0, output_position.y),
             egui::Align2::LEFT_CENTER,
             txt,
             egui::FontId::proportional(12.0),
-            Color32::from(theme.override_text_color),
+            Color32::from(theme.get().override_text_color),
         );
     }
 
@@ -87,6 +87,6 @@ pub fn draw_graph_output_highlighted(output_position: Pos2, ui: &mut egui::Ui, t
     ui.painter().add(Shape::circle_stroke(
         output_position,
         6.0,
-        egui::Stroke::new(4.0, theme.grid_connection_dot_viewing),
+        egui::Stroke::new(1.0, theme.get().node_header_selected_border),
     ));
 }

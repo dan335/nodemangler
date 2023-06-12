@@ -12,19 +12,19 @@ pub struct OperationNumberInputDecimal {}
 impl OperationNumberInputDecimal {
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "Decimal".to_string(),
+            name: "decimal".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("decimal".to_string(), Value::Decimal(f32::default()), None)
+            Input::new("input".to_string(), Value::Decimal(f32::default()), None)
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("decimal".to_string(), Value::Decimal(f32::default()), None)
+            Output::new("output".to_string(), Value::Decimal(f32::default()), None)
         ]
     }
 

@@ -1,12 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use app_bar::bar;
 use eframe::egui;
-use epaint::Rounding;
-use program::Program;
-use std::collections::HashMap;
 use std::path::Path;
-use theme::{set_theme, Theme, DARK};
+use theme::Theme;
 mod app_bar;
 mod graph;
 mod menu;
@@ -15,13 +11,13 @@ mod settings;
 mod theme;
 mod title_bar;
 mod view;
+mod app;
 use egui::Pos2;
 
 pub const PROFILE: bool = false;
 pub const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
 pub const DEFAULT_WINDOW_HEIGHT: f32 = 800.0;
 pub const APP_MENU_HEIGHT: f32 = 35.0;
-//const ICON: &[u8; 2869] = include_bytes!("..\\assets\\mangler_icon.png");
 
 #[tokio::main]
 async fn main() -> Result<(), eframe::Error> {
@@ -39,17 +35,15 @@ async fn main() -> Result<(), eframe::Error> {
         ..Default::default()
     };
 
-    let my_app = ManglerApp::new();
-
     eframe::run_native(
         "Mangler",
         options,
-        Box::new(|_cc| {
-            //let frame = cc.egui_ctx.clone();
-            Box::<ManglerApp>::new(my_app)
+        Box::new(|cc| {
+            Box::<app::App>::new(app::App::new(cc))
         }),
     )
 }
+
 
 // do this without image crate?
 fn load_icon(path: &str) -> eframe::IconData {
@@ -69,144 +63,11 @@ fn load_icon(path: &str) -> eframe::IconData {
     }
 }
 
-struct ManglerApp {
-    programs: HashMap<String, Program>,
-    current_program: Option<String>,
-    theme: Theme,
-}
 
-impl eframe::App for ManglerApp {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        if PROFILE {
-            puffin::profile_function!();
-            puffin::GlobalProfiler::lock().new_frame(); // call once per frame!
-            puffin_egui::profiler_window(ctx);
-        }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            // bg
-            ui.painter().add(egui::Shape::rect_filled(
-                ui.max_rect(),
-                Rounding::same(0.0),
-                self.theme.panel_fill,
-            ));
 
-            let bar_response = bar::show(ctx, frame, ui, &self.programs, &self.current_program, &self.theme);
 
-            if let Some(new_program) = bar_response.new_program {
-                let program_id = new_program.id.clone();
-                self.programs.insert(new_program.id.clone(), new_program);
-                self.current_program = Some(program_id);
-            }
 
-            if let Some(current_program) = bar_response.current_program {
-                self.current_program = Some(current_program);
-            }
-
-            if let Some(theme) = bar_response.theme_changed_to {
-                self.theme = theme.clone();
-            }
-
-            if let Some(current_program) = &self.current_program {
-                if let Some(program) = self.programs.get_mut(current_program) {
-                    program.show(ctx, frame, ui, &self.theme);
-                }
-            }
-
-            if let Some(program_id_to_close) = bar_response.program_to_close {
-                if let Some(program) = self.programs.remove(&program_id_to_close) {
-                    program.close();
-                    if self.current_program == Some(program_id_to_close) {
-                        self.current_program = None;
-
-                        if let Some(next_program_id) = self.programs.keys().next() {
-                            self.current_program = Some(next_program_id.clone());
-                        }
-                    }
-                }
-            }
-        });
-
-        // for (_program_id, program) in self.programs.iter_mut() {
-        //     if program.needs_to_save {
-        //         program.save_to_file();
-        //     }
-        // }
-    }
-
-    fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
-
-    fn on_close_event(&mut self) -> bool {
-        true
-    }
-
-    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {}
-
-    fn auto_save_interval(&self) -> std::time::Duration {
-        std::time::Duration::from_secs(30)
-    }
-
-    fn max_size_points(&self) -> egui::Vec2 {
-        egui::Vec2::INFINITY
-    }
-
-    // fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-    //     // NOTE: a bright gray makes the shadows of the windows look weird.
-    //     // We use a bit of transparency so that if the user switches on the
-    //     // `transparent()` option they get immediate results.
-    //     egui::Color32::from_rgba_unmultiplied(12, 12, 12, 180).to_normalized_gamma_f32()
-
-    //     // _visuals.window_fill() would also be a natural choice
-    // }
-
-    fn persist_native_window(&self) -> bool {
-        true
-    }
-
-    fn persist_egui_memory(&self) -> bool {
-        true
-    }
-
-    fn warm_up_enabled(&self) -> bool {
-        false
-    }
-
-    fn post_rendering(&mut self, _window_size_px: [u32; 2], _frame: &eframe::Frame) {}
-}
-
-impl ManglerApp {
-    pub fn new() -> Self {
-        Self {
-            programs: HashMap::new(),
-            current_program: None,
-            theme: DARK,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct NewConnection {
-    input_node_id: String,
-    input_connection_index: usize,
-    output_node_id: String,
-    output_connection_index: usize,
-}
-
-impl NewConnection {
-    pub fn new(
-        input_node_id: String,
-        input_connection_index: usize,
-        output_node_id: String,
-        output_connection_index: usize,
-    ) -> NewConnection {
-        NewConnection {
-            input_node_id,
-            input_connection_index,
-            output_node_id,
-            output_connection_index,
-        }
-    }
-}
 
 pub fn view_to_graph_space(zoom: f32, n: f32) -> f32 {
     n * zoom

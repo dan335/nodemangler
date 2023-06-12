@@ -39,12 +39,15 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
         ui.heading(name);
     });
 
+    ui.add_space(10.0);
+
     ui.heading("Inputs");
+    ui.add_space(8.0);
 
     // show properties
     for (input_index, input) in node.inputs.iter_mut().enumerate() {
         ui.horizontal(|ui| {
-            ui.label(input.name.clone());
+            ui.label(format!("{}      ", input.name.clone()));
             // todo: redo this
             // each value type should only have one option
             match input.value.clone() {
@@ -107,17 +110,20 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                         ui.label(a);
                     } else {
                         let mut x = a;
-                        if ui.text_edit_singleline(&mut x).changed() {
-                            let value = Value::String(x);
-                            change_value(
-                                tx_change_node.clone(),
-                                node.id.clone(),
-                                input_index,
-                                input,
-                                value.clone(),
-                            );
-                            input.value = value;
-                        }
+                        ui.allocate_ui(egui::Vec2::new(ui.available_width() - 70.0, 16.0), |ui| {
+                            if ui.text_edit_multiline(&mut x).changed() {
+                                let value = Value::String(x);
+                                change_value(
+                                    tx_change_node.clone(),
+                                    node.id.clone(),
+                                    input_index,
+                                    input,
+                                    value.clone(),
+                                );
+                                input.value = value;
+                            }
+                        });
+                        
                     }
                 }
                 Value::FilterType(a) => {
@@ -413,7 +419,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                         );
                     }
                 }
-                Value::DynamicImage(_) => {}
+                Value::DynamicImage{data:_, change_id:_} => {}
                 Value::Path(a) => {
                     if input.connection.is_some() {
                         ui.label(a.into_os_string().into_string().unwrap());
@@ -463,9 +469,10 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
             }
 
             // exposed checkbox
+            ui.add_space(12.0);
             let mut is_exposed = input.is_exposed;
             if ui
-                .add(egui::Checkbox::new(&mut is_exposed, "expose"))
+                .add(egui::Checkbox::new(&mut is_exposed, "   expose"))
                 .changed()
             {
                 let message = ChangeNodeMessage::SetExposeInput {
@@ -484,15 +491,18 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                 }
             }
         });
+        ui.add_space(6.0);
     }
 
-    ui.add_space(20.0);
+    ui.add_space(36.0);
     ui.heading("Outputs");
+    ui.add_space(8.0);
 
     // outputs
     for (output_index, output) in node.outputs.iter_mut().enumerate() {
         ui.horizontal(|ui| {
-            ui.add(Label::new(output.name.clone()));
+            ui.label(format!("{}      ", output.name.clone()));
+            //ui.add(Label::new(output.name.clone()));
             match &output.value {
                 Value::Integer(v) => {
                     ui.add(Label::new(v.to_string()));
@@ -507,9 +517,10 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
             }
 
             // exposed checkbox
+            ui.add_space(12.0);
             let mut is_exposed = output.is_exposed;
             if ui
-                .add(egui::Checkbox::new(&mut is_exposed, "expose"))
+                .add(egui::Checkbox::new(&mut is_exposed, "   expose"))
                 .changed()
             {
                 let message = ChangeNodeMessage::SetExposeOutput {

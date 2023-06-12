@@ -26,6 +26,8 @@ impl MenuPanel {
         let mut index = -1;
 
         egui::ScrollArea::vertical().show(ui, |ui| {
+            ui.add_space(5.0);
+            
             for item in self.items.iter_mut() {
                 let (i, result) = item.show(ui, index, theme);
                 index = i;
