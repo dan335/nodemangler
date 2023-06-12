@@ -20,6 +20,7 @@ pub fn draw_graph_output(
     show_type: bool,
     temp_connection: Option<TempConnection>,
     theme: &Theme,
+    graph_zoom: f32,
 ) -> InputOutputResponse {
     puffin::profile_scope!("graph node.draw_graph_output()");
     let mut response = InputOutputResponse::new();
@@ -73,7 +74,7 @@ pub fn draw_graph_output(
         puffin::profile_scope!("graph node.show type when hovering");
 
         let txt = format!("{} ({})", output.name, output_value_name);
-        let font_id = egui::FontId::proportional(12.0);
+        let font_id = egui::FontId::proportional(crate::graph_to_view_space(graph_zoom, 12.0));
         let color = theme.get().override_text_color;
         let pos = Pos2::new(output_position.x + 10.0, output_position.y);
 

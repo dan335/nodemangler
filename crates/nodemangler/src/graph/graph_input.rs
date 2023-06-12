@@ -1,4 +1,4 @@
-use crate::{graph::graph_node::InputOutputResponse, theme::Theme};
+use crate::{graph::graph_node::InputOutputResponse, theme::Theme, graph_to_view_space};
 use eframe::{
     egui,
     emath::Align2,
@@ -20,6 +20,7 @@ pub fn draw_graph_input(
     show_names: bool,
     temp_connection: Option<TempConnection>,
     theme: &Theme,
+    graph_zoom: f32,
 ) -> InputOutputResponse {
     let mut response = InputOutputResponse::new();
     let mut color = theme.get().grid_connection_dot;
@@ -66,7 +67,7 @@ pub fn draw_graph_input(
     }
 
     if show_names || response.is_cursor_over {
-        let font_id = egui::FontId::proportional(12.0);
+        let font_id = egui::FontId::proportional(graph_to_view_space(graph_zoom, 12.0));
         let color = theme.get().override_text_color;
         let pos = Pos2::new(input_position.x - 10.0, input_position.y);
 

@@ -152,6 +152,7 @@ impl GraphNode {
                 bg_response.hovered(),
                 temp_connection.clone(),
                 theme,
+                graph_zoom,
             );
 
             if input_output_response.has_started_creating_connection {
@@ -192,6 +193,7 @@ impl GraphNode {
                 bg_response.hovered(),
                 temp_connection.clone(),
                 theme,
+                graph_zoom
             );
 
             // started dragging from connection
