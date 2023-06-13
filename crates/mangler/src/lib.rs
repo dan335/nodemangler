@@ -21,11 +21,13 @@ pub mod output;
 pub mod value;
 pub mod node_type;
 pub mod thumbnail;
+pub mod app;
 mod graph_tests;
 
 pub fn get_id() -> String {
     nanoid!()
 }
+
 
 
 #[derive(Debug)]
@@ -34,6 +36,10 @@ pub enum ChangeNodeMessage {
         node_id: String,
         input_index: usize,
         value: Value,
+    },
+    SetPosition {
+        node_id: String,
+        position: glam::f32::Vec2,
     },
     SetExposeInput {
         node_id: String,
@@ -76,6 +82,10 @@ pub enum NodeChangedMessage {
         settings: NodeSettings,
         inputs: Vec<Input>,
         outputs: Vec<Output>,
+    },
+    Busy {
+        node_id: String,
+        is_busy: bool,
     }
 }
 
@@ -137,11 +147,11 @@ pub enum AddNodeType {
     Subgraph
 }
 
-#[derive(Debug)]
-pub struct NodePosition {
-    pub node_id: String,
-    pub position: glam::f32::Vec2,
-}
+// #[derive(Debug)]
+// pub struct NodePosition {
+//     pub node_id: String,
+//     pub position: glam::f32::Vec2,
+// }
 
 #[derive(Debug, Clone)]
 pub enum OperationListItem {
@@ -182,6 +192,8 @@ pub fn operation_list() -> Vec<OperationListItem> {
             ]},
             OperationListItem::Category { name: "transform".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::ImageTransformResize },
+                OperationListItem::Operation { operation: Operation::ImageTransformResizeExact },
+                OperationListItem::Operation { operation: Operation::ImageTransformResizeFill },
             ]},
             OperationListItem::Category { name: "adjustments".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::ImageAdjustmentBlur },

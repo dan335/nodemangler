@@ -207,7 +207,7 @@ impl Value {
                     Ok(Value::Path(path))
                 }
             },
-            Value::FilterType(_a) => match other {
+            Value::FilterType(a) => match other {
                 ValueType::Bool => Err(ConversionError {
                     message: "Unable to convert filter type to bool.".to_string(),
                 }),
@@ -220,7 +220,7 @@ impl Value {
                 ValueType::String => Err(ConversionError {
                     message: "Unable to convert filter type to string.".to_string(),
                 }),
-                ValueType::FilterType => todo!(),
+                ValueType::FilterType => Ok(Value::FilterType(*a)),
                 ValueType::ImageFormat => Err(ConversionError {
                     message: "Unable to convert filter type to image format.".to_string(),
                 }),

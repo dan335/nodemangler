@@ -44,6 +44,8 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
     ui.heading("Inputs");
     ui.add_space(8.0);
 
+    // todo: try using ui.columns
+
     // show properties
     for (input_index, input) in node.inputs.iter_mut().enumerate() {
         ui.horizontal(|ui| {

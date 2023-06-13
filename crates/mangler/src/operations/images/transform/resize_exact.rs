@@ -10,12 +10,12 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationImageTransformResize {}
+pub struct OperationImageTransformResizeExact {}
 
-impl OperationImageTransformResize {
+impl OperationImageTransformResizeExact {
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "resize".to_string(),
+            name: "resize exact".to_string(),
         }
     }
 
@@ -48,7 +48,7 @@ impl OperationImageTransformResize {
 
         let Value::DynamicImage{data, change_id:_} = inputs[0].value.clone() else { return Err(OperationError { message: "Error getting image.".to_string() }); };
 
-        let resized = data.resize(width as u32, height as u32, filter_type);
+        let resized = data.resize_exact(width as u32, height as u32, filter_type);
         let value_width = Value::Integer(resized.width() as i32);
         let value_height = Value::Integer(resized.height() as i32);
 

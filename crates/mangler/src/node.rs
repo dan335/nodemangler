@@ -21,6 +21,7 @@ pub struct Node {
     pub is_dirty: bool, // node needs to be re-run
     pub position: Vec2,
     pub node_type: NodeType,
+    pub is_busy: bool,
 }
 
 impl PartialEq for Node {
@@ -41,6 +42,7 @@ impl Node {
                 is_dirty: true,
                 position,
                 node_type: NodeType::Operation { operation },
+                is_busy: false,
             },
             AddNodeType::Subgraph => Node {
                 id,
@@ -57,6 +59,7 @@ impl Node {
                     graph: None,
                     rx_node_changed: None,
                 },
+                is_busy: false,
             },
         }
     }
@@ -114,6 +117,21 @@ impl Node {
             NodeType::Operation { operation } => {
                 // run operation
                 // collect results
+
+                if let Some(tx) = tx_output.clone() {
+                    let message = NodeChangedMessage::Busy { node_id: self.id.clone(), is_busy: true };
+
+                    match tx.try_send(message) {
+                        Ok(_) => {}
+                        Err(err) => {
+                            println!(
+                                "Error sending NodeChangedMessage::OutputChanged: {:?}",
+                                err
+                            );
+                        }
+                    }
+                }
+
                 if let Ok(operation_response) = operation.run(&self.inputs).await {
                     // time node took to run
                     self.time = Some(operation_response.time);
@@ -143,6 +161,20 @@ impl Node {
                         // set output's value
                         if let Some(output) = self.outputs.get_mut(index) {
                             output.value = response.value;
+                        }
+                    }
+                }
+
+                if let Some(tx) = tx_output.clone() {
+                    let message = NodeChangedMessage::Busy { node_id: self.id.clone(), is_busy: false };
+
+                    match tx.try_send(message) {
+                        Ok(_) => {}
+                        Err(err) => {
+                            println!(
+                                "Error sending NodeChangedMessage::OutputChanged: {:?}",
+                                err
+                            );
                         }
                     }
                 }

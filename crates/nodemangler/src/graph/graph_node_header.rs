@@ -15,13 +15,23 @@ pub fn show_graph_node_header(
     is_subgraph: bool,
     graph_zoom: f32,
     theme: &Theme,
+    is_busy: bool,
 ) {
     // bg
-    ui.painter().add(egui::Shape::rect_filled(
-        node_rect,
-        Rounding::same(ROUNDING),
-        theme.get().node_header_bg,
-    ));
+    if is_busy {
+        ui.painter().add(egui::Shape::rect_filled(
+            node_rect,
+            Rounding::same(ROUNDING),
+            theme.get().grid_connection_line,
+        ));
+    } else {
+        ui.painter().add(egui::Shape::rect_filled(
+            node_rect,
+            Rounding::same(ROUNDING),
+            theme.get().node_header_bg,
+        ));
+    }
+    
 
     // outline
     if is_editing {

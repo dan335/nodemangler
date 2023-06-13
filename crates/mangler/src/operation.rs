@@ -1,6 +1,8 @@
 use crate::operations::images::adjustments::blur::OperationImageAdjustmentBlur;
 use crate::operations::images::transform::resize::OperationImageTransformResize;
 use crate::operations::images::inputs::url::OperationImageInputUrl;
+use crate::operations::images::transform::resize_exact::OperationImageTransformResizeExact;
+use crate::operations::images::transform::resize_fill::OperationImageTransformResizeFill;
 use crate::operations::numbers::math::add::OperationNumberMathAdd;
 use crate::operations::numbers::inputs::{integer::OperationNumberInputInteger, decimal::OperationNumberInputDecimal};
 use crate::node_settings::NodeSettings;
@@ -18,6 +20,8 @@ pub enum Operation {
     NumberMathAdd,
     ImageInputUrl,
     ImageTransformResize,
+    ImageTransformResizeExact,
+    ImageTransformResizeFill,
     ImageAdjustmentBlur,
     ImageAdjustmentContrast,
     IMageAdjustmentGrayscale,
@@ -31,6 +35,8 @@ impl Operation {
             Operation::NumberMathAdd => OperationNumberMathAdd::settings(),
             Operation::ImageInputUrl => OperationImageInputUrl::settings(),
             Operation::ImageTransformResize => OperationImageTransformResize::settings(),
+            Operation::ImageTransformResizeExact => OperationImageTransformResizeExact::settings(),
+            Operation::ImageTransformResizeFill => OperationImageTransformResizeFill::settings(),
             Operation::ImageAdjustmentBlur => OperationImageAdjustmentBlur::settings(),
             Operation::ImageAdjustmentContrast => crate::operations::images::adjustments::contrast::OperationImageAdjustmentContrast::settings(),
             Operation::IMageAdjustmentGrayscale => crate::operations::images::adjustments::grayscale::OperationImageAdjustmentGrayscale::settings(),
@@ -44,6 +50,8 @@ impl Operation {
             Operation::NumberMathAdd => OperationNumberMathAdd::create_inputs(),
             Operation::ImageInputUrl => OperationImageInputUrl::create_inputs(),
             Operation::ImageTransformResize => OperationImageTransformResize::create_inputs(),
+            Operation::ImageTransformResizeExact => OperationImageTransformResizeExact::create_inputs(),
+            Operation::ImageTransformResizeFill => OperationImageTransformResizeFill::create_inputs(),
             Operation::ImageAdjustmentBlur => OperationImageAdjustmentBlur::create_inputs(),
             Operation::ImageAdjustmentContrast => crate::operations::images::adjustments::contrast::OperationImageAdjustmentContrast::create_inputs(),
             Operation::IMageAdjustmentGrayscale => crate::operations::images::adjustments::grayscale::OperationImageAdjustmentGrayscale::create_inputs(),
@@ -57,6 +65,8 @@ impl Operation {
             Operation::NumberMathAdd => OperationNumberMathAdd::create_outputs(),
             Operation::ImageInputUrl => OperationImageInputUrl::create_outputs(),
             Operation::ImageTransformResize => OperationImageTransformResize::create_outputs(),
+            Operation::ImageTransformResizeExact => OperationImageTransformResizeExact::create_outputs(),
+            Operation::ImageTransformResizeFill => OperationImageTransformResizeFill::create_outputs(),
             Operation::ImageAdjustmentBlur => OperationImageAdjustmentBlur::create_outputs(),
             Operation::ImageAdjustmentContrast => crate::operations::images::adjustments::contrast::OperationImageAdjustmentContrast::create_outputs(),
             Operation::IMageAdjustmentGrayscale => crate::operations::images::adjustments::grayscale::OperationImageAdjustmentGrayscale::create_outputs(),
@@ -70,6 +80,8 @@ impl Operation {
             Operation::NumberMathAdd => OperationNumberMathAdd::run(inputs).await,
             Operation::ImageInputUrl => OperationImageInputUrl::run(inputs).await,
             Operation::ImageTransformResize => OperationImageTransformResize::run(inputs).await,
+            Operation::ImageTransformResizeExact => OperationImageTransformResizeExact::run(inputs).await,
+            Operation::ImageTransformResizeFill => OperationImageTransformResizeFill::run(inputs).await,
             Operation::ImageAdjustmentBlur => OperationImageAdjustmentBlur::run(inputs).await,
             Operation::ImageAdjustmentContrast => crate::operations::images::adjustments::contrast::OperationImageAdjustmentContrast::run(inputs).await,
             Operation::IMageAdjustmentGrayscale => crate::operations::images::adjustments::grayscale::OperationImageAdjustmentGrayscale::run(inputs).await,

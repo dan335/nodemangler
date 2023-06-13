@@ -31,6 +31,7 @@ pub struct GraphNode {
     pub last_drag_position: Option<Pos2>,
     pub thumbnail: Option<GraphNodeThumbnail>,
     pub is_subgraph: bool,
+    pub is_busy: bool,
 }
 
 impl GraphNode {
@@ -53,6 +54,7 @@ impl GraphNode {
             outputs,
             time: None,
             is_subgraph,
+            is_busy: false,
         }
     }
 
@@ -128,6 +130,7 @@ impl GraphNode {
             self.is_subgraph,
             graph_zoom,
             theme,
+            self.is_busy,
         );
 
         show_graph_node_info(ui, self.time, node_rect, &self.outputs, graph_zoom, theme);

@@ -2,7 +2,7 @@ use eframe::egui;
 use epaint::{ColorImage, Pos2, Rect, Rounding, Vec2};
 use mangler::{
     get_id, graph::Graph, node_type::NodeType, AddNodeType, ChangeGraphMessage, ChangeNodeMessage,
-    GraphChangedMessage, NewGraphError, NodeChangedMessage, NodePosition,
+    GraphChangedMessage, NewGraphError, NodeChangedMessage,
 };
 use std::path::PathBuf;
 use tokio::{
@@ -33,7 +33,6 @@ pub struct Program {
     tx_change_node: mpsc::Sender<ChangeNodeMessage>,
     rx_node_changed: mpsc::Receiver<NodeChangedMessage>,
     rx_graph_changed: mpsc::Receiver<GraphChangedMessage>,
-    tx_node_position: mpsc::Sender<NodePosition>,
     graph_editor: GraphEditor,
     view_panel: ViewPanel,
     menu_panel: MenuPanel,
@@ -48,7 +47,6 @@ impl Program {
         let (tx_change_node, mut rx_change_node) = mpsc::channel::<ChangeNodeMessage>(32);
         let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
         let (tx_graph_changed, rx_graph_changed) = mpsc::channel::<GraphChangedMessage>(32);
-        let (tx_node_position, mut rx_node_position) = mpsc::channel::<NodePosition>(32);
 
         let graph_result = match save_file {
             Some(path) => Graph::load(path, Some(tx_node_changed), Some(tx_graph_changed), false),
@@ -72,101 +70,110 @@ impl Program {
                     loop {
                         let mut sleep_time = Instant::now() + Duration::from_millis(16);
 
-                        while let Ok(change_graph_message) = rx_change_graph.try_recv() {
-                            match change_graph_message {
-                                ChangeGraphMessage::AddNode {
-                                    node_id,
-                                    node_type,
-                                    position,
-                                } => {
-                                    graph.add_node(node_id, node_type, position).await;
-                                }
-                                ChangeGraphMessage::RemoveNode { node_id } => {
-                                    graph.remove_node(node_id).await;
-                                }
-                                ChangeGraphMessage::AddConnection {
-                                    input_node_id,
-                                    input_connection_index,
-                                    output_node_id,
-                                    output_connection_index,
-                                } => {
-                                    graph
-                                        .add_connection(
-                                            input_node_id,
-                                            input_connection_index,
-                                            output_node_id,
-                                            output_connection_index,
-                                        )
-                                        .await;
-                                }
-                                ChangeGraphMessage::RemoveConnection {
-                                    node_id,
-                                    input_index,
-                                } => {
-                                    graph.remove_connection(node_id, input_index).await;
-                                }
-                                ChangeGraphMessage::SetSavePath(save_path) => {
-                                    graph.set_save_path(save_path);
-                                }
-                                ChangeGraphMessage::SetGraphName(graph_name) => {
-                                    graph.name = graph_name;
-                                    graph.save_to_file();
-                                }
-                            }
-                        }
-
-                        while let Ok(change_node_message) = rx_change_node.try_recv() {
-                            match change_node_message {
-                                ChangeNodeMessage::SetInput {
-                                    node_id,
-                                    input_index,
-                                    value,
-                                } => {
-                                    graph.set_input(node_id, input_index, value);
-                                }
-                                ChangeNodeMessage::SetExposeInput {
-                                    node_id,
-                                    input_index,
-                                    set_to,
-                                } => {
-                                    if let Some(node) = graph.nodes.get_mut(&node_id) {
-                                        if let Some(input) = node.inputs.get_mut(input_index) {
-                                            input.is_exposed = set_to;
-                                            graph.save_to_file();
-                                        }
-                                    }
-                                }
-                                ChangeNodeMessage::SetExposeOutput {
-                                    node_id,
-                                    output_index,
-                                    set_to,
-                                } => {
-                                    if let Some(node) = graph.nodes.get_mut(&node_id) {
-                                        if let Some(output) = node.outputs.get_mut(output_index) {
-                                            output.is_exposed = set_to;
-                                            graph.save_to_file();
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // while let Ok(node_input_message) = rx_set_input.try_recv() {
-                        //     graph.set_input(
-                        //         node_input_message.node_id,
-                        //         node_input_message.input_index,
-                        //         node_input_message.value,
-                        //     );
+                        // while let Ok(change_graph_message) = rx_change_graph.try_recv() {
+                        //     match change_graph_message {
+                        //         ChangeGraphMessage::AddNode {
+                        //             node_id,
+                        //             node_type,
+                        //             position,
+                        //         } => {
+                        //             graph.add_node(node_id, node_type, position).await;
+                        //         }
+                        //         ChangeGraphMessage::RemoveNode { node_id } => {
+                        //             graph.remove_node(node_id).await;
+                        //         }
+                        //         ChangeGraphMessage::AddConnection {
+                        //             input_node_id,
+                        //             input_connection_index,
+                        //             output_node_id,
+                        //             output_connection_index,
+                        //         } => {
+                        //             graph
+                        //                 .add_connection(
+                        //                     input_node_id,
+                        //                     input_connection_index,
+                        //                     output_node_id,
+                        //                     output_connection_index,
+                        //                 )
+                        //                 .await;
+                        //         }
+                        //         ChangeGraphMessage::RemoveConnection {
+                        //             node_id,
+                        //             input_index,
+                        //         } => {
+                        //             graph.remove_connection(node_id, input_index).await;
+                        //         }
+                        //         ChangeGraphMessage::SetSavePath(save_path) => {
+                        //             graph.set_save_path(save_path);
+                        //         }
+                        //         ChangeGraphMessage::SetGraphName(graph_name) => {
+                        //             graph.name = graph_name;
+                        //             graph.save_to_file();
+                        //         }
+                        //     }
                         // }
 
-                        while let Ok(node_position_message) = rx_node_position.try_recv() {
-                            graph.set_node_position(
-                                node_position_message.node_id,
-                                node_position_message.position,
-                            );
-                        }
+                        // while let Ok(change_node_message) = rx_change_node.try_recv() {
+                        //     match change_node_message {
+                        //         ChangeNodeMessage::SetInput {
+                        //             node_id,
+                        //             input_index,
+                        //             value,
+                        //         } => {
+                        //             graph.set_input(node_id, input_index, value);
+                        //         }
+                        //         ChangeNodeMessage::SetPosition {
+                        //             node_id,
+                        //             position
+                        //         } => {
+                        //             graph.set_node_position(
+                        //                 node_id,
+                        //                 position,
+                        //             );
+                        //         }
+                        //         ChangeNodeMessage::SetExposeInput {
+                        //             node_id,
+                        //             input_index,
+                        //             set_to,
+                        //         } => {
+                        //             if let Some(node) = graph.nodes.get_mut(&node_id) {
+                        //                 if let Some(input) = node.inputs.get_mut(input_index) {
+                        //                     input.is_exposed = set_to;
+                        //                     graph.save_to_file();
+                        //                 }
+                        //             }
+                        //         }
+                        //         ChangeNodeMessage::SetExposeOutput {
+                        //             node_id,
+                        //             output_index,
+                        //             set_to,
+                        //         } => {
+                        //             if let Some(node) = graph.nodes.get_mut(&node_id) {
+                        //                 if let Some(output) = node.outputs.get_mut(output_index) {
+                        //                     output.is_exposed = set_to;
+                        //                     graph.save_to_file();
+                        //                 }
+                        //             }
+                        //         }
+                        //     }
+                        // }
 
-                        graph.run().await;
+                        // // while let Ok(node_input_message) = rx_set_input.try_recv() {
+                        // //     graph.set_input(
+                        // //         node_input_message.node_id,
+                        // //         node_input_message.input_index,
+                        // //         node_input_message.value,
+                        // //     );
+                        // // }
+
+                        // // while let Ok(node_position_message) = rx_node_position.try_recv() {
+                        // //     graph.set_node_position(
+                        // //         node_position_message.node_id,
+                        // //         node_position_message.position,
+                        // //     );
+                        // // }
+
+                        // graph.run().await;
 
                         sleep_time = sleep_time.max(Instant::now() + Duration::from_millis(2));
                         tokio::time::sleep_until(sleep_time).await;
@@ -185,7 +192,6 @@ impl Program {
                     dragging_menu_button: MenuItemsResult::default(),
                     editing_node_id: None,
                     viewing_node_id_index: None,
-                    tx_node_position,
                     rx_node_changed,
                     tx_change_node,
                     rx_graph_changed,
@@ -416,6 +422,11 @@ impl Program {
                         node.inputs = inputs;
                         node.outputs = outputs;
                     }
+                },
+                NodeChangedMessage::Busy { node_id, is_busy } => {
+                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
+                        node.is_busy = is_busy;
+                    }
                 }
             }
         }
@@ -546,12 +557,12 @@ impl Program {
             );
 
             if let Some(new_node_position) = graph_editor_response.new_node_position {
-                let node_position_message = NodePosition {
+                let node_position_message = ChangeNodeMessage::SetPosition {
                     node_id: new_node_position.0,
                     position: glam::f32::vec2(new_node_position.1.x, new_node_position.1.y),
                 };
 
-                match self.tx_node_position.try_send(node_position_message) {
+                match self.tx_change_node.try_send(node_position_message) {
                     Ok(_) => {}
                     Err(error) => {
                         println!("Error sending node position message. {:?}", error);
