@@ -197,7 +197,7 @@ impl GraphEditor {
 
             // are we viewing node
             let mut is_viewing = false;
-            if let Some((viewing_node_id, viewing_output_index)) = viewing_node_id_index {
+            if let Some((viewing_node_id, _)) = viewing_node_id_index {
                 if viewing_node_id == graph_node_id {
                     is_viewing = true;
                 }

@@ -3,7 +3,7 @@ use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect};
 
 use crate::theme::Theme;
-use crate::{graph_to_view_space_pos2, graph_to_view_space};
+use crate::graph_to_view_space;
 
 const ROUNDING: f32 = 2.0;
 

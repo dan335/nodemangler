@@ -1,7 +1,7 @@
 use crate::{graph::graph_node::InputOutputResponse, theme::Theme};
 use eframe::{
     egui,
-    epaint::{Color32, Pos2, Rect, Shape},
+    epaint::{Pos2, Rect, Shape},
 };
 use epaint::Rounding;
 

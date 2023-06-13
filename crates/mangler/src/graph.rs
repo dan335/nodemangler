@@ -462,7 +462,8 @@ impl Graph {
             for (connected_node_id, input_index, value) in output_data.iter() {
                 if let Some(connected_node) = self.nodes.get_mut(&connected_node_id.clone()) {
 
-                    connected_node.set_input_value(*input_index, value.clone());
+                    //connected_node.set_input_value(*input_index, value.clone());
+                    connected_node.inputs[*input_index].value = value.clone();
 
                     if let Some(tx) = &self.tx_node_changed {
                         let message = NodeChangedMessage::InputChanged {

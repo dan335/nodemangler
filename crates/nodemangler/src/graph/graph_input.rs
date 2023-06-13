@@ -1,8 +1,7 @@
 use crate::{graph::graph_node::InputOutputResponse, theme::Theme, graph_to_view_space};
 use eframe::{
     egui,
-    emath::Align2,
-    epaint::{Color32, FontId, Pos2, Rect, Shape},
+    epaint::{Pos2, Rect, Shape},
 };
 use mangler::input::Input;
 

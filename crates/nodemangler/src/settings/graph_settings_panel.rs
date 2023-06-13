@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 extern crate sanitize_filename;
 use eframe::egui::{self, Button};
-use epaint::{vec2, Vec2};
+use epaint::Vec2;
 
 pub fn show(
     ui: &mut egui::Ui,

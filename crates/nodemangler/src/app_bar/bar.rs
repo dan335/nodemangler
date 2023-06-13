@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use eframe::egui::{self, Layout};
-use epaint::{Color32, Pos2, Rect, Rounding};
+use epaint::{Pos2, Rect, Rounding};
 
 use crate::{
     program::Program,
@@ -118,22 +118,10 @@ pub fn show_menu(
 
                     // show programs
                     for (program_id, program_name) in program_list.iter() {
-                        let mut bg_color = Color32::from(theme.get().menu_bar_button);
-
-                        if current_program == &Some(program_id.clone()) {
-                            bg_color = Color32::from(theme.get().menu_bar_button_selected);
-                        }
-
                         let r = egui::Frame::none()
-                            //.fill(bg_color)
                             .inner_margin(8.0)
                             .show(ui, |ui| {
                                 let name = program_name.clone();
-
-                                // if *needs_to_save {
-                                //     name.push(' ');
-                                //     name.push('*');
-                                // }
 
                                 if ui.add(egui::Button::new(name).frame(false)).clicked() {
                                     bar_response.current_program = Some(program_id.clone());
