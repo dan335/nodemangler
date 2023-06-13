@@ -101,7 +101,6 @@ impl Graph {
     pub fn set_node_position(&mut self, node_id: String, position: glam::f32::Vec2) {
         if let Some(node) = self.nodes.get_mut(&node_id) {
             node.position = position;
-            self.save_to_file();
         }
     }
 
@@ -139,8 +138,6 @@ impl Graph {
 
         self.is_dirty = true;
         self.nodes.insert(node_id.clone(), node);
-
-        self.save_to_file();
 
         node_id
     }
@@ -189,8 +186,6 @@ impl Graph {
                 }
             }
         }
-
-        self.save_to_file();
     }
 
     pub async fn add_connection(
@@ -256,8 +251,6 @@ impl Graph {
                         }
                     }
                 }
-    
-                self.save_to_file();
             }
         }
     }
@@ -295,9 +288,7 @@ impl Graph {
                     println!("Error sending GraphChangedMessage::RemovedConnection: {:?}", err);
                 }
             }
-        }        
-
-        self.save_to_file();
+        }
     }
 
 
@@ -389,16 +380,12 @@ impl Graph {
                 }
 
                 
-            } 
-
-            
-            self.save_to_file();
+            }
         }
     }
 
     pub fn set_save_path(&mut self, save_path: PathBuf) {
         self.save_path = Some(save_path);
-        self.save_to_file();
     }
 
     // returns a list of node_ids that ran
@@ -494,8 +481,6 @@ impl Graph {
                 }
             }
         }
-
-        self.save_to_file();
     }
 
     // save graph to disk

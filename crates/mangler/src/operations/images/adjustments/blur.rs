@@ -43,6 +43,11 @@ impl OperationImageAdjustmentBlur {
 
         let blurred = data.blur(sigma);
 
+        // let blurred = tokio::spawn(async move {
+        //     let resized = data.blur(sigma);
+        //     resized
+        // }).await.unwrap();
+
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![

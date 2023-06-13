@@ -35,7 +35,7 @@ pub fn show_graph_node_info(
 
     // image format
     if outputs.len() > 0 {
-        if let Value::DynamicImage { data, change_id:_ } = outputs[0].value.clone() {
+        if let Value::DynamicImage { data, change_id:_ } = &outputs[0].value {
             let bits = data.color().bits_per_pixel() / data.color().channel_count() as u16;
             let channels = match data.color().channel_count() {
                 1 => "r".to_string(),

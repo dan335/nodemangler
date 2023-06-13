@@ -41,6 +41,7 @@ impl App {
                 let id = graph.id.clone();
                 let name = graph.name.clone();
                 let save_path = graph.save_path.clone();
+                let mut needs_to_save = false;
 
                 let thread_handle = tokio::spawn(async move {
                     loop {
@@ -54,9 +55,11 @@ impl App {
                                     position,
                                 } => {
                                     graph.add_node(node_id, node_type, position).await;
+                                    needs_to_save = true;
                                 }
                                 ChangeGraphMessage::RemoveNode { node_id } => {
                                     graph.remove_node(node_id).await;
+                                    needs_to_save = true;
                                 }
                                 ChangeGraphMessage::AddConnection {
                                     input_node_id,
@@ -72,19 +75,22 @@ impl App {
                                             output_connection_index,
                                         )
                                         .await;
+                                    needs_to_save = true;
                                 }
                                 ChangeGraphMessage::RemoveConnection {
                                     node_id,
                                     input_index,
                                 } => {
                                     graph.remove_connection(node_id, input_index).await;
+                                    needs_to_save = true;
                                 }
                                 ChangeGraphMessage::SetSavePath(save_path) => {
                                     graph.set_save_path(save_path);
+                                    needs_to_save = true;
                                 }
                                 ChangeGraphMessage::SetGraphName(graph_name) => {
                                     graph.name = graph_name;
-                                    graph.save_to_file();
+                                    needs_to_save = true;
                                 }
                             }
                         }
@@ -97,6 +103,7 @@ impl App {
                                     value,
                                 } => {
                                     graph.set_input(node_id, input_index, value);
+                                    needs_to_save = true;
                                 }
                                 ChangeNodeMessage::SetPosition {
                                     node_id,
@@ -106,6 +113,7 @@ impl App {
                                         node_id,
                                         position,
                                     );
+                                    needs_to_save = true;
                                 }
                                 ChangeNodeMessage::SetExposeInput {
                                     node_id,
@@ -115,7 +123,7 @@ impl App {
                                     if let Some(node) = graph.nodes.get_mut(&node_id) {
                                         if let Some(input) = node.inputs.get_mut(input_index) {
                                             input.is_exposed = set_to;
-                                            graph.save_to_file();
+                                            needs_to_save = true;
                                         }
                                     }
                                 }
@@ -127,7 +135,7 @@ impl App {
                                     if let Some(node) = graph.nodes.get_mut(&node_id) {
                                         if let Some(output) = node.outputs.get_mut(output_index) {
                                             output.is_exposed = set_to;
-                                            graph.save_to_file();
+                                            needs_to_save = true;
                                         }
                                     }
                                 }
@@ -135,6 +143,10 @@ impl App {
                         }
 
                         graph.run().await;
+
+                        if needs_to_save {
+                            graph.save_to_file();
+                        }
 
                         sleep_time = sleep_time.max(Instant::now() + Duration::from_millis(2));
                         tokio::time::sleep_until(sleep_time).await;

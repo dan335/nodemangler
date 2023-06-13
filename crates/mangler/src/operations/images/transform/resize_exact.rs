@@ -49,6 +49,13 @@ impl OperationImageTransformResizeExact {
         let Value::DynamicImage{data, change_id:_} = inputs[0].value.clone() else { return Err(OperationError { message: "Error getting image.".to_string() }); };
 
         let resized = data.resize_exact(width as u32, height as u32, filter_type);
+
+        // let resized = tokio::spawn(async move {
+        //     let resized = data.resize_exact(width as u32, height as u32, filter_type);
+        //     resized
+        // }).await.unwrap();
+
+
         let value_width = Value::Integer(resized.width() as i32);
         let value_height = Value::Integer(resized.height() as i32);
 

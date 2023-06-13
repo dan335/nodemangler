@@ -40,7 +40,7 @@ impl ViewPanel {
             self.draw_background_grid(ui, rect, self.position, theme);
 
             if let Some(output) = graph_node.outputs.get(output_index) {
-                match output.value.clone() {
+                match &output.value {
                     mangler::value::Value::Bool(value) => {
                         ui.label(value.to_string());
                     },
@@ -56,16 +56,16 @@ impl ViewPanel {
                     mangler::value::Value::DynamicImage {data, change_id} => {
                         match self.image_id_index.clone() {
                             Some((image_node_id, image_output_index, image_change_id)) => {
-                                if image_node_id != graph_node.id || image_output_index != output_index || change_id != image_change_id {
-                                    let texture_handle = self.create_egui_image(ui, data, graph_node.id.clone());
+                                if image_node_id != graph_node.id || image_output_index != output_index || change_id != &image_change_id {
+                                    let texture_handle = self.create_egui_image(ui, data.clone(), graph_node.id.clone());
                                     self.image_texture_handle = Some(texture_handle);
-                                    self.image_id_index = Some((graph_node.id.clone(), output_index, change_id));
+                                    self.image_id_index = Some((graph_node.id.clone(), output_index, change_id.clone()));
                                 }
                             },
                             None => {
-                                let texture_handle = self.create_egui_image(ui, data, graph_node.id.clone());
+                                let texture_handle = self.create_egui_image(ui, data.clone(), graph_node.id.clone());
                                 self.image_texture_handle = Some(texture_handle);
-                                self.image_id_index = Some((graph_node.id.clone(), output_index, change_id));
+                                self.image_id_index = Some((graph_node.id.clone(), output_index, change_id.clone()));
                             },
                         }
 

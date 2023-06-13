@@ -39,10 +39,10 @@ pub struct Program {
 
 impl Program {
     pub fn new(id: Option<String>, save_file: Option<PathBuf>) -> Result<Self, NewGraphError> {
-        let (tx_change_graph,rx_change_graph) = mpsc::channel::<ChangeGraphMessage>(32);
-        let (tx_change_node, rx_change_node) = mpsc::channel::<ChangeNodeMessage>(32);
-        let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
-        let (tx_graph_changed, rx_graph_changed) = mpsc::channel::<GraphChangedMessage>(32);
+        let (tx_change_graph,rx_change_graph) = mpsc::channel::<ChangeGraphMessage>(256);
+        let (tx_change_node, rx_change_node) = mpsc::channel::<ChangeNodeMessage>(1024);
+        let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(256);
+        let (tx_graph_changed, rx_graph_changed) = mpsc::channel::<GraphChangedMessage>(256);
 
         let app_result = mangler::app::App::new(id, save_file, rx_change_graph, rx_change_node, tx_node_changed, tx_graph_changed);
 
@@ -97,7 +97,6 @@ impl Program {
                         Pos2::new(position.x, position.y),
                         is_subgraph,
                     );
-                    ctx.request_repaint();
                     //self.needs_to_save = true;
                 }
                 GraphChangedMessage::LoadedNode { node } => {
@@ -146,7 +145,6 @@ impl Program {
                         }
                     }
                     self.graph_editor.remove_node(&node_id);
-                    ctx.request_repaint();
                     //self.needs_to_save = true;
                 }
                 GraphChangedMessage::AddedConnection {
@@ -174,8 +172,6 @@ impl Program {
                             output_connection_index,
                         );
                     }
-
-                    ctx.request_repaint();
 
                     //self.needs_to_save = true;
                 }
@@ -205,8 +201,6 @@ impl Program {
                         }
                     }
 
-                    ctx.request_repaint();
-
                     //self.needs_to_save = true;
                 }
             }
@@ -222,7 +216,6 @@ impl Program {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
                         if let Some(input) = node.inputs.get_mut(input_index) {
                             input.value = value;
-                            ctx.request_repaint();
                             //self.needs_to_save = true;
                         }
                     }
@@ -251,7 +244,6 @@ impl Program {
                                                 size,
                                                 pixels.as_slice(),
                                             );
-                                            ctx.request_repaint();
                                             Some(GraphNodeThumbnail::Image(ui.ctx().load_texture(
                                                 node.id.clone(),
                                                 color_image,
@@ -259,7 +251,6 @@ impl Program {
                                             )))
                                         }
                                         mangler::thumbnail::Thumbnail::Text(v) => {
-                                            ctx.request_repaint();
                                             Some(GraphNodeThumbnail::Text(v))
                                         }
                                     },
@@ -304,13 +295,11 @@ impl Program {
                         node.settings = settings;
                         node.inputs = inputs;
                         node.outputs = outputs;
-                        ctx.request_repaint();
                     }
                 },
                 NodeChangedMessage::Busy { node_id, is_busy } => {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
                         node.is_busy = is_busy;
-                        ctx.request_repaint();
                     }
                 }
             }
@@ -455,9 +444,9 @@ impl Program {
                 }
             }
 
-            if graph_editor_response.request_redraw {
-                ctx.request_repaint();
-            }
+            // if graph_editor_response.request_redraw {
+            //     ctx.request_repaint();
+            // }
 
             if let Some(editing_node_id) = graph_editor_response.editing_node_id {
                 self.edit_node(editing_node_id);
@@ -573,13 +562,13 @@ impl Program {
             }
         }
 
-        // if a node is busy request redraw
-        for (_, node) in self.graph_editor.graph_nodes.iter() {
-            if node.is_busy {
-                ctx.request_repaint();
-                break;
-            }
-        }
+        // // if a node is busy request redraw
+        // for (_, node) in self.graph_editor.graph_nodes.iter() {
+        //     if node.is_busy {
+        //         ctx.request_repaint();
+        //         break;
+        //     }
+        // }
         
     }
 
