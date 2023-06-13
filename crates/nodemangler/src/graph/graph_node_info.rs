@@ -61,6 +61,22 @@ pub fn show_graph_node_info(
                 egui::FontId::monospace(10.0),
                 Color32::from(theme.get().text_faint),
             );
+
+            // image res
+            let text = format!("{}x{}", data.width(), data.height());
+
+            let pos = Pos2 {
+                x: node_rect.left_top().x,
+                y: node_rect.left_top().y - 20.0,
+            };
+            
+            ui.painter().text(
+                pos,
+                Align2::LEFT_BOTTOM,
+                text,
+                egui::FontId::monospace(10.0),
+                Color32::from(theme.get().text_faint),
+            );
         }
     }
 }

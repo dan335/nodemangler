@@ -1,5 +1,4 @@
 use glam::f32::Vec2;
-use image::{ImageBuffer, Rgba};
 use input::Input;
 use nanoid::nanoid;
 use node::Node;

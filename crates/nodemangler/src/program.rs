@@ -1,14 +1,12 @@
 use eframe::egui;
 use epaint::{ColorImage, Pos2, Rect, Rounding, Vec2};
 use mangler::{
-    get_id, graph::Graph, node_type::NodeType, AddNodeType, ChangeGraphMessage, ChangeNodeMessage,
+    get_id, node_type::NodeType, AddNodeType, ChangeGraphMessage, ChangeNodeMessage,
     GraphChangedMessage, NewGraphError, NodeChangedMessage,
 };
 use std::path::PathBuf;
 use tokio::{
     sync::mpsc,
-    task::JoinHandle,
-    time::{Duration, Instant},
 };
 
 use crate::{
@@ -25,10 +23,8 @@ use crate::{
 };
 
 pub struct Program {
-    pub id: String,
-    pub name: String,
-    pub save_path: Option<PathBuf>,
-    pub thread_handle: JoinHandle<()>,
+
+    pub app: mangler::app::App,
     tx_change_graph: mpsc::Sender<ChangeGraphMessage>,
     tx_change_node: mpsc::Sender<ChangeNodeMessage>,
     rx_node_changed: mpsc::Receiver<NodeChangedMessage>,
@@ -43,149 +39,18 @@ pub struct Program {
 
 impl Program {
     pub fn new(id: Option<String>, save_file: Option<PathBuf>) -> Result<Self, NewGraphError> {
-        let (tx_change_graph, mut rx_change_graph) = mpsc::channel::<ChangeGraphMessage>(32);
-        let (tx_change_node, mut rx_change_node) = mpsc::channel::<ChangeNodeMessage>(32);
+        let (tx_change_graph,rx_change_graph) = mpsc::channel::<ChangeGraphMessage>(32);
+        let (tx_change_node, rx_change_node) = mpsc::channel::<ChangeNodeMessage>(32);
         let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
         let (tx_graph_changed, rx_graph_changed) = mpsc::channel::<GraphChangedMessage>(32);
 
-        let graph_result = match save_file {
-            Some(path) => Graph::load(path, Some(tx_node_changed), Some(tx_graph_changed), false),
-            None => {
-                let graph_id = match id {
-                    Some(graph_id) => graph_id,
-                    None => get_id(),
-                };
+        let app_result = mangler::app::App::new(id, save_file, rx_change_graph, rx_change_node, tx_node_changed, tx_graph_changed);
 
-                Graph::new(graph_id, tx_node_changed, tx_graph_changed, false)
-            }
-        };
-
-        match graph_result {
-            Ok(mut graph) => {
-                let id = graph.id.clone();
-                let name = graph.name.clone();
-                let save_path = graph.save_path.clone();
-
-                let thread_handle = tokio::spawn(async move {
-                    loop {
-                        let mut sleep_time = Instant::now() + Duration::from_millis(16);
-
-                        // while let Ok(change_graph_message) = rx_change_graph.try_recv() {
-                        //     match change_graph_message {
-                        //         ChangeGraphMessage::AddNode {
-                        //             node_id,
-                        //             node_type,
-                        //             position,
-                        //         } => {
-                        //             graph.add_node(node_id, node_type, position).await;
-                        //         }
-                        //         ChangeGraphMessage::RemoveNode { node_id } => {
-                        //             graph.remove_node(node_id).await;
-                        //         }
-                        //         ChangeGraphMessage::AddConnection {
-                        //             input_node_id,
-                        //             input_connection_index,
-                        //             output_node_id,
-                        //             output_connection_index,
-                        //         } => {
-                        //             graph
-                        //                 .add_connection(
-                        //                     input_node_id,
-                        //                     input_connection_index,
-                        //                     output_node_id,
-                        //                     output_connection_index,
-                        //                 )
-                        //                 .await;
-                        //         }
-                        //         ChangeGraphMessage::RemoveConnection {
-                        //             node_id,
-                        //             input_index,
-                        //         } => {
-                        //             graph.remove_connection(node_id, input_index).await;
-                        //         }
-                        //         ChangeGraphMessage::SetSavePath(save_path) => {
-                        //             graph.set_save_path(save_path);
-                        //         }
-                        //         ChangeGraphMessage::SetGraphName(graph_name) => {
-                        //             graph.name = graph_name;
-                        //             graph.save_to_file();
-                        //         }
-                        //     }
-                        // }
-
-                        // while let Ok(change_node_message) = rx_change_node.try_recv() {
-                        //     match change_node_message {
-                        //         ChangeNodeMessage::SetInput {
-                        //             node_id,
-                        //             input_index,
-                        //             value,
-                        //         } => {
-                        //             graph.set_input(node_id, input_index, value);
-                        //         }
-                        //         ChangeNodeMessage::SetPosition {
-                        //             node_id,
-                        //             position
-                        //         } => {
-                        //             graph.set_node_position(
-                        //                 node_id,
-                        //                 position,
-                        //             );
-                        //         }
-                        //         ChangeNodeMessage::SetExposeInput {
-                        //             node_id,
-                        //             input_index,
-                        //             set_to,
-                        //         } => {
-                        //             if let Some(node) = graph.nodes.get_mut(&node_id) {
-                        //                 if let Some(input) = node.inputs.get_mut(input_index) {
-                        //                     input.is_exposed = set_to;
-                        //                     graph.save_to_file();
-                        //                 }
-                        //             }
-                        //         }
-                        //         ChangeNodeMessage::SetExposeOutput {
-                        //             node_id,
-                        //             output_index,
-                        //             set_to,
-                        //         } => {
-                        //             if let Some(node) = graph.nodes.get_mut(&node_id) {
-                        //                 if let Some(output) = node.outputs.get_mut(output_index) {
-                        //                     output.is_exposed = set_to;
-                        //                     graph.save_to_file();
-                        //                 }
-                        //             }
-                        //         }
-                        //     }
-                        // }
-
-                        // // while let Ok(node_input_message) = rx_set_input.try_recv() {
-                        // //     graph.set_input(
-                        // //         node_input_message.node_id,
-                        // //         node_input_message.input_index,
-                        // //         node_input_message.value,
-                        // //     );
-                        // // }
-
-                        // // while let Ok(node_position_message) = rx_node_position.try_recv() {
-                        // //     graph.set_node_position(
-                        // //         node_position_message.node_id,
-                        // //         node_position_message.position,
-                        // //     );
-                        // // }
-
-                        // graph.run().await;
-
-                        sleep_time = sleep_time.max(Instant::now() + Duration::from_millis(2));
-                        tokio::time::sleep_until(sleep_time).await;
-                    }
-                });
-
+        match app_result {
+            Ok(app) => {
                 Ok(Program {
                     tx_change_graph,
-                    id,
-                    name,
-                    save_path,
-                    thread_handle,
+                    app,
                     graph_editor: GraphEditor::new(),
                     view_panel: ViewPanel::new(),
                     menu_panel: MenuPanel::new(),
@@ -196,16 +61,13 @@ impl Program {
                     tx_change_node,
                     rx_graph_changed,
                 })
-            }
-            Err(error) => Err(NewGraphError(format!(
-                "Error creating new graph.  Error: {:?}",
-                error
-            ))),
+            },
+            Err(error) => Err(NewGraphError(format!("Error creating program. {:?}", error))),
         }
     }
 
     pub fn close(self) {
-        self.thread_handle.abort();
+        self.app.thread_handle.abort();
     }
 
     pub fn show(
@@ -235,6 +97,7 @@ impl Program {
                         Pos2::new(position.x, position.y),
                         is_subgraph,
                     );
+                    ctx.request_repaint();
                     //self.needs_to_save = true;
                 }
                 GraphChangedMessage::LoadedNode { node } => {
@@ -283,6 +146,7 @@ impl Program {
                         }
                     }
                     self.graph_editor.remove_node(&node_id);
+                    ctx.request_repaint();
                     //self.needs_to_save = true;
                 }
                 GraphChangedMessage::AddedConnection {
@@ -310,6 +174,8 @@ impl Program {
                             output_connection_index,
                         );
                     }
+
+                    ctx.request_repaint();
 
                     //self.needs_to_save = true;
                 }
@@ -339,6 +205,8 @@ impl Program {
                         }
                     }
 
+                    ctx.request_repaint();
+
                     //self.needs_to_save = true;
                 }
             }
@@ -354,6 +222,7 @@ impl Program {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
                         if let Some(input) = node.inputs.get_mut(input_index) {
                             input.value = value;
+                            ctx.request_repaint();
                             //self.needs_to_save = true;
                         }
                     }
@@ -382,6 +251,7 @@ impl Program {
                                                 size,
                                                 pixels.as_slice(),
                                             );
+                                            ctx.request_repaint();
                                             Some(GraphNodeThumbnail::Image(ui.ctx().load_texture(
                                                 node.id.clone(),
                                                 color_image,
@@ -389,6 +259,7 @@ impl Program {
                                             )))
                                         }
                                         mangler::thumbnail::Thumbnail::Text(v) => {
+                                            ctx.request_repaint();
                                             Some(GraphNodeThumbnail::Text(v))
                                         }
                                     },
@@ -405,12 +276,24 @@ impl Program {
                     node_id,
                     input_index,
                     set_to,
-                } => todo!(),
+                } => {
+                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
+                        if let Some(input) = node.inputs.get_mut(input_index) {
+                            input.is_exposed = set_to;
+                        }
+                    }
+                },
                 NodeChangedMessage::ExposeOutputChanged {
                     node_id,
                     output_index,
                     set_to,
-                } => todo!(),
+                } => {
+                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
+                        if let Some(output) = node.outputs.get_mut(output_index) {
+                            output.is_exposed = set_to;
+                        }
+                    }
+                },
                 NodeChangedMessage::SubgraphLoaded {
                     node_id,
                     settings,
@@ -421,11 +304,13 @@ impl Program {
                         node.settings = settings;
                         node.inputs = inputs;
                         node.outputs = outputs;
+                        ctx.request_repaint();
                     }
                 },
                 NodeChangedMessage::Busy { node_id, is_busy } => {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
                         node.is_busy = is_busy;
+                        ctx.request_repaint();
                     }
                 }
             }
@@ -508,11 +393,11 @@ impl Program {
 
                 if show_graph_settings {
                     let graph_settings_response =
-                        graph_settings_panel::show(ui, &mut self.name, &self.save_path);
+                        graph_settings_panel::show(ui, &mut self.app.name, &self.app.save_path);
 
                     // name changed
                     if let Some(new_name) = graph_settings_response.new_name {
-                        self.name = new_name.clone();
+                        self.app.name = new_name.clone();
 
                         let message = ChangeGraphMessage::SetGraphName(new_name);
 
@@ -526,7 +411,7 @@ impl Program {
 
                     // save path changed
                     if let Some(save_path) = graph_settings_response.new_save_path {
-                        self.save_path = Some(save_path.clone());
+                        self.app.save_path = Some(save_path.clone());
 
                         let message = ChangeGraphMessage::SetSavePath(save_path);
 
@@ -685,6 +570,14 @@ impl Program {
                 egui::Window::new("asdf").show(ctx, |ui| {
                     self.view_panel.show(ui, graph_node, graph_node_output_index.clone(), theme);
                 });
+            }
+        }
+
+        // if a node is busy request redraw
+        for (_, node) in self.graph_editor.graph_nodes.iter() {
+            if node.is_busy {
+                ctx.request_repaint();
+                break;
             }
         }
         

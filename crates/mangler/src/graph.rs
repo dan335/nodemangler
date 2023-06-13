@@ -410,7 +410,12 @@ impl Graph {
         let mut nodes_to_check: VecDeque<String> = VecDeque::new();
 
         // find all dirty nodes
+        // return early if node is busy
         for (node_id, node) in self.nodes.iter_mut() {
+            if node.is_busy {
+                return;
+            }
+
             if node.is_dirty {
                 nodes_to_check.push_back(node_id.clone());
                 node.is_dirty = false;

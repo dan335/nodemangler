@@ -5,9 +5,9 @@ use crate::program::Program;
 use std::collections::HashMap;
 
 pub const PROFILE: bool = false;
-pub const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
-pub const DEFAULT_WINDOW_HEIGHT: f32 = 800.0;
-pub const APP_MENU_HEIGHT: f32 = 35.0;
+// pub const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
+// pub const DEFAULT_WINDOW_HEIGHT: f32 = 800.0;
+// pub const APP_MENU_HEIGHT: f32 = 35.0;
 
 
 pub struct App {
@@ -24,6 +24,8 @@ impl eframe::App for App {
             puffin_egui::profiler_window(ctx);
         }
 
+        ctx.request_repaint();
+
         egui::CentralPanel::default().show(ctx, |ui| {
             // bg
             ui.painter().add(egui::Shape::rect_filled(
@@ -35,8 +37,8 @@ impl eframe::App for App {
             let bar_response = bar::show(ctx, frame, ui, &self.programs, &self.current_program, &self.theme);
 
             if let Some(new_program) = bar_response.new_program {
-                let program_id = new_program.id.clone();
-                self.programs.insert(new_program.id.clone(), new_program);
+                let program_id = new_program.app.id.clone();
+                self.programs.insert(new_program.app.id.clone(), new_program);
                 self.current_program = Some(program_id);
             }
 

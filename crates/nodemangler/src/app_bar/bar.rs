@@ -107,7 +107,7 @@ pub fn show_menu(
 
                     // sort programs and put into list
                     for (program_id, program) in programs.iter() {
-                        program_list.push((program_id.clone(), program.name.clone()));
+                        program_list.push((program_id.clone(), program.app.name.clone()));
                     }
 
                     program_list.sort_by(|a, b| {
