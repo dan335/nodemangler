@@ -38,7 +38,7 @@ pub fn draw_graph_input(
             if temp.from_connection_type == ConnectionType::Input
                 || !input
                     .value
-                    .valid_conversions()
+                    .value_type().valid_conversions()
                     .contains(&temp.from_value_type)
             {
                 response.is_disabled = true;
@@ -65,11 +65,11 @@ pub fn draw_graph_input(
         response.connection_to_position = input_position;
     }
 
-    if show_names || response.is_cursor_over {
-        let font_id = egui::FontId::proportional(graph_to_view_space(graph_zoom, 12.0));
-        let color = theme.get().override_text_color;
-        let pos = Pos2::new(input_position.x - 10.0, input_position.y);
+    let pos = Pos2::new(input_position.x - 10.0, input_position.y);
+    let font_id = egui::FontId::proportional(graph_to_view_space(graph_zoom, 12.0));
+    let color = theme.get().override_text_color;
 
+    if show_names || response.is_cursor_over {
         let galley = ui.painter().layout_no_wrap(input.name.clone(), font_id.clone(), color);
         
         // bg
@@ -80,17 +80,52 @@ pub fn draw_graph_input(
             pos,
             egui::Align2::RIGHT_CENTER,
             input.name.clone(),
-            font_id,
+            font_id.clone(),
             color,
         );
+    }
 
-        // ui.painter().text(
-        //     Pos2::new(input_position.x - 10.0, input_position.y),
-        //     Align2::RIGHT_CENTER,
-        //     input.name.clone(),
-        //     FontId::proportional(12.0),
-        //     Color32::from(theme.get().override_text_color),
-        // );
+    if response.is_cursor_over {
+        let valid_conversions = input.value.value_type().valid_coversions_from();
+
+        if valid_conversions.len() == 0 {
+            let txt = "none".to_string();
+            let txt_pos = Pos2::new(pos.x, graph_to_view_space(graph_zoom, 25.0) + pos.y);
+
+            let galley = ui.painter().layout_no_wrap(txt.clone(), font_id.clone(), color);
+
+            // bg
+            ui.painter().rect_filled(Rect::from_min_size(Pos2::new(txt_pos.x - galley.rect.width(), txt_pos.y - (galley.rect.height() * 0.5)), galley.rect.size()), egui::Rounding::same(1.0), theme.get().grid_bg);
+
+            // text
+            ui.painter().text(
+                txt_pos,
+                egui::Align2::RIGHT_CENTER,
+                txt,
+                font_id.clone(),
+                color,
+            );
+        } else {
+            for (index, valid_type) in input.value.value_type().valid_coversions_from().iter().enumerate() {
+                let txt = valid_type.value_name();
+                let txt_pos = Pos2::new(pos.x, graph_to_view_space(graph_zoom, 25.0) + pos.y + graph_to_view_space(graph_zoom, 15.0) * index as f32);
+    
+                let galley = ui.painter().layout_no_wrap(txt.clone(), font_id.clone(), color);
+    
+                // bg
+                ui.painter().rect_filled(Rect::from_min_size(Pos2::new(txt_pos.x - galley.rect.width(), txt_pos.y - (galley.rect.height() * 0.5)), galley.rect.size()), egui::Rounding::same(1.0), theme.get().grid_bg);
+    
+                // text
+                ui.painter().text(
+                    txt_pos,
+                    egui::Align2::RIGHT_CENTER,
+                    txt,
+                    font_id.clone(),
+                    color,
+                );
+            }
+        }
+        
     }
 
     response

@@ -40,7 +40,7 @@ pub fn draw_graph_output(
             if temp.from_connection_type == ConnectionType::Output
                 || !output
                     .value
-                    .valid_conversions()
+                    .value_type().valid_conversions()
                     .contains(&temp.from_value_type)
             {
                 response.is_disabled = true;

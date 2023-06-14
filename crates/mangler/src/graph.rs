@@ -112,7 +112,7 @@ impl Graph {
             AddNodeType::Subgraph => {
                 node.inputs.clear();
                 node.outputs.clear();
-                node.inputs.push(Input::new("file path".to_string(), Value::Path(PathBuf::new()), None));
+                node.inputs.push(Input::new("file path".to_string(), Value::Path{path:PathBuf::new(), name:"Mangler".to_string(), file_extensions:vec!["mangler".to_string()]}, None));
                 is_subgraph = true;
             },
             _ => {}
@@ -323,7 +323,7 @@ impl Graph {
             if let NodeType::Subgraph { path:_, graph:_, rx_node_changed:_ } = &node.node_type {
                 // if value is subgraph location
                 // load subgraph
-                if let Value::Path(path) = value {
+                if let Value::Path { name, path, file_extensions } = value {
                     
                     // create graph from path
                     let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);

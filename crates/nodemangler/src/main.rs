@@ -18,6 +18,7 @@ pub const PROFILE: bool = false;
 pub const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
 pub const DEFAULT_WINDOW_HEIGHT: f32 = 800.0;
 pub const APP_MENU_HEIGHT: f32 = 35.0;
+pub const NODE_MENU_WIDTH: f32 = 250.0;
 
 #[tokio::main]
 async fn main() -> Result<(), eframe::Error> {

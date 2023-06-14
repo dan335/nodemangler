@@ -16,7 +16,7 @@ use super::graph_editor::TempConnection;
 use super::graph_node_thumbnail::GraphNodeThumbnail;
 use super::graph_output::draw_graph_output_highlighted;
 
-pub const NODE_SIZE: Vec2 = Vec2::new(128.0, 40.0);
+pub const NODE_SIZE: Vec2 = Vec2::new(150.0, 40.0);
 //pub const THUMBNAIL_SIZE: [u32; 2] = [128, 128];
 
 #[derive(Clone)]
@@ -133,7 +133,7 @@ impl GraphNode {
             self.is_busy,
         );
 
-        show_graph_node_info(ui, self.time, node_rect, &self.outputs, graph_zoom, theme);
+        show_graph_node_info(ui, self.time, node_rect, graph_zoom, theme);
 
         if let Some(thumbnail) = self.thumbnail.clone() {
             thumbnail.show(ui, self.get_rect(graph_position, graph_zoom).center_bottom(), graph_zoom, theme);
@@ -187,7 +187,7 @@ impl GraphNode {
             let input_output_response = draw_graph_output(
                 &self.id,
                 &output,
-                &output.value.value_name(),
+                &output.value.value_type().value_name(),
                 self.get_output_position(index, node_rect),
                 self.get_output_rect(index, node_rect),
                 index,

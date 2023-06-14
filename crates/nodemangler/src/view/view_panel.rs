@@ -73,8 +73,8 @@ impl ViewPanel {
                             ui.image(texture_handle, Vec2::new(texture_handle.size()[0] as f32, texture_handle.size()[1] as f32));
                         }
                     },
-                    mangler::value::Value::Path(value) => {
-                        ui.label(value.to_str().unwrap_or("None").to_string());
+                    mangler::value::Value::Path { name, path, file_extensions } => {
+                        ui.label(path.to_str().unwrap_or("None").to_string());
                     },
                     mangler::value::Value::FilterType(value) => {
                         ui.label(format!("{:?}", value));
@@ -82,8 +82,8 @@ impl ViewPanel {
                     mangler::value::Value::ImageFormat(value) => {
                         ui.label(format!("{:?}", value));
                     },
-                    mangler::value::Value::UiButton(value) => {
-                        ui.label(format!("{:?}", value));
+                    mangler::value::Value::Trigger {name} => {
+                        ui.label(format!("{:?}", name));
                     },
                 }
             }

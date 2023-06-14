@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::thumbnail::Thumbnail;
 
-pub const THUMBNAIL_SIZE: [u32; 2] = [128, 128];
+pub const THUMBNAIL_SIZE: [u32; 2] = [150, 150];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Value {
@@ -17,7 +17,11 @@ pub enum Value {
         data: DynamicImage,
         change_id: String,  // new id each time image changes
     },
-    Path(PathBuf),
+    Path {
+        name: String,
+        path: PathBuf,
+        file_extensions: Vec<String>,
+    },
 
     #[serde(
         serialize_with = "serialize_filter_type",
@@ -26,7 +30,9 @@ pub enum Value {
     FilterType(FilterType),
 
     ImageFormat(ImageFormat),
-    UiButton(bool),
+    Trigger {
+        name: String,
+    },
 }
 
 impl Value {
@@ -37,10 +43,10 @@ impl Value {
             Value::Integer(value) => Some(Thumbnail::Text(value.to_string())),
             Value::Decimal(value) => Some(Thumbnail::Text(value.to_string())),
             Value::String(value) => Some(Thumbnail::Text(value.clone())),
-            Value::Path(value) => Some(Thumbnail::Text(value.to_str().unwrap_or("None").to_string())),
+            Value::Path{ name, path, file_extensions } => Some(Thumbnail::Text(format!("{}", path.to_str().unwrap_or("none").to_string()))),
             Value::FilterType(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::ImageFormat(value) => Some(Thumbnail::Text(format!("{:?}", value))),
-            Value::UiButton(value) => Some(Thumbnail::Text(format!("{:?}", value))),
+            Value::Trigger { name } => Some(Thumbnail::Text(name.to_string())),
         }
     }
 
@@ -51,38 +57,10 @@ impl Value {
             Value::Decimal(_) => ValueType::Decimal,
             Value::String(_) => ValueType::String,
             Value::ImageFormat(_) => ValueType::ImageFormat,
-            Value::UiButton(_) => ValueType::UiButton,
+            Value::Trigger { name } => ValueType::Trigger,
             Value::FilterType(_) => ValueType::FilterType,
-            Value::Path(_) => ValueType::Path,
+            Value::Path{ name:_, path:_, file_extensions:_ } => ValueType::Path,
             Value::DynamicImage { data:_, change_id:_ } => ValueType::DynamicImage,
-        }
-    }
-
-    pub fn value_name(&self) -> String {
-        match self {
-            Value::Bool(_) => "bool".to_string(),
-            Value::Integer(_) => "integer".to_string(),
-            Value::Decimal(_) => "decimal".to_string(),
-            Value::String(_) => "string".to_string(),
-            Value::FilterType(_) => "filter type".to_string(),
-            Value::ImageFormat(_) => "image format".to_string(),
-            Value::UiButton(_) => "button".to_string(),
-            Value::DynamicImage { data:_, change_id:_ } => "image".to_string(),
-            Value::Path(_) => "path".to_string(),
-        }
-    }
-
-    pub fn valid_conversions(&self) -> Vec<ValueType> {
-        match self {
-            Value::Bool(_) => vec![ValueType::Bool, ValueType::Integer, ValueType::Decimal, ValueType::String],
-            Value::Integer(_) => vec![ValueType::Bool, ValueType::Integer, ValueType::Decimal, ValueType::String],
-            Value::Decimal(_) => vec![ValueType::Bool, ValueType::Integer, ValueType::Decimal, ValueType::String],
-            Value::String(_) => vec![ValueType::String, ValueType::Path],
-            Value::DynamicImage { data:_, change_id:_ } => vec![ValueType::DynamicImage],
-            Value::Path(_) => vec![ValueType::String, ValueType::Path],
-            Value::FilterType(_) => vec![ValueType::FilterType, ValueType::String],
-            Value::ImageFormat(_) => vec![ValueType::FilterType, ValueType::String],
-            Value::UiButton(_) => vec![],
         }
     }
 
@@ -111,7 +89,7 @@ impl Value {
                 ValueType::ImageFormat => Err(ConversionError {
                     message: "Unable to convert bool to image format.".to_string(),
                 }),
-                ValueType::UiButton => Ok(Value::Bool(*a)),
+                ValueType::Trigger => Ok(Value::Bool(*a)),
                 ValueType::DynamicImage => Err(ConversionError {
                     message: "Unable to convert bool to image format.".to_string(),
                 }),
@@ -130,7 +108,7 @@ impl Value {
                 ValueType::ImageFormat => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
-                ValueType::UiButton => Err(ConversionError {
+                ValueType::Trigger => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
                 ValueType::DynamicImage => Err(ConversionError {
@@ -151,7 +129,7 @@ impl Value {
                 ValueType::ImageFormat => Err(ConversionError {
                     message: "Unable to convert decimal to image format.".to_string(),
                 }),
-                ValueType::UiButton => Err(ConversionError {
+                ValueType::Trigger => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
                 ValueType::DynamicImage => Err(ConversionError {
@@ -196,16 +174,15 @@ impl Value {
                 ValueType::ImageFormat => Err(ConversionError {
                     message: "Unable to convert string to image format.".to_string(),
                 }),
-                ValueType::UiButton => Err(ConversionError {
+                ValueType::Trigger => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
                 ValueType::DynamicImage => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
-                ValueType::Path => {
-                    let path = PathBuf::from(a.clone());
-                    Ok(Value::Path(path))
-                }
+                ValueType::Path => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
             },
             Value::FilterType(a) => match other {
                 ValueType::Bool => Err(ConversionError {
@@ -224,7 +201,7 @@ impl Value {
                 ValueType::ImageFormat => Err(ConversionError {
                     message: "Unable to convert filter type to image format.".to_string(),
                 }),
-                ValueType::UiButton => Err(ConversionError {
+                ValueType::Trigger => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
                 ValueType::DynamicImage => Err(ConversionError {
@@ -249,11 +226,11 @@ impl Value {
                     message: "Unable to convert image type to image.".to_string(),
                 }),
                 ValueType::ImageFormat => Ok(Value::ImageFormat(*a)),
-                ValueType::UiButton => todo!(),
+                ValueType::Trigger => todo!(),
                 ValueType::DynamicImage => todo!(),
                 ValueType::Path => todo!(),
             },
-            Value::UiButton(_) => todo!(),
+            Value::Trigger { name } => todo!(),
             Value::DynamicImage { data:_, change_id:_ } => match other {
                 ValueType::Bool => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
@@ -273,13 +250,13 @@ impl Value {
                 ValueType::ImageFormat => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
-                ValueType::UiButton => Err(ConversionError {
+                ValueType::Trigger => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
                 ValueType::DynamicImage => todo!(),
                 ValueType::Path => todo!(),
             },
-            Value::Path(a) => match other {
+            Value::Path { name, path, file_extensions } => match other {
                 ValueType::Bool => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
@@ -290,7 +267,7 @@ impl Value {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
                 ValueType::String => {
-                    if let Ok(path_string) = a.clone().into_os_string().into_string() {
+                    if let Ok(path_string) = path.clone().into_os_string().into_string() {
                         Ok(Value::String(path_string))
                     } else {
                         Err(ConversionError {
@@ -304,14 +281,14 @@ impl Value {
                 ValueType::ImageFormat => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
-                ValueType::UiButton => Err(ConversionError {
+                ValueType::Trigger => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
                 ValueType::DynamicImage => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
                 ValueType::Path => {
-                    Ok(Value::Path(a.clone()))
+                    Ok(Value::Path { name:name.clone(), path:path.clone(), file_extensions:file_extensions.clone() })
                 },
             }
         }
@@ -326,9 +303,70 @@ pub enum ValueType {
     String,
     FilterType,
     ImageFormat,
-    UiButton,
+    Trigger,
     DynamicImage,
     Path,
+}
+
+impl ValueType {
+
+    pub fn types() -> [ValueType; 9] {
+        let types: [ValueType; 9] = [
+            ValueType::Bool,
+            ValueType::Integer,
+            ValueType::Decimal,
+            ValueType::String,
+            ValueType::FilterType,
+            ValueType::ImageFormat,
+            ValueType::Trigger,
+            ValueType::DynamicImage,
+            ValueType::Path,
+        ];
+
+        types
+    }
+
+    pub fn value_name(&self) -> String {
+        match self {
+            ValueType::Bool => "bool".to_string(),
+            ValueType::Integer => "integer".to_string(),
+            ValueType::Decimal => "decimal".to_string(),
+            ValueType::String => "string".to_string(),
+            ValueType::FilterType => "filter type".to_string(),
+            ValueType::ImageFormat => "image format".to_string(),
+            ValueType::Trigger => "trigger".to_string(),
+            ValueType::DynamicImage => "image".to_string(),
+            ValueType::Path => "path".to_string(),
+        }
+    }
+
+    pub fn valid_conversions(&self) -> Vec<ValueType> {
+        match self {
+            ValueType::Bool => vec![ValueType::Bool, ValueType::Integer, ValueType::Decimal, ValueType::String, ValueType::Trigger],
+            ValueType::Integer => vec![ValueType::Bool, ValueType::Integer, ValueType::Decimal, ValueType::String, ValueType::Trigger],
+            ValueType::Decimal => vec![ValueType::Bool, ValueType::Integer, ValueType::Decimal, ValueType::String, ValueType::Trigger],
+            ValueType::String => vec![ValueType::String, ValueType::Trigger],
+            ValueType::DynamicImage => vec![ValueType::DynamicImage, ValueType::Trigger],
+            ValueType::Path => vec![ValueType::String, ValueType::Path, ValueType::Trigger],
+            ValueType::FilterType => vec![ValueType::FilterType, ValueType::String, ValueType::Trigger],
+            ValueType::ImageFormat => vec![ValueType::ImageFormat, ValueType::String, ValueType::Trigger],
+            ValueType::Trigger => vec![ValueType::Trigger],
+        }
+    }
+
+    pub fn valid_coversions_from(&self) -> Vec<ValueType> {
+        let mut types: Vec<ValueType> = Vec::new();
+
+        for value_type in ValueType::types().iter() {
+            //if value_type != self {
+                if value_type.valid_conversions().contains(&self) {
+                    types.push(value_type.clone());
+                }
+            //}
+        }
+
+        types
+    }
 }
 
 #[derive(Debug)]

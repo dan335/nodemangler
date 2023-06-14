@@ -31,7 +31,7 @@ impl Output {
     }
 
     pub fn is_valid_connection(&self, input: &Input) -> bool {
-        self.value.valid_conversions().contains(&input.value.value_type())
+        self.value.value_type().valid_conversions().contains(&input.value.value_type())
     }
 }
 

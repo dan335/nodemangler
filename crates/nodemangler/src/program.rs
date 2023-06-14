@@ -2,7 +2,7 @@ use eframe::egui;
 use epaint::{ColorImage, Pos2, Rect, Rounding, Vec2};
 use mangler::{
     get_id, node_type::NodeType, AddNodeType, ChangeGraphMessage, ChangeNodeMessage,
-    GraphChangedMessage, NewGraphError, NodeChangedMessage,
+    GraphChangedMessage, NewGraphError, NodeChangedMessage, value::Value,
 };
 use std::path::PathBuf;
 use tokio::{
@@ -19,7 +19,7 @@ use crate::{
     settings::{graph_settings_panel, node_settings_panel},
     theme::Theme,
     view::view_panel::ViewPanel,
-    view_to_graph_space_pos2, APP_MENU_HEIGHT,
+    view_to_graph_space_pos2, APP_MENU_HEIGHT, NODE_MENU_WIDTH,
 };
 
 pub struct Program {
@@ -230,25 +230,47 @@ impl Program {
                 } => {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
                         if let Some(output) = node.outputs.get_mut(output_index) {
-                            output.value = value;
+                            output.value = value.clone();
                             if output_index == 0 {
                                 node.thumbnail = match thumbnail {
                                     Some(thumb) => match thumb {
                                         mangler::thumbnail::Thumbnail::Image(thumbnail) => {
+
+                                            let Value::DynamicImage { data, change_id:_ } = value else { break; };
+
                                             let pixels = thumbnail.as_flat_samples();
+
                                             let size = [
                                                 thumbnail.width() as usize,
                                                 thumbnail.height() as usize,
                                             ];
+
                                             let color_image = ColorImage::from_rgba_unmultiplied(
                                                 size,
                                                 pixels.as_slice(),
                                             );
-                                            Some(GraphNodeThumbnail::Image(ui.ctx().load_texture(
-                                                node.id.clone(),
-                                                color_image,
-                                                Default::default(),
-                                            )))
+
+                                            // image format
+                                            let bits = data.color().bits_per_pixel() / data.color().channel_count() as u16;
+                                            let channels = match data.color().channel_count() {
+                                                1 => "r".to_string(),
+                                                2 => "rg".to_string(),
+                                                3 => "rgb".to_string(),
+                                                4 => "rgba".to_string(),
+                                                _ => "".to_string(),
+                                            };
+
+                                            Some(GraphNodeThumbnail::Image {
+                                                texture_handle: ui.ctx().load_texture(
+                                                    node.id.clone(),
+                                                    color_image,
+                                                    Default::default(),
+                                                ),
+                                                width: data.width(),
+                                                height: data.height(),
+                                                channels,
+                                                bits,
+                                            })
                                         }
                                         mangler::thumbnail::Thumbnail::Text(v) => {
                                             Some(GraphNodeThumbnail::Text(v))
@@ -321,11 +343,11 @@ impl Program {
         
         let menu_panel_rect = Rect::from_two_pos(
             Pos2::new(0.0, APP_MENU_HEIGHT),
-            Pos2::new(200.0, app_rect.height()),
+            Pos2::new(NODE_MENU_WIDTH, app_rect.height()),
         );
 
         let node_graph_rect = Rect::from_two_pos(
-            Pos2::new(200.0, APP_MENU_HEIGHT),
+            Pos2::new(NODE_MENU_WIDTH, APP_MENU_HEIGHT),
             Pos2::new(app_rect.width() - 300.0, app_rect.height()),
         );
 

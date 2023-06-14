@@ -1,4 +1,6 @@
 use crate::operations::images::adjustments::blur::OperationImageAdjustmentBlur;
+use crate::operations::images::inputs::clipboard::OperationImageInputClipboard;
+use crate::operations::images::inputs::file::OperationImageInputFile;
 use crate::operations::images::transform::resize::OperationImageTransformResize;
 use crate::operations::images::inputs::url::OperationImageInputUrl;
 use crate::operations::images::transform::resize_exact::OperationImageTransformResizeExact;
@@ -13,12 +15,15 @@ use std::time::Duration;
 
 use crate::{input::Input, output::Output, value::ValueType};
 
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Operation {
     NumberInputInteger,
     NumberInputDecimal,
     NumberMathAdd,
     ImageInputUrl,
+    ImageInputClipboard,
+    ImageInputFile,
     ImageTransformResize,
     ImageTransformResizeExact,
     ImageTransformResizeFill,
@@ -27,6 +32,7 @@ pub enum Operation {
     IMageAdjustmentGrayscale,
 }
 
+
 impl Operation {
     pub fn settings(&self) -> NodeSettings {
         match self {
@@ -34,6 +40,8 @@ impl Operation {
             Operation::NumberInputDecimal => OperationNumberInputDecimal::settings(),
             Operation::NumberMathAdd => OperationNumberMathAdd::settings(),
             Operation::ImageInputUrl => OperationImageInputUrl::settings(),
+            Operation::ImageInputFile => OperationImageInputFile::settings(),
+            Operation::ImageInputClipboard => crate::operations::images::inputs::clipboard::OperationImageInputClipboard::settings(),
             Operation::ImageTransformResize => OperationImageTransformResize::settings(),
             Operation::ImageTransformResizeExact => OperationImageTransformResizeExact::settings(),
             Operation::ImageTransformResizeFill => OperationImageTransformResizeFill::settings(),
@@ -49,6 +57,8 @@ impl Operation {
             Operation::NumberInputDecimal => OperationNumberInputDecimal::create_inputs(),
             Operation::NumberMathAdd => OperationNumberMathAdd::create_inputs(),
             Operation::ImageInputUrl => OperationImageInputUrl::create_inputs(),
+            Operation::ImageInputFile => OperationImageInputFile::create_inputs(),
+            Operation::ImageInputClipboard => OperationImageInputClipboard::create_inputs(),
             Operation::ImageTransformResize => OperationImageTransformResize::create_inputs(),
             Operation::ImageTransformResizeExact => OperationImageTransformResizeExact::create_inputs(),
             Operation::ImageTransformResizeFill => OperationImageTransformResizeFill::create_inputs(),
@@ -64,6 +74,8 @@ impl Operation {
             Operation::NumberInputDecimal => OperationNumberInputDecimal::create_outputs(),
             Operation::NumberMathAdd => OperationNumberMathAdd::create_outputs(),
             Operation::ImageInputUrl => OperationImageInputUrl::create_outputs(),
+            Operation::ImageInputFile => OperationImageInputFile::create_outputs(),
+            Operation::ImageInputClipboard => OperationImageInputClipboard::create_outputs(),
             Operation::ImageTransformResize => OperationImageTransformResize::create_outputs(),
             Operation::ImageTransformResizeExact => OperationImageTransformResizeExact::create_outputs(),
             Operation::ImageTransformResizeFill => OperationImageTransformResizeFill::create_outputs(),
@@ -79,6 +91,8 @@ impl Operation {
             Operation::NumberInputDecimal => OperationNumberInputDecimal::run(inputs).await,
             Operation::NumberMathAdd => OperationNumberMathAdd::run(inputs).await,
             Operation::ImageInputUrl => OperationImageInputUrl::run(inputs).await,
+            Operation::ImageInputFile => OperationImageInputFile::run(inputs).await,
+            Operation::ImageInputClipboard => OperationImageInputClipboard::run(inputs).await,
             Operation::ImageTransformResize => OperationImageTransformResize::run(inputs).await,
             Operation::ImageTransformResizeExact => OperationImageTransformResizeExact::run(inputs).await,
             Operation::ImageTransformResizeFill => OperationImageTransformResizeFill::run(inputs).await,

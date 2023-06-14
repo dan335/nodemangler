@@ -408,23 +408,23 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                             });
                     }
                 }
-                Value::UiButton(a) => {
+                Value::Trigger {name} => {
                     if input.connection.is_some() {
-                        ui.label(format!("{:?}", a));
+                        ui.label(format!("{:?}", name));
                     } else if ui.add(egui::Button::new(input.name.clone())).clicked() {
                         change_value(
                             tx_change_node.clone(),
                             node.id.clone(),
                             input_index,
                             input,
-                            Value::UiButton(true),
+                            Value::Trigger {name},
                         );
                     }
                 }
                 Value::DynamicImage{data:_, change_id:_} => {}
-                Value::Path(a) => {
+                Value::Path { name, path, file_extensions } => {
                     if input.connection.is_some() {
-                        ui.label(a.into_os_string().into_string().unwrap());
+                        ui.label(path.into_os_string().into_string().unwrap());
                     } else {
                         // let mut x = a.into_os_string().into_string().unwrap();
                         // if ui.text_edit_singleline(&mut x).changed() {
@@ -444,18 +444,24 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                             |ui| {
                                 ui.add_enabled_ui(false, |ui| {
                                     ui.text_edit_singleline(
-                                        &mut a.into_os_string().into_string().unwrap(),
+                                        &mut path.into_os_string().into_string().unwrap(),
                                     )
                                 });
                             },
                         );
 
                         if ui.button("🗀").clicked() {
+                            
+                            let mut extensions: Vec<&str> = Vec::new();
+                            for s in &file_extensions {
+                                extensions.push(s.as_str());
+                            }
+
                             if let Some(save_path) = rfd::FileDialog::new()
-                                .add_filter("mangler", &["mangle"])
+                                .add_filter(&name, &extensions)
                                 .pick_file()
                             {
-                                let value = Value::Path(save_path);
+                                let value = Value::Path { name: name, path: save_path, file_extensions: file_extensions };
                                 change_value(
                                     tx_change_node.clone(),
                                     node.id.clone(),
