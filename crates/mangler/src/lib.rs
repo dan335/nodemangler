@@ -177,7 +177,7 @@ pub struct GraphSaveData {
 pub fn operation_list() -> Vec<OperationListItem> {
     vec![
         OperationListItem::Category { name: "numbers".to_string(), operation_list_items: vec![
-            OperationListItem::Category { name: "inputs".to_string(), operation_list_items: vec![
+            OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::NumberInputDecimal },
                 OperationListItem::Operation { operation: Operation::NumberInputInteger },
             ]},
@@ -190,6 +190,9 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::ImageInputFile },
                 OperationListItem::Operation { operation: Operation::ImageInputUrl },
                 OperationListItem::Operation { operation: Operation::ImageInputClipboard },
+            ]},
+            OperationListItem::Category { name: "output".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::ImageOutputFile },
             ]},
             OperationListItem::Category { name: "transform".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::ImageTransformResize },

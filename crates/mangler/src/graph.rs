@@ -1,4 +1,4 @@
-use crate::input::{Input, InputLink};
+use crate::input::{Input, InputLink, InputSettings};
 use crate::node_type::NodeType;
 use crate::output::{Output, OutputLink};
 use crate::{AddNodeType, NodeChangedMessage, GraphChangedMessage};
@@ -112,7 +112,16 @@ impl Graph {
             AddNodeType::Subgraph => {
                 node.inputs.clear();
                 node.outputs.clear();
-                node.inputs.push(Input::new("file path".to_string(), Value::Path{path:PathBuf::new(), name:"Mangler".to_string(), file_extensions:vec!["mangler".to_string()]}, None));
+
+                let input_settings = InputSettings::Path {
+                    extension_filter: vec!["mangle".to_string()],
+                    set_directory: None,
+                    set_file_name: None,
+                    set_title: Some("open subgraph".to_string()),
+                    file_dialog_type: crate::input::FileDialogType::PickFile,
+                };
+
+                node.inputs.push(Input::new("file path".to_string(), Value::Path(PathBuf::new()), input_settings, None));
                 is_subgraph = true;
             },
             _ => {}
@@ -323,7 +332,7 @@ impl Graph {
             if let NodeType::Subgraph { path:_, graph:_, rx_node_changed:_ } = &node.node_type {
                 // if value is subgraph location
                 // load subgraph
-                if let Value::Path { name, path, file_extensions } = value {
+                if let Value::Path(path) = value {
                     
                     // create graph from path
                     let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
@@ -335,7 +344,22 @@ impl Graph {
                                 // from subgraph's exposed inputs
                                 for (_input_index, subgraph_input) in subgraph_node.inputs.iter().enumerate() {
                                     if subgraph_input.is_exposed {
-                                        node.inputs.push(Input::new(subgraph_input.name.clone(), subgraph_input.value.clone(), Some(InputLink {node_id: subgraph_node_id.clone(), input_id: subgraph_input.id.clone()})));
+                                        let input_settings = InputSettings::Path {
+                                            extension_filter: vec!["mangle".to_string()],
+                                            set_directory: None,
+                                            set_file_name: None,
+                                            set_title: Some("open subgraph".to_string()),
+                                            file_dialog_type: crate::input::FileDialogType::PickFile,
+                                        };
+
+                                        node.inputs.push(
+                                            Input::new(
+                                                subgraph_input.name.clone(),
+                                                subgraph_input.value.clone(),
+                                                input_settings,
+                                                Some(InputLink {node_id: subgraph_node_id.clone(), input_id: subgraph_input.id.clone()})
+                                            )
+                                        );
                                     }
                                 }
 

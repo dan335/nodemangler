@@ -1,6 +1,6 @@
 use image::RgbaImage;
 use crate::get_id;
-use crate::input::Input;
+use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operation::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
@@ -20,7 +20,7 @@ impl OperationImageInputUrl {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("url".to_string(), Value::String("https://i.imgur.com/3aDSTiBl.jpg".to_string()), None),
+            Input::new("url".to_string(), Value::String("https://i.imgur.com/3aDSTiBl.jpg".to_string()), InputSettings::None, None),
         ]
     }
 

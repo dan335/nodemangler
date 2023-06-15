@@ -3,7 +3,6 @@ use crate::{graph_to_view_space_pos2, graph_to_view_space};
 use eframe::epaint::{Color32, FontId};
 use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect, Vec2};
-use image::ImageFormat;
 
 
 #[derive(Clone)]

@@ -2,8 +2,8 @@ use eframe::egui::{self, Label};
 use epaint::vec2;
 use image::imageops::FilterType;
 use mangler::{
-    input::Input,
-    value::{ImageFormat, Value},
+    input::{Input, InputSettings},
+    value::{ColorFormat, Value},
     ChangeNodeMessage,
 };
 use tokio::sync::mpsc::Sender;
@@ -229,7 +229,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                             });
                     }
                 }
-                Value::ImageFormat(a) => {
+                Value::ColorFormat(a) => {
                     if input.connection.is_some() {
                         ui.label(format!("{:?}", a));
                     } else {
@@ -240,12 +240,12 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                                 if ui
                                     .selectable_value(
                                         &mut x,
-                                        ImageFormat::ImageGray16,
+                                        ColorFormat::ImageGray16,
                                         "Grayscale 16 bit",
                                     )
                                     .changed()
                                 {
-                                    let value = Value::ImageFormat(x);
+                                    let value = Value::ColorFormat(x);
                                     change_value(
                                         tx_change_node.clone(),
                                         node.id.clone(),
@@ -258,12 +258,12 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                                 if ui
                                     .selectable_value(
                                         &mut x,
-                                        ImageFormat::ImageGray8,
+                                        ColorFormat::ImageGray8,
                                         "Grayscale 8 bit",
                                     )
                                     .changed()
                                 {
-                                    let value = Value::ImageFormat(x);
+                                    let value = Value::ColorFormat(x);
                                     change_value(
                                         tx_change_node.clone(),
                                         node.id.clone(),
@@ -276,12 +276,12 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                                 if ui
                                     .selectable_value(
                                         &mut x,
-                                        ImageFormat::ImageGrayA16,
+                                        ColorFormat::ImageGrayA16,
                                         "Grayscale with alpha 16 bit",
                                     )
                                     .changed()
                                 {
-                                    let value = Value::ImageFormat(x);
+                                    let value = Value::ColorFormat(x);
                                     change_value(
                                         tx_change_node.clone(),
                                         node.id.clone(),
@@ -294,12 +294,12 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                                 if ui
                                     .selectable_value(
                                         &mut x,
-                                        ImageFormat::ImageGrayA8,
+                                        ColorFormat::ImageGrayA8,
                                         "Grayscale with alpha 8 bit",
                                     )
                                     .changed()
                                 {
-                                    let value = Value::ImageFormat(x);
+                                    let value = Value::ColorFormat(x);
                                     change_value(
                                         tx_change_node.clone(),
                                         node.id.clone(),
@@ -310,10 +310,10 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                                     input.value = value;
                                 }
                                 if ui
-                                    .selectable_value(&mut x, ImageFormat::ImageRgb16, "RGB 16 bit")
+                                    .selectable_value(&mut x, ColorFormat::ImageRgb16, "RGB 16 bit")
                                     .changed()
                                 {
-                                    let value = Value::ImageFormat(x);
+                                    let value = Value::ColorFormat(x);
                                     change_value(
                                         tx_change_node.clone(),
                                         node.id.clone(),
@@ -326,12 +326,12 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                                 if ui
                                     .selectable_value(
                                         &mut x,
-                                        ImageFormat::ImageRgb32F,
+                                        ColorFormat::ImageRgb32F,
                                         "RGB 32 bit float",
                                     )
                                     .changed()
                                 {
-                                    let value = Value::ImageFormat(x);
+                                    let value = Value::ColorFormat(x);
                                     change_value(
                                         tx_change_node.clone(),
                                         node.id.clone(),
@@ -342,10 +342,10 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                                     input.value = value;
                                 }
                                 if ui
-                                    .selectable_value(&mut x, ImageFormat::ImageRgb8, "RGB 8 bit")
+                                    .selectable_value(&mut x, ColorFormat::ImageRgb8, "RGB 8 bit")
                                     .changed()
                                 {
-                                    let value = Value::ImageFormat(x);
+                                    let value = Value::ColorFormat(x);
                                     change_value(
                                         tx_change_node.clone(),
                                         node.id.clone(),
@@ -358,12 +358,12 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                                 if ui
                                     .selectable_value(
                                         &mut x,
-                                        ImageFormat::ImageRgba16,
+                                        ColorFormat::ImageRgba16,
                                         "RGBA 16 bit",
                                     )
                                     .changed()
                                 {
-                                    let value = Value::ImageFormat(x);
+                                    let value = Value::ColorFormat(x);
                                     change_value(
                                         tx_change_node.clone(),
                                         node.id.clone(),
@@ -376,12 +376,12 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                                 if ui
                                     .selectable_value(
                                         &mut x,
-                                        ImageFormat::ImageRgba32F,
+                                        ColorFormat::ImageRgba32F,
                                         "RGBA 32 bit float",
                                     )
                                     .changed()
                                 {
-                                    let value = Value::ImageFormat(x);
+                                    let value = Value::ColorFormat(x);
                                     change_value(
                                         tx_change_node.clone(),
                                         node.id.clone(),
@@ -392,10 +392,10 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                                     input.value = value;
                                 }
                                 if ui
-                                    .selectable_value(&mut x, ImageFormat::ImageRgba8, "RGBA 8 bit")
+                                    .selectable_value(&mut x, ColorFormat::ImageRgba8, "RGBA 8 bit")
                                     .changed()
                                 {
-                                    let value = Value::ImageFormat(x);
+                                    let value = Value::ColorFormat(x);
                                     change_value(
                                         tx_change_node.clone(),
                                         node.id.clone(),
@@ -408,37 +408,24 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                             });
                     }
                 }
-                Value::Trigger {name} => {
+                Value::Trigger => {
                     if input.connection.is_some() {
-                        ui.label(format!("{:?}", name));
+                        ui.label(format!("trigger"));
                     } else if ui.add(egui::Button::new(input.name.clone())).clicked() {
                         change_value(
                             tx_change_node.clone(),
                             node.id.clone(),
                             input_index,
                             input,
-                            Value::Trigger {name},
+                            Value::Trigger,
                         );
                     }
                 }
                 Value::DynamicImage{data:_, change_id:_} => {}
-                Value::Path { name, path, file_extensions } => {
+                Value::Path(path) => {
                     if input.connection.is_some() {
                         ui.label(path.into_os_string().into_string().unwrap());
                     } else {
-                        // let mut x = a.into_os_string().into_string().unwrap();
-                        // if ui.text_edit_singleline(&mut x).changed() {
-                        //     let value = Value::Path(PathBuf::from(x));
-                        //     change_value(
-                        //         tx_change_node.clone(),
-                        //         node.id.clone(),
-                        //         input_index,
-                        //         input,
-                        //         value.clone(),
-                        //     );
-                        //     input.value = value;
-                        // }
-
                         ui.allocate_ui(
                             vec2(ui.available_width() - 20.0, ui.available_height()),
                             |ui| {
@@ -451,29 +438,46 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                         );
 
                         if ui.button("🗀").clicked() {
-                            
-                            let mut extensions: Vec<&str> = Vec::new();
-                            for s in &file_extensions {
-                                extensions.push(s.as_str());
-                            }
+                            println!("{:?}", input);
+                            if let InputSettings::Path {
+                                extension_filter,
+                                set_directory,
+                                set_file_name,
+                                set_title,
+                                file_dialog_type
+                            } = input.settings.clone() {
 
-                            if let Some(save_path) = rfd::FileDialog::new()
-                                .add_filter(&name, &extensions)
-                                .pick_file()
-                            {
-                                let value = Value::Path { name: name, path: save_path, file_extensions: file_extensions };
-                                change_value(
-                                    tx_change_node.clone(),
-                                    node.id.clone(),
-                                    input_index,
-                                    input,
-                                    value.clone(),
-                                );
-                                input.value = value;
+                                let mut extensions: Vec<&str> = Vec::new();
+                                for s in &extension_filter {
+                                    extensions.push(s.as_str());
+                                }
+
+                                let title = set_title.unwrap_or("file".to_string());
+
+                                let file_dialog = rfd::FileDialog::new().add_filter(&title, &extensions);
+
+                                if let Some(save_path) = match file_dialog_type {
+                                    mangler::input::FileDialogType::PickFile => file_dialog.pick_file(),
+                                    mangler::input::FileDialogType::PickFolder => file_dialog.pick_folder(),
+                                    mangler::input::FileDialogType::SaveFile => file_dialog.save_file(),
+                                } {
+                                    let value = Value::Path(save_path);
+                                    change_value(
+                                        tx_change_node.clone(),
+                                        node.id.clone(),
+                                        input_index,
+                                        input,
+                                        value.clone(),
+                                    );
+                                    input.value = value;
+                                }
                             }
                         }
                     }
                 }
+                Value::ImageFormat(image_format) => {
+
+                },
             }
 
             // exposed checkbox

@@ -190,7 +190,7 @@ impl Node {
                     Some(subgraph) => {
                         // pass node's input to subgraph's input before running
                         for (_input_index, input) in self.inputs.iter().enumerate() {
-                            if let Value::Path { name:_, path:_, file_extensions:_ } = input.value {
+                            if let Value::Path(_) = input.value {
                                 // nothing
                             } else {
                                 if let Some(link) = &input.link {

@@ -3,7 +3,7 @@ use crate::graph::graph_node_header::show_graph_node_header;
 use crate::graph::graph_node_info::show_graph_node_info;
 use crate::graph::graph_output::draw_graph_output;
 use crate::theme::Theme;
-use crate::{graph_to_view_space_pos2, view_to_graph_space_pos2};
+use crate::{graph_to_view_space_pos2, view_to_graph_space_pos2, graph_to_view_space};
 use eframe::egui;
 use egui::{Pos2, Rect, Vec2};
 use mangler::input::Input;
@@ -147,8 +147,8 @@ impl GraphNode {
             let input_output_response = draw_graph_input(
                 &self.id,
                 input,
-                self.get_input_position(index, node_rect),
-                self.get_input_rect(index, node_rect),
+                self.get_input_position(index, node_rect, graph_zoom),
+                self.get_input_rect(index, node_rect, graph_zoom),
                 index,
                 node_rect,
                 ui,
@@ -188,8 +188,8 @@ impl GraphNode {
                 &self.id,
                 &output,
                 &output.value.value_type().value_name(),
-                self.get_output_position(index, node_rect),
-                self.get_output_rect(index, node_rect),
+                self.get_output_position(index, node_rect, graph_zoom),
+                self.get_output_rect(index, node_rect, graph_zoom),
                 index,
                 node_rect,
                 ui,
@@ -220,7 +220,7 @@ impl GraphNode {
             }
 
             if is_viewing && index == 0 {
-                draw_graph_output_highlighted(self.get_output_position(index, node_rect), ui, theme);
+                draw_graph_output_highlighted(self.get_output_position(index, node_rect, graph_zoom), ui, theme, graph_zoom);
             }
 
             if !input_output_response.is_disabled && input_output_response.is_cursor_over {
@@ -240,34 +240,32 @@ impl GraphNode {
         self.last_drag_position = None;
     }
 
-    pub fn get_input_position(&self, index: usize, node_rect: Rect) -> Pos2 {
-        puffin::profile_scope!("graph node.get_input_position()");
+    pub fn get_input_position(&self, index: usize, node_rect: Rect, graph_zoom: f32) -> Pos2 {
         Pos2::new(
-            node_rect.left() - 14.0,
-            node_rect.top() + 12.0 + 20.0 * index as f32,
+            node_rect.left() - graph_to_view_space(graph_zoom, 14.0),
+            node_rect.top() + graph_to_view_space(graph_zoom, 12.0) + graph_to_view_space(graph_zoom, 20.0) * index as f32,
         )
     }
 
-    pub fn get_output_position(&self, index: usize, node_rect: Rect) -> Pos2 {
-        puffin::profile_scope!("graph node.get_output_position()");
+    pub fn get_output_position(&self, index: usize, node_rect: Rect, graph_zoom: f32) -> Pos2 {
         Pos2::new(
-            node_rect.right() + 14.0,
-            node_rect.top() + 12.0 + 20.0 * index as f32,
+            node_rect.right() + graph_to_view_space(graph_zoom, 14.0),
+            node_rect.top() + graph_to_view_space(graph_zoom, 12.0) + graph_to_view_space(graph_zoom, 20.0) * index as f32,
         )
     }
 
-    pub fn get_input_rect(&self, index: usize, node_rect: Rect) -> Rect {
+    pub fn get_input_rect(&self, index: usize, node_rect: Rect, graph_zoom: f32) -> Rect {
         puffin::profile_scope!("graph node.get_input_rect()");
         Rect::from_center_size(
-            self.get_input_position(index, node_rect),
+            self.get_input_position(index, node_rect, graph_zoom),
             Vec2::new(12.0, 12.0),
         )
     }
 
-    pub fn get_output_rect(&self, index: usize, node_rect: Rect) -> Rect {
+    pub fn get_output_rect(&self, index: usize, node_rect: Rect, graph_zoom: f32) -> Rect {
         puffin::profile_scope!("graph node.get_output_rect()");
         Rect::from_center_size(
-            self.get_output_position(index, node_rect),
+            self.get_output_position(index, node_rect, graph_zoom),
             Vec2::new(12.0, 12.0),
         )
     }

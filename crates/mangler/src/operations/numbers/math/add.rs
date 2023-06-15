@@ -1,4 +1,4 @@
-use crate::input::Input;
+use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operation::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
@@ -18,8 +18,8 @@ impl OperationNumberMathAdd {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Integer(i32::default()), None),
-            Input::new("b".to_string(), Value::Integer(i32::default()), None),
+            Input::new("a".to_string(), Value::Integer(i32::default()), InputSettings::None, None),
+            Input::new("b".to_string(), Value::Integer(i32::default()), InputSettings::None, None),
         ]
     }
 

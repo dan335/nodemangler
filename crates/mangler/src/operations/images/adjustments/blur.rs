@@ -1,7 +1,7 @@
 use crate::get_id;
 use crate::value::ValueType;
 use image::RgbaImage;
-use crate::input::Input;
+use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operation::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
@@ -21,8 +21,8 @@ impl OperationImageAdjustmentBlur {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id() }, None),
-            Input::new("sigma".to_string(), Value::Decimal(1.0), None),
+            Input::new("image".to_string(),  Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id() }, InputSettings::None, None),
+            Input::new("sigma".to_string(), Value::Decimal(1.0), InputSettings::None, None),
         ]
     }
 

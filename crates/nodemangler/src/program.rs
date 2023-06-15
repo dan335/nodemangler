@@ -2,9 +2,9 @@ use eframe::egui;
 use epaint::{ColorImage, Pos2, Rect, Rounding, Vec2};
 use mangler::{
     get_id, node_type::NodeType, AddNodeType, ChangeGraphMessage, ChangeNodeMessage,
-    GraphChangedMessage, NewGraphError, NodeChangedMessage, value::Value,
+    GraphChangedMessage, NewGraphError, NodeChangedMessage, value::{Value, ValueType},
 };
-use std::path::PathBuf;
+use std::{path::PathBuf, io::ErrorKind};
 use tokio::{
     sync::mpsc,
 };
@@ -19,7 +19,7 @@ use crate::{
     settings::{graph_settings_panel, node_settings_panel},
     theme::Theme,
     view::view_panel::ViewPanel,
-    view_to_graph_space_pos2, APP_MENU_HEIGHT, NODE_MENU_WIDTH,
+    view_to_graph_space_pos2, APP_MENU_HEIGHT, NODE_MENU_WIDTH, graph_to_view_space_pos2, ManglerError,
 };
 
 pub struct Program {
@@ -35,6 +35,7 @@ pub struct Program {
     editing_node_id: Option<String>,
     viewing_node_id_index: Option<(String, usize)>,   // id and output index
     dragging_menu_button: MenuItemsResult,
+    pointer_position: Pos2,
 }
 
 impl Program {
@@ -60,6 +61,7 @@ impl Program {
                     rx_node_changed,
                     tx_change_node,
                     rx_graph_changed,
+                    pointer_position: Pos2::ZERO,
                 })
             },
             Err(error) => Err(NewGraphError(format!("Error creating program. {:?}", error))),
@@ -327,17 +329,66 @@ impl Program {
             }
         }
 
+        
+
 
         let app_rect = ctx.screen_rect();
 
-        let cursor_position = ui
-            .ctx()
-            .input(|i| i.pointer.hover_pos())
-            .unwrap_or(Pos2::ZERO);
+        if let Some(pos) = ctx.pointer_latest_pos() {
+            self.pointer_position = pos;
+        }
+
+        // dropped files
+        // can't figure out  how to get pointer position
+        // so just put in middle of screen
+        ctx.input(|i| {
+            if !i.raw.dropped_files.is_empty() {
+                for file in i.raw.dropped_files.iter() {
+                    if let Some(path) = &file.path {
+                        if let Some(extension) = path.extension() {
+                            if let Ok(ext) = extension.to_os_string().into_string() {
+                                for value_type in ValueType::types().iter() {
+                                    if ValueType::file_extensions(value_type).contains(&ext.to_lowercase()) {
+                                        match value_type {
+                                            ValueType::Bool => {},
+                                            ValueType::Integer => {},
+                                            ValueType::Decimal => {},
+                                            ValueType::String => {},
+                                            ValueType::FilterType => {},
+                                            ValueType::ColorFormat => {},
+                                            ValueType::Trigger => {},
+                                            ValueType::DynamicImage => {
+                                                let random_size = app_rect.width().min(app_rect.height()) * 0.3;
+                                                let x = app_rect.center().x + fastrand::f32() * random_size - random_size * 0.5;
+                                                let y = app_rect.center().y + fastrand::f32() * random_size - random_size * 0.5;
+                                                let pos = view_to_graph_space_pos2(self.graph_editor.zoom, Pos2::new(x, y)) - self.graph_editor.position.to_vec2();
+                                                if let Ok(node_id) = self.add_node(AddNodeType::Operation(mangler::operation::Operation::ImageInputFile), pos) {
+                                                    
+                                                    let message = ChangeNodeMessage::SetInput { node_id, input_index: 0, value: Value::Path(path.clone()) };
+
+                                                    match self.tx_change_node.try_send(message) {
+                                                        Ok(_) => {}
+                                                        Err(err) => {
+                                                            println!("Error sending graph_message: {:?}", err);
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            ValueType::Path => {},
+                                            ValueType::ImageFormat => {},
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
 
         let cursor_primary_down: bool = ui.ctx().input(|i| i.pointer.primary_down());
         
-        let cursor_inside = app_rect.contains(cursor_position);
+        let cursor_inside = app_rect.contains(self.pointer_position);
 
 
         
@@ -445,7 +496,7 @@ impl Program {
             puffin::profile_scope!("graph panel");
             let graph_editor_response: GraphEditorResponse = self.graph_editor.show(
                 ui,
-                cursor_position,
+                self.pointer_position,
                 cursor_primary_down,
                 &self.editing_node_id,
                 &self.viewing_node_id_index,
@@ -516,19 +567,19 @@ impl Program {
         ui.input(|i| {
             if i.pointer.primary_released() {
                 if let Some(operation) = &self.dragging_menu_button.operation_being_created {
-                    if node_graph_rect.contains(cursor_position) {
+                    if node_graph_rect.contains(self.pointer_position) {
                         //let node_position_view_space = Pos2::new(cursor_position.x - bottom_panel_rect.min.x, cursor_position.y - bottom_panel_rect.min.y);
                         self.add_node(
                             AddNodeType::Operation(operation.clone()),
-                            view_to_graph_space_pos2(self.graph_editor.zoom, cursor_position)
+                            view_to_graph_space_pos2(self.graph_editor.zoom, self.pointer_position)
                                 - self.graph_editor.position.to_vec2(),
                         );
                     }
                 } else if self.dragging_menu_button.subgraph_being_created {
-                    if node_graph_rect.contains(cursor_position) {
+                    if node_graph_rect.contains(self.pointer_position) {
                         self.add_node(
                             AddNodeType::Subgraph,
-                            view_to_graph_space_pos2(self.graph_editor.zoom, cursor_position)
+                            view_to_graph_space_pos2(self.graph_editor.zoom, self.pointer_position)
                                 - self.graph_editor.position.to_vec2(),
                         );
                     }
@@ -543,7 +594,7 @@ impl Program {
         if self.dragging_menu_button.subgraph_being_created
             || self.dragging_menu_button.operation_being_created.is_some()
         {
-            let drag_rect = Rect::from_center_size(cursor_position, Vec2::new(80.0, 80.0));
+            let drag_rect = Rect::from_center_size(self.pointer_position, Vec2::new(80.0, 80.0));
             ui.painter().add(egui::Shape::rect_filled(
                 drag_rect,
                 Rounding::none(),
@@ -584,6 +635,8 @@ impl Program {
             }
         }
 
+        
+
         // // if a node is busy request redraw
         // for (_, node) in self.graph_editor.graph_nodes.iter() {
         //     if node.is_busy {
@@ -594,19 +647,19 @@ impl Program {
         
     }
 
-    pub fn add_node(&mut self, node_type: AddNodeType, position_graph_space: Pos2) {
+    pub fn add_node(&mut self, node_type: AddNodeType, position_graph_space: Pos2) -> Result<String, ManglerError> {
         let node_id = get_id();
 
         let add_node_message = ChangeGraphMessage::AddNode {
-            node_id,
+            node_id: node_id.clone(),
             node_type,
             position: glam::f32::Vec2::new(position_graph_space.x, position_graph_space.y),
         };
 
         match self.tx_change_graph.try_send(add_node_message) {
-            Ok(_) => {}
+            Ok(_) => {Ok(node_id)}
             Err(err) => {
-                println!("Error sending AddNodeMessage: {:?}", err);
+                Err(ManglerError(format!("{:?}", err)))
             }
         }
     }

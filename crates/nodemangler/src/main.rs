@@ -91,3 +91,8 @@ pub fn graph_to_view_space_pos2(zoom: f32, n: Pos2) -> Pos2 {
         graph_to_view_space(zoom, n.y),
     )
 }
+
+
+
+// generic error
+pub struct ManglerError(String);

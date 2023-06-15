@@ -1,6 +1,6 @@
 use crate::get_id;
 use image::RgbaImage;
-use crate::input::Input;
+use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operation::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
@@ -20,7 +20,7 @@ impl OperationImageAdjustmentGrayscale {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id() }, None),
+            Input::new("image".to_string(),  Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id() }, InputSettings::None, None),
         ]
     }
 

@@ -54,7 +54,7 @@ pub fn draw_graph_input(
         color = theme.get().grid_connection_dot_hover;
     }
 
-    let shape = Shape::circle_filled(input_position, 5.0, color);
+    let shape = Shape::circle_filled(input_position, graph_to_view_space(graph_zoom, 5.0), color);
     ui.painter().add(shape);
 
     if input_response.drag_started() {
@@ -65,7 +65,7 @@ pub fn draw_graph_input(
         response.connection_to_position = input_position;
     }
 
-    let pos = Pos2::new(input_position.x - 10.0, input_position.y);
+    let pos = Pos2::new(input_position.x - graph_to_view_space(graph_zoom, 10.0), input_position.y);
     let font_id = egui::FontId::proportional(graph_to_view_space(graph_zoom, 12.0));
     let color = theme.get().override_text_color;
 

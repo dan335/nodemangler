@@ -1,6 +1,6 @@
 use image::RgbaImage;
 use crate::get_id;
-use crate::input::Input;
+use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operation::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
@@ -22,29 +22,13 @@ impl OperationImageInputFile {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("path".to_string(), Value::Path{ name: "image".to_string(), path: PathBuf::new(), file_extensions: vec![
-                "avif".to_string(),
-                "jpg".to_string(),
-                "jpeg".to_string(),
-                "png".to_string(),
-                "gif".to_string(),
-                "webp".to_string(),
-                "tif".to_string(),
-                "tiff".to_string(),
-                "tga".to_string(),
-                "dds".to_string(),
-                "bmp".to_string(),
-                "ico".to_string(),
-                "hdr".to_string(),
-                "exr".to_string(),
-                "pbm".to_string(),
-                "pam".to_string(),
-                "ppm".to_string(),
-                "pgm".to_string(),
-                "ff".to_string(),
-                "farbfeld".to_string(),
-                "qoi".to_string(),
-            ] }, None),
+            Input::new("path".to_string(), Value::Path(PathBuf::new()), InputSettings::Path{
+                extension_filter: ValueType::file_extensions(&ValueType::DynamicImage),
+                set_directory: None,
+                set_file_name: None,
+                set_title: Some("image".to_string()),
+                file_dialog_type: crate::input::FileDialogType::PickFile,
+            }, None),
         ]
     }
 
@@ -63,7 +47,7 @@ impl OperationImageInputFile {
         let mut img = None;
 
         //let Ok(Value::Path { name, path, file_extensions }) = inputs[0].value.try_convert_to(ValueType::Path) else { return Err(OperationError { message: "Unable to convert to path.".to_string() })};
-        let Value::Path { name, path, file_extensions } = &inputs[0].value else { return Err(OperationError { message: "Unable to convert to path.".to_string() })};
+        let Value::Path(path) = &inputs[0].value else { return Err(OperationError { message: "Unable to convert to path.".to_string() })};
 
         if let Ok(open) = ImageReader::open(path) {
             if let Ok(dynamic_image) = open.decode() {

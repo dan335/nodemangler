@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::{value::Value, get_id, Output};
 use serde::{Deserialize, Serialize};
 
@@ -6,6 +8,7 @@ pub struct Input {
     pub id: String,
     pub name: String,
     pub value: Value,
+    pub settings: InputSettings,
     pub connection: Option<(String, usize)>, // id of node with output, index of output
     pub is_exposed: bool,
     // todo: need to link this somehow with exposed input
@@ -23,11 +26,12 @@ impl PartialEq for Input {
 }
 
 impl Input {
-    pub fn new(name: String, value: Value, link: Option<InputLink>) -> Input {
+    pub fn new(name: String, value: Value, settings: InputSettings, link: Option<InputLink>) -> Input {
         Input {
             id: get_id(),
             name,
             value,
+            settings,
             connection: None,
             is_exposed: false,
             link,
@@ -43,4 +47,26 @@ impl Input {
 pub struct InputLink {
     pub node_id: String,
     pub input_id: String,
+}
+
+
+// additional settings for intput
+// that do not belong in the value
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum InputSettings {
+    None,
+    Path {
+        extension_filter: Vec<String>,
+        set_directory: Option<PathBuf>,
+        set_file_name: Option<String>,
+        set_title: Option<String>,
+        file_dialog_type: FileDialogType,
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum FileDialogType {
+    PickFile,
+    PickFolder,
+    SaveFile,
 }

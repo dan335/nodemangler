@@ -1,6 +1,6 @@
 use image::{RgbaImage, ImageBuffer};
 use crate::get_id;
-use crate::input::Input;
+use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operation::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
@@ -21,7 +21,7 @@ impl OperationImageInputClipboard {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("copy to clipboard".to_string(), Value::Trigger { name: "copy to clipboard".to_string() }, None),
+            Input::new("copy to clipboard".to_string(), Value::Trigger, InputSettings::None, None),
         ]
     }
 

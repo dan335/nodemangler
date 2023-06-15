@@ -1,4 +1,4 @@
-use crate::{graph::graph_node::InputOutputResponse, theme::Theme};
+use crate::{graph::graph_node::InputOutputResponse, theme::Theme, graph_to_view_space};
 use eframe::{
     egui,
     epaint::{Pos2, Rect, Shape},
@@ -56,7 +56,7 @@ pub fn draw_graph_output(
     }
 
     // draw bg
-    let shape = Shape::circle_filled(output_position, 5.0, color);
+    let shape = Shape::circle_filled(output_position, graph_to_view_space(graph_zoom, 5.0), color);
     response.is_cursor_over = output_response.hovered();
     ui.painter().add(shape);
 
@@ -76,7 +76,7 @@ pub fn draw_graph_output(
         let txt = format!("{} ({})", output.name, output_value_name);
         let font_id = egui::FontId::proportional(crate::graph_to_view_space(graph_zoom, 12.0));
         let color = theme.get().override_text_color;
-        let pos = Pos2::new(output_position.x + 10.0, output_position.y);
+        let pos = Pos2::new(output_position.x + graph_to_view_space(graph_zoom, 10.0), output_position.y);
 
         let galley = ui.painter().layout_no_wrap(txt.clone(), font_id.clone(), color);
         
@@ -96,10 +96,16 @@ pub fn draw_graph_output(
     response
 }
 
-pub fn draw_graph_output_highlighted(output_position: Pos2, ui: &mut egui::Ui, theme: &Theme) {
-    ui.painter().add(Shape::circle_stroke(
-        output_position,
-        6.0,
-        egui::Stroke::new(1.0, theme.get().node_header_selected_border),
-    ));
+pub fn draw_graph_output_highlighted(output_position: Pos2, ui: &mut egui::Ui, theme: &Theme, graph_zoom: f32) {
+    ui.painter().add(
+        Shape::circle_filled(
+            Pos2::new(output_position.x, output_position.y),
+            graph_to_view_space(graph_zoom, 5.5),
+            theme.get().node_header_selected_border,
+            // egui::Stroke::new(
+            //     graph_to_view_space(graph_zoom, 3.0),
+            //     theme.get().node_header_selected_border
+            // )
+        )
+    );
 }

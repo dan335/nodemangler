@@ -38,7 +38,7 @@ pub fn show_graph_node_header(
         ui.painter().add(egui::Shape::rect_stroke(
             node_rect,
             ROUNDING,
-            egui::Stroke::new(1.0, theme.get().node_header_selected_border),
+            egui::Stroke::new(graph_to_view_space(graph_zoom, 3.0), theme.get().node_header_selected_border),
         ));
     }
 

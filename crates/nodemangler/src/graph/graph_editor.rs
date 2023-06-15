@@ -172,9 +172,11 @@ impl GraphEditor {
                                 output_graph_node.get_output_position(
                                     *output_connection_index,
                                     output_node_rect,
+                                    self.zoom,
                                 ),
-                                input_graph_node.get_input_position(input_index, input_node_rect),
+                                input_graph_node.get_input_position(input_index, input_node_rect, self.zoom),
                                 theme,
+                                self.zoom,
                             );
 
                             connection_curves.push((curve, node_id.clone(), input_index));
@@ -276,7 +278,7 @@ impl GraphEditor {
                         ConnectionType::Input => {
                             for output_index in 0..other_node.outputs.len() {
                                 if other_graph_node
-                                    .get_output_rect(output_index, other_node_rect)
+                                    .get_output_rect(output_index, other_node_rect, self.zoom)
                                     .contains(cursor_position)
                                 {
                                     graph_editor_response.new_connection =
@@ -292,7 +294,7 @@ impl GraphEditor {
                         ConnectionType::Output => {
                             for input_index in 0..other_node.inputs.len() {
                                 if other_graph_node
-                                    .get_input_rect(input_index, other_node_rect)
+                                    .get_input_rect(input_index, other_node_rect, self.zoom)
                                     .contains(cursor_position)
                                 {
                                     graph_editor_response.new_connection = Some(NewConnection {
@@ -318,10 +320,10 @@ impl GraphEditor {
         if let Some(temp_connection) = &self.temp_connection {
             match temp_connection.from_connection_type {
                 ConnectionType::Input => {
-                    self.draw_connection_line(ui, cursor_position, temp_connection.from_position, theme)
+                    self.draw_connection_line(ui, cursor_position, temp_connection.from_position, theme, self.zoom)
                 }
                 ConnectionType::Output => {
-                    self.draw_connection_line(ui, temp_connection.from_position, cursor_position, theme)
+                    self.draw_connection_line(ui, temp_connection.from_position, cursor_position, theme, self.zoom)
                 }
             };
         }
@@ -422,6 +424,7 @@ impl GraphEditor {
         from: Pos2,
         to: Pos2,
         theme: &Theme,
+        graph_zoom: f32,
     ) -> CubicBezierShape {
         let offset_max = 150.0;
         let color = egui::Color32::from(theme.get().grid_connection_line);

@@ -1,6 +1,7 @@
 use crate::operations::images::adjustments::blur::OperationImageAdjustmentBlur;
 use crate::operations::images::inputs::clipboard::OperationImageInputClipboard;
 use crate::operations::images::inputs::file::OperationImageInputFile;
+use crate::operations::images::outputs::file::OperationImageOutputFile;
 use crate::operations::images::transform::resize::OperationImageTransformResize;
 use crate::operations::images::inputs::url::OperationImageInputUrl;
 use crate::operations::images::transform::resize_exact::OperationImageTransformResizeExact;
@@ -24,6 +25,7 @@ pub enum Operation {
     ImageInputUrl,
     ImageInputClipboard,
     ImageInputFile,
+    ImageOutputFile,
     ImageTransformResize,
     ImageTransformResizeExact,
     ImageTransformResizeFill,
@@ -42,6 +44,7 @@ impl Operation {
             Operation::ImageInputUrl => OperationImageInputUrl::settings(),
             Operation::ImageInputFile => OperationImageInputFile::settings(),
             Operation::ImageInputClipboard => crate::operations::images::inputs::clipboard::OperationImageInputClipboard::settings(),
+            Operation::ImageOutputFile => crate::operations::images::outputs::file::OperationImageOutputFile::settings(),
             Operation::ImageTransformResize => OperationImageTransformResize::settings(),
             Operation::ImageTransformResizeExact => OperationImageTransformResizeExact::settings(),
             Operation::ImageTransformResizeFill => OperationImageTransformResizeFill::settings(),
@@ -59,6 +62,7 @@ impl Operation {
             Operation::ImageInputUrl => OperationImageInputUrl::create_inputs(),
             Operation::ImageInputFile => OperationImageInputFile::create_inputs(),
             Operation::ImageInputClipboard => OperationImageInputClipboard::create_inputs(),
+            Operation::ImageOutputFile => OperationImageOutputFile::create_inputs(),
             Operation::ImageTransformResize => OperationImageTransformResize::create_inputs(),
             Operation::ImageTransformResizeExact => OperationImageTransformResizeExact::create_inputs(),
             Operation::ImageTransformResizeFill => OperationImageTransformResizeFill::create_inputs(),
@@ -76,6 +80,7 @@ impl Operation {
             Operation::ImageInputUrl => OperationImageInputUrl::create_outputs(),
             Operation::ImageInputFile => OperationImageInputFile::create_outputs(),
             Operation::ImageInputClipboard => OperationImageInputClipboard::create_outputs(),
+            Operation::ImageOutputFile => OperationImageOutputFile::create_outputs(),
             Operation::ImageTransformResize => OperationImageTransformResize::create_outputs(),
             Operation::ImageTransformResizeExact => OperationImageTransformResizeExact::create_outputs(),
             Operation::ImageTransformResizeFill => OperationImageTransformResizeFill::create_outputs(),
@@ -93,6 +98,7 @@ impl Operation {
             Operation::ImageInputUrl => OperationImageInputUrl::run(inputs).await,
             Operation::ImageInputFile => OperationImageInputFile::run(inputs).await,
             Operation::ImageInputClipboard => OperationImageInputClipboard::run(inputs).await,
+            Operation::ImageOutputFile => OperationImageOutputFile::run(inputs).await,
             Operation::ImageTransformResize => OperationImageTransformResize::run(inputs).await,
             Operation::ImageTransformResizeExact => OperationImageTransformResizeExact::run(inputs).await,
             Operation::ImageTransformResizeFill => OperationImageTransformResizeFill::run(inputs).await,
