@@ -252,7 +252,7 @@ impl Program {
                                                 pixels.as_slice(),
                                             );
 
-                                            // image format
+                                            // color format
                                             let bits = data.color().bits_per_pixel() / data.color().channel_count() as u16;
                                             let channels = match data.color().channel_count() {
                                                 1 => "r".to_string(),
@@ -375,7 +375,7 @@ impl Program {
                                                 }
                                             },
                                             ValueType::Path => {},
-                                            ValueType::ImageFormat => {},
+                                            ValueType::ImageType => {},
                                         }
                                     }
                                 }

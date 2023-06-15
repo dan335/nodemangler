@@ -85,7 +85,7 @@ impl ViewPanel {
                     mangler::value::Value::Trigger => {
                         ui.label(format!("trigger"));
                     },
-                    mangler::value::Value::ImageFormat(value) => {
+                    mangler::value::Value::ImageType(value) => {
                         ui.label(format!("{:?}", value));
                     },
                 }

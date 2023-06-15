@@ -29,7 +29,7 @@ pub enum Value {
         serialize_with = "serialize_image_format",
         deserialize_with = "deserialize_image_format"
     )]
-    ImageFormat(image::ImageFormat),
+    ImageType(image::ImageFormat),
     Trigger,
 }
 
@@ -53,7 +53,7 @@ impl Value {
             Value::FilterType(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::ColorFormat(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::Trigger => Some(Thumbnail::Text("trigger".to_string())),
-            Value::ImageFormat(value) => Some(Thumbnail::Text(format!("{:?}", value))),
+            Value::ImageType(value) => Some(Thumbnail::Text(format!("{:?}", value))),
         }
     }
 
@@ -68,7 +68,7 @@ impl Value {
             Value::FilterType(_) => ValueType::FilterType,
             Value::Path(_) => ValueType::Path,
             Value::DynamicImage { data:_, change_id:_ } => ValueType::DynamicImage,
-            Value::ImageFormat(_) => ValueType::ImageFormat,
+            Value::ImageType(_) => ValueType::ImageType,
         }
     }
 
@@ -104,7 +104,7 @@ impl Value {
                 ValueType::Path => Err(ConversionError {
                     message: "Unable to convert bool to image format.".to_string(),
                 }),
-                ValueType::ImageFormat => Err(ConversionError {
+                ValueType::ImageType => Err(ConversionError {
                     message: "Unable to convert bool to image format.".to_string(),
                 }),
             },
@@ -128,7 +128,7 @@ impl Value {
                 ValueType::Path => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
-                ValueType::ImageFormat => Err(ConversionError {
+                ValueType::ImageType => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
             },
@@ -152,7 +152,7 @@ impl Value {
                 ValueType::Path => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
-                ValueType::ImageFormat => Err(ConversionError {
+                ValueType::ImageType => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
             },
@@ -200,7 +200,7 @@ impl Value {
                 ValueType::Path => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
-                ValueType::ImageFormat => Err(ConversionError {
+                ValueType::ImageType => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
             },
@@ -230,7 +230,7 @@ impl Value {
                 ValueType::Path => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
-                ValueType::ImageFormat => Err(ConversionError {
+                ValueType::ImageType => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
             },
@@ -258,7 +258,7 @@ impl Value {
                 ValueType::Path => Err(ConversionError {
                     message: "Unable to convert image type to image.".to_string(),
                 }),
-                ValueType::ImageFormat => Err(ConversionError {
+                ValueType::ImageType => Err(ConversionError {
                     message: "Unable to convert image type to image.".to_string(),
                 }),
             },
@@ -289,7 +289,7 @@ impl Value {
                 ValueType::Path => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
-                ValueType::ImageFormat => Err(ConversionError {
+                ValueType::ImageType => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
             },
@@ -327,11 +327,11 @@ impl Value {
                 ValueType::Path => {
                     Ok(Value::Path(path.clone()))
                 },
-                ValueType::ImageFormat => Err(ConversionError {
+                ValueType::ImageType => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
             }
-            Value::ImageFormat(image_format) => match other {
+            Value::ImageType(image_format) => match other {
                 ValueType::Bool => Err(ConversionError {
                     message: "Unable to convert.".to_string(),
                 }),
@@ -350,8 +350,8 @@ impl Value {
                 ValueType::ColorFormat => Err(ConversionError {
                     message: "Unable to convert.".to_string(),
                 }),
-                ValueType::ImageFormat => {
-                    Ok(Value::ImageFormat(image_format.clone()))
+                ValueType::ImageType => {
+                    Ok(Value::ImageType(image_format.clone()))
                 },
                 ValueType::Trigger => Err(ConversionError {
                     message: "Unable to convert.".to_string(),
@@ -375,7 +375,7 @@ pub enum ValueType {
     String,
     FilterType,
     ColorFormat,
-    ImageFormat,
+    ImageType,
     Trigger,
     DynamicImage,
     Path,
@@ -410,7 +410,7 @@ impl ValueType {
             ValueType::Trigger => "trigger".to_string(),
             ValueType::DynamicImage => "image".to_string(),
             ValueType::Path => "path".to_string(),
-            ValueType::ImageFormat => "image format".to_string(),
+            ValueType::ImageType => "image format".to_string(),
         }
     }
 
@@ -424,31 +424,18 @@ impl ValueType {
             ValueType::FilterType => vec![],
             ValueType::ColorFormat => vec![],
             ValueType::Trigger => vec![],
-            ValueType::DynamicImage => vec![
-                "avif".to_string(),
-                "jpg".to_string(),
-                "jpeg".to_string(),
-                "png".to_string(),
-                "gif".to_string(),
-                "webp".to_string(),
-                "tif".to_string(),
-                "tiff".to_string(),
-                "tga".to_string(),
-                "dds".to_string(),
-                "bmp".to_string(),
-                "ico".to_string(),
-                "hdr".to_string(),
-                "exr".to_string(),
-                "pbm".to_string(),
-                "pam".to_string(),
-                "ppm".to_string(),
-                "pgm".to_string(),
-                "ff".to_string(),
-                "farbfeld".to_string(),
-                "qoi".to_string(),
-            ],
+            ValueType::DynamicImage => {
+                let mut list = vec![];
+
+                for image_format in ImageType::types().iter() {
+                    let ext = image_format.format().extensions_str()[0];
+                    list.push(ext.to_string());
+                }
+
+                list
+            },
             ValueType::Path => vec![],
-            ValueType::ImageFormat => vec![],
+            ValueType::ImageType => vec![],
         }
     }
 
@@ -463,7 +450,7 @@ impl ValueType {
             ValueType::FilterType => vec![ValueType::FilterType, ValueType::String, ValueType::Trigger],
             ValueType::ColorFormat => vec![ValueType::ColorFormat, ValueType::String, ValueType::Trigger],
             ValueType::Trigger => vec![ValueType::Trigger],
-            ValueType::ImageFormat => vec![ValueType::ImageFormat, ValueType::Trigger],
+            ValueType::ImageType => vec![ValueType::ImageType, ValueType::Trigger],
         }
     }
 
@@ -489,20 +476,128 @@ pub struct ConversionError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ColorFormat {
-    ImageRgba32F,
-    ImageRgb32F,
-    ImageRgba16,
-    ImageRgb16,
-    ImageGrayA16,
-    ImageGray16,
-    ImageRgba8,
-    ImageRgb8,
-    ImageGrayA8,
-    ImageGray8,
+    Rgba32F,
+    Rgb32F,
+    Rgba16,
+    Rgb16,
+    GrayA16,
+    Gray16,
+    Rgba8,
+    Rgb8,
+    GrayA8,
+    Gray8,
 }
 
-pub enum ImageFormat {
+impl ColorFormat {
+    pub fn format(&self) -> image::ColorType {
+        match self {
+            ColorFormat::Rgba32F => image::ColorType::Rgba32F,
+            ColorFormat::Rgb32F => image::ColorType::Rgb32F,
+            ColorFormat::Rgba16 => image::ColorType::Rgba16,
+            ColorFormat::Rgb16 => image::ColorType::Rgb16,
+            ColorFormat::GrayA16 => image::ColorType::La16,
+            ColorFormat::Gray16 => image::ColorType::L16,
+            ColorFormat::Rgba8 => image::ColorType::Rgba8,
+            ColorFormat::Rgb8 => image::ColorType::Rgb8,
+            ColorFormat::GrayA8 => image::ColorType::La8,
+            ColorFormat::Gray8 => image::ColorType::L8,
+        }
+    }
 
+    pub fn types() -> [ColorFormat; 10] {
+        let types: [ColorFormat; 10] = [
+            ColorFormat::Rgba32F,
+            ColorFormat::Rgb32F,
+            ColorFormat::Rgba16,
+            ColorFormat::Rgb16,
+            ColorFormat::GrayA16,
+            ColorFormat::Gray16,
+            ColorFormat::Rgba8,
+            ColorFormat::Rgb8,
+            ColorFormat::GrayA8,
+            ColorFormat::Gray8,
+        ];
+
+        types
+    }
+
+    // pub fn convert_image(&self, dynamic_image: DynamicImage) ->  {
+    //     match self {
+    //         ColorFormat::Rgba32F => dynamic_image.as_rgba32f(),
+    //         ColorFormat::Rgb32F => todo!(),
+    //         ColorFormat::Rgba16 => todo!(),
+    //         ColorFormat::Rgb16 => todo!(),
+    //         ColorFormat::GrayA16 => todo!(),
+    //         ColorFormat::Gray16 => todo!(),
+    //         ColorFormat::Rgba8 => todo!(),
+    //         ColorFormat::Rgb8 => todo!(),
+    //         ColorFormat::GrayA8 => todo!(),
+    //         ColorFormat::Gray8 => todo!(),
+    //     }
+    // }
+}
+
+
+// https://docs.rs/image/latest/src/image/image.rs.html#28-73
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum ImageType {
+    Png,
+    Jpeg,
+    Gif,
+    WebP,
+    Pnm,
+    Tiff,
+    Tga,
+    //Dds,  // can't read or write
+    Bmp,
+    Ico,
+    Hdr,    // can't write
+    OpenExr,
+    Farbfeld,
+    Avif,
+    Qoi,
+}
+
+impl ImageType {
+    pub fn format(&self) -> image::ImageFormat {
+        match self {
+            ImageType::Png => image::ImageFormat::Png,
+            ImageType::Jpeg => image::ImageFormat::Jpeg,
+            ImageType::Gif => image::ImageFormat::Gif,
+            ImageType::WebP => image::ImageFormat::WebP,
+            ImageType::Pnm => image::ImageFormat::Pnm,
+            ImageType::Tiff => image::ImageFormat::Tiff,
+            ImageType::Tga => image::ImageFormat::Tga,
+            ImageType::Bmp => image::ImageFormat::Bmp,
+            ImageType::Ico => image::ImageFormat::Ico,
+            ImageType::Hdr => image::ImageFormat::Hdr,
+            ImageType::OpenExr => image::ImageFormat::OpenExr,
+            ImageType::Farbfeld => image::ImageFormat::Farbfeld,
+            ImageType::Avif => image::ImageFormat::Avif,
+            ImageType::Qoi => image::ImageFormat::Qoi,
+        }
+    }
+
+    pub fn types() -> [ImageType; 14] {
+        let types: [ImageType; 14] = [
+            ImageType::Png,
+            ImageType::Jpeg,
+            ImageType::Gif,
+            ImageType::WebP,
+            ImageType::Pnm,
+            ImageType::Tiff,
+            ImageType::Tga,
+            ImageType::Bmp,
+            ImageType::Ico,
+            ImageType::Hdr,
+            ImageType::OpenExr,
+            ImageType::Farbfeld,
+            ImageType::Avif,
+            ImageType::Qoi,
+        ];
+
+        types
+    }
 }
 
 #[derive(Debug, Clone)]

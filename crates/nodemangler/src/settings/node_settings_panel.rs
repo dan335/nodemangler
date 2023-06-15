@@ -234,177 +234,185 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                         ui.label(format!("{:?}", a));
                     } else {
                         let mut x = a;
-                        egui::ComboBox::from_label("Image Format")
+                        egui::ComboBox::from_label("Color Format")
                             .selected_text(format!("{:?}", x))
                             .show_ui(ui, |ui| {
-                                if ui
-                                    .selectable_value(
-                                        &mut x,
-                                        ColorFormat::ImageGray16,
-                                        "Grayscale 16 bit",
-                                    )
-                                    .changed()
-                                {
-                                    let value = Value::ColorFormat(x);
-                                    change_value(
-                                        tx_change_node.clone(),
-                                        node.id.clone(),
-                                        input_index,
-                                        input,
-                                        value.clone(),
-                                    );
-                                    input.value = value;
+                                for color_format in ColorFormat::types().iter() {
+                                    if ui.selectable_value(&mut x, color_format.clone(), format!("{:?}", color_format)).changed() {
+                                        let value = Value::ColorFormat(color_format.clone());
+                                        change_value(tx_change_node.clone(), node.id.clone(), input_index, input, value.clone());
+                                        input.value = value;
+                                    }
                                 }
-                                if ui
-                                    .selectable_value(
-                                        &mut x,
-                                        ColorFormat::ImageGray8,
-                                        "Grayscale 8 bit",
-                                    )
-                                    .changed()
-                                {
-                                    let value = Value::ColorFormat(x);
-                                    change_value(
-                                        tx_change_node.clone(),
-                                        node.id.clone(),
-                                        input_index,
-                                        input,
-                                        value.clone(),
-                                    );
-                                    input.value = value;
-                                }
-                                if ui
-                                    .selectable_value(
-                                        &mut x,
-                                        ColorFormat::ImageGrayA16,
-                                        "Grayscale with alpha 16 bit",
-                                    )
-                                    .changed()
-                                {
-                                    let value = Value::ColorFormat(x);
-                                    change_value(
-                                        tx_change_node.clone(),
-                                        node.id.clone(),
-                                        input_index,
-                                        input,
-                                        value.clone(),
-                                    );
-                                    input.value = value;
-                                }
-                                if ui
-                                    .selectable_value(
-                                        &mut x,
-                                        ColorFormat::ImageGrayA8,
-                                        "Grayscale with alpha 8 bit",
-                                    )
-                                    .changed()
-                                {
-                                    let value = Value::ColorFormat(x);
-                                    change_value(
-                                        tx_change_node.clone(),
-                                        node.id.clone(),
-                                        input_index,
-                                        input,
-                                        value.clone(),
-                                    );
-                                    input.value = value;
-                                }
-                                if ui
-                                    .selectable_value(&mut x, ColorFormat::ImageRgb16, "RGB 16 bit")
-                                    .changed()
-                                {
-                                    let value = Value::ColorFormat(x);
-                                    change_value(
-                                        tx_change_node.clone(),
-                                        node.id.clone(),
-                                        input_index,
-                                        input,
-                                        value.clone(),
-                                    );
-                                    input.value = value;
-                                }
-                                if ui
-                                    .selectable_value(
-                                        &mut x,
-                                        ColorFormat::ImageRgb32F,
-                                        "RGB 32 bit float",
-                                    )
-                                    .changed()
-                                {
-                                    let value = Value::ColorFormat(x);
-                                    change_value(
-                                        tx_change_node.clone(),
-                                        node.id.clone(),
-                                        input_index,
-                                        input,
-                                        value.clone(),
-                                    );
-                                    input.value = value;
-                                }
-                                if ui
-                                    .selectable_value(&mut x, ColorFormat::ImageRgb8, "RGB 8 bit")
-                                    .changed()
-                                {
-                                    let value = Value::ColorFormat(x);
-                                    change_value(
-                                        tx_change_node.clone(),
-                                        node.id.clone(),
-                                        input_index,
-                                        input,
-                                        value.clone(),
-                                    );
-                                    input.value = value;
-                                }
-                                if ui
-                                    .selectable_value(
-                                        &mut x,
-                                        ColorFormat::ImageRgba16,
-                                        "RGBA 16 bit",
-                                    )
-                                    .changed()
-                                {
-                                    let value = Value::ColorFormat(x);
-                                    change_value(
-                                        tx_change_node.clone(),
-                                        node.id.clone(),
-                                        input_index,
-                                        input,
-                                        value.clone(),
-                                    );
-                                    input.value = value;
-                                }
-                                if ui
-                                    .selectable_value(
-                                        &mut x,
-                                        ColorFormat::ImageRgba32F,
-                                        "RGBA 32 bit float",
-                                    )
-                                    .changed()
-                                {
-                                    let value = Value::ColorFormat(x);
-                                    change_value(
-                                        tx_change_node.clone(),
-                                        node.id.clone(),
-                                        input_index,
-                                        input,
-                                        value.clone(),
-                                    );
-                                    input.value = value;
-                                }
-                                if ui
-                                    .selectable_value(&mut x, ColorFormat::ImageRgba8, "RGBA 8 bit")
-                                    .changed()
-                                {
-                                    let value = Value::ColorFormat(x);
-                                    change_value(
-                                        tx_change_node.clone(),
-                                        node.id.clone(),
-                                        input_index,
-                                        input,
-                                        value.clone(),
-                                    );
-                                    input.value = value;
-                                }
+
+                                // if ui
+                                //     .selectable_value(
+                                //         &mut x,
+                                //         ColorFormat::Gray16,
+                                //         "Grayscale 16 bit",
+                                //     )
+                                //     .changed()
+                                // {
+                                //     let value = Value::ColorFormat(x);
+                                //     change_value(
+                                //         tx_change_node.clone(),
+                                //         node.id.clone(),
+                                //         input_index,
+                                //         input,
+                                //         value.clone(),
+                                //     );
+                                //     input.value = value;
+                                // }
+                                // if ui
+                                //     .selectable_value(
+                                //         &mut x,
+                                //         ColorFormat::Gray8,
+                                //         "Grayscale 8 bit",
+                                //     )
+                                //     .changed()
+                                // {
+                                //     let value = Value::ColorFormat(x);
+                                //     change_value(
+                                //         tx_change_node.clone(),
+                                //         node.id.clone(),
+                                //         input_index,
+                                //         input,
+                                //         value.clone(),
+                                //     );
+                                //     input.value = value;
+                                // }
+                                // if ui
+                                //     .selectable_value(
+                                //         &mut x,
+                                //         ColorFormat::GrayA16,
+                                //         "Grayscale with alpha 16 bit",
+                                //     )
+                                //     .changed()
+                                // {
+                                //     let value = Value::ColorFormat(x);
+                                //     change_value(
+                                //         tx_change_node.clone(),
+                                //         node.id.clone(),
+                                //         input_index,
+                                //         input,
+                                //         value.clone(),
+                                //     );
+                                //     input.value = value;
+                                // }
+                                // if ui
+                                //     .selectable_value(
+                                //         &mut x,
+                                //         ColorFormat::GrayA8,
+                                //         "Grayscale with alpha 8 bit",
+                                //     )
+                                //     .changed()
+                                // {
+                                //     let value = Value::ColorFormat(x);
+                                //     change_value(
+                                //         tx_change_node.clone(),
+                                //         node.id.clone(),
+                                //         input_index,
+                                //         input,
+                                //         value.clone(),
+                                //     );
+                                //     input.value = value;
+                                // }
+                                // if ui
+                                //     .selectable_value(&mut x, ColorFormat::Rgb16, "RGB 16 bit")
+                                //     .changed()
+                                // {
+                                //     let value = Value::ColorFormat(x);
+                                //     change_value(
+                                //         tx_change_node.clone(),
+                                //         node.id.clone(),
+                                //         input_index,
+                                //         input,
+                                //         value.clone(),
+                                //     );
+                                //     input.value = value;
+                                // }
+                                // if ui
+                                //     .selectable_value(
+                                //         &mut x,
+                                //         ColorFormat::Rgb32F,
+                                //         "RGB 32 bit float",
+                                //     )
+                                //     .changed()
+                                // {
+                                //     let value = Value::ColorFormat(x);
+                                //     change_value(
+                                //         tx_change_node.clone(),
+                                //         node.id.clone(),
+                                //         input_index,
+                                //         input,
+                                //         value.clone(),
+                                //     );
+                                //     input.value = value;
+                                // }
+                                // if ui
+                                //     .selectable_value(&mut x, ColorFormat::Rgb8, "RGB 8 bit")
+                                //     .changed()
+                                // {
+                                //     let value = Value::ColorFormat(x);
+                                //     change_value(
+                                //         tx_change_node.clone(),
+                                //         node.id.clone(),
+                                //         input_index,
+                                //         input,
+                                //         value.clone(),
+                                //     );
+                                //     input.value = value;
+                                // }
+                                // if ui
+                                //     .selectable_value(
+                                //         &mut x,
+                                //         ColorFormat::Rgba16,
+                                //         "RGBA 16 bit",
+                                //     )
+                                //     .changed()
+                                // {
+                                //     let value = Value::ColorFormat(x);
+                                //     change_value(
+                                //         tx_change_node.clone(),
+                                //         node.id.clone(),
+                                //         input_index,
+                                //         input,
+                                //         value.clone(),
+                                //     );
+                                //     input.value = value;
+                                // }
+                                // if ui
+                                //     .selectable_value(
+                                //         &mut x,
+                                //         ColorFormat::Rgba32F,
+                                //         "RGBA 32 bit float",
+                                //     )
+                                //     .changed()
+                                // {
+                                //     let value = Value::ColorFormat(x);
+                                //     change_value(
+                                //         tx_change_node.clone(),
+                                //         node.id.clone(),
+                                //         input_index,
+                                //         input,
+                                //         value.clone(),
+                                //     );
+                                //     input.value = value;
+                                // }
+                                // if ui
+                                //     .selectable_value(&mut x, ColorFormat::Rgba8, "RGBA 8 bit")
+                                //     .changed()
+                                // {
+                                //     let value = Value::ColorFormat(x);
+                                //     change_value(
+                                //         tx_change_node.clone(),
+                                //         node.id.clone(),
+                                //         input_index,
+                                //         input,
+                                //         value.clone(),
+                                //     );
+                                //     input.value = value;
+                                // }
                             });
                     }
                 }
@@ -438,7 +446,6 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                         );
 
                         if ui.button("🗀").clicked() {
-                            println!("{:?}", input);
                             if let InputSettings::Path {
                                 extension_filter,
                                 set_directory,
@@ -475,8 +482,23 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                         }
                     }
                 }
-                Value::ImageFormat(image_format) => {
-
+                Value::ImageType(a) => {
+                    if input.connection.is_some() {
+                        ui.label(format!("{:?}", a));
+                    } else {
+                        let mut x = a;
+                        egui::ComboBox::from_label("Image Format")
+                            .selected_text(format!("{:?}", x))
+                            .show_ui(ui, |ui| {
+                                for image_type in mangler::value::ImageType::types().iter() {
+                                    if ui.selectable_value(&mut x, image_type.format(), image_type.format().extensions_str()[0].to_string()).changed() {
+                                        let value = Value::ImageType(image_type.format());
+                                        change_value(tx_change_node.clone(), node.id.clone(), input_index, input, value.clone());
+                                        input.value = value;
+                                    }
+                                }
+                            });
+                    }
                 },
             }
 
