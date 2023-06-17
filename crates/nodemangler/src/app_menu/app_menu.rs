@@ -62,7 +62,7 @@ impl AppMenu {
     
                         egui::Frame::none().inner_margin(8.0).show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                if ui.button("New").clicked() {
+                                if ui.button("new").clicked() {
                                     if let Ok(new_program) = Program::new(None, None) {
                                         bar_response.new_program = Some(new_program);
                                     }
@@ -72,7 +72,7 @@ impl AppMenu {
                             ui.add_space(10.0);
     
                             ui.horizontal(|ui| {
-                                if ui.button("Load").clicked() {
+                                if ui.button("load").clicked() {
                                     if let Some(save_path) = rfd::FileDialog::new()
                                     .add_filter("mangler", &["mangle"])
                                     .pick_file()
@@ -86,7 +86,7 @@ impl AppMenu {
     
                             ui.add_space(10.0);
                             
-                            ui.menu_button("Settings", |ui| {
+                            ui.menu_button("settings", |ui| {
                                 ui.horizontal(|ui| {
                                     ui.menu_button("theme", |ui| {
                                         for theme in Theme::list().iter() {

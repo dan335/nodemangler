@@ -43,7 +43,7 @@ impl Graph {
             tx_graph_changed: Some(tx_graph_changed),
             save_path: None,
             id,
-            name: "New Graph".to_string(),
+            name: "new graph".to_string(),
             is_subgraph,
         })
     }

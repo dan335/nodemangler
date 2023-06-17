@@ -1,5 +1,5 @@
 use eframe::egui;
-use epaint::{ColorImage, Pos2, Rect, Rounding, Vec2};
+use epaint::{ColorImage, Pos2, Rect, Rounding, Color32};
 use mangler::{
     get_id, node_type::NodeType, AddNodeType, ChangeGraphMessage, ChangeNodeMessage,
     GraphChangedMessage, NewGraphError, NodeChangedMessage, value::{Value, ValueType},
@@ -16,7 +16,7 @@ use crate::{
     menu::{menu_item::MenuItemsResult, menu_panel::MenuPanel},
     settings::{graph_settings_panel, node_settings_panel},
     view::view_panel::ViewPanel,
-    view_to_graph_space_pos2, APP_MENU_HEIGHT, NODE_MENU_WIDTH, ManglerError, themes::theme::Theme,
+    view_to_graph_space_pos2, APP_MENU_HEIGHT, NODE_MENU_WIDTH, ManglerError, themes::theme::Theme, NODE_SIZE, graph_to_view_space,
 };
 
 pub struct Program {
@@ -447,8 +447,12 @@ impl Program {
                 // show node settings
                 if let Some(editing_node_id) = &self.editing_node_id {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(editing_node_id) {
-                        node_settings_panel::show(ui, node, self.tx_change_node.clone());
+                        let node_settings_response = node_settings_panel::show(ui, node, self.tx_change_node.clone());
                         show_graph_settings = false;
+
+                        if node_settings_response.deselect_node {
+                            self.editing_node_id = None;
+                        }
                     }
                 }
 
@@ -593,18 +597,37 @@ impl Program {
         if self.dragging_menu_button.subgraph_being_created
             || self.dragging_menu_button.operation_being_created.is_some()
         {
-            let drag_rect = Rect::from_center_size(self.pointer_position, Vec2::new(80.0, 80.0));
+            let mut name = "".to_string();
+
+            if let Some(op) = &self.dragging_menu_button.operation_being_created {
+                name = op.settings().name.clone();
+            } else if self.dragging_menu_button.subgraph_being_created {
+                name = "subgraph".to_string();
+            }
+
+            let drag_rect = Rect::from_center_size(self.pointer_position, NODE_SIZE);
+
             ui.painter().add(egui::Shape::rect_filled(
                 drag_rect,
                 Rounding::none(),
                 theme.get().node_header_bg,
             ));
+
+            // node name
+            ui.painter().text(
+                drag_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                name,
+                //egui::style::Style::text_styles(),
+                egui::FontId::proportional(graph_to_view_space(self.graph_editor.zoom, 14.0)),
+                Color32::from(theme.get().override_text_color),
+            );
         }
 
         // show cpu usage in bototm right corner
         if let Some(cpu_usage) = frame.info().cpu_usage {
             let pos = Pos2::new(app_rect.right() - 10.0, app_rect.bottom() - 10.0);
-            let txt = format!("{:.3} ms", cpu_usage * 1000.0);
+            let txt = format!("{:.1} ms", cpu_usage * 1000.0);
             ui.painter().text(
                 pos,
                 egui::Align2::RIGHT_BOTTOM,
@@ -615,7 +638,7 @@ impl Program {
         }
 
         // show help in bottom left
-        let pos = Pos2::new(app_rect.left() + 220.0, app_rect.bottom() - 10.0);
+        let pos = Pos2::new(app_rect.left() + NODE_MENU_WIDTH + 20.0, app_rect.bottom() - 10.0);
         let txt =
             "left click: edit      right click: view      ctrl + left click: delete".to_string();
         ui.painter().text(

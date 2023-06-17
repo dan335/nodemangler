@@ -2,6 +2,7 @@ use eframe::egui;
 use eframe::egui::style::WidgetVisuals;
 use eframe::egui::style::Widgets;
 use epaint::Color32;
+use epaint::Hsva;
 use epaint::Rounding;
 use epaint::Shadow;
 use epaint::Stroke;
@@ -28,6 +29,12 @@ pub struct ThemeValues {
     pub node_header_bg: Color32,
     pub node_header_selected_border: Color32,
     pub text_faint: Color32,
+
+    pub window_rounding: Rounding,
+    pub window_shadow: Shadow,
+    pub window_fill: Color32,
+    pub window_stroke: Stroke,
+
     pub widgets_noninteractive_bg_fill: Color32,
     pub widgets_noninteractive_weak_bg_fill: Color32,
     pub widgets_noninteractive_bg_stroke: (f32, Color32), // width, color
@@ -63,29 +70,37 @@ pub struct ThemeValues {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Theme {
-    Light,
+    Dark,
     DarkGreen,
+    Light,
+    LightBlue, 
 }
 
 impl Theme {
     pub fn list() -> Vec<Theme> {
         vec![
-            Theme::Light,
+            Theme::Dark,
             Theme::DarkGreen,
+            Theme::Light,
+            Theme::LightBlue, 
         ]
     }
 
     pub fn name(&self) -> String {
         match self {
-            Theme::Light => "Light".to_string(),
-            Theme::DarkGreen => "Dark Green".to_string(),
+            Theme::Light => "light".to_string(),
+            Theme::DarkGreen => "dark green".to_string(),
+            Theme::Dark => "dark".to_string(),
+            Theme::LightBlue => "light blue".to_string(),
         }
     }
 
     pub fn get(&self) -> ThemeValues {
         match self {
-            Theme::Light => super::theme_light::LIGHT,
-            Theme::DarkGreen => super::theme_dark_green::DARK_GREEN,
+            Theme::Light => super::theme_light::theme_light(),
+            Theme::DarkGreen => super::theme_dark_green::theme_dark_green(),
+            Theme::Dark => super::theme_dark::theme_dark(),
+            Theme::LightBlue => super::theme_light_blue::theme_light_blue(),
         }
     }
 }
@@ -100,7 +115,13 @@ pub fn set_theme(ctx: &egui::Context, theme: Theme) {
         extreme_bg_color: Color32::from(theme_values.extreme_bg_color),
         override_text_color: Some(Color32::from(theme_values.override_text_color)),
         dark_mode: theme_values.dark_mode,
-        //window_shadow: Shadow::NONE,
+
+        window_rounding: theme_values.window_rounding,
+        window_shadow: theme_values.window_shadow,
+        window_fill: Color32::from(theme_values.window_fill),
+        window_stroke: theme_values.window_stroke,
+
+        menu_rounding: Rounding::same(1.0),
         popup_shadow: Shadow::NONE,
         
         widgets: Widgets {
@@ -112,4 +133,11 @@ pub fn set_theme(ctx: &egui::Context, theme: Theme) {
         },
         ..old
     });
+}
+
+pub fn desaturate(color: Color32) -> Color32 {
+    let mut hsva: Hsva = color.into();
+    hsva.s = 0.0;
+    let color: Color32 = hsva.into();
+    color
 }

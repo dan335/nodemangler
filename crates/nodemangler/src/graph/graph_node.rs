@@ -3,7 +3,7 @@ use crate::graph::graph_node_header::show_graph_node_header;
 use crate::graph::graph_node_info::show_graph_node_info;
 use crate::graph::graph_output::draw_graph_output;
 use crate::themes::theme::Theme;
-use crate::{graph_to_view_space_pos2, view_to_graph_space_pos2, graph_to_view_space};
+use crate::{graph_to_view_space_pos2, view_to_graph_space_pos2, graph_to_view_space, NODE_SIZE};
 use eframe::egui;
 use egui::{Pos2, Rect, Vec2};
 use mangler::input::Input;
@@ -15,9 +15,6 @@ use std::time::Duration;
 use super::graph_editor::TempConnection;
 use super::graph_node_thumbnail::GraphNodeThumbnail;
 use super::graph_output::draw_graph_output_highlighted;
-
-pub const NODE_SIZE: Vec2 = Vec2::new(150.0, 40.0);
-//pub const THUMBNAIL_SIZE: [u32; 2] = [128, 128];
 
 #[derive(Clone)]
 pub struct GraphNode {

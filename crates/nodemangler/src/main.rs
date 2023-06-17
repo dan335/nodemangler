@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use eframe::egui;
+use eframe::egui::{self};
+use epaint::Vec2;
+use themes::theme::Theme;
 use std::path::Path;
 mod app_menu;
 mod graph;
@@ -18,6 +20,9 @@ pub const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
 pub const DEFAULT_WINDOW_HEIGHT: f32 = 800.0;
 pub const APP_MENU_HEIGHT: f32 = 35.0;
 pub const NODE_MENU_WIDTH: f32 = 250.0;
+pub const DEFAULT_THEME: Theme = Theme::DarkGreen;
+pub const NODE_SIZE: Vec2 = Vec2::new(150.0, 40.0);
+pub const NODE_ROUNDING: f32 = 2.0;
 
 #[tokio::main]
 async fn main() -> Result<(), eframe::Error> {

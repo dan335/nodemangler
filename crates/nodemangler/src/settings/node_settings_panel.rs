@@ -1,4 +1,4 @@
-use eframe::egui::{self, Label};
+use eframe::egui::{self, Label, Layout};
 use epaint::vec2;
 use image::imageops::FilterType;
 use mangler::{
@@ -33,15 +33,24 @@ fn change_value(
     input.value = value;
 }
 
-pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<ChangeNodeMessage>) {
+pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<ChangeNodeMessage>) -> NodeSettingsResponse {
+    let mut node_settings_response = NodeSettingsResponse::new();
+
     let name = node.settings.name.clone();
-    ui.vertical_centered(|ui| {
-        ui.heading(name);
+
+    ui.horizontal(|ui| {
+        ui.heading(format!("{} settings", name));
+        ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.button("X").clicked() {
+                node_settings_response.deselect_node = true;
+            }
+        });
     });
+    
 
-    ui.add_space(10.0);
+    ui.add_space(20.0);
 
-    ui.heading("Inputs");
+    ui.heading("inputs");
     ui.add_space(8.0);
 
     // todo: try using ui.columns
@@ -256,175 +265,6 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                                         input.value = value;
                                     }
                                 }
-
-                                // if ui
-                                //     .selectable_value(
-                                //         &mut x,
-                                //         ColorFormat::Gray16,
-                                //         "Grayscale 16 bit",
-                                //     )
-                                //     .changed()
-                                // {
-                                //     let value = Value::ColorFormat(x);
-                                //     change_value(
-                                //         tx_change_node.clone(),
-                                //         node.id.clone(),
-                                //         input_index,
-                                //         input,
-                                //         value.clone(),
-                                //     );
-                                //     input.value = value;
-                                // }
-                                // if ui
-                                //     .selectable_value(
-                                //         &mut x,
-                                //         ColorFormat::Gray8,
-                                //         "Grayscale 8 bit",
-                                //     )
-                                //     .changed()
-                                // {
-                                //     let value = Value::ColorFormat(x);
-                                //     change_value(
-                                //         tx_change_node.clone(),
-                                //         node.id.clone(),
-                                //         input_index,
-                                //         input,
-                                //         value.clone(),
-                                //     );
-                                //     input.value = value;
-                                // }
-                                // if ui
-                                //     .selectable_value(
-                                //         &mut x,
-                                //         ColorFormat::GrayA16,
-                                //         "Grayscale with alpha 16 bit",
-                                //     )
-                                //     .changed()
-                                // {
-                                //     let value = Value::ColorFormat(x);
-                                //     change_value(
-                                //         tx_change_node.clone(),
-                                //         node.id.clone(),
-                                //         input_index,
-                                //         input,
-                                //         value.clone(),
-                                //     );
-                                //     input.value = value;
-                                // }
-                                // if ui
-                                //     .selectable_value(
-                                //         &mut x,
-                                //         ColorFormat::GrayA8,
-                                //         "Grayscale with alpha 8 bit",
-                                //     )
-                                //     .changed()
-                                // {
-                                //     let value = Value::ColorFormat(x);
-                                //     change_value(
-                                //         tx_change_node.clone(),
-                                //         node.id.clone(),
-                                //         input_index,
-                                //         input,
-                                //         value.clone(),
-                                //     );
-                                //     input.value = value;
-                                // }
-                                // if ui
-                                //     .selectable_value(&mut x, ColorFormat::Rgb16, "RGB 16 bit")
-                                //     .changed()
-                                // {
-                                //     let value = Value::ColorFormat(x);
-                                //     change_value(
-                                //         tx_change_node.clone(),
-                                //         node.id.clone(),
-                                //         input_index,
-                                //         input,
-                                //         value.clone(),
-                                //     );
-                                //     input.value = value;
-                                // }
-                                // if ui
-                                //     .selectable_value(
-                                //         &mut x,
-                                //         ColorFormat::Rgb32F,
-                                //         "RGB 32 bit float",
-                                //     )
-                                //     .changed()
-                                // {
-                                //     let value = Value::ColorFormat(x);
-                                //     change_value(
-                                //         tx_change_node.clone(),
-                                //         node.id.clone(),
-                                //         input_index,
-                                //         input,
-                                //         value.clone(),
-                                //     );
-                                //     input.value = value;
-                                // }
-                                // if ui
-                                //     .selectable_value(&mut x, ColorFormat::Rgb8, "RGB 8 bit")
-                                //     .changed()
-                                // {
-                                //     let value = Value::ColorFormat(x);
-                                //     change_value(
-                                //         tx_change_node.clone(),
-                                //         node.id.clone(),
-                                //         input_index,
-                                //         input,
-                                //         value.clone(),
-                                //     );
-                                //     input.value = value;
-                                // }
-                                // if ui
-                                //     .selectable_value(
-                                //         &mut x,
-                                //         ColorFormat::Rgba16,
-                                //         "RGBA 16 bit",
-                                //     )
-                                //     .changed()
-                                // {
-                                //     let value = Value::ColorFormat(x);
-                                //     change_value(
-                                //         tx_change_node.clone(),
-                                //         node.id.clone(),
-                                //         input_index,
-                                //         input,
-                                //         value.clone(),
-                                //     );
-                                //     input.value = value;
-                                // }
-                                // if ui
-                                //     .selectable_value(
-                                //         &mut x,
-                                //         ColorFormat::Rgba32F,
-                                //         "RGBA 32 bit float",
-                                //     )
-                                //     .changed()
-                                // {
-                                //     let value = Value::ColorFormat(x);
-                                //     change_value(
-                                //         tx_change_node.clone(),
-                                //         node.id.clone(),
-                                //         input_index,
-                                //         input,
-                                //         value.clone(),
-                                //     );
-                                //     input.value = value;
-                                // }
-                                // if ui
-                                //     .selectable_value(&mut x, ColorFormat::Rgba8, "RGBA 8 bit")
-                                //     .changed()
-                                // {
-                                //     let value = Value::ColorFormat(x);
-                                //     change_value(
-                                //         tx_change_node.clone(),
-                                //         node.id.clone(),
-                                //         input_index,
-                                //         input,
-                                //         value.clone(),
-                                //     );
-                                //     input.value = value;
-                                // }
                             });
                     }
                 }
@@ -541,7 +381,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
     }
 
     ui.add_space(36.0);
-    ui.heading("Outputs");
+    ui.heading("outputs");
     ui.add_space(8.0);
 
     // outputs
@@ -585,5 +425,20 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                 }
             }
         });
+    }
+
+    node_settings_response
+}
+
+
+pub struct NodeSettingsResponse {
+    pub deselect_node: bool,
+}
+
+impl NodeSettingsResponse {
+    pub fn new() -> Self {
+        Self {
+            deselect_node: false,
+        }
     }
 }

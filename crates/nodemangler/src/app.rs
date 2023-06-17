@@ -114,12 +114,12 @@ impl eframe::App for App {
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         setup_fonts(&cc.egui_ctx);
-        set_theme(&cc.egui_ctx, Theme::DarkGreen);
+        set_theme(&cc.egui_ctx, crate::DEFAULT_THEME);
         Self {
             app_menu: AppMenu::new(),
             programs: HashMap::new(),
             current_program: None,
-            theme: Theme::DarkGreen,
+            theme: crate::DEFAULT_THEME,
         }
     }
 }
@@ -135,9 +135,9 @@ fn setup_fonts(ctx: &egui::Context) {
     // Install my own font (maybe supporting non-latin characters).
     // .ttf and .otf files supported.
     fonts.font_data.insert(
-        "manrope".to_owned(),
+        "manrope-light".to_owned(),
         egui::FontData::from_static(include_bytes!(
-            "../assets/Manrope-ExtraLight.ttf"
+            "../assets/Manrope-Light.ttf"
         )),
     );
 
@@ -146,14 +146,13 @@ fn setup_fonts(ctx: &egui::Context) {
         .families
         .entry(egui::FontFamily::Proportional)
         .or_default()
-        .insert(0, "manrope".to_owned());
+        .insert(0, "manrope-light".to_owned());
 
-    // Put my font as last fallback for monospace:
     fonts
         .families
-        .entry(egui::FontFamily::Monospace)
+        .entry(egui::FontFamily::Proportional)
         .or_default()
-        .push("manrope".to_owned());
+        .insert(0, "manrope-light".to_owned());
 
     // Tell egui to use these fonts:
     ctx.set_fonts(fonts);

@@ -19,7 +19,7 @@ pub fn show_graph_node_info(
             x: node_rect.right_top().x,
             y: node_rect.right_top().y - 5.0,
         };
-        let text = format!("{:.4} ms", time.as_nanos() as f64 / 1_000_000.0);
+        let text = format!("{:.1} ms", time.as_nanos() as f64 / 1_000_000.0);
         ui.painter().text(
             pos,
             Align2::RIGHT_BOTTOM,
