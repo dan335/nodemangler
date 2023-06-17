@@ -22,7 +22,7 @@ impl OperationImageOutputFile {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id() }, InputSettings::None, None),
-            Input::new("file name".to_string(), Value::String("image01".to_string()), InputSettings::None, None),
+            Input::new("file name".to_string(), Value::String("image01".to_string()), InputSettings::String(crate::input::TextInputType::SingleLine), None),
             Input::new("folder".to_string(), Value::Path(PathBuf::new()), InputSettings::Path {
                 extension_filter: vec![],
                 set_directory: None,

@@ -136,6 +136,23 @@ impl Node {
                     // time node took to run
                     self.time = Some(operation_response.time);
 
+                    if let Some(tx) = tx_output.clone() {
+                        let message = NodeChangedMessage::InfoChanged {
+                            node_id: self.id.clone(),
+                            time: operation_response.time,
+                        };
+
+                        match tx.try_send(message) {
+                            Ok(_) => {}
+                            Err(err) => {
+                                println!(
+                                    "Error sending NodeChangedMessage::OutputChanged: {:?}",
+                                    err
+                                );
+                            }
+                        }
+                    }
+
                     for (index, response) in operation_response.responses.into_iter().enumerate() {
                         // send messages to ui that outputs changed
                         if let Some(tx) = tx_output.clone() {
@@ -143,7 +160,6 @@ impl Node {
                                 node_id: self.id.clone(),
                                 output_index: index,
                                 value: response.value.clone(),
-                                time: operation_response.time,
                                 thumbnail: response.value.create_thumbnail(),
                             };
 
@@ -222,7 +238,6 @@ impl Node {
                                         node_id: subgraph_node_id,
                                         output_index: subgraph_output_index,
                                         value: subgraph_value,
-                                        time: subgraph_time,
                                         thumbnail: _subgraph_thumbnail,
                                     } => {
                                         // find output that is linked to subgraph output that changed
@@ -239,7 +254,7 @@ impl Node {
                                             }
                                         }
 
-                                        self.time = Some(subgraph_time);
+                                        //self.time = Some(subgraph_time);
                                     }
                                     // don't care about other messages
                                     _ => {}
@@ -254,7 +269,6 @@ impl Node {
                                     node_id: self.id.clone(),
                                     output_index,
                                     value: output.value.clone(),
-                                    time: self.time.unwrap_or_default(),
                                     thumbnail: output.value.create_thumbnail(),
                                 };
 

@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::theme::Theme;
+use crate::themes::theme::Theme;
 
 use super::menu_item::{MenuItem, MenuItemsResult};
 

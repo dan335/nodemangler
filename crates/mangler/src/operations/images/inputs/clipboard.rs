@@ -21,7 +21,7 @@ impl OperationImageInputClipboard {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("copy to clipboard".to_string(), Value::Trigger, InputSettings::None, None),
+            Input::new("copy from clipboard".to_string(), Value::Trigger, InputSettings::None, None),
         ]
     }
 

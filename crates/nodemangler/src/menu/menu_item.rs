@@ -3,7 +3,7 @@ use epaint::Vec2;
 use mangler::operation::Operation;
 use mangler::OperationListItem;
 
-use crate::theme::Theme;
+use crate::themes::theme::Theme;
 
 #[derive(Debug)]
 pub enum MenuItem {

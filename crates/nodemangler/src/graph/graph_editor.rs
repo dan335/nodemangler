@@ -1,8 +1,7 @@
 use super::graph_node::ConnectionType;
-use crate::Theme;
 use crate::{
     graph::graph_node::GraphNode, graph_to_view_space, view_to_graph_space,
-    view_to_graph_space_pos2, program::NewConnection,
+    view_to_graph_space_pos2, program::NewConnection, themes::theme::Theme,
 };
 use eframe::{
     egui,
@@ -176,7 +175,6 @@ impl GraphEditor {
                                 ),
                                 input_graph_node.get_input_position(input_index, input_node_rect, self.zoom),
                                 theme,
-                                self.zoom,
                             );
 
                             connection_curves.push((curve, node_id.clone(), input_index));
@@ -320,10 +318,10 @@ impl GraphEditor {
         if let Some(temp_connection) = &self.temp_connection {
             match temp_connection.from_connection_type {
                 ConnectionType::Input => {
-                    self.draw_connection_line(ui, cursor_position, temp_connection.from_position, theme, self.zoom)
+                    self.draw_connection_line(ui, cursor_position, temp_connection.from_position, theme)
                 }
                 ConnectionType::Output => {
-                    self.draw_connection_line(ui, temp_connection.from_position, cursor_position, theme, self.zoom)
+                    self.draw_connection_line(ui, temp_connection.from_position, cursor_position, theme)
                 }
             };
         }
@@ -424,7 +422,6 @@ impl GraphEditor {
         from: Pos2,
         to: Pos2,
         theme: &Theme,
-        graph_zoom: f32,
     ) -> CubicBezierShape {
         let offset_max = 150.0;
         let color = egui::Color32::from(theme.get().grid_connection_line);

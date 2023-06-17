@@ -1,4 +1,4 @@
-use crate::theme::Theme;
+use crate::themes::theme::Theme;
 use crate::{graph_to_view_space_pos2, graph_to_view_space};
 use eframe::epaint::{Color32, FontId};
 use eframe::{egui, emath::Align2};

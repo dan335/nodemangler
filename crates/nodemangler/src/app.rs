@@ -1,4 +1,4 @@
-use crate::{app_bar::bar, theme::{set_theme, Theme}};
+use crate::{app_menu::app_menu::AppMenu, themes::theme::{Theme, set_theme}};
 use eframe::egui;
 use epaint::Rounding;
 use crate::program::Program;
@@ -11,6 +11,7 @@ pub const PROFILE: bool = false;
 
 
 pub struct App {
+    app_menu: AppMenu,
     programs: HashMap<String, Program>,
     current_program: Option<String>,
     theme: Theme,
@@ -34,7 +35,7 @@ impl eframe::App for App {
                 self.theme.get().panel_fill,
             ));
 
-            let bar_response = bar::show(ctx, frame, ui, &self.programs, &self.current_program, &self.theme);
+            let bar_response = self.app_menu.show(ctx, ui, &self.programs, &self.current_program, &self.theme);
 
             if let Some(new_program) = bar_response.new_program {
                 let program_id = new_program.app.id.clone();
@@ -47,6 +48,7 @@ impl eframe::App for App {
             }
 
             if let Some(theme) = bar_response.theme_changed_to {
+                set_theme(ctx, theme.clone());
                 self.theme = theme.clone();
             }
 
@@ -114,6 +116,7 @@ impl App {
         setup_fonts(&cc.egui_ctx);
         set_theme(&cc.egui_ctx, Theme::DarkGreen);
         Self {
+            app_menu: AppMenu::new(),
             programs: HashMap::new(),
             current_program: None,
             theme: Theme::DarkGreen,

@@ -263,7 +263,7 @@ impl Value {
                 }),
             },
             Value::Trigger => todo!(),
-            Value::DynamicImage { data, change_id } => match other {
+            Value::DynamicImage { data, change_id:_ } => match other {
                 ValueType::Bool => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),

@@ -61,7 +61,14 @@ pub enum InputSettings {
         set_file_name: Option<String>,
         set_title: Option<String>,
         file_dialog_type: FileDialogType,
-    }
+    },
+    String(TextInputType)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TextInputType {
+    SingleLine,
+    MultiLine,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

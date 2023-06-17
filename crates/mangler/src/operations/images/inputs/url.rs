@@ -20,7 +20,7 @@ impl OperationImageInputUrl {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("url".to_string(), Value::String("https://i.imgur.com/3aDSTiBl.jpg".to_string()), InputSettings::None, None),
+            Input::new("url".to_string(), Value::String("https://i.imgur.com/3aDSTiBl.jpg".to_string()), InputSettings::String(crate::input::TextInputType::MultiLine), None),
         ]
     }
 

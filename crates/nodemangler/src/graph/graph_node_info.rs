@@ -3,8 +3,7 @@ use egui::{Pos2, Rect};
 use epaint::Color32;
 use std::time::Duration;
 
-use crate::graph_to_view_space;
-use crate::theme::Theme;
+use crate::{graph_to_view_space, themes::theme::Theme};
 
 pub fn show_graph_node_info(
     ui: &mut egui::Ui,

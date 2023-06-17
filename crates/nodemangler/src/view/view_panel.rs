@@ -5,7 +5,7 @@ use eframe::{
 use epaint::{Vec2, TextureHandle};
 use image::DynamicImage;
 
-use crate::{graph::graph_node::GraphNode, theme::Theme};
+use crate::{graph::graph_node::GraphNode, themes::theme::Theme};
 
 pub struct ViewPanel {
     image_texture_handle: Option<egui::TextureHandle>,

@@ -63,7 +63,6 @@ pub enum NodeChangedMessage {
         node_id: String,
         output_index: usize,
         value: Value,
-        time: Duration,
         thumbnail: Option<Thumbnail>,
     },
     ExposeInputChanged {
@@ -85,6 +84,10 @@ pub enum NodeChangedMessage {
     Busy {
         node_id: String,
         is_busy: bool,
+    },
+    InfoChanged {
+        node_id: String,
+        time: Duration,
     }
 }
 
@@ -193,6 +196,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
             ]},
             OperationListItem::Category { name: "output".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::ImageOutputFile },
+                OperationListItem::Operation { operation: Operation::ImageOutputClipboard },
             ]},
             OperationListItem::Category { name: "transform".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::ImageTransformResize },

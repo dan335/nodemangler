@@ -2,7 +2,7 @@ use crate::graph::graph_input::draw_graph_input;
 use crate::graph::graph_node_header::show_graph_node_header;
 use crate::graph::graph_node_info::show_graph_node_info;
 use crate::graph::graph_output::draw_graph_output;
-use crate::theme::Theme;
+use crate::themes::theme::Theme;
 use crate::{graph_to_view_space_pos2, view_to_graph_space_pos2, graph_to_view_space};
 use eframe::egui;
 use egui::{Pos2, Rect, Vec2};

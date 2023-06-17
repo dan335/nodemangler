@@ -2,13 +2,12 @@
 
 use eframe::egui;
 use std::path::Path;
-use theme::Theme;
-mod app_bar;
+mod app_menu;
 mod graph;
 mod menu;
 mod program;
 mod settings;
-mod theme;
+mod themes;
 mod title_bar;
 mod view;
 mod app;
@@ -27,12 +26,13 @@ async fn main() -> Result<(), eframe::Error> {
     let icon_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/mangler_icon.png");
 
     let options = eframe::NativeOptions {
-        initial_window_size: Some(egui::vec2(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)),
+        //initial_window_size: Some(egui::vec2(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)),
         icon_data: Some(load_icon(icon_path.to_str().unwrap())),
         //maximized: true,
+        fullscreen: true,
         drag_and_drop_support: true,
         resizable: true,
-        decorated: false,
+        decorated: true,
         ..Default::default()
     };
 

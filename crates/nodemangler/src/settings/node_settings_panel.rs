@@ -2,7 +2,7 @@ use eframe::egui::{self, Label};
 use epaint::vec2;
 use image::imageops::FilterType;
 use mangler::{
-    input::{Input, InputSettings},
+    input::{Input, InputSettings, TextInputType},
     value::{ColorFormat, Value},
     ChangeNodeMessage,
 };
@@ -113,16 +113,28 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                     } else {
                         let mut x = a;
                         ui.allocate_ui(egui::Vec2::new(ui.available_width() - 70.0, 16.0), |ui| {
-                            if ui.text_edit_multiline(&mut x).changed() {
-                                let value = Value::String(x);
-                                change_value(
-                                    tx_change_node.clone(),
-                                    node.id.clone(),
-                                    input_index,
-                                    input,
-                                    value.clone(),
-                                );
-                                input.value = value;
+                            let settings = input.settings.clone();
+                            if let InputSettings::String(text_input_type) = settings {
+                                let text_edit = match text_input_type {
+                                    TextInputType::SingleLine => {
+                                        ui.text_edit_singleline(&mut x)
+                                    },
+                                    TextInputType::MultiLine => {
+                                        ui.text_edit_multiline(&mut x)
+                                    },
+                                };
+
+                                if text_edit.changed() {
+                                    let value = Value::String(x);
+                                    change_value(
+                                        tx_change_node.clone(),
+                                        node.id.clone(),
+                                        input_index,
+                                        input,
+                                        value.clone(),
+                                    );
+                                    input.value = value;
+                                }
                             }
                         });
                         

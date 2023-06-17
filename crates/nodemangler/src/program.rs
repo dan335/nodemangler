@@ -4,10 +4,8 @@ use mangler::{
     get_id, node_type::NodeType, AddNodeType, ChangeGraphMessage, ChangeNodeMessage,
     GraphChangedMessage, NewGraphError, NodeChangedMessage, value::{Value, ValueType},
 };
-use std::{path::PathBuf, io::ErrorKind};
-use tokio::{
-    sync::mpsc,
-};
+use std::path::PathBuf;
+use tokio::sync::mpsc;
 
 use crate::{
     graph::{
@@ -17,9 +15,8 @@ use crate::{
     },
     menu::{menu_item::MenuItemsResult, menu_panel::MenuPanel},
     settings::{graph_settings_panel, node_settings_panel},
-    theme::Theme,
     view::view_panel::ViewPanel,
-    view_to_graph_space_pos2, APP_MENU_HEIGHT, NODE_MENU_WIDTH, graph_to_view_space_pos2, ManglerError,
+    view_to_graph_space_pos2, APP_MENU_HEIGHT, NODE_MENU_WIDTH, ManglerError, themes::theme::Theme,
 };
 
 pub struct Program {
@@ -227,7 +224,6 @@ impl Program {
                     node_id,
                     output_index,
                     value,
-                    time,
                     thumbnail,
                 } => {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
@@ -281,8 +277,6 @@ impl Program {
                                     None => Some(GraphNodeThumbnail::Text("None".to_string())),
                                 };
                             }
-
-                            node.time = Some(time);
                         }
                     }
                 }
@@ -326,6 +320,11 @@ impl Program {
                         node.is_busy = is_busy;
                     }
                 }
+                NodeChangedMessage::InfoChanged { node_id, time } => {
+                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
+                        node.time = Some(time);
+                    }
+                },
             }
         }
 
@@ -569,7 +568,7 @@ impl Program {
                 if let Some(operation) = &self.dragging_menu_button.operation_being_created {
                     if node_graph_rect.contains(self.pointer_position) {
                         //let node_position_view_space = Pos2::new(cursor_position.x - bottom_panel_rect.min.x, cursor_position.y - bottom_panel_rect.min.y);
-                        self.add_node(
+                        let _ = self.add_node(
                             AddNodeType::Operation(operation.clone()),
                             view_to_graph_space_pos2(self.graph_editor.zoom, self.pointer_position)
                                 - self.graph_editor.position.to_vec2(),
@@ -577,7 +576,7 @@ impl Program {
                     }
                 } else if self.dragging_menu_button.subgraph_being_created {
                     if node_graph_rect.contains(self.pointer_position) {
-                        self.add_node(
+                        let _ = self.add_node(
                             AddNodeType::Subgraph,
                             view_to_graph_space_pos2(self.graph_editor.zoom, self.pointer_position)
                                 - self.graph_editor.position.to_vec2(),
