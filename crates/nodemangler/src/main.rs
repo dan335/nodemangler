@@ -6,12 +6,12 @@ use themes::theme::Theme;
 use std::path::Path;
 mod app_menu;
 mod graph;
-mod menu;
+mod node_menu;
 mod program;
 mod settings;
 mod themes;
 mod title_bar;
-mod view;
+mod view_window;
 mod app;
 use egui::Pos2;
 

@@ -13,9 +13,9 @@ use crate::{
         graph_node::GraphNode,
         graph_node_thumbnail::GraphNodeThumbnail,
     },
-    menu::{menu_item::MenuItemsResult, menu_panel::MenuPanel},
+    node_menu::{menu_item::MenuItemsResult, menu_panel::MenuPanel},
     settings::{graph_settings_panel, node_settings_panel},
-    view::view_panel::ViewPanel,
+    view_window::view_panel::ViewPanel,
     view_to_graph_space_pos2, APP_MENU_HEIGHT, NODE_MENU_WIDTH, ManglerError, themes::theme::Theme, NODE_SIZE, graph_to_view_space,
 };
 
@@ -491,6 +491,22 @@ impl Program {
             });
         });
 
+        let mut is_mouse_over_viewer = false;
+
+        if let Some((viewing_node_id, graph_node_output_index)) = &self.viewing_node_id_index {
+            if let Some(graph_node) = self.graph_editor.graph_nodes.get(viewing_node_id) {
+                let view_panel_response = self.view_panel.show(ctx, graph_node, *graph_node_output_index, theme, self.pointer_position);
+
+                if view_panel_response.is_mouse_over {
+                    is_mouse_over_viewer = true;
+                }
+                
+                if self.view_panel.close_window {
+                    self.viewing_node_id_index = None;
+                }
+            }
+        }
+
         // -------------------------
         // bottom graph panel
         
@@ -504,6 +520,7 @@ impl Program {
                 &self.editing_node_id,
                 &self.viewing_node_id_index,
                 theme,
+                is_mouse_over_viewer,
             );
 
             if let Some(new_node_position) = graph_editor_response.new_node_position {
@@ -649,13 +666,7 @@ impl Program {
             egui::Color32::from(theme.get().text_faint),
         );
 
-        if let Some((viewing_node_id, graph_node_output_index)) = &self.viewing_node_id_index {
-            if let Some(graph_node) = self.graph_editor.graph_nodes.get(viewing_node_id) {
-                egui::Window::new("asdf").show(ctx, |ui| {
-                    self.view_panel.show(ui, graph_node, graph_node_output_index.clone(), theme);
-                });
-            }
-        }
+        
 
         
 

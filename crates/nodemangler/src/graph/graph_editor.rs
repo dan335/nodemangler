@@ -51,6 +51,7 @@ impl GraphEditor {
         editing_node_id: &Option<String>,
         viewing_node_id_index: &Option<(String, usize)>,
         theme: &Theme,
+        is_mouse_over_viewer: bool,
     ) -> GraphEditorResponse {
         puffin::profile_scope!("graph panel.show()");
         let mut graph_editor_response = GraphEditorResponse::default();
@@ -60,33 +61,36 @@ impl GraphEditor {
             ui.allocate_rect(editor_rect, egui::Sense::drag().union(egui::Sense::hover()));
         //let panel_cursor_position = Pos2::new(cursor_position.x - editor_rect.min.x, cursor_position.y - editor_rect.min.y);
 
-        ui.ctx().input(|input_state| {
-            // let mouse_x = cursor_position.x - editor_rect.min.x;
-            // let mouse_y = cursor_position.y - editor_rect.min.y;
-            //println!("{} {}, {:?}", mouse_x, mouse_y, self.position);
-            let new_zoom = (self.zoom * (1.0 + input_state.scroll_delta.y * ZOOM_MULTIPLIER))
-                .min(ZOOM_BOUNDS[1])
-                .max(ZOOM_BOUNDS[0]);
-
-            let old_x = view_to_graph_space(self.zoom, editor_rect.max.x - editor_rect.min.x);
-            let new_x = view_to_graph_space(new_zoom, editor_rect.max.x - editor_rect.min.x);
-            let old_y = view_to_graph_space(self.zoom, editor_rect.max.y - editor_rect.min.y);
-            let new_y = view_to_graph_space(new_zoom, editor_rect.max.y - editor_rect.min.y);
-
-            let mouse_percent_x = cursor_position.x / (editor_rect.max.x - editor_rect.min.x);
-            let mouse_perceny_y = cursor_position.y / (editor_rect.max.y - editor_rect.min.y);
-
-            self.position.x += view_to_graph_space(
-                new_zoom,
-                mouse_percent_x * graph_to_view_space(new_zoom, new_x - old_x),
-            );
-            self.position.y += view_to_graph_space(
-                new_zoom,
-                mouse_perceny_y * graph_to_view_space(new_zoom, new_y - old_y),
-            );
-
-            self.zoom = new_zoom;
-        });
+        if !is_mouse_over_viewer {
+            ui.ctx().input(|input_state| {
+                // let mouse_x = cursor_position.x - editor_rect.min.x;
+                // let mouse_y = cursor_position.y - editor_rect.min.y;
+                //println!("{} {}, {:?}", mouse_x, mouse_y, self.position);
+                let new_zoom = (self.zoom * (1.0 + input_state.scroll_delta.y * ZOOM_MULTIPLIER))
+                    .min(ZOOM_BOUNDS[1])
+                    .max(ZOOM_BOUNDS[0]);
+    
+                let old_x = view_to_graph_space(self.zoom, editor_rect.max.x - editor_rect.min.x);
+                let new_x = view_to_graph_space(new_zoom, editor_rect.max.x - editor_rect.min.x);
+                let old_y = view_to_graph_space(self.zoom, editor_rect.max.y - editor_rect.min.y);
+                let new_y = view_to_graph_space(new_zoom, editor_rect.max.y - editor_rect.min.y);
+    
+                let mouse_percent_x = cursor_position.x / (editor_rect.max.x - editor_rect.min.x);
+                let mouse_perceny_y = cursor_position.y / (editor_rect.max.y - editor_rect.min.y);
+    
+                self.position.x += view_to_graph_space(
+                    new_zoom,
+                    mouse_percent_x * graph_to_view_space(new_zoom, new_x - old_x),
+                );
+                self.position.y += view_to_graph_space(
+                    new_zoom,
+                    mouse_perceny_y * graph_to_view_space(new_zoom, new_y - old_y),
+                );
+    
+                self.zoom = new_zoom;
+            });
+        }
+        
 
         ui.set_clip_rect(editor_rect);
 
