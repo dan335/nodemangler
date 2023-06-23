@@ -76,7 +76,7 @@ impl GraphNode {
         graph_zoom: f32,
         panel_cursor_position: Pos2,
         is_editing: bool,
-        is_viewing: bool,
+        is_viewing: Option<usize>,
         temp_connection: Option<TempConnection>,
         theme: &Theme,
     ) -> GraphNodeResponse {
@@ -196,6 +196,10 @@ impl GraphNode {
                 graph_zoom
             );
 
+            if let Some(view_output_index) = input_output_response.view_output {
+                graph_node_response.view_node = Some(view_output_index);
+            } 
+
             // started dragging from connection
             // create temp connection object
             if input_output_response.has_started_creating_connection {
@@ -216,9 +220,15 @@ impl GraphNode {
                     input_output_response.connection_to_position;
             }
 
-            if is_viewing && index == 0 {
-                draw_graph_output_highlighted(self.get_output_position(index, node_rect, graph_zoom), ui, theme, graph_zoom);
+            if let Some(viewing_index) = is_viewing {
+                if viewing_index == index {
+                    draw_graph_output_highlighted(self.get_output_position(index, node_rect, graph_zoom), ui, theme, graph_zoom);
+                }
             }
+
+            // if is_viewing && index == 0 {
+            //     draw_graph_output_highlighted(self.get_output_position(index, node_rect, graph_zoom), ui, theme, graph_zoom);
+            // }
 
             if !input_output_response.is_disabled && input_output_response.is_cursor_over {
                 graph_node_response.is_cursor_inside = true;
@@ -306,7 +316,7 @@ pub struct GraphNodeResponse {
     pub has_stopped_creating_connection: bool,
     pub connection_to_position: Pos2,
     pub edit_node: bool,
-    pub view_node: bool,
+    pub view_node: Option<usize>,   // usize = output index to view
     pub is_right_click: bool,
     pub is_left_click: bool,
     pub is_cursor_inside: bool,
@@ -320,7 +330,7 @@ impl GraphNodeResponse {
             has_stopped_creating_connection: false,
             connection_to_position: Pos2::ZERO,
             edit_node: false,
-            view_node: false,
+            view_node: None,
             is_right_click: false,
             is_left_click: false,
             is_cursor_inside: false,
@@ -336,6 +346,7 @@ pub struct InputOutputResponse {
     pub connection_to_position: Pos2,
     pub is_cursor_over: bool,
     pub is_disabled: bool,
+    pub view_output: Option<usize>, // clicked on output to view it
 }
 
 impl InputOutputResponse {
@@ -347,6 +358,7 @@ impl InputOutputResponse {
             connection_to_position: Pos2::ZERO,
             is_cursor_over: false,
             is_disabled: false,
+            view_output: None,
         }
     }
 }

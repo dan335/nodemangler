@@ -26,7 +26,7 @@ pub fn draw_graph_output(
     let mut response = InputOutputResponse::new();
     let mut color = theme.get().grid_connection_dot;
     let output_response =
-        ui.allocate_rect(input_rect, egui::Sense::drag().union(egui::Sense::hover()));
+        ui.allocate_rect(input_rect, egui::Sense::drag().union(egui::Sense::hover()).union(egui::Sense::click()));
 
     if let Some(temp) = temp_connection {
         // if we're dragging from this node
@@ -46,6 +46,10 @@ pub fn draw_graph_output(
                 response.is_disabled = true;
             }
         }
+    }
+
+    if output_response.clicked_by(egui::PointerButton::Secondary) {
+        response.view_output = Some(index);
     }
 
     // highlight when hovering

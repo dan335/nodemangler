@@ -13,8 +13,8 @@ pub fn theme_light_blue() -> ThemeValues
         menu_bar_button: Hsva::new(0.565, 0.15, 0.9, 1.0).into(),
         menu_bar_button_selected: Hsva::new(0.95, 0.69, 0.97, 1.0).into(),
 
-        grid_bg: Hsva::new(0.565, 0.1, 0.97, 1.0).into(),
-        grid_lines: Hsva::new(0.565, 0.1, 0.87, 1.0).into(),
+        grid_bg: Hsva::new(0.565, 0.1, 0.95, 1.0).into(),
+        grid_lines: Hsva::new(0.565, 0.1, 0.85, 1.0).into(),
         grid_connection_line: Hsva::new(0.565, 0.81, 0.97, 1.0).into(),
         grid_connection_line_width: 1.0,
         grid_connection_dot: Hsva::new(0.565, 0.81, 0.97, 1.0).into(),
@@ -24,7 +24,7 @@ pub fn theme_light_blue() -> ThemeValues
         node_header_selected_border: Hsva::new(0.95, 0.69, 0.97, 1.0).into(),
         
         override_text_color: Hsva::new(0.565, 0.05, 0.1, 1.0).into(),
-        text_faint: Hsva::new(0.565, 0.05, 0.35, 1.0).into(),
+        text_faint: Hsva::new(0.565, 0.05, 0.3, 1.0).into(),
 
         window_rounding: Rounding::same(1.0),
         window_shadow: Shadow::NONE,

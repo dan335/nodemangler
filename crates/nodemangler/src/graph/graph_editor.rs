@@ -200,10 +200,10 @@ impl GraphEditor {
             }
 
             // are we viewing node
-            let mut is_viewing = false;
-            if let Some((viewing_node_id, _)) = viewing_node_id_index {
+            let mut is_viewing: Option<usize> = None;
+            if let Some((viewing_node_id, viewing_output_index)) = viewing_node_id_index {
                 if viewing_node_id == graph_node_id {
-                    is_viewing = true;
+                    is_viewing = Some(*viewing_output_index);
                 }
             }
 
@@ -238,6 +238,10 @@ impl GraphEditor {
             // new connection
             if graph_node_response.has_stopped_creating_connection {
                 has_stopped_creating_connection = true;
+            }
+
+            if let Some(out_index) = graph_node_response.view_node {
+                graph_editor_response.viewing_node_id_index = Some((graph_node_id.clone(), out_index));
             }
 
             // click on node

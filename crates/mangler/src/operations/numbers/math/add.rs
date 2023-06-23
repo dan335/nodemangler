@@ -18,8 +18,8 @@ impl OperationNumberMathAdd {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Integer(i32::default()), InputSettings::None, None),
-            Input::new("b".to_string(), Value::Integer(i32::default()), InputSettings::None, None),
+            Input::new("a".to_string(), Value::Integer(i32::default()), InputSettings::Integer(crate::input::IntegerInputType::DragValue { clamp: None }), None),
+            Input::new("b".to_string(), Value::Integer(i32::default()), InputSettings::Integer(crate::input::IntegerInputType::DragValue { clamp: None }), None)
         ]
     }
 

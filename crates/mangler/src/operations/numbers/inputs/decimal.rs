@@ -18,7 +18,7 @@ impl OperationNumberInputDecimal {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(f32::default()), InputSettings::None, None)
+            Input::new("input".to_string(), Value::Decimal(f32::default()), InputSettings::Decimal(crate::input::DecimalInputType::DragValue { speed: None, clamp: None }), None)
         ]
     }
 

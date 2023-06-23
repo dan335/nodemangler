@@ -14,6 +14,9 @@ pub enum GraphNodeThumbnail {
         channels: String,
         bits: u16,
     },
+    Color {
+        texture_handle: egui::TextureHandle,
+    },
     Text(String),
 }
 
@@ -81,6 +84,21 @@ impl GraphNodeThumbnail {
                     txt,
                     FontId::proportional(graph_to_view_space(graph_zoom, 20.0)),
                     Color32::from(theme.get().override_text_color),
+                );
+            },
+            GraphNodeThumbnail::Color { texture_handle } => {
+                // image
+                let thumb_size =
+                    graph_to_view_space_pos2(graph_zoom, texture_handle.size_vec2().to_pos2()).to_vec2();
+
+                ui.painter().image(
+                    texture_handle.id(),
+                    Rect::from_center_size(
+                        top_center_pos + Vec2::new(0.0, thumb_size.y / 2.0) + Vec2::new(0.0, 2.0),
+                        thumb_size,
+                    ),
+                    Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)),
+                    Color32::WHITE,
                 );
             },
         }

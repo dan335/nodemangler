@@ -22,7 +22,7 @@ impl OperationImageAdjustmentBlur {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(),  Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id() }, InputSettings::None, None),
-            Input::new("sigma".to_string(), Value::Decimal(1.0), InputSettings::None, None),
+            Input::new("sigma".to_string(), Value::Decimal(1.0), InputSettings::Decimal(crate::input::DecimalInputType::DragValue { speed: None, clamp: Some((0.0, 1000.0)) }), None)
         ]
     }
 

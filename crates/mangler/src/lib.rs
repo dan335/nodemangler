@@ -21,6 +21,7 @@ pub mod value;
 pub mod node_type;
 pub mod thumbnail;
 pub mod app;
+pub mod color;
 mod graph_tests;
 
 pub fn get_id() -> String {
@@ -186,6 +187,11 @@ pub fn operation_list() -> Vec<OperationListItem> {
             ]},
             OperationListItem::Category { name: "arithmetic".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::NumberMathAdd },
+            ]},
+        ]},
+        OperationListItem::Category { name: "colors".to_string(), operation_list_items: vec![
+            OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::ColorInputRgba },
             ]},
         ]},
         OperationListItem::Category { name: "images".to_string(), operation_list_items: vec![

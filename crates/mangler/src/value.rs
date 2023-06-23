@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
-use image::{imageops::FilterType, DynamicImage};
+use image::{imageops::FilterType, DynamicImage, RgbImage, RgbaImage};
 use serde::{Deserialize, Serialize};
 
-use crate::{thumbnail::Thumbnail, get_id};
+use crate::{thumbnail::Thumbnail, get_id, color::Color};
 
 pub const THUMBNAIL_SIZE: [u32; 2] = [150, 150];
 
@@ -13,6 +13,7 @@ pub enum Value {
     Integer(i32),
     Decimal(f32),
     String(String),
+    Color(Color),
     DynamicImage {
         data: DynamicImage,
         change_id: String,  // new id each time image changes
@@ -44,6 +45,20 @@ pub enum PathType {
 impl Value {
     pub fn create_thumbnail(&self) -> Option<Thumbnail> {
         match &self {
+            Value::Color(color) => {
+                let rgb = color.to_srgba_u8();
+                let color = image::Rgba([rgb.0, rgb.1, rgb.2, rgb.3]);
+                let mut img = RgbaImage::new(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]);
+                for x in 0..THUMBNAIL_SIZE[0] {
+                    for y in 0..THUMBNAIL_SIZE[1] {
+                        img.put_pixel(x, y, color);
+                    }
+                }
+
+                Some(Thumbnail::Image(img))
+
+                //Some(Thumbnail::Image(DynamicImage::ImageRgba8(img).thumbnail(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]).to_rgba8()))
+            },
             Value::DynamicImage { data, change_id:_ } => Some(Thumbnail::Image(data.thumbnail(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]).to_rgba8())),
             Value::Bool(value) => Some(Thumbnail::Text(value.to_string())),
             Value::Integer(value) => Some(Thumbnail::Text(value.to_string())),
@@ -63,6 +78,7 @@ impl Value {
             Value::Integer(_) => ValueType::Integer,
             Value::Decimal(_) => ValueType::Decimal,
             Value::String(_) => ValueType::String,
+            Value::Color(_) => ValueType::Color,
             Value::ColorFormat(_) => ValueType::ColorFormat,
             Value::Trigger => ValueType::Trigger,
             Value::FilterType(_) => ValueType::FilterType,
@@ -91,6 +107,13 @@ impl Value {
                     }
                 }
                 ValueType::String => Ok(Value::String(a.to_string())),
+                ValueType::Color => {
+                    if *a {
+                        Ok(Value::Color(Color::new(1.0, 1.0, 1.0, 1.0)))
+                    } else {
+                        Ok(Value::Color(Color::new(0.0, 0.0, 0.0, 1.0)))
+                    }
+                }
                 ValueType::FilterType => Err(ConversionError {
                     message: "Unable to convert bool to filter type.".to_string(),
                 }),
@@ -113,6 +136,9 @@ impl Value {
                 ValueType::Integer => Ok(Value::Integer(*a)),
                 ValueType::Decimal => Ok(Value::Decimal(*a as f32)),
                 ValueType::String => Ok(Value::String(a.to_string())),
+                ValueType::Color => Err(ConversionError {
+                    message: "Unable to convert bool to filter type.".to_string(),
+                }),
                 ValueType::FilterType => Err(ConversionError {
                     message: "Unable to convert bool to filter type.".to_string(),
                 }),
@@ -137,6 +163,9 @@ impl Value {
                 ValueType::Integer => Ok(Value::Integer(*a as i32)),
                 ValueType::Decimal => Ok(Value::Decimal(*a)),
                 ValueType::String => Ok(Value::String(a.to_string())),
+                ValueType::Color => Err(ConversionError {
+                    message: "Unable to convert bool to filter type.".to_string(),
+                }),
                 ValueType::FilterType => Err(ConversionError {
                     message: "Unable to convert bool to filter type.".to_string(),
                 }),
@@ -184,6 +213,9 @@ impl Value {
                         }),
                     }
                 }
+                ValueType::Color => Err(ConversionError {
+                    message: "Unable to convert bool to filter type.".to_string(),
+                }),
                 ValueType::String => Ok(Value::String(a.clone())),
                 ValueType::FilterType => Err(ConversionError {
                     message: "Unable to convert bool to filter type.".to_string(),
@@ -204,6 +236,39 @@ impl Value {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
             },
+            Value::Color(a) => match other {
+                ValueType::Bool => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::Integer => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::Decimal => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::String => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::Color => Ok(Value::Color(*a)),
+                ValueType::FilterType => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::ColorFormat => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::ImageType => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::Trigger => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::DynamicImage => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::Path => Err(ConversionError {
+                    message: "Unable to convert integer to image format.".to_string(),
+                }),
+            }
             Value::FilterType(a) => match other {
                 ValueType::Bool => Err(ConversionError {
                     message: "Unable to convert filter type to bool.".to_string(),
@@ -216,6 +281,9 @@ impl Value {
                 }),
                 ValueType::String => Err(ConversionError {
                     message: "Unable to convert filter type to string.".to_string(),
+                }),
+                ValueType::Color => Err(ConversionError {
+                    message: "Unable to convert bool to filter type.".to_string(),
                 }),
                 ValueType::FilterType => Ok(Value::FilterType(*a)),
                 ValueType::ColorFormat => Err(ConversionError {
@@ -247,6 +315,9 @@ impl Value {
                 ValueType::String => Err(ConversionError {
                     message: "Unable to convert image type to string.".to_string(),
                 }),
+                ValueType::Color => Err(ConversionError {
+                    message: "Unable to convert bool to filter type.".to_string(),
+                }),
                 ValueType::FilterType => Err(ConversionError {
                     message: "Unable to convert image type to image.".to_string(),
                 }),
@@ -275,6 +346,9 @@ impl Value {
                 }),
                 ValueType::String => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
+                }),
+                ValueType::Color => Err(ConversionError {
+                    message: "Unable to convert bool to filter type.".to_string(),
                 }),
                 ValueType::FilterType => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
@@ -312,6 +386,9 @@ impl Value {
                         })
                     }
                 },
+                ValueType::Color => Err(ConversionError {
+                    message: "Unable to convert bool to filter type.".to_string(),
+                }),
                 ValueType::FilterType => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
@@ -344,6 +421,9 @@ impl Value {
                 ValueType::String => Err(ConversionError {
                     message: "Unable to convert.".to_string(),
                 }),
+                ValueType::Color => Err(ConversionError {
+                    message: "Unable to convert.".to_string(),
+                }),
                 ValueType::FilterType => Err(ConversionError {
                     message: "Unable to convert.".to_string(),
                 }),
@@ -373,6 +453,7 @@ pub enum ValueType {
     Integer,
     Decimal,
     String,
+    Color,
     FilterType,
     ColorFormat,
     ImageType,
@@ -383,12 +464,13 @@ pub enum ValueType {
 
 impl ValueType {
 
-    pub fn types() -> [ValueType; 9] {
-        let types: [ValueType; 9] = [
+    pub fn types() -> [ValueType; 10] {
+        let types: [ValueType; 10] = [
             ValueType::Bool,
             ValueType::Integer,
             ValueType::Decimal,
             ValueType::String,
+            ValueType::Color,
             ValueType::FilterType,
             ValueType::ColorFormat,
             ValueType::Trigger,
@@ -405,6 +487,7 @@ impl ValueType {
             ValueType::Integer => "integer".to_string(),
             ValueType::Decimal => "decimal".to_string(),
             ValueType::String => "string".to_string(),
+            ValueType::Color => "color".to_string(),
             ValueType::FilterType => "filter type".to_string(),
             ValueType::ColorFormat => "color format".to_string(),
             ValueType::Trigger => "trigger".to_string(),
@@ -421,6 +504,7 @@ impl ValueType {
             ValueType::Integer => vec![],
             ValueType::Decimal => vec![],
             ValueType::String => vec![],
+            ValueType::Color => vec![],
             ValueType::FilterType => vec![],
             ValueType::ColorFormat => vec![],
             ValueType::Trigger => vec![],
@@ -445,6 +529,7 @@ impl ValueType {
             ValueType::Integer => vec![ValueType::Bool, ValueType::Integer, ValueType::Decimal, ValueType::String, ValueType::Trigger],
             ValueType::Decimal => vec![ValueType::Bool, ValueType::Integer, ValueType::Decimal, ValueType::String, ValueType::Trigger],
             ValueType::String => vec![ValueType::String, ValueType::Trigger],
+            ValueType::Color => vec![ValueType::Color, ValueType::Trigger],
             ValueType::DynamicImage => vec![ValueType::DynamicImage, ValueType::Trigger],
             ValueType::Path => vec![ValueType::String, ValueType::Path, ValueType::Trigger],
             ValueType::FilterType => vec![ValueType::FilterType, ValueType::String, ValueType::Trigger],

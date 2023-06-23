@@ -20,6 +20,7 @@ pub const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
 pub const DEFAULT_WINDOW_HEIGHT: f32 = 800.0;
 pub const APP_MENU_HEIGHT: f32 = 35.0;
 pub const NODE_MENU_WIDTH: f32 = 250.0;
+pub const SETTINGS_PANEL_WIDTH: f32 = 350.0;
 pub const DEFAULT_THEME: Theme = Theme::DarkGreen;
 pub const NODE_SIZE: Vec2 = Vec2::new(150.0, 40.0);
 pub const NODE_ROUNDING: f32 = 2.0;
@@ -33,9 +34,9 @@ async fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         //initial_window_size: Some(egui::vec2(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)),
         icon_data: Some(load_icon(icon_path.to_str().unwrap())),
-        //maximized: true,
-        fullscreen: true,
-        drag_and_drop_support: true,
+        maximized: true,
+        //fullscreen: true,
+        //drag_and_drop_support: true,
         resizable: true,
         decorated: true,
         ..Default::default()

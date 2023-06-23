@@ -115,10 +115,19 @@ impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         setup_fonts(&cc.egui_ctx);
         set_theme(&cc.egui_ctx, crate::DEFAULT_THEME);
+        
+        let mut programs = HashMap::new();
+        let mut current_program: Option<String> = None;
+
+        if let Ok(program) = Program::new(None, None) {
+            current_program = Some(program.app.id.clone());
+            programs.insert(program.app.id.clone(), program);
+        }
+
         Self {
             app_menu: AppMenu::new(),
-            programs: HashMap::new(),
-            current_program: None,
+            programs: programs,
+            current_program: current_program,
             theme: crate::DEFAULT_THEME,
         }
     }

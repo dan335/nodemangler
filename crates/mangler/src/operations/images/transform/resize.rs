@@ -22,8 +22,8 @@ impl OperationImageTransformResize {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(),  Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id() }, InputSettings::None, None),
-            Input::new("width".to_string(), Value::Integer(i32::default()), InputSettings::None, None),
-            Input::new("height".to_string(), Value::Integer(i32::default()), InputSettings::None, None),
+            Input::new("width".to_string(), Value::Integer(i32::default()), InputSettings::Integer(crate::input::IntegerInputType::DragValue { clamp: Some((1, 10000)) }), None),
+            Input::new("height".to_string(), Value::Integer(i32::default()), InputSettings::Integer(crate::input::IntegerInputType::DragValue { clamp: Some((1, 10000)) }), None),
             Input::new("filter type".to_string(), Value::FilterType(image::imageops::FilterType::Gaussian), InputSettings::None, None),
         ]
     }

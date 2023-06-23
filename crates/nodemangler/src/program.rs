@@ -16,7 +16,7 @@ use crate::{
     node_menu::{menu_item::MenuItemsResult, menu_panel::MenuPanel},
     settings::{graph_settings_panel, node_settings_panel},
     view_window::view_panel::ViewPanel,
-    view_to_graph_space_pos2, APP_MENU_HEIGHT, NODE_MENU_WIDTH, ManglerError, themes::theme::Theme, NODE_SIZE, graph_to_view_space,
+    view_to_graph_space_pos2, APP_MENU_HEIGHT, NODE_MENU_WIDTH, ManglerError, themes::theme::Theme, NODE_SIZE, graph_to_view_space, SETTINGS_PANEL_WIDTH,
 };
 
 pub struct Program {
@@ -233,42 +233,65 @@ impl Program {
                                 node.thumbnail = match thumbnail {
                                     Some(thumb) => match thumb {
                                         mangler::thumbnail::Thumbnail::Image(thumbnail) => {
+                                            match value {
+                                                Value::Color(_) => {
+                                                    let pixels = thumbnail.as_flat_samples();
 
-                                            let Value::DynamicImage { data, change_id:_ } = value else { break; };
+                                                    let size = [
+                                                        thumbnail.width() as usize,
+                                                        thumbnail.height() as usize,
+                                                    ];
 
-                                            let pixels = thumbnail.as_flat_samples();
+                                                    let color_image = ColorImage::from_rgba_premultiplied(
+                                                        size,
+                                                        pixels.as_slice(),
+                                                    );
 
-                                            let size = [
-                                                thumbnail.width() as usize,
-                                                thumbnail.height() as usize,
-                                            ];
+                                                    Some(GraphNodeThumbnail::Color {
+                                                        texture_handle: ui.ctx().load_texture(
+                                                            node.id.clone(),
+                                                            color_image,
+                                                            Default::default(),
+                                                        ),
+                                                    })
+                                                },
+                                                Value::DynamicImage { data, change_id } => {
+                                                    let pixels = thumbnail.as_flat_samples();
 
-                                            let color_image = ColorImage::from_rgba_unmultiplied(
-                                                size,
-                                                pixels.as_slice(),
-                                            );
+                                                    let size = [
+                                                        thumbnail.width() as usize,
+                                                        thumbnail.height() as usize,
+                                                    ];
 
-                                            // color format
-                                            let bits = data.color().bits_per_pixel() / data.color().channel_count() as u16;
-                                            let channels = match data.color().channel_count() {
-                                                1 => "r".to_string(),
-                                                2 => "rg".to_string(),
-                                                3 => "rgb".to_string(),
-                                                4 => "rgba".to_string(),
-                                                _ => "".to_string(),
-                                            };
+                                                    let color_image = ColorImage::from_rgba_premultiplied(
+                                                        size,
+                                                        pixels.as_slice(),
+                                                    );
 
-                                            Some(GraphNodeThumbnail::Image {
-                                                texture_handle: ui.ctx().load_texture(
-                                                    node.id.clone(),
-                                                    color_image,
-                                                    Default::default(),
-                                                ),
-                                                width: data.width(),
-                                                height: data.height(),
-                                                channels,
-                                                bits,
-                                            })
+                                                    // color format
+                                                    let bits = data.color().bits_per_pixel() / data.color().channel_count() as u16;
+                                                    let channels = match data.color().channel_count() {
+                                                        1 => "r".to_string(),
+                                                        2 => "rg".to_string(),
+                                                        3 => "rgb".to_string(),
+                                                        4 => "rgba".to_string(),
+                                                        _ => "".to_string(),
+                                                    };
+
+                                                    Some(GraphNodeThumbnail::Image {
+                                                        texture_handle: ui.ctx().load_texture(
+                                                            node.id.clone(),
+                                                            color_image,
+                                                            Default::default(),
+                                                        ),
+                                                        width: data.width(),
+                                                        height: data.height(),
+                                                        channels,
+                                                        bits,
+                                                    })
+                                                },
+                                                _ => None
+                                            }
                                         }
                                         mangler::thumbnail::Thumbnail::Text(v) => {
                                             Some(GraphNodeThumbnail::Text(v))
@@ -353,6 +376,7 @@ impl Program {
                                             ValueType::Integer => {},
                                             ValueType::Decimal => {},
                                             ValueType::String => {},
+                                            ValueType::Color => {},
                                             ValueType::FilterType => {},
                                             ValueType::ColorFormat => {},
                                             ValueType::Trigger => {},
@@ -398,11 +422,11 @@ impl Program {
 
         let node_graph_rect = Rect::from_two_pos(
             Pos2::new(NODE_MENU_WIDTH, APP_MENU_HEIGHT),
-            Pos2::new(app_rect.width() - 300.0, app_rect.height()),
+            Pos2::new(app_rect.width() - SETTINGS_PANEL_WIDTH, app_rect.height()),
         );
 
         let settings_panel_rect = Rect::from_two_pos(
-            Pos2::new(app_rect.width() - 300.0, APP_MENU_HEIGHT),
+            Pos2::new(app_rect.width() - SETTINGS_PANEL_WIDTH, APP_MENU_HEIGHT),
             Pos2::new(app_rect.width(), app_rect.height()),
         );
 
@@ -447,7 +471,7 @@ impl Program {
                 // show node settings
                 if let Some(editing_node_id) = &self.editing_node_id {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(editing_node_id) {
-                        let node_settings_response = node_settings_panel::show(ui, node, self.tx_change_node.clone());
+                        let node_settings_response = node_settings_panel::show(ui, node, self.tx_change_node.clone(), theme);
                         show_graph_settings = false;
 
                         if node_settings_response.deselect_node {

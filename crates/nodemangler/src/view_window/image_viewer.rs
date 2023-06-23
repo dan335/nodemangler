@@ -30,10 +30,11 @@ impl ImageViewer {
         }
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, node_id: String, output_index: usize, change_id: String, dynamic_image: &DynamicImage, cursor_position: Pos2, theme: &Theme) {
+    pub fn show(&mut self, ui: &mut egui::Ui, node_id: String, output_index: usize, change_id: String, dynamic_image: &DynamicImage, cursor_position: Pos2, theme: &Theme) {;
+        
         let view_rect = Rect::from_min_size(
             ui.cursor().left_top(),
-            Vec2::new(dynamic_image.width() as f32, dynamic_image.height() as f32)
+            ui.available_size()
         );
 
         ui.set_clip_rect(view_rect);
@@ -96,16 +97,16 @@ impl ImageViewer {
 
         let cursor_inside = view_rect.contains(cursor_position);
 
-        let mut cursor_primary_went_down = false; // did mouse button go down this frame
+        //let mut cursor_primary_went_down = false; // did mouse button go down this frame
         let mut cursor_primary_went_up = false; // did mous button go up this rame
 
         if let Some(previous_cursor_primary_down) = self.previous_cursor_primary_down {
             if previous_cursor_primary_down && !cursor_primary_down {
                 cursor_primary_went_up = true;
             }
-            if !previous_cursor_primary_down && cursor_primary_down {
-                cursor_primary_went_down = true;
-            }
+            // if !previous_cursor_primary_down && cursor_primary_down {
+            //     cursor_primary_went_down = true;
+            // }
         }
 
         // mouse
@@ -163,26 +164,6 @@ impl ImageViewer {
         }
     }
 
-    // fn show_image(&mut self, node_id: String, output_index: usize, change_id: String, dynamic_image: &DynamicImage, ui: &mut egui::Ui) {
-    //     match self.image_id_index.clone() {
-    //         Some((image_node_id, image_output_index, image_change_id)) => {
-    //             if image_node_id != node_id || image_output_index != output_index || change_id != image_change_id {
-    //                 let texture_handle = self.create_egui_image(ui, dynamic_image.clone(), node_id.clone());
-    //                 self.image_texture_handle = Some(texture_handle);
-    //                 self.image_id_index = Some((node_id.clone(), output_index, change_id.clone()));
-    //             }
-    //         },
-    //         None => {
-    //             let texture_handle = self.create_egui_image(ui, dynamic_image.clone(), node_id.clone());
-    //             self.image_texture_handle = Some(texture_handle);
-    //             self.image_id_index = Some((node_id.clone(), output_index, change_id.clone()));
-    //         },
-    //     }
-
-    //     if let Some(texture_handle) = &self.image_texture_handle {
-    //         ui.image(texture_handle, Vec2::new(texture_handle.size()[0] as f32, texture_handle.size()[1] as f32));
-    //     }
-    // }
 
     pub fn draw_background_grid(&self, ui: &mut egui::Ui, editor_rect: Rect, graph_position: Pos2, theme: &Theme) {
         let stroke = Stroke::new(1.0, theme.get().grid_lines);

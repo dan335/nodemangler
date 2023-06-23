@@ -18,7 +18,7 @@ impl OperationNumberInputInteger {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Integer(i32::default()), InputSettings::None, None),
+            Input::new("input".to_string(), Value::Integer(i32::default()), InputSettings::Integer(crate::input::IntegerInputType::DragValue { clamp: None }), None)
         ]
     }
 

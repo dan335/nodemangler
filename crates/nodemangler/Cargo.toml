@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-eframe = { version = "0.22", features = ["persistence"] }
+eframe = { version = "0.22", features = [] }
 epaint = "0.22"
 image = "0.24.6"
 mangler = { path = "../mangler" }
@@ -19,6 +19,7 @@ glam = "0.24.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 egui-phosphor = "0.1.1"
 fastrand = "2.0.0"
+egui_extras = "0.22.0"
 
 [patch.crates-io]
 "image" = { git = 'https://github.com/oovm/image.git' }
