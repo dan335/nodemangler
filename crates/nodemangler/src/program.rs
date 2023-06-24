@@ -242,7 +242,7 @@ impl Program {
                                                         thumbnail.height() as usize,
                                                     ];
 
-                                                    let color_image = ColorImage::from_rgba_premultiplied(
+                                                    let color_image = ColorImage::from_rgba_unmultiplied(
                                                         size,
                                                         pixels.as_slice(),
                                                     );
@@ -263,7 +263,7 @@ impl Program {
                                                         thumbnail.height() as usize,
                                                     ];
 
-                                                    let color_image = ColorImage::from_rgba_premultiplied(
+                                                    let color_image = ColorImage::from_rgba_unmultiplied(
                                                         size,
                                                         pixels.as_slice(),
                                                     );

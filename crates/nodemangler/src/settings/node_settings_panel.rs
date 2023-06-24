@@ -60,7 +60,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
         TableBuilder::new(ui).striped(true)
         .column(Column::auto().at_least(50.0).at_most(130.0).resizable(false))
         .column(Column::remainder().resizable(false))
-        .column(Column::exact(26.0).resizable(false))
+        //.column(Column::exact(26.0).resizable(false))
         .header(30.0, |mut header| {
             header.col(|ui| {
                 ui.label(RichText::new("name").color(theme.get().text_faint));
@@ -68,9 +68,9 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
             header.col(|ui| {
                 ui.label(RichText::new("value").color(theme.get().text_faint));
             });
-            header.col(|ui| {
-                ui.label("");
-            });
+            // header.col(|ui| {
+            //     ui.label("");
+            // });
         })
         .body(|mut body| {
             for (input_index, input) in node.inputs.iter_mut().enumerate() {
@@ -88,30 +88,30 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                         });
                     });                        
 
-                    row.col(|ui| {
-                        ui.horizontal_centered(|ui| {
-                            let mut is_exposed = input.is_exposed;
-                            if ui
-                                .add(egui::Checkbox::new(&mut is_exposed, ""))
-                                .changed()
-                            {
-                                let message = ChangeNodeMessage::SetExposeInput {
-                                    node_id: node.id.clone(),
-                                    input_index,
-                                    set_to: is_exposed,
-                                };
+                    // row.col(|ui| {
+                    //     ui.horizontal_centered(|ui| {
+                    //         let mut is_exposed = input.is_exposed;
+                    //         if ui
+                    //             .add(egui::Checkbox::new(&mut is_exposed, ""))
+                    //             .changed()
+                    //         {
+                    //             let message = ChangeNodeMessage::SetExposeInput {
+                    //                 node_id: node.id.clone(),
+                    //                 input_index,
+                    //                 set_to: is_exposed,
+                    //             };
                 
-                                match tx_change_node.try_send(message) {
-                                    Ok(_) => {
-                                        input.is_exposed = is_exposed;
-                                    }
-                                    Err(err) => {
-                                        println!("Error sending SetNodeInputMessage: {:?}", err);
-                                    }
-                                }
-                            }
-                        });
-                    });
+                    //             match tx_change_node.try_send(message) {
+                    //                 Ok(_) => {
+                    //                     input.is_exposed = is_exposed;
+                    //                 }
+                    //                 Err(err) => {
+                    //                     println!("Error sending SetNodeInputMessage: {:?}", err);
+                    //                 }
+                    //             }
+                    //         }
+                    //     });
+                    // });
                 });
             }
         });
@@ -126,7 +126,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
         TableBuilder::new(ui).striped(true)
             .column(Column::auto().at_least(50.0).at_most(130.0).resizable(false))
             .column(Column::remainder().resizable(false))
-            .column(Column::exact(26.0).resizable(false))
+            //.column(Column::exact(26.0).resizable(false))
             .header(30.0, |mut header| {
                 header.col(|ui| {
                     ui.label(RichText::new("name").color(theme.get().text_faint));
@@ -134,9 +134,9 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                 header.col(|ui| {
                     ui.label(RichText::new("value").color(theme.get().text_faint));
                 });
-                header.col(|ui| {
-                    ui.label("");
-                });
+                // header.col(|ui| {
+                //     ui.label("");
+                // });
             })
             .body(|mut body| {
                 for (output_index, output) in node.outputs.iter_mut().enumerate() {
@@ -149,94 +149,62 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
 
                         row.col(|ui| {
                             ui.horizontal_centered(|ui| {
-                                match &output.value {
-                                    Value::Integer(v) => {
-                                        ui.add(Label::new(v.to_string()));
-                                    }
-                                    Value::Decimal(v) => {
-                                        ui.add(Label::new(v.to_string()));
-                                    }
-                                    Value::String(v) => {
-                                        ui.add(Label::new(v.to_string()));
-                                    }
-                                    _ => {}
-                                }
+                                output_value(ui, &output.value);
                             });
                         });
 
-                        row.col(|ui| {
-                            ui.horizontal_centered(|ui| {
-                                let mut is_exposed = output.is_exposed;
-                                if ui
-                                    .add(egui::Checkbox::new(&mut is_exposed, ""))
-                                    .changed()
-                                {
-                                    let message = ChangeNodeMessage::SetExposeOutput {
-                                        node_id: node.id.clone(),
-                                        output_index,
-                                        set_to: is_exposed,
-                                    };
+                        // subgraph
+                        // row.col(|ui| {
+                        //     ui.horizontal_centered(|ui| {
+                        //         let mut is_exposed = output.is_exposed;
+                        //         if ui
+                        //             .add(egui::Checkbox::new(&mut is_exposed, ""))
+                        //             .changed()
+                        //         {
+                        //             let message = ChangeNodeMessage::SetExposeOutput {
+                        //                 node_id: node.id.clone(),
+                        //                 output_index,
+                        //                 set_to: is_exposed,
+                        //             };
 
-                                    match tx_change_node.try_send(message) {
-                                        Ok(_) => {
-                                            output.is_exposed = is_exposed;
-                                        }
-                                        Err(err) => {
-                                            println!("Error sending SetNodeInputMessage: {:?}", err);
-                                        }
-                                    }
-                                }
-                            });
-                        });
+                        //             match tx_change_node.try_send(message) {
+                        //                 Ok(_) => {
+                        //                     output.is_exposed = is_exposed;
+                        //                 }
+                        //                 Err(err) => {
+                        //                     println!("Error sending SetNodeInputMessage: {:?}", err);
+                        //                 }
+                        //             }
+                        //         }
+                        //     });
+                        // });
                     });
                 }
             });
     });
 
-    // // outputs
-    // for (output_index, output) in node.outputs.iter_mut().enumerate() {
-    //     ui.horizontal(|ui| {
-    //         ui.label(format!("{}      ", output.name.clone()));
-    //         //ui.add(Label::new(output.name.clone()));
-    //         match &output.value {
-    //             Value::Integer(v) => {
-    //                 ui.add(Label::new(v.to_string()));
-    //             }
-    //             Value::Decimal(v) => {
-    //                 ui.add(Label::new(v.to_string()));
-    //             }
-    //             Value::String(v) => {
-    //                 ui.add(Label::new(v.to_string()));
-    //             }
-    //             _ => {}
-    //         }
-
-    //         // exposed checkbox
-    //         ui.add_space(12.0);
-    //         let mut is_exposed = output.is_exposed;
-    //         if ui
-    //             .add(egui::Checkbox::new(&mut is_exposed, "   expose"))
-    //             .changed()
-    //         {
-    //             let message = ChangeNodeMessage::SetExposeOutput {
-    //                 node_id: node.id.clone(),
-    //                 output_index,
-    //                 set_to: is_exposed,
-    //             };
-
-    //             match tx_change_node.try_send(message) {
-    //                 Ok(_) => {
-    //                     output.is_exposed = is_exposed;
-    //                 }
-    //                 Err(err) => {
-    //                     println!("Error sending SetNodeInputMessage: {:?}", err);
-    //                 }
-    //             }
-    //         }
-    //     });
-    // }
-
     node_settings_response
+}
+
+
+fn output_value(ui: &mut egui::Ui,  value: &Value) {
+    match &value {
+        Value::Integer(v) => {
+            ui.add(Label::new(v.to_string()));
+        }
+        Value::Decimal(v) => {
+            ui.add(Label::new(v.to_string()));
+        }
+        Value::String(v) => {
+            ui.add(Label::new(v.to_string()));
+        }
+        Value::Color(v) => {
+            let rgba = v.to_srgba_u8();
+            let color = Color32::from_rgba_unmultiplied(rgba.0, rgba.1, rgba.2, rgba.3);
+            ui.label(RichText::new("                        ").background_color(color));
+        }
+        _ => {}
+    }
 }
 
 
@@ -413,7 +381,7 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
             } else {
                 let rgba = a.to_srgba_u8();
                 let mut x = [rgba.0, rgba.1, rgba.2, rgba.3];
-                if ui.color_edit_button_srgba_premultiplied(&mut x).changed() {
+                if ui.color_edit_button_srgba_unmultiplied(&mut x).changed() {
                     let value = Value::Color(mangler::color::Color::from_srgba_u8(x[0], x[1], x[2], x[3]));
                     change_value(
                         tx_change_node.clone(),

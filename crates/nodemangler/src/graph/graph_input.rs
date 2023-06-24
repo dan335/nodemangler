@@ -110,7 +110,7 @@ pub fn draw_graph_input(
                 let txt = valid_type.value_name();
                 let txt_pos = Pos2::new(pos.x, graph_to_view_space(graph_zoom, 25.0) + pos.y + graph_to_view_space(graph_zoom, 15.0) * index as f32);
     
-                let galley = ui.painter().layout_no_wrap(txt.clone(), font_id.clone(), color);
+                let galley = ui.painter().layout_no_wrap(txt.clone(), font_id.clone(), theme.get().text_faint);
     
                 // bg
                 ui.painter().rect_filled(Rect::from_min_size(Pos2::new(txt_pos.x - galley.rect.width(), txt_pos.y - (galley.rect.height() * 0.5)), galley.rect.size()), egui::Rounding::same(1.0), theme.get().grid_bg);
@@ -121,7 +121,7 @@ pub fn draw_graph_input(
                     egui::Align2::RIGHT_CENTER,
                     txt,
                     font_id.clone(),
-                    color,
+                    theme.get().text_faint,
                 );
             }
         }

@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 extern crate sanitize_filename;
 use eframe::egui::{self, Button};
-use epaint::Vec2;
 
 pub fn show(
     ui: &mut egui::Ui,
@@ -15,7 +14,7 @@ pub fn show(
     ui.add_space(20.0);
 
     ui.label("graph name");
-    ui.add_space(3.0);
+    ui.add_space(8.0);
     if ui.text_edit_singleline(program_name).changed() {
         graph_settings_response.new_name = Some(program_name.clone());
     }
@@ -29,13 +28,13 @@ pub fn show(
 
     ui.add_space(20.0);
     ui.label("save location");
-    ui.add_space(3.0);
+    ui.add_space(8.0);
 
     ui.add_enabled_ui(false, |ui| ui.text_edit_singleline(&mut path));
-    ui.add_space(4.0);
+    ui.add_space(8.0);
 
-    ui.vertical_centered(|ui| {
-        if ui.add(Button::new(egui::RichText::new(format!("select location"))).min_size(Vec2::new(ui.available_width(), 14.0))).clicked() {
+    //ui.vertical_centered(|ui| {
+        if ui.add(Button::new(egui::RichText::new(format!("select location")))).clicked() {
             let options = sanitize_filename::Options {
                 truncate: true,  // true by default, truncates to 255 bytes
                 windows: true, // default value depends on the OS, removes reserved names like `con` from start of strings on Windows
@@ -56,7 +55,7 @@ pub fn show(
                 graph_settings_response.new_save_path = Some(save_path);
             }
         }
-    });
+    //});
 
     graph_settings_response
 }

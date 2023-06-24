@@ -199,6 +199,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::ImageInputFile },
                 OperationListItem::Operation { operation: Operation::ImageInputUrl },
                 OperationListItem::Operation { operation: Operation::ImageInputClipboard },
+                OperationListItem::Operation { operation: Operation::ImageInputColor },
             ]},
             OperationListItem::Category { name: "output".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::ImageOutputFile },
@@ -215,6 +216,6 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::IMageAdjustmentGrayscale }
             ]},
         ]}, 
-        OperationListItem::Subgraph,
+        //OperationListItem::Subgraph,
     ]
 }

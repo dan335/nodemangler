@@ -1,4 +1,4 @@
-use epaint::Color32;
+use epaint::{Color32, Hsva};
 use super::{theme::{ThemeValues, desaturate}, theme_dark_green::theme_dark_green};
 
 pub fn theme_dark() -> ThemeValues 
@@ -19,7 +19,7 @@ pub fn theme_dark() -> ThemeValues
         grid_connection_line_width: 1.0,
         grid_connection_dot: desaturate(dark_green.grid_connection_dot),
         grid_connection_dot_hover: desaturate(dark_green.grid_connection_dot_hover),
-        grid_connection_dot_disabled: desaturate(dark_green.grid_connection_dot_disabled),
+        grid_connection_dot_disabled: Hsva::new(0.522, 0.0, 0.075, 1.0).into(),
         node_header_bg: desaturate(dark_green.node_header_bg),
         node_header_selected_border: dark_green.node_header_selected_border,
         
@@ -53,7 +53,7 @@ pub fn theme_dark() -> ThemeValues
 
         widgets_active_bg_fill: desaturate(dark_green.widgets_active_bg_fill),
         widgets_active_weak_bg_fill: desaturate(dark_green.widgets_active_weak_bg_fill),
-        widgets_active_bg_stroke: (1.0, Color32::WHITE),
+        widgets_active_bg_stroke: (0.0, Color32::WHITE),
         widgets_active_rounding: 1.0,
         widgets_active_fg_stroke: (1.0, Color32::from_rgb(187, 210, 213)),
         widgets_active_expansion: 3.0,
