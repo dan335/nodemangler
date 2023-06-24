@@ -7,12 +7,12 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationNumberMathAdd {}
+pub struct OperationNumberMathMultiply {}
 
-impl OperationNumberMathAdd {
+impl OperationNumberMathMultiply {
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "add".to_string(),
+            name: "multiply".to_string(),
         }
     }
 
@@ -33,23 +33,13 @@ impl OperationNumberMathAdd {
         let start_time = Instant::now();
 
         let value = match (&inputs[0].value, &inputs[1].value) {
-            (Value::Integer(a), Value::Decimal(b)) => Value::Decimal(*a as f32 + *b),
+            (Value::Integer(a), Value::Decimal(b)) => Value::Decimal(*a as f32 / *b),
 
-            (Value::Integer(a), Value::Integer(b)) => Value::Integer(*a + *b),
+            (Value::Integer(a), Value::Integer(b)) => Value::Integer(*a / *b),
 
-            (Value::Integer(a), Value::String(b)) => Value::String(format!("{} {}", a, *b)),
+            (Value::Decimal(a), Value::Decimal(b)) => Value::Decimal(*a / *b),
 
-            (Value::Decimal(a), Value::Decimal(b)) => Value::Decimal(*a + *b),
-
-            (Value::Decimal(a), Value::Integer(b)) => Value::Decimal(*a + *b as f32),
-
-            (Value::Decimal(a), Value::String(b)) => Value::String(format!("{} {}", a, *b)),
-
-            (Value::String(a), Value::Integer(b)) => Value::String(format!("{} {}", *a, b)),
-
-            (Value::String(a), Value::Decimal(b)) => Value::String(format!("{} {}", *a, b)),
-
-            (Value::String(a), Value::String(b)) => Value::String(format!("{} {}", *a, *b)),
+            (Value::Decimal(a), Value::Integer(b)) => Value::Decimal(*a / *b as f32),
 
             _ => {return Err(OperationError {
                 message: "Error converting. {:?}".to_string(),

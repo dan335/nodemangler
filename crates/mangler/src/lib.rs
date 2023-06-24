@@ -187,6 +187,9 @@ pub fn operation_list() -> Vec<OperationListItem> {
             ]},
             OperationListItem::Category { name: "arithmetic".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::NumberMathAdd },
+                OperationListItem::Operation { operation: Operation::NumberMathSubtract },
+                OperationListItem::Operation { operation: Operation::NumberMathMultiply },
+                OperationListItem::Operation { operation: Operation::NumberMathDivide },
             ]},
         ]},
         OperationListItem::Category { name: "colors".to_string(), operation_list_items: vec![
