@@ -193,7 +193,7 @@ fn output_value(ui: &mut egui::Ui,  value: &Value) {
             ui.add(Label::new(v.to_string()));
         }
         Value::Decimal(v) => {
-            ui.add(Label::new(v.to_string()));
+            ui.add(Label::new(format!("{:?}", v)));
         }
         Value::String(v) => {
             ui.add(Label::new(v.to_string()));
@@ -289,9 +289,9 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
         }
         Value::Decimal(a) => {
             if input.connection.is_some() {
-                ui.label(a.to_string());
+                ui.label(format!("{:?}", a));
             } else {
-                let mut x = a;
+                let mut x: f32 = a;
 
                 let settings = input.settings.clone();
                 if let InputSettings::Decimal(input_type) = settings {

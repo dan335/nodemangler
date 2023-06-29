@@ -191,6 +191,10 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::NumberMathMultiply },
                 OperationListItem::Operation { operation: Operation::NumberMathDivide },
             ]},
+            OperationListItem::Category { name: "cast".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::NumberCastToInteger },
+                OperationListItem::Operation { operation: Operation::NumberCastToDecimal },
+            ]},
         ]},
         OperationListItem::Category { name: "colors".to_string(), operation_list_items: vec![
             OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![

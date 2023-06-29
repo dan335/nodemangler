@@ -25,6 +25,8 @@ pub enum Operation {
     NumberMathSubtract,
     NumberMathMultiply,
     NumberMathDivide,
+    NumberCastToInteger,
+    NumberCastToDecimal,
     ColorInputRgba,
     ImageInputUrl,
     ImageInputClipboard,
@@ -40,9 +42,48 @@ pub enum Operation {
     IMageAdjustmentGrayscale,
 }
 
+impl Operation {
+    pub fn list() -> Vec<Operation> {
+        vec![
+            Operation::NumberInputInteger,
+            Operation::NumberInputDecimal,
+            Operation::NumberMathAdd,
+            Operation::NumberMathSubtract,
+            Operation::NumberMathMultiply,
+            Operation::NumberMathDivide,
+            Operation::NumberCastToInteger,
+            Operation::NumberCastToDecimal,
+            Operation::ColorInputRgba,
+            Operation::ImageInputUrl,
+            Operation::ImageInputClipboard,
+            Operation::ImageInputFile,
+            Operation::ImageInputColor,
+            Operation::ImageOutputClipboard,
+            Operation::ImageOutputFile,
+            Operation::ImageTransformResize,
+            Operation::ImageTransformResizeExact,
+            Operation::ImageTransformResizeFill,
+            Operation::ImageAdjustmentBlur,
+            Operation::ImageAdjustmentContrast,
+            Operation::IMageAdjustmentGrayscale,
+        ]
+    }
+}
+
+macro_rules! op_settings {
+    ($self:ident) => {
+        Operation$self::settings()
+    };
+}
+
+
+
+
+
 
 impl Operation {
     pub fn settings(&self) -> NodeSettings {
+        op_settings!(self);
         match self {
             Operation::NumberInputInteger => OperationNumberInputInteger::settings(),
             Operation::NumberInputDecimal => OperationNumberInputDecimal::settings(),
@@ -50,6 +91,8 @@ impl Operation {
             Operation::NumberMathSubtract => crate::operations::numbers::math::subtract::OperationNumberMathSubtract::settings(),
             Operation::NumberMathMultiply => crate::operations::numbers::math::multiply::OperationNumberMathMultiply::settings(),
             Operation::NumberMathDivide => crate::operations::numbers::math::divide::OperationNumberMathDivide::settings(),
+            Operation::NumberCastToInteger => crate::operations::numbers::cast::to_integer::OperationNumberCastToInteger::settings(),
+            Operation::NumberCastToDecimal => crate::operations::numbers::cast::to_decimal::OperationNumberCastToDecimal::settings(),
             Operation::ColorInputRgba => crate::operations::colors::inputs::rgba::OperationColorInputRgba::settings(),
             Operation::ImageInputUrl => OperationImageInputUrl::settings(),
             Operation::ImageInputFile => OperationImageInputFile::settings(),
@@ -74,6 +117,8 @@ impl Operation {
             Operation::NumberMathSubtract => crate::operations::numbers::math::subtract::OperationNumberMathSubtract::create_inputs(),
             Operation::NumberMathMultiply => crate::operations::numbers::math::multiply::OperationNumberMathMultiply::create_inputs(),
             Operation::NumberMathDivide => crate::operations::numbers::math::divide::OperationNumberMathDivide::create_inputs(),
+            Operation::NumberCastToInteger => crate::operations::numbers::cast::to_integer::OperationNumberCastToInteger::create_inputs(),
+            Operation::NumberCastToDecimal => crate::operations::numbers::cast::to_decimal::OperationNumberCastToDecimal::create_inputs(),
             Operation::ColorInputRgba => crate::operations::colors::inputs::rgba::OperationColorInputRgba::create_inputs(),
             Operation::ImageInputUrl => OperationImageInputUrl::create_inputs(),
             Operation::ImageInputFile => OperationImageInputFile::create_inputs(),
@@ -98,6 +143,8 @@ impl Operation {
             Operation::NumberMathSubtract => crate::operations::numbers::math::subtract::OperationNumberMathSubtract::create_outputs(),
             Operation::NumberMathMultiply => crate::operations::numbers::math::multiply::OperationNumberMathMultiply::create_outputs(),
             Operation::NumberMathDivide => crate::operations::numbers::math::divide::OperationNumberMathDivide::create_outputs(),
+            Operation::NumberCastToInteger => crate::operations::numbers::cast::to_integer::OperationNumberCastToInteger::create_outputs(),
+            Operation::NumberCastToDecimal => crate::operations::numbers::cast::to_decimal::OperationNumberCastToDecimal::create_outputs(),
             Operation::ColorInputRgba => crate::operations::colors::inputs::rgba::OperationColorInputRgba::create_outputs(),
             Operation::ImageInputUrl => OperationImageInputUrl::create_outputs(),
             Operation::ImageInputFile => OperationImageInputFile::create_outputs(),
@@ -122,6 +169,8 @@ impl Operation {
             Operation::NumberMathSubtract => crate::operations::numbers::math::subtract::OperationNumberMathSubtract::run(inputs).await,
             Operation::NumberMathMultiply => crate::operations::numbers::math::multiply::OperationNumberMathMultiply::run(inputs).await,
             Operation::NumberMathDivide => crate::operations::numbers::math::divide::OperationNumberMathDivide::run(inputs).await,
+            Operation::NumberCastToInteger => crate::operations::numbers::cast::to_integer::OperationNumberCastToInteger::run(inputs).await,
+            Operation::NumberCastToDecimal => crate::operations::numbers::cast::to_decimal::OperationNumberCastToDecimal::run(inputs).await,
             Operation::ColorInputRgba => crate::operations::colors::inputs::rgba::OperationColorInputRgba::run(inputs).await,
             Operation::ImageInputUrl => OperationImageInputUrl::run(inputs).await,
             Operation::ImageInputFile => OperationImageInputFile::run(inputs).await,
@@ -138,6 +187,7 @@ impl Operation {
         }
     }
 }
+
 
 #[derive(Debug, Clone)]
 pub struct ConnectionSettings {

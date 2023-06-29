@@ -30,15 +30,15 @@ mod graph_tests {
 
         assert_eq!(add_node.inputs.len(), 2);
         assert_eq!(add_node.outputs.len(), 1);
-        add_node.inputs[0].value = Value::Integer(5);
-        add_node.inputs[1].value = Value::Integer(10);
-        assert_eq!(add_node.outputs[0].value, Value::Integer(0));
+        add_node.inputs[0].value = Value::Decimal(5.0);
+        add_node.inputs[1].value = Value::Decimal(10.0);
+        assert_eq!(add_node.outputs[0].value, Value::Decimal(0.0));
 
         graph.run().await;
 
         let add_node_option = graph.nodes.get_mut(&add_node_id);
         assert!(add_node_option.is_some());
         let add_node = add_node_option.unwrap();
-        assert_eq!(add_node.outputs[0].value, Value::Integer(15));
+        assert_eq!(add_node.outputs[0].value, Value::Decimal(15.0));
     }
 }

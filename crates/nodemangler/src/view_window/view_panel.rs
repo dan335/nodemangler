@@ -73,7 +73,7 @@ impl ViewPanel {
                 match &output.value {
                     mangler::value::Value::Bool(value) => TextViewer::show(ui, value.to_string()),
                     mangler::value::Value::Integer(value) => TextViewer::show(ui, value.to_string()),
-                    mangler::value::Value::Decimal(value) => TextViewer::show(ui, value.to_string()),
+                    mangler::value::Value::Decimal(value) => TextViewer::show(ui, format!("{:?}", value)),
                     mangler::value::Value::String(value) => TextViewer::show(ui, value.to_string()),
                     mangler::value::Value::Color(value) => ColorViewer::show(ui, *value),
                     mangler::value::Value::DynamicImage { data, change_id } => self.image_viewer.show(ui, graph_node.id.clone(), output_index, change_id.clone(), data, cursor_position, theme),

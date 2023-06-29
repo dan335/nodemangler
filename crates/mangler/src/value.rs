@@ -62,7 +62,7 @@ impl Value {
             Value::DynamicImage { data, change_id:_ } => Some(Thumbnail::Image(data.thumbnail(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]).to_rgba8())),
             Value::Bool(value) => Some(Thumbnail::Text(value.to_string())),
             Value::Integer(value) => Some(Thumbnail::Text(value.to_string())),
-            Value::Decimal(value) => Some(Thumbnail::Text(value.to_string())),
+            Value::Decimal(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::String(value) => Some(Thumbnail::Text(value.clone())),
             Value::Path(path) => Some(Thumbnail::Text(format!("{}", path.to_str().unwrap_or("none").to_string()))),
             Value::FilterType(value) => Some(Thumbnail::Text(format!("{:?}", value))),
