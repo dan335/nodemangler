@@ -3,10 +3,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{Receiver};
 use crate::{operation::Operation, graph::Graph, NodeChangedMessage};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum NodeType {
     Operation {
-        operation: Operation
+        operation: Operation,
     },
     Subgraph {
         path: PathBuf,

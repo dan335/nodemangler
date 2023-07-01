@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use image::{imageops::FilterType, DynamicImage, RgbImage, RgbaImage};
+use image::{imageops::FilterType, DynamicImage, RgbaImage};
 use serde::{Deserialize, Serialize};
 
 use crate::{thumbnail::Thumbnail, get_id, color::Color};

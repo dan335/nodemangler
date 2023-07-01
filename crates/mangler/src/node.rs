@@ -6,12 +6,11 @@ use std::fmt::Debug;
 use std::path::PathBuf;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Duration;
-
 use crate::{input::Input, output::Output, value::Value};
-
 use super::node_settings::NodeSettings;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Node {
     pub id: String,
     pub settings: NodeSettings,
@@ -31,8 +30,8 @@ impl PartialEq for Node {
 }
 
 impl Node {
-    pub fn new(id: String, node_type: AddNodeType, position: glam::f32::Vec2) -> Node {
-        match node_type {
+    pub fn new(id: String, node_type: AddNodeType, position: glam::f32::Vec2) -> Self {
+        match node_type {            
             AddNodeType::Operation(operation) => Node {
                 id,
                 settings: operation.settings(),

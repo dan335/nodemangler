@@ -10,6 +10,8 @@ use thumbnail::Thumbnail;
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use value::Value;
 
+use crate::operations::numbers::inputs::integer::OpNumberInputInteger;
+
 pub mod graph;
 pub mod input;
 pub mod node;
@@ -22,7 +24,7 @@ pub mod node_type;
 pub mod thumbnail;
 pub mod app;
 pub mod color;
-mod graph_tests;
+mod tests;
 
 pub fn get_id() -> String {
     nanoid!()
@@ -156,7 +158,7 @@ pub enum AddNodeType {
 //     pub position: glam::f32::Vec2,
 // }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum OperationListItem {
     Category {
         name: String,
@@ -182,45 +184,45 @@ pub fn operation_list() -> Vec<OperationListItem> {
     vec![
         OperationListItem::Category { name: "numbers".to_string(), operation_list_items: vec![
             OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::NumberInputDecimal },
-                OperationListItem::Operation { operation: Operation::NumberInputInteger },
+                OperationListItem::Operation { operation: Operation::OpNumberInputDecimal },
+                OperationListItem::Operation { operation: Operation::OpNumberInputInteger },
             ]},
             OperationListItem::Category { name: "arithmetic".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::NumberMathAdd },
-                OperationListItem::Operation { operation: Operation::NumberMathSubtract },
-                OperationListItem::Operation { operation: Operation::NumberMathMultiply },
-                OperationListItem::Operation { operation: Operation::NumberMathDivide },
+                // OperationListItem::Operation { operation: Operation::NumberMathAdd },
+                // OperationListItem::Operation { operation: Operation::NumberMathSubtract },
+                // OperationListItem::Operation { operation: Operation::NumberMathMultiply },
+                // OperationListItem::Operation { operation: Operation::NumberMathDivide },
             ]},
             OperationListItem::Category { name: "cast".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::NumberCastToInteger },
-                OperationListItem::Operation { operation: Operation::NumberCastToDecimal },
+                // OperationListItem::Operation { operation: Operation::NumberCastToInteger },
+                // OperationListItem::Operation { operation: Operation::NumberCastToDecimal },
             ]},
         ]},
         OperationListItem::Category { name: "colors".to_string(), operation_list_items: vec![
             OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::ColorInputRgba },
+                //OperationListItem::Operation { operation: Operation::ColorInputRgba },
             ]},
         ]},
         OperationListItem::Category { name: "images".to_string(), operation_list_items: vec![
             OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::ImageInputFile },
-                OperationListItem::Operation { operation: Operation::ImageInputUrl },
-                OperationListItem::Operation { operation: Operation::ImageInputClipboard },
-                OperationListItem::Operation { operation: Operation::ImageInputColor },
+                // OperationListItem::Operation { operation: Operation::ImageInputFile },
+                // OperationListItem::Operation { operation: Operation::ImageInputUrl },
+                // OperationListItem::Operation { operation: Operation::ImageInputClipboard },
+                // OperationListItem::Operation { operation: Operation::ImageInputColor },
             ]},
             OperationListItem::Category { name: "output".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::ImageOutputFile },
-                OperationListItem::Operation { operation: Operation::ImageOutputClipboard },
+                // OperationListItem::Operation { operation: Operation::ImageOutputFile },
+                // OperationListItem::Operation { operation: Operation::ImageOutputClipboard },
             ]},
             OperationListItem::Category { name: "transform".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::ImageTransformResize },
-                OperationListItem::Operation { operation: Operation::ImageTransformResizeExact },
-                OperationListItem::Operation { operation: Operation::ImageTransformResizeFill },
+                // OperationListItem::Operation { operation: Operation::ImageTransformResize },
+                // OperationListItem::Operation { operation: Operation::ImageTransformResizeExact },
+                // OperationListItem::Operation { operation: Operation::ImageTransformResizeFill },
             ]},
             OperationListItem::Category { name: "adjustments".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::ImageAdjustmentBlur },
-                OperationListItem::Operation { operation: Operation::ImageAdjustmentContrast },
-                OperationListItem::Operation { operation: Operation::IMageAdjustmentGrayscale }
+                // OperationListItem::Operation { operation: Operation::ImageAdjustmentBlur },
+                // OperationListItem::Operation { operation: Operation::ImageAdjustmentContrast },
+                // OperationListItem::Operation { operation: Operation::ImageAdjustmentGrayscale }
             ]},
         ]}, 
         //OperationListItem::Subgraph,

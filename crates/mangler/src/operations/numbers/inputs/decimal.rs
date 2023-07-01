@@ -1,15 +1,15 @@
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operation::{OperationError, OperationResponse, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationNumberInputDecimal {}
+pub struct OpNumberInputDecimal {}
 
-impl OperationNumberInputDecimal {
+impl OpNumberInputDecimal {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "decimal".to_string(),

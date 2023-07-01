@@ -385,17 +385,18 @@ impl Program {
                                                 let x = app_rect.center().x + fastrand::f32() * random_size - random_size * 0.5;
                                                 let y = app_rect.center().y + fastrand::f32() * random_size - random_size * 0.5;
                                                 let pos = view_to_graph_space_pos2(self.graph_editor.zoom, Pos2::new(x, y)) - self.graph_editor.position.to_vec2();
-                                                if let Ok(node_id) = self.add_node(AddNodeType::Operation(mangler::operation::Operation::ImageInputFile), pos) {
+                                                // TODO: uncomment this !!!!!!!!!!!!!!!!!
+                                                // if let Ok(node_id) = self.add_node(AddNodeType::Operation(mangler::operation::Operation::ImageInputFile), pos) {
                                                     
-                                                    let message = ChangeNodeMessage::SetInput { node_id, input_index: 0, value: Value::Path(path.clone()) };
+                                                //     let message = ChangeNodeMessage::SetInput { node_id, input_index: 0, value: Value::Path(path.clone()) };
 
-                                                    match self.tx_change_node.try_send(message) {
-                                                        Ok(_) => {}
-                                                        Err(err) => {
-                                                            println!("Error sending graph_message: {:?}", err);
-                                                        }
-                                                    }
-                                                }
+                                                //     match self.tx_change_node.try_send(message) {
+                                                //         Ok(_) => {}
+                                                //         Err(err) => {
+                                                //             println!("Error sending graph_message: {:?}", err);
+                                                //         }
+                                                //     }
+                                                // }
                                             },
                                             ValueType::Path => {},
                                             ValueType::ImageType => {},

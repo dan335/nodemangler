@@ -2,7 +2,7 @@ use image::{RgbaImage, ImageFormat};
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operation::{OperationError, OperationResponse, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
 use crate::value::{Value};
 use serde::{Deserialize, Serialize};

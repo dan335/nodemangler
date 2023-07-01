@@ -1,7 +1,5 @@
 use std::{path::PathBuf, time::Duration};
-
 use tokio::{sync::mpsc, time::Instant, task::JoinHandle};
-
 use crate::{ChangeGraphMessage, ChangeNodeMessage, NodeChangedMessage, GraphChangedMessage, graph::Graph, get_id};
 
 pub struct App {

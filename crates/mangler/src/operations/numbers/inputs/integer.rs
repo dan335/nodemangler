@@ -1,15 +1,18 @@
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operation::{OperationError, OperationResponse, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
+//use crate::operations::Op;
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+//use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationNumberInputInteger {}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct OpNumberInputInteger {}
 
-impl OperationNumberInputInteger {
+
+impl OpNumberInputInteger {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "integer".to_string(),
