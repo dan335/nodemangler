@@ -2,7 +2,7 @@ use image::{RgbaImage, ImageBuffer};
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -10,9 +10,9 @@ use std::time::Instant;
 use arboard::Clipboard;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationImageInputClipboard {}
+pub struct OpImageInputClipboard {}
 
-impl OperationImageInputClipboard {
+impl OpImageInputClipboard {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "image from clipboard".to_string(),
@@ -21,15 +21,15 @@ impl OperationImageInputClipboard {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("copy from clipboard".to_string(), Value::Trigger, InputSettings::None, None),
+            Input::new("copy from clipboard".to_string(), Value::Trigger, None, None),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id() }, None),
-            Output::new("width".to_string(), Value::Integer(i32::default()), None),
-            Output::new("height".to_string(), Value::Integer(i32::default()), None),
+            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
+            Output::new("width".to_string(), Value::Integer(1), None),
+            Output::new("height".to_string(), Value::Integer(1), None),
         ]
     }
 

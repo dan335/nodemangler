@@ -2,7 +2,7 @@ use image::RgbaImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -11,9 +11,9 @@ use std::time::Instant;
 use image::io::Reader as ImageReader;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationImageInputFile {}
+pub struct OpImageInputFile {}
 
-impl OperationImageInputFile {
+impl OpImageInputFile {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "image from file".to_string(),
@@ -22,21 +22,21 @@ impl OperationImageInputFile {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("path".to_string(), Value::Path(PathBuf::new()), InputSettings::Path{
+            Input::new("path".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path{
                 extension_filter: ValueType::file_extensions(&ValueType::DynamicImage),
                 set_directory: None,
                 set_file_name: None,
                 set_title: Some("image".to_string()),
                 file_dialog_type: crate::input::FileDialogType::PickFile,
-            }, None),
+            }), None),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id() }, None),
-            Output::new("width".to_string(), Value::Integer(i32::default()), None),
-            Output::new("height".to_string(), Value::Integer(i32::default()), None),
+            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
+            Output::new("width".to_string(), Value::Integer(1), None),
+            Output::new("height".to_string(), Value::Integer(1), None),
         ]
     }
 

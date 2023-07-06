@@ -2,7 +2,7 @@ use image::RgbaImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
 use crate::value::{Value};
 use serde::{Deserialize, Serialize};
@@ -10,9 +10,9 @@ use std::time::Instant;
 use arboard::{Clipboard, ImageData};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationImageOutputClipboard {}
+pub struct OpImageOutputClipboard {}
 
-impl OperationImageOutputClipboard {
+impl OpImageOutputClipboard {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "image to clipboard".to_string(),
@@ -21,7 +21,7 @@ impl OperationImageOutputClipboard {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id() }, InputSettings::None, None),
+            Input::new("image".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
         ]
     }
 

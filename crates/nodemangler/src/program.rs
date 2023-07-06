@@ -119,19 +119,6 @@ impl Program {
                         is_subgraph,
                     );
 
-                    // GraphNode {
-                    //     id: node.id.clone(),
-                    //     position: Pos2::new(node.position.x, node.position.y),
-                    //     settings: node.settings,
-                    //     inputs: node.inputs,
-                    //     outputs: node.outputs,
-                    //     time: None,
-                    //     is_dragging: false,
-                    //     last_drag_position: None,
-                    //     thumbnail: None,
-                    //     is_subgraph,
-                    // };
-
                     self.graph_editor.graph_nodes.insert(node.id, graph_node);
                 }
                 GraphChangedMessage::RemovedNode { node_id } => {
@@ -372,34 +359,24 @@ impl Program {
                                 for value_type in ValueType::types().iter() {
                                     if ValueType::file_extensions(value_type).contains(&ext.to_lowercase()) {
                                         match value_type {
-                                            ValueType::Bool => {},
-                                            ValueType::Integer => {},
-                                            ValueType::Decimal => {},
-                                            ValueType::String => {},
-                                            ValueType::Color => {},
-                                            ValueType::FilterType => {},
-                                            ValueType::ColorFormat => {},
-                                            ValueType::Trigger => {},
                                             ValueType::DynamicImage => {
                                                 let random_size = app_rect.width().min(app_rect.height()) * 0.3;
                                                 let x = app_rect.center().x + fastrand::f32() * random_size - random_size * 0.5;
                                                 let y = app_rect.center().y + fastrand::f32() * random_size - random_size * 0.5;
                                                 let pos = view_to_graph_space_pos2(self.graph_editor.zoom, Pos2::new(x, y)) - self.graph_editor.position.to_vec2();
-                                                // TODO: uncomment this !!!!!!!!!!!!!!!!!
-                                                // if let Ok(node_id) = self.add_node(AddNodeType::Operation(mangler::operation::Operation::ImageInputFile), pos) {
+                                                if let Ok(node_id) = self.add_node(AddNodeType::Operation(mangler::operations::Operation::OpImageInputFile), pos) {
                                                     
-                                                //     let message = ChangeNodeMessage::SetInput { node_id, input_index: 0, value: Value::Path(path.clone()) };
+                                                    let message = ChangeNodeMessage::SetInput { node_id, input_index: 0, value: Value::Path(path.clone()) };
 
-                                                //     match self.tx_change_node.try_send(message) {
-                                                //         Ok(_) => {}
-                                                //         Err(err) => {
-                                                //             println!("Error sending graph_message: {:?}", err);
-                                                //         }
-                                                //     }
-                                                // }
+                                                    match self.tx_change_node.try_send(message) {
+                                                        Ok(_) => {}
+                                                        Err(err) => {
+                                                            println!("Error sending graph_message: {:?}", err);
+                                                        }
+                                                    }
+                                                }
                                             },
-                                            ValueType::Path => {},
-                                            ValueType::ImageType => {},
+                                            _ => {},
                                         }
                                     }
                                 }

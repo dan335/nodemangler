@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{Receiver};
-use crate::{operation::Operation, graph::Graph, NodeChangedMessage};
+use crate::{operations::Operation, graph::Graph, NodeChangedMessage};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum NodeType {

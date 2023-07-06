@@ -8,7 +8,7 @@ pub struct ColorViewer {
 
 impl ColorViewer {
     pub fn show(ui: &mut egui::Ui, value: Color) {
-        let rgba = value.to_srgba_u8();
+        let rgba = value.to_srgb_u8();
         let color: Color32 = Color32::from_rgba_unmultiplied(rgba.0, rgba.1, rgba.2, rgba.3);
         //ui.painter().rect_filled(ui.max_rect(), 0.0, color);
 

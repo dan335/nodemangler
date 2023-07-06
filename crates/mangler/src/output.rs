@@ -6,6 +6,7 @@ pub struct Output {
     pub id: String,
     pub name: String,
     pub value: Value,
+    pub default_value: Value,
     pub connection: Option<Vec<(String, usize)>>, // id of input node, index of input
     pub is_exposed: bool,
     #[serde(skip)]
@@ -19,10 +20,11 @@ impl PartialEq for Output {
 }
 
 impl Output {
-    pub fn new(name: String, value: Value, link: Option<OutputLink>) -> Output {
+    pub fn new(name: String, default_value: Value, link: Option<OutputLink>) -> Output {
         Output {
             name,
-            value,
+            value: default_value.clone(),
+            default_value,
             connection: None,
             is_exposed: false,
             link,

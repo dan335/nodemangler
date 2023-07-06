@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationNumberCastToDecimal {}
+pub struct OpNumberCastToDecimal {}
 
-impl OperationNumberCastToDecimal {
+impl OpNumberCastToDecimal {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "to decimal".to_string(),
@@ -18,7 +18,7 @@ impl OperationNumberCastToDecimal {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(f32::default()), InputSettings::Decimal(crate::input::DecimalInputType::DragValue { speed:None, clamp: None }), None),
+            Input::new("a".to_string(), Value::Decimal(f32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
         ]
     }
 

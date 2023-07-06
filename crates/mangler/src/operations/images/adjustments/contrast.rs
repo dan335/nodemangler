@@ -3,16 +3,16 @@ use crate::value::ValueType;
 use image::RgbaImage;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationImageAdjustmentContrast {}
+pub struct OpImageAdjustmentContrast {}
 
-impl OperationImageAdjustmentContrast {
+impl OpImageAdjustmentContrast {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "contrast".to_string(),
@@ -21,14 +21,14 @@ impl OperationImageAdjustmentContrast {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id() }, InputSettings::None, None),
-            Input::new("amount".to_string(), Value::Decimal(1.0), InputSettings::Decimal(crate::input::DecimalInputType::DragValue { speed: None, clamp: Some((0.0, 1000.0)) }), None)
+            Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("amount".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 1000.0)) }), None)
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
         ]
     }
 

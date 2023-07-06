@@ -113,13 +113,13 @@ impl Graph {
                 node.inputs.clear();
                 node.outputs.clear();
 
-                let input_settings = InputSettings::Path {
+                let input_settings = Some(InputSettings::Path {
                     extension_filter: vec!["mangle".to_string()],
                     set_directory: None,
                     set_file_name: None,
                     set_title: Some("open subgraph".to_string()),
                     file_dialog_type: crate::input::FileDialogType::PickFile,
-                };
+                });
 
                 node.inputs.push(Input::new("file path".to_string(), Value::Path(PathBuf::new()), input_settings, None));
                 is_subgraph = true;
@@ -344,13 +344,13 @@ impl Graph {
                                 // from subgraph's exposed inputs
                                 for (_input_index, subgraph_input) in subgraph_node.inputs.iter().enumerate() {
                                     if subgraph_input.is_exposed {
-                                        let input_settings = InputSettings::Path {
+                                        let input_settings = Some(InputSettings::Path {
                                             extension_filter: vec!["mangle".to_string()],
                                             set_directory: None,
                                             set_file_name: None,
                                             set_title: Some("open subgraph".to_string()),
                                             file_dialog_type: crate::input::FileDialogType::PickFile,
-                                        };
+                                        });
 
                                         node.inputs.push(
                                             Input::new(

@@ -1,3 +1,5 @@
 pub mod inputs;
-pub mod math;
+pub mod arithmetic;
 pub mod cast;
+pub mod random;
+pub mod algebra;

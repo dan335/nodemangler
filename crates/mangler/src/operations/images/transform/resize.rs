@@ -3,16 +3,16 @@ use crate::value::ValueType;
 use image::RgbaImage;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationImageTransformResize {}
+pub struct OpImageTransformResize {}
 
-impl OperationImageTransformResize {
+impl OpImageTransformResize {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "resize".to_string(),
@@ -21,18 +21,18 @@ impl OperationImageTransformResize {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id() }, InputSettings::None, None),
-            Input::new("width".to_string(), Value::Integer(64), InputSettings::Integer(crate::input::IntegerInputType::DragValue { clamp: Some((1, 10000)) }), None),
-            Input::new("height".to_string(), Value::Integer(64), InputSettings::Integer(crate::input::IntegerInputType::DragValue { clamp: Some((1, 10000)) }), None),
-            Input::new("filter type".to_string(), Value::FilterType(image::imageops::FilterType::Gaussian), InputSettings::None, None),
+            Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("width".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
+            Input::new("height".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
+            Input::new("filter type".to_string(), Value::FilterType(image::imageops::FilterType::Gaussian), None, None),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id()}, None),
-            Output::new("width".to_string(), Value::Integer(64), None),
-            Output::new("height".to_string(), Value::Integer(64), None),
+            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
+            Output::new("width".to_string(), Value::Integer(1), None),
+            Output::new("height".to_string(), Value::Integer(1), None),
         ]
     }
 

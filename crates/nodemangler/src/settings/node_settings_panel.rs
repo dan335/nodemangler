@@ -2,9 +2,9 @@ use eframe::egui::{self, Label, Layout, RichText};
 use epaint::{vec2, Color32};
 use image::imageops::FilterType;
 use mangler::{
-    input::{Input, InputSettings, TextInputType},
+    input::{Input, InputSettings},
     value::{ColorFormat, Value},
-    ChangeNodeMessage,
+    ChangeNodeMessage, operations::images::noise::worley_distance::NoiseWorleyDistanceFunction,
 };
 use egui_extras::{TableBuilder, Column};
 use tokio::sync::mpsc::Sender;
@@ -199,7 +199,7 @@ fn output_value(ui: &mut egui::Ui,  value: &Value) {
             ui.add(Label::new(v.to_string()));
         }
         Value::Color(v) => {
-            let rgba = v.to_srgba_u8();
+            let rgba = v.to_srgb_u8();
             let color = Color32::from_rgba_unmultiplied(rgba.0, rgba.1, rgba.2, rgba.3);
             ui.label(RichText::new("                        ").background_color(color));
         }
@@ -235,9 +235,9 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 let mut x = a;
 
                 let settings = input.settings.clone();
-                if let InputSettings::Integer(input_type) = settings {
+                if let Some(input_type) = settings {
                     match input_type {
-                        mangler::input::IntegerInputType::DragValue { clamp } => {
+                        InputSettings::DragValue { clamp, speed } => {
                             let mut drag = egui::DragValue::new(&mut x);
 
                             drag = if let Some(clamp) = clamp {
@@ -258,8 +258,8 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                                 input.value = value;
                             }
                         },
-                        mangler::input::IntegerInputType::Slider { range, step_by, clamp_to_range } => {
-                            if ui.add(egui::Slider::new(&mut x, range.0..=range.1).clamp_to_range(clamp_to_range)).changed() {
+                        InputSettings::Slider { range, step_by, clamp_to_range } => {
+                            if ui.add(egui::Slider::new(&mut x, range.0 as i32..=range.1 as i32).clamp_to_range(clamp_to_range)).changed() {
                                 let value = Value::Integer(x);
                                 change_value(
                                     tx_change_node.clone(),
@@ -271,20 +271,9 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                                 input.value = value;
                             }
                         },
+                        _ => {}
                     }
                 }
-
-                // if ui.add(egui::DragValue::new(&mut x)).changed() {
-                //     let value = Value::Integer(x);
-                //     change_value(
-                //         tx_change_node.clone(),
-                //         node_id,
-                //         input_index,
-                //         input,
-                //         value.clone(),
-                //     );
-                //     input.value = value;
-                // }
             }
         }
         Value::Decimal(a) => {
@@ -294,9 +283,9 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 let mut x: f32 = a;
 
                 let settings = input.settings.clone();
-                if let InputSettings::Decimal(input_type) = settings {
+                if let Some(input_type) = settings {
                     match input_type {
-                        mangler::input::DecimalInputType::DragValue { speed, clamp } => {
+                        InputSettings::DragValue { speed, clamp } => {
                             let mut drag = egui::DragValue::new(&mut x);
 
                             drag = if let Some(speed) = speed {
@@ -323,7 +312,7 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                                 input.value = value;
                             }
                         },
-                        mangler::input::DecimalInputType::Slider { range, step_by, clamp_to_range } => {
+                        InputSettings::Slider { range, step_by, clamp_to_range } => {
                             if ui.add(egui::Slider::new(&mut x, range.0..=range.1).clamp_to_range(clamp_to_range)).changed() {
                                 let value = Value::Decimal(x);
                                 change_value(
@@ -336,6 +325,7 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                                 input.value = value;
                             }
                         },
+                        _ => {}
                     }
                 }
 
@@ -349,26 +339,29 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 let mut x = a;
                 ui.allocate_ui(egui::Vec2::new(ui.available_width() - 70.0, 16.0), |ui| {
                     let settings = input.settings.clone();
-                    if let InputSettings::String(text_input_type) = settings {
-                        let text_edit = match text_input_type {
-                            TextInputType::SingleLine => {
-                                ui.text_edit_singleline(&mut x)
+                    if let Some(input_type) = settings {
+                        let text_edit = match input_type {
+                            InputSettings::SingleLineText => {
+                                Some(ui.text_edit_singleline(&mut x))
                             },
-                            TextInputType::MultiLine => {
-                                ui.text_edit_multiline(&mut x)
+                            InputSettings::MultiLineText => {
+                                Some(ui.text_edit_multiline(&mut x))
                             },
+                            _ => None
                         };
 
-                        if text_edit.changed() {
-                            let value = Value::String(x);
-                            change_value(
-                                tx_change_node.clone(),
-                                node_id,
-                                input_index,
-                                input,
-                                value.clone(),
-                            );
-                            input.value = value;
+                        if let Some(edit) = text_edit {
+                            if edit.changed() {
+                                let value = Value::String(x);
+                                change_value(
+                                    tx_change_node.clone(),
+                                    node_id,
+                                    input_index,
+                                    input,
+                                    value.clone(),
+                                );
+                                input.value = value;
+                            }
                         }
                     }
                 });
@@ -379,10 +372,10 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
             if input.connection.is_some() {
                 ui.label(format!("{:?}", a));
             } else {
-                let rgba = a.to_srgba_u8();
+                let rgba = a.to_srgb_u8();
                 let mut x = [rgba.0, rgba.1, rgba.2, rgba.3];
                 if ui.color_edit_button_srgba_unmultiplied(&mut x).changed() {
-                    let value = Value::Color(mangler::color::Color::from_srgba_u8(x[0], x[1], x[2], x[3]));
+                    let value = Value::Color(mangler::color::Color::from_srgb_u8(x[0], x[1], x[2], x[3]));
                     change_value(
                         tx_change_node.clone(),
                         node_id,
@@ -526,7 +519,9 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 );
             }
         }
-        Value::DynamicImage{data:_, change_id:_} => {}
+        Value::DynamicImage{data:_, change_id:_} => {
+
+        }
         Value::Path(path) => {
             if input.connection.is_some() {
                 ui.label(path.into_os_string().into_string().unwrap());
@@ -543,13 +538,13 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 );
 
                 if ui.button("🗀").clicked() {
-                    if let InputSettings::Path {
+                    if let Some(InputSettings::Path {
                         extension_filter,
                         set_directory,
                         set_file_name,
                         set_title,
                         file_dialog_type
-                    } = input.settings.clone() {
+                    }) = input.settings.clone() {
 
                         let mut extensions: Vec<&str> = Vec::new();
                         for s in &extension_filter {
@@ -584,12 +579,30 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 ui.label(format!("{:?}", a));
             } else {
                 let mut x = a;
-                egui::ComboBox::from_label("Image Format")
+                egui::ComboBox::from_label("image format")
                     .selected_text(format!("{:?}", x))
                     .show_ui(ui, |ui| {
                         for image_type in mangler::value::ImageType::types().iter() {
                             if ui.selectable_value(&mut x, image_type.format(), image_type.format().extensions_str()[0].to_string()).changed() {
                                 let value = Value::ImageType(image_type.format());
+                                change_value(tx_change_node.clone(), node_id.clone(), input_index, input, value.clone());
+                                input.value = value;
+                            }
+                        }
+                    });
+            }
+        },
+        Value::NoiseWorleyDistanceFunction(a) => {
+            if input.connection.is_some() {
+                ui.label(format!("{:?}", a));
+            } else {
+                let mut x = a;
+                egui::ComboBox::from_label("distance function")
+                    .selected_text(format!("{:?}", x))
+                    .show_ui(ui, |ui| {
+                        for distance_function in NoiseWorleyDistanceFunction::types().iter() {
+                            if ui.selectable_value(&mut x, distance_function.clone(), format!("{:?}", distance_function)).changed() {
+                                let value = Value::NoiseWorleyDistanceFunction(distance_function.clone());
                                 change_value(tx_change_node.clone(), node_id.clone(), input_index, input, value.clone());
                                 input.value = value;
                             }

@@ -7,19 +7,19 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationNumberMathMultiply {}
+pub struct OpNumberMathMax {}
 
-impl OperationNumberMathMultiply {
+impl OpNumberMathMax {
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "multiply".to_string(),
+            name: "max".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(1.0), InputSettings::Decimal(crate::input::DecimalInputType::DragValue { speed:None, clamp: None }), None),
-            Input::new("b".to_string(), Value::Decimal(1.0), InputSettings::Decimal(crate::input::DecimalInputType::DragValue { speed:None, clamp: None }), None)
+            Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
+            Input::new("b".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
         ]
     }
 
@@ -33,13 +33,13 @@ impl OperationNumberMathMultiply {
         let start_time = Instant::now();
 
         let value = match (&inputs[0].value, &inputs[1].value) {
-            (Value::Integer(a), Value::Decimal(b)) => Value::Decimal(*a as f32 * *b),
+            (Value::Integer(a), Value::Decimal(b)) => Value::Decimal((*a as f32).max(*b)),
 
-            (Value::Integer(a), Value::Integer(b)) => Value::Integer(*a * *b),
+            (Value::Integer(a), Value::Integer(b)) => Value::Integer(*a.max(b)),
 
-            (Value::Decimal(a), Value::Decimal(b)) => Value::Decimal(*a * *b),
+            (Value::Decimal(a), Value::Decimal(b)) => Value::Decimal(a.clone().max(b.clone())),
 
-            (Value::Decimal(a), Value::Integer(b)) => Value::Decimal(*a * *b as f32),
+            (Value::Decimal(a), Value::Integer(b)) => Value::Decimal(a.clone().max(*b as f32)),
 
             _ => {return Err(OperationError {
                 message: "Error converting. {:?}".to_string(),

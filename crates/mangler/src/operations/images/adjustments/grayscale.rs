@@ -2,16 +2,16 @@ use crate::get_id;
 use image::RgbaImage;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationImageAdjustmentGrayscale {}
+pub struct OpImageAdjustmentGrayscale {}
 
-impl OperationImageAdjustmentGrayscale {
+impl OpImageAdjustmentGrayscale {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "grayscale".to_string(),
@@ -20,13 +20,13 @@ impl OperationImageAdjustmentGrayscale {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id() }, InputSettings::None, None),
+            Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id:get_id() }, None, None),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id:get_id() }, None),
         ]
     }
 

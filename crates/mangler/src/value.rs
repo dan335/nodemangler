@@ -3,11 +3,11 @@ use std::path::PathBuf;
 use image::{imageops::FilterType, DynamicImage, RgbaImage};
 use serde::{Deserialize, Serialize};
 
-use crate::{thumbnail::Thumbnail, get_id, color::Color};
+use crate::{thumbnail::Thumbnail, get_id, color::Color, operations::images::noise::worley_distance::NoiseWorleyDistanceFunction};
 
 pub const THUMBNAIL_SIZE: [u32; 2] = [150, 150];
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Value {
     Bool(bool),
     Integer(i32),
@@ -32,7 +32,11 @@ pub enum Value {
     )]
     ImageType(image::ImageFormat),
     Trigger,
+    NoiseWorleyDistanceFunction(NoiseWorleyDistanceFunction),
+
 }
+
+
 
 pub enum PathType {
     PickFile,
@@ -46,7 +50,7 @@ impl Value {
     pub fn create_thumbnail(&self) -> Option<Thumbnail> {
         match &self {
             Value::Color(color) => {
-                let rgb = color.to_srgba_u8();
+                let rgb = color.to_srgb_u8();
                 let color = image::Rgba([rgb.0, rgb.1, rgb.2, rgb.3]);
                 let mut img = RgbaImage::new(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]);
                 for x in 0..THUMBNAIL_SIZE[0] {
@@ -69,6 +73,7 @@ impl Value {
             Value::ColorFormat(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::Trigger => Some(Thumbnail::Text("trigger".to_string())),
             Value::ImageType(value) => Some(Thumbnail::Text(format!("{:?}", value))),
+            Value::NoiseWorleyDistanceFunction(value) => Some(Thumbnail::Text(format!("{:?}", value))),
         }
     }
 
@@ -85,6 +90,7 @@ impl Value {
             Value::Path(_) => ValueType::Path,
             Value::DynamicImage { data:_, change_id:_ } => ValueType::DynamicImage,
             Value::ImageType(_) => ValueType::ImageType,
+            Value::NoiseWorleyDistanceFunction(_) => ValueType::NoiseWorleyDistanceFunction,
         }
     }
 
@@ -109,26 +115,13 @@ impl Value {
                 ValueType::String => Ok(Value::String(a.to_string())),
                 ValueType::Color => {
                     if *a {
-                        Ok(Value::Color(Color::new(1.0, 1.0, 1.0, 1.0)))
+                        Ok(Value::Color(Color::from_srgb_float(1.0, 1.0, 1.0, 1.0)))
                     } else {
-                        Ok(Value::Color(Color::new(0.0, 0.0, 0.0, 1.0)))
+                        Ok(Value::Color(Color::from_srgb_float(0.0, 0.0, 0.0, 1.0)))
                     }
                 }
-                ValueType::FilterType => Err(ConversionError {
+                _ => Err(ConversionError {
                     message: "Unable to convert bool to filter type.".to_string(),
-                }),
-                ValueType::ColorFormat => Err(ConversionError {
-                    message: "Unable to convert bool to image format.".to_string(),
-                }),
-                ValueType::Trigger => Ok(Value::Bool(*a)),
-                ValueType::DynamicImage => Err(ConversionError {
-                    message: "Unable to convert bool to image format.".to_string(),
-                }),
-                ValueType::Path => Err(ConversionError {
-                    message: "Unable to convert bool to image format.".to_string(),
-                }),
-                ValueType::ImageType => Err(ConversionError {
-                    message: "Unable to convert bool to image format.".to_string(),
                 }),
             },
             Value::Integer(a) => match other {
@@ -136,26 +129,8 @@ impl Value {
                 ValueType::Integer => Ok(Value::Integer(*a)),
                 ValueType::Decimal => Ok(Value::Decimal(*a as f32)),
                 ValueType::String => Ok(Value::String(a.to_string())),
-                ValueType::Color => Err(ConversionError {
+                _ => Err(ConversionError {
                     message: "Unable to convert bool to filter type.".to_string(),
-                }),
-                ValueType::FilterType => Err(ConversionError {
-                    message: "Unable to convert bool to filter type.".to_string(),
-                }),
-                ValueType::ColorFormat => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::Trigger => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::DynamicImage => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::Path => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::ImageType => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
                 }),
             },
             Value::Decimal(a) => match other {
@@ -163,26 +138,8 @@ impl Value {
                 ValueType::Integer => Ok(Value::Integer(*a as i32)),
                 ValueType::Decimal => Ok(Value::Decimal(*a)),
                 ValueType::String => Ok(Value::String(a.to_string())),
-                ValueType::Color => Err(ConversionError {
+                _ => Err(ConversionError {
                     message: "Unable to convert bool to filter type.".to_string(),
-                }),
-                ValueType::FilterType => Err(ConversionError {
-                    message: "Unable to convert bool to filter type.".to_string(),
-                }),
-                ValueType::ColorFormat => Err(ConversionError {
-                    message: "Unable to convert decimal to image format.".to_string(),
-                }),
-                ValueType::Trigger => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::DynamicImage => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::Path => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::ImageType => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
                 }),
             },
             Value::String(a) => match other {
@@ -213,170 +170,37 @@ impl Value {
                         }),
                     }
                 }
-                ValueType::Color => Err(ConversionError {
-                    message: "Unable to convert bool to filter type.".to_string(),
-                }),
                 ValueType::String => Ok(Value::String(a.clone())),
-                ValueType::FilterType => Err(ConversionError {
+                _ => Err(ConversionError {
                     message: "Unable to convert bool to filter type.".to_string(),
-                }),
-                ValueType::ColorFormat => Err(ConversionError {
-                    message: "Unable to convert string to image format.".to_string(),
-                }),
-                ValueType::Trigger => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::DynamicImage => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::Path => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::ImageType => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
                 }),
             },
             Value::Color(a) => match other {
-                ValueType::Bool => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::Integer => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::Decimal => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::String => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
                 ValueType::Color => Ok(Value::Color(*a)),
-                ValueType::FilterType => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::ColorFormat => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::ImageType => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::Trigger => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::DynamicImage => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::Path => Err(ConversionError {
+                _ => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
             }
             Value::FilterType(a) => match other {
-                ValueType::Bool => Err(ConversionError {
-                    message: "Unable to convert filter type to bool.".to_string(),
-                }),
-                ValueType::Integer => Err(ConversionError {
-                    message: "Unable to convert filter type to integer.".to_string(),
-                }),
-                ValueType::Decimal => Err(ConversionError {
-                    message: "Unable to convert filter type to decimal.".to_string(),
-                }),
-                ValueType::String => Err(ConversionError {
-                    message: "Unable to convert filter type to string.".to_string(),
-                }),
-                ValueType::Color => Err(ConversionError {
-                    message: "Unable to convert bool to filter type.".to_string(),
-                }),
                 ValueType::FilterType => Ok(Value::FilterType(*a)),
-                ValueType::ColorFormat => Err(ConversionError {
-                    message: "Unable to convert filter type to image format.".to_string(),
-                }),
-                ValueType::Trigger => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::DynamicImage => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::Path => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::ImageType => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
+                _ => Err(ConversionError {
+                    message: "Unable to convert filter type to bool.".to_string(),
                 }),
             },
             Value::ColorFormat(a) => match other {
-                ValueType::Bool => Err(ConversionError {
-                    message: "Unable to convert image type to bool.".to_string(),
-                }),
-                ValueType::Integer => Err(ConversionError {
-                    message: "Unable to convert image type to integer.".to_string(),
-                }),
-                ValueType::Decimal => Err(ConversionError {
-                    message: "Unable to convert image type to decimal.".to_string(),
-                }),
-                ValueType::String => Err(ConversionError {
-                    message: "Unable to convert image type to string.".to_string(),
-                }),
-                ValueType::Color => Err(ConversionError {
-                    message: "Unable to convert bool to filter type.".to_string(),
-                }),
-                ValueType::FilterType => Err(ConversionError {
-                    message: "Unable to convert image type to image.".to_string(),
-                }),
                 ValueType::ColorFormat => Ok(Value::ColorFormat(*a)),
-                ValueType::Trigger => todo!(),
-                ValueType::DynamicImage => Err(ConversionError {
-                    message: "Unable to convert image type to image.".to_string(),
-                }),
-                ValueType::Path => Err(ConversionError {
-                    message: "Unable to convert image type to image.".to_string(),
-                }),
-                ValueType::ImageType => Err(ConversionError {
-                    message: "Unable to convert image type to image.".to_string(),
+                _ => Err(ConversionError {
+                    message: "Unable to convert image type to bool.".to_string(),
                 }),
             },
             Value::Trigger => todo!(),
             Value::DynamicImage { data, change_id:_ } => match other {
-                ValueType::Bool => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::Integer => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::Decimal => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::String => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::Color => Err(ConversionError {
-                    message: "Unable to convert bool to filter type.".to_string(),
-                }),
-                ValueType::FilterType => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::ColorFormat => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::Trigger => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
                 ValueType::DynamicImage => Ok(Value::DynamicImage{ data: data.clone(), change_id: get_id() }),
-                ValueType::Path => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::ImageType => Err(ConversionError {
+                _ => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
             },
             Value::Path(path) => match other {
-                ValueType::Bool => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::Integer => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::Decimal => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
                 ValueType::String => {
                     if let Ok(path_string) = path.clone().into_os_string().into_string() {
                         Ok(Value::String(path_string))
@@ -386,62 +210,24 @@ impl Value {
                         })
                     }
                 },
-                ValueType::Color => Err(ConversionError {
-                    message: "Unable to convert bool to filter type.".to_string(),
-                }),
-                ValueType::FilterType => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::ColorFormat => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::Trigger => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
-                ValueType::DynamicImage => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
                 ValueType::Path => {
                     Ok(Value::Path(path.clone()))
                 },
-                ValueType::ImageType => Err(ConversionError {
+                _ => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
             }
             Value::ImageType(image_format) => match other {
-                ValueType::Bool => Err(ConversionError {
-                    message: "Unable to convert.".to_string(),
-                }),
-                ValueType::Integer => Err(ConversionError {
-                    message: "Unable to convert.".to_string(),
-                }),
-                ValueType::Decimal => Err(ConversionError {
-                    message: "Unable to convert.".to_string(),
-                }),
-                ValueType::String => Err(ConversionError {
-                    message: "Unable to convert.".to_string(),
-                }),
-                ValueType::Color => Err(ConversionError {
-                    message: "Unable to convert.".to_string(),
-                }),
-                ValueType::FilterType => Err(ConversionError {
-                    message: "Unable to convert.".to_string(),
-                }),
-                ValueType::ColorFormat => Err(ConversionError {
-                    message: "Unable to convert.".to_string(),
-                }),
                 ValueType::ImageType => {
                     Ok(Value::ImageType(image_format.clone()))
                 },
-                ValueType::Trigger => Err(ConversionError {
+                _ => Err(ConversionError {
                     message: "Unable to convert.".to_string(),
                 }),
-                ValueType::DynamicImage => Err(ConversionError {
-                    message: "Unable to convert.".to_string(),
-                }),
-                ValueType::Path => Err(ConversionError {
-                    message: "Unable to convert.".to_string(),
-                }),
+            },
+            Value::NoiseWorleyDistanceFunction(a) => match other {
+                ValueType::NoiseWorleyDistanceFunction => Ok(Value::NoiseWorleyDistanceFunction(a.clone())),
+                _ => Err(ConversionError { message: "Unable to convert.".to_string() })
             },
         }
     }
@@ -460,6 +246,7 @@ pub enum ValueType {
     Trigger,
     DynamicImage,
     Path,
+    NoiseWorleyDistanceFunction,
 }
 
 impl ValueType {
@@ -494,6 +281,7 @@ impl ValueType {
             ValueType::DynamicImage => "image".to_string(),
             ValueType::Path => "path".to_string(),
             ValueType::ImageType => "image format".to_string(),
+            ValueType::NoiseWorleyDistanceFunction => "worley noise distance function".to_string(),
         }
     }
 
@@ -520,6 +308,7 @@ impl ValueType {
             },
             ValueType::Path => vec![],
             ValueType::ImageType => vec![],
+            ValueType::NoiseWorleyDistanceFunction => vec![],
         }
     }
 
@@ -536,6 +325,7 @@ impl ValueType {
             ValueType::ColorFormat => vec![ValueType::ColorFormat, ValueType::String, ValueType::Trigger],
             ValueType::Trigger => vec![ValueType::Trigger],
             ValueType::ImageType => vec![ValueType::ImageType, ValueType::Trigger],
+            ValueType::NoiseWorleyDistanceFunction => vec![ValueType::NoiseWorleyDistanceFunction, ValueType::Trigger],
         }
     }
 

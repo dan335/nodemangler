@@ -82,6 +82,7 @@ impl ViewPanel {
                     mangler::value::Value::ColorFormat(value) => TextViewer::show(ui, format!("{:?}", value)),
                     mangler::value::Value::ImageType(value) => TextViewer::show(ui, format!("{:?}", value)),
                     mangler::value::Value::Trigger => TextViewer::show(ui, "trigger".to_string()),
+                    mangler::value::Value::NoiseWorleyDistanceFunction(value) => TextViewer::show(ui, format!("{:?}", value)),
                 }
             }
 

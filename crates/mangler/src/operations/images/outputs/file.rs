@@ -2,7 +2,7 @@ use image::{RgbaImage, ImageFormat};
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
 use crate::value::{Value};
 use serde::{Deserialize, Serialize};
@@ -10,9 +10,9 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationImageOutputFile {}
+pub struct OpImageOutputFile {}
 
-impl OperationImageOutputFile {
+impl OpImageOutputFile {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "image to file".to_string(),
@@ -21,16 +21,16 @@ impl OperationImageOutputFile {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(32, 32)), change_id:get_id() }, InputSettings::None, None),
-            Input::new("file name".to_string(), Value::String("image01".to_string()), InputSettings::String(crate::input::TextInputType::SingleLine), None),
-            Input::new("folder".to_string(), Value::Path(PathBuf::new()), InputSettings::Path {
+            Input::new("image".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("file name".to_string(), Value::String("image01".to_string()), Some(InputSettings::SingleLineText), None),
+            Input::new("folder".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path {
                 extension_filter: vec![],
                 set_directory: None,
                 set_file_name: None,
                 set_title: None,
                 file_dialog_type: crate::input::FileDialogType::PickFolder,
-            }, None),
-            Input::new("image format".to_string(), Value::ImageType(ImageFormat::Jpeg), InputSettings::None, None),
+            }), None),
+            Input::new("image format".to_string(), Value::ImageType(ImageFormat::Jpeg), None, None),
         ]
     }
 

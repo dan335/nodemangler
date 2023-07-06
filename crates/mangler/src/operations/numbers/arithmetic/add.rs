@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationNumberMathAdd {}
+pub struct OpNumberMathAdd {}
 
-impl OperationNumberMathAdd {
+impl OpNumberMathAdd {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "add".to_string(),
@@ -18,14 +18,14 @@ impl OperationNumberMathAdd {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(f32::default()), InputSettings::Decimal(crate::input::DecimalInputType::DragValue { speed:None, clamp: None }), None),
-            Input::new("b".to_string(), Value::Decimal(f32::default()), InputSettings::Decimal(crate::input::DecimalInputType::DragValue { speed:None, clamp: None }), None)
+            Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
+            Input::new("b".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+            Output::new("output".to_string(), Value::Decimal(0.0), None)
         ]
     }
 

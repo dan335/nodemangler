@@ -3,18 +3,16 @@ use crate::color::Color;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use std::time::Instant;
-use image::io::Reader as ImageReader;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationImageInputColor {}
+pub struct OpImageInputColor {}
 
-impl OperationImageInputColor {
+impl OpImageInputColor {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "image from color".to_string(),
@@ -23,18 +21,18 @@ impl OperationImageInputColor {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("color".to_string(), Value::Color(Color::default()), InputSettings::None, None),
-            Input::new("width".to_string(), Value::Integer(32), InputSettings::Integer(crate::input::IntegerInputType::DragValue { clamp: Some((1, 10000)) }), None),
-            Input::new("height".to_string(), Value::Integer(32), InputSettings::Integer(crate::input::IntegerInputType::DragValue { clamp: Some((1, 10000)) }), None),
+            Input::new("color".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("width".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
+            Input::new("height".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:image::DynamicImage::ImageRgba8(RgbaImage::new(1, 1)), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
             Output::new("color".to_string(), Value::Color(Color::default()), None),
-            Output::new("width".to_string(), Value::Integer(i32::default()), None),
-            Output::new("height".to_string(), Value::Integer(i32::default()), None),
+            Output::new("width".to_string(), Value::Integer(1), None),
+            Output::new("height".to_string(), Value::Integer(1), None),
         ]
     }
 
@@ -50,7 +48,7 @@ impl OperationImageInputColor {
         height = height.max(1);
 
         let mut image_buffer = ImageBuffer::new(width as u32, height as u32);
-        let rgba = color.to_srgba_u8();
+        let rgba = color.to_srgb_u8();
 
         for x in 0..width {
             for y in 0..height {

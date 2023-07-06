@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationNumberCastToInteger {}
+pub struct OpNumberCastToInteger {}
 
-impl OperationNumberCastToInteger {
+impl OpNumberCastToInteger {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "to integer".to_string(),
@@ -18,7 +18,7 @@ impl OperationNumberCastToInteger {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Integer(i32::default()), InputSettings::Integer(crate::input::IntegerInputType::DragValue { clamp: None }), None),
+            Input::new("a".to_string(), Value::Integer(i32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
         ]
     }
 

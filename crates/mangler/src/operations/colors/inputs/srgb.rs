@@ -8,21 +8,21 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationColorInputRgba {}
+pub struct OpColorInputRgba {}
 
-impl OperationColorInputRgba {
+impl OpColorInputRgba {
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "rgba".to_string(),
+            name: "rgb".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("red".to_string(), Value::Decimal(0.0), InputSettings::Decimal(crate::input::DecimalInputType::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("green".to_string(), Value::Decimal(0.0), InputSettings::Decimal(crate::input::DecimalInputType::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("blue".to_string(), Value::Decimal(0.0), InputSettings::Decimal(crate::input::DecimalInputType::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("alpha".to_string(), Value::Decimal(1.0), InputSettings::Decimal(crate::input::DecimalInputType::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("red".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
+            Input::new("green".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
+            Input::new("blue".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
+            Input::new("alpha".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
         ]
     }
 
@@ -40,12 +40,7 @@ impl OperationColorInputRgba {
         let Ok(Value::Decimal(blue)) = inputs[2].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
         let Ok(Value::Decimal(alpha)) = inputs[3].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
 
-        let red = red.clamp(0.0, 1.0);
-        let green = green.clamp(0.0, 1.0);
-        let blue = blue.clamp(0.0, 1.0);
-        let alpha = alpha.clamp(0.0, 1.0);
-
-        let color = Color::new(red, green, blue, alpha);
+        let color = Color::from_srgb_float(red, green, blue, alpha);
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

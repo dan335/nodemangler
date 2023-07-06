@@ -7,7 +7,8 @@ pub struct Input {
     pub id: String,
     pub name: String,
     pub value: Value,
-    pub settings: InputSettings,
+    pub default_value: Value,
+    pub settings: Option<InputSettings>,
     pub connection: Option<(String, usize)>, // id of node with output, index of output
     pub is_exposed: bool,
     // todo: need to link this somehow with exposed input
@@ -25,11 +26,12 @@ impl PartialEq for Input {
 }
 
 impl Input {
-    pub fn new(name: String, value: Value, settings: InputSettings, link: Option<InputLink>) -> Input {
+    pub fn new(name: String, default_value: Value, settings: Option<InputSettings>, link: Option<InputLink>) -> Input {
         Input {
             id: get_id(),
             name,
-            value,
+            value: default_value.clone(),
+            default_value,
             settings,
             connection: None,
             is_exposed: false,
@@ -53,7 +55,6 @@ pub struct InputLink {
 // that do not belong in the value
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InputSettings {
-    None,
     Path {
         extension_filter: Vec<String>,
         set_directory: Option<PathBuf>,
@@ -61,41 +62,17 @@ pub enum InputSettings {
         set_title: Option<String>,
         file_dialog_type: FileDialogType,
     },
-    String(TextInputType),
-    Decimal(DecimalInputType),
-    Integer(IntegerInputType),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum IntegerInputType {
     DragValue {
-        clamp: Option<(i32, i32)>,
-    },
-    Slider {
-        range: (i32, i32),
-        step_by: Option<i32>,
-        clamp_to_range: bool,
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum DecimalInputType {
-    DragValue {
-        speed: Option<f32>,
         clamp: Option<(f32, f32)>,
+        speed: Option<f32>,
     },
     Slider {
         range: (f32, f32),
         step_by: Option<f32>,
         clamp_to_range: bool,
-    }
-}
-
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum TextInputType {
-    SingleLine,
-    MultiLine,
+    },
+    SingleLineText,
+    MultiLineText,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
