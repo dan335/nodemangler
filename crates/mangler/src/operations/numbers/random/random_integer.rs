@@ -13,6 +13,7 @@ impl OpNumberRandomInteger {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "random integer".to_string(),
+            description: "Generates a random integer number between min and max.".to_string(),
         }
     }
 

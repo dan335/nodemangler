@@ -13,6 +13,7 @@ impl OpNumberCastToDecimal {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "to decimal".to_string(),
+            description: "Converts a number to a decimal.".to_string(),
         }
     }
 

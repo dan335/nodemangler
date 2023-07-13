@@ -13,6 +13,7 @@ impl OpNumberMathSign {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "sign".to_string(),
+            description: "Returns the sign of a number.".to_string(),
         }
     }
 

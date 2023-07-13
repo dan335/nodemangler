@@ -16,6 +16,7 @@ impl OpImageOutputFile {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "image to file".to_string(),
+            description: "Saves an image to a file.".to_string(),
         }
     }
 

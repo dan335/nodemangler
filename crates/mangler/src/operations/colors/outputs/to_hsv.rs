@@ -14,6 +14,7 @@ impl OpColorOutputHsv {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "to hsv".to_string(),
+            description: "Converts a color to the HSV color space.".to_string(),
         }
     }
 

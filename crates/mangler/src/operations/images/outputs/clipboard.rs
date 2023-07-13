@@ -16,6 +16,7 @@ impl OpImageOutputClipboard {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "image to clipboard".to_string(),
+            description: "Copies an image to the clipboard.".to_string(),
         }
     }
 

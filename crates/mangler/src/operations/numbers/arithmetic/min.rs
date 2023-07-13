@@ -13,6 +13,7 @@ impl OpNumberMathMin {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "min".to_string(),
+            description: "Returns the minimum of two numbers.".to_string(),
         }
     }
 

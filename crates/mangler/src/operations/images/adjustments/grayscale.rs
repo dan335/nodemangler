@@ -15,6 +15,7 @@ impl OpImageAdjustmentGrayscale {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "grayscale".to_string(),
+            description: "Converts an image to grayscale.".to_string(),
         }
     }
 

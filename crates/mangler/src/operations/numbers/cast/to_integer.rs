@@ -13,6 +13,7 @@ impl OpNumberCastToInteger {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "to integer".to_string(),
+            description: "Converts a number to an integer.".to_string(),
         }
     }
 

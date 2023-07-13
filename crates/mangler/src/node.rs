@@ -47,6 +47,7 @@ impl Node {
                 id,
                 settings: NodeSettings {
                     name: "subgraph".to_string(),
+                    description: "A subgraph.".to_string(),
                 },
                 inputs: Vec::new(),
                 outputs: Vec::new(),

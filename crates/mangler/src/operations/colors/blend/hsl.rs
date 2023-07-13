@@ -14,6 +14,7 @@ impl OpColorBlendHsl {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "blend hsl".to_string(),
+            description: "Blends two colors together using the HSL color space.".to_string(),
         }
     }
 

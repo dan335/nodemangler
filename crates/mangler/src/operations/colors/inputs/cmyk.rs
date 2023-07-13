@@ -14,6 +14,7 @@ impl OpColorInputCmyk {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "cmyk".to_string(),
+            description: "Creates a color using the CMYK color space.".to_string(),
         }
     }
 

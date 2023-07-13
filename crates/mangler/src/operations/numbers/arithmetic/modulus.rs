@@ -13,6 +13,7 @@ impl OpNumberMathModulus {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "modulus".to_string(),
+            description: "Divides two numbers and returns the remainder.".to_string(),
         }
     }
 

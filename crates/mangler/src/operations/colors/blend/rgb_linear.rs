@@ -14,6 +14,7 @@ impl OpColorBlendRgbLinear {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "blend rgb linear".to_string(),
+            description: "Blends two colors together using the linear RGB color space.".to_string(),
         }
     }
 

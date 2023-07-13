@@ -14,6 +14,7 @@ impl OpColorBlendHsv {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "blend hsv".to_string(),
+            description: "Blends two colors together using the HSV color space.".to_string(),
         }
     }
 

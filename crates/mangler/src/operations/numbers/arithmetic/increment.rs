@@ -13,6 +13,7 @@ impl OpNumberMathIncrement {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "increment".to_string(),
+            description: "Increments a number by 1.".to_string(),
         }
     }
 

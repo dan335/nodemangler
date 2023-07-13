@@ -1,6 +1,5 @@
 use crate::get_id;
 use crate::value::ValueType;
-use image::RgbaImage;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
@@ -16,6 +15,7 @@ impl OpImageTransformResizeExact {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "resize exact".to_string(),
+            description: "Resizes an image to the exact width and height.".to_string(),
         }
     }
 

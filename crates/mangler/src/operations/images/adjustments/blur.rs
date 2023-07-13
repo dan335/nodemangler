@@ -16,6 +16,7 @@ impl OpImageAdjustmentBlur {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "blur".to_string(),
+            description: "Blurs an image.".to_string(),
         }
     }
 

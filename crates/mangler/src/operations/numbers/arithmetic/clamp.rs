@@ -13,6 +13,7 @@ impl OpNumberMathClamp {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "clamp".to_string(),
+            description: "Clamps a number between two values.".to_string(),
         }
     }
 

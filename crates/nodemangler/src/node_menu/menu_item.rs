@@ -15,6 +15,7 @@ pub enum MenuItem {
     },
     OperationButton {
         name: String,
+        description: String,
         level: usize,
         operation: Operation,
     },
@@ -47,6 +48,7 @@ impl MenuItem {
             OperationListItem::Operation { operation } => {
                 MenuItem::OperationButton {
                     name: operation.settings().name,
+                    description: operation.settings().description,
                     operation,
                     level,
                 }
@@ -101,12 +103,13 @@ impl MenuItem {
 
             MenuItem::OperationButton {
                 name,
+                description,
                 operation,
                 level,
             } => {
                 let container_rect = ui.max_rect();
 
-                if ui.add(egui::Button::new(egui::RichText::new(format!("    {} {}", " ".repeat(*level * 8), name)).size(15.0)).frame(false).min_size(Vec2::new(container_rect.width(), 24.0))).interact(egui::Sense::drag()).drag_started() {
+                if ui.add(egui::Button::new(egui::RichText::new(format!("    {} {}", " ".repeat(*level * 8), name)).size(15.0)).frame(false).min_size(Vec2::new(container_rect.width(), 24.0))).interact(egui::Sense::drag()).on_hover_text_at_pointer(egui::RichText::new(format!("{}", description))).drag_started() {
                     result.operation_being_created = Some(operation.clone());
                 }
 

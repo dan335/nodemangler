@@ -13,6 +13,7 @@ impl OpNumberMathSubtract {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "subtract".to_string(),
+            description: "Subtracts two numbers.".to_string(),
         }
     }
 

@@ -13,6 +13,7 @@ impl OpNumberRandomDecimal {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "random decimal".to_string(),
+            description: "Generates a random decimal number between 0 and 1.".to_string(),
         }
     }
 

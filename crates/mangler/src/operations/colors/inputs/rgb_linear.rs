@@ -14,6 +14,7 @@ impl OpColorInputRgbaLinear {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "rgb linear".to_string(),
+            description: "Creates a color using the linear RGB color space.".to_string(),
         }
     }
 

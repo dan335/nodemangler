@@ -14,6 +14,7 @@ impl OpColorBlendLch {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "blend lch".to_string(),
+            description: "Blends two colors together using the LCH color space.".to_string(),
         }
     }
 

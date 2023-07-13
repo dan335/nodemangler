@@ -13,6 +13,7 @@ impl OpNumberMathAdd {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "add".to_string(),
+            description: "Adds two numbers together.".to_string(),
         }
     }
 

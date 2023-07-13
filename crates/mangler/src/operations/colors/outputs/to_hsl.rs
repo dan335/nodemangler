@@ -14,6 +14,7 @@ impl OpColorOutputHsl {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "to hsl".to_string(),
+            description: "Converts a color to the HSL color space.".to_string(),
         }
     }
 

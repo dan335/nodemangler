@@ -14,6 +14,7 @@ impl OpColorBlendSrgb {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "blend srgb".to_string(),
+            description: "Blends two colors together using the sRGB color space.".to_string(),
         }
     }
 

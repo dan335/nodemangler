@@ -14,6 +14,7 @@ impl OpColorBlendLab {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "blend lab".to_string(),
+            description: "Blends two colors together using the LAB color space.".to_string(),
         }
     }
 

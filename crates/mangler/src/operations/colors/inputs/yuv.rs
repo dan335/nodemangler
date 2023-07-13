@@ -14,6 +14,7 @@ impl OpColorInputYuv {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "yuv".to_string(),
+            description: "Creates a color using the YUV color space.".to_string(),
         }
     }
 

@@ -16,7 +16,8 @@ pub struct OpImageInputFile {}
 impl OpImageInputFile {
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "image from file".to_string(),
+            name: "from file".to_string(),
+            description: "Grabs an image from a file.".to_string(),
         }
     }
 

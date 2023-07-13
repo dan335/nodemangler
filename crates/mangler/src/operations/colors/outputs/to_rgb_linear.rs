@@ -14,6 +14,7 @@ impl OpColorOutputRgbLinear {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "to rgb linear".to_string(),
+            description: "Converts a color to the RGB linear color space.".to_string(),
         }
     }
 

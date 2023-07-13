@@ -14,6 +14,7 @@ impl OpColorOutputLch {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "to lch".to_string(),
+            description: "Converts a color to the LCH color space.".to_string(),
         }
     }
 

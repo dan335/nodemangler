@@ -14,6 +14,7 @@ impl OpColorOutputXyz {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "to xyz".to_string(),
+            description: "Converts a color to the XYZ color space.".to_string(),
         }
     }
 

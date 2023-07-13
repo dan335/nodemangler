@@ -13,6 +13,7 @@ impl OpNumberMathCbrt {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "cube root".to_string(),
+            description: "Returns the cube root of a number.".to_string(),
         }
     }
 

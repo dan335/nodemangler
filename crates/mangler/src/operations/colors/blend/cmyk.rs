@@ -14,6 +14,7 @@ impl OpColorBlendCmyk {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "blend cmyk".to_string(),
+            description: "Blends two colors together using the CMYK color space.".to_string(),
         }
     }
 

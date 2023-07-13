@@ -4,7 +4,7 @@ use image::imageops::FilterType;
 use mangler::{
     input::{Input, InputSettings},
     value::{ColorFormat, Value},
-    ChangeNodeMessage, operations::images::noise::worley_distance::NoiseWorleyDistanceFunction,
+    ChangeNodeMessage, operations::images::noise::worley_distance::NoiseWorleyDistanceFunction, color::color_spaces::ColorSpace,
 };
 use egui_extras::{TableBuilder, Column};
 use tokio::sync::mpsc::Sender;
@@ -47,6 +47,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
             }
         });
     });
+    ui.label(egui::RichText::new(format!("{}", node.settings.description)).color(theme.get().text_faint));
     
 
     ui.add_space(40.0);
@@ -610,6 +611,22 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                     });
             }
         },
+        Value::ColorSpace(a) => if input.connection.is_some() {
+            ui.label(format!("{:?}", a));
+        } else {
+            let mut x = a;
+            egui::ComboBox::from_label("color space")
+                .selected_text(format!("{:?}", x))
+                .show_ui(ui, |ui| {
+                    for color_space in ColorSpace::types().iter() {
+                        if ui.selectable_value(&mut x, color_space.clone(), format!("{:?}", color_space)).changed() {
+                            let value = Value::ColorSpace(color_space.clone());
+                            change_value(tx_change_node.clone(), node_id.clone(), input_index, input, value.clone());
+                            input.value = value;
+                        }
+                    }
+                });
+        }
     }
 }
 

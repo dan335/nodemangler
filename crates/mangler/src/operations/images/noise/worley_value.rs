@@ -20,6 +20,7 @@ impl OpImageNoiseWorleyValue {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "worley noise value".to_string(),
+            description: "Creates a worley noise value image.".to_string(),
         }
     }
 

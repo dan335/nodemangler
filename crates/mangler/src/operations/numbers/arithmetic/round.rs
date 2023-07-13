@@ -13,6 +13,7 @@ impl OpNumberMathRound {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "round".to_string(),
+            description: "Rounds a number.".to_string(),
         }
     }
 

@@ -14,6 +14,7 @@ impl OpColorInputLab {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "lab".to_string(),
+            description: "Creates a color using the LAB color space.".to_string(),
         }
     }
 

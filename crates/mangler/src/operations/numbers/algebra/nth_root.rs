@@ -13,6 +13,7 @@ impl OpNumberMathNthRt {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "nth root".to_string(),
+            description: "Returns the nth root of a number.".to_string(),
         }
     }
 

@@ -33,7 +33,7 @@ pub enum Value {
     ImageType(image::ImageFormat),
     Trigger,
     NoiseWorleyDistanceFunction(NoiseWorleyDistanceFunction),
-
+    ColorSpace(crate::color::color_spaces::ColorSpace),
 }
 
 
@@ -74,6 +74,7 @@ impl Value {
             Value::Trigger => Some(Thumbnail::Text("trigger".to_string())),
             Value::ImageType(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::NoiseWorleyDistanceFunction(value) => Some(Thumbnail::Text(format!("{:?}", value))),
+            Value::ColorSpace(value) => Some(Thumbnail::Text(format!("{:?}", value))),
         }
     }
 
@@ -91,6 +92,7 @@ impl Value {
             Value::DynamicImage { data:_, change_id:_ } => ValueType::DynamicImage,
             Value::ImageType(_) => ValueType::ImageType,
             Value::NoiseWorleyDistanceFunction(_) => ValueType::NoiseWorleyDistanceFunction,
+            Value::ColorSpace(_) => ValueType::ColorSpace,
         }
     }
 
@@ -229,6 +231,10 @@ impl Value {
                 ValueType::NoiseWorleyDistanceFunction => Ok(Value::NoiseWorleyDistanceFunction(a.clone())),
                 _ => Err(ConversionError { message: "Unable to convert.".to_string() })
             },
+            Value::ColorSpace(a) => match other {
+                ValueType::ColorSpace => Ok(Value::ColorSpace(a.clone())),
+                _ => Err(ConversionError { message: "Unable to convert.".to_string() })
+            },
         }
     }
 }
@@ -247,6 +253,7 @@ pub enum ValueType {
     DynamicImage,
     Path,
     NoiseWorleyDistanceFunction,
+    ColorSpace,
 }
 
 impl ValueType {
@@ -282,20 +289,13 @@ impl ValueType {
             ValueType::Path => "path".to_string(),
             ValueType::ImageType => "image format".to_string(),
             ValueType::NoiseWorleyDistanceFunction => "worley noise distance function".to_string(),
+            ValueType::ColorSpace => "color space".to_string(),
         }
     }
 
     // file extensions that can be opened for each type
     pub fn file_extensions(value_type: &ValueType) -> Vec<String> {
         match value_type {
-            ValueType::Bool => vec![],
-            ValueType::Integer => vec![],
-            ValueType::Decimal => vec![],
-            ValueType::String => vec![],
-            ValueType::Color => vec![],
-            ValueType::FilterType => vec![],
-            ValueType::ColorFormat => vec![],
-            ValueType::Trigger => vec![],
             ValueType::DynamicImage => {
                 let mut list = vec![];
 
@@ -306,9 +306,7 @@ impl ValueType {
 
                 list
             },
-            ValueType::Path => vec![],
-            ValueType::ImageType => vec![],
-            ValueType::NoiseWorleyDistanceFunction => vec![],
+            _ => vec![],
         }
     }
 
@@ -326,6 +324,7 @@ impl ValueType {
             ValueType::Trigger => vec![ValueType::Trigger],
             ValueType::ImageType => vec![ValueType::ImageType, ValueType::Trigger],
             ValueType::NoiseWorleyDistanceFunction => vec![ValueType::NoiseWorleyDistanceFunction, ValueType::Trigger],
+            ValueType::ColorSpace => vec![ValueType::ColorSpace, ValueType::Trigger],
         }
     }
 
@@ -395,21 +394,6 @@ impl ColorFormat {
 
         types
     }
-
-    // pub fn convert_image(&self, dynamic_image: DynamicImage) ->  {
-    //     match self {
-    //         ColorFormat::Rgba32F => dynamic_image.as_rgba32f(),
-    //         ColorFormat::Rgb32F => todo!(),
-    //         ColorFormat::Rgba16 => todo!(),
-    //         ColorFormat::Rgb16 => todo!(),
-    //         ColorFormat::GrayA16 => todo!(),
-    //         ColorFormat::Gray16 => todo!(),
-    //         ColorFormat::Rgba8 => todo!(),
-    //         ColorFormat::Rgb8 => todo!(),
-    //         ColorFormat::GrayA8 => todo!(),
-    //         ColorFormat::Gray8 => todo!(),
-    //     }
-    // }
 }
 
 

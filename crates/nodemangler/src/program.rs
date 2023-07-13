@@ -426,6 +426,8 @@ impl Program {
             }
         });
 
+
+
         // -------------------------
         // settings panel - top right
         
@@ -509,8 +511,9 @@ impl Program {
             }
         }
 
+
+
         // -------------------------
-        // bottom graph panel
         
 
         ui.allocate_ui_at_rect(node_graph_rect, |ui| {

@@ -13,6 +13,7 @@ impl OpNumberMathDivide {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "divide".to_string(),
+            description: "Divides two numbers.".to_string(),
         }
     }
 

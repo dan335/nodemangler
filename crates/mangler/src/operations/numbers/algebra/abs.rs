@@ -13,6 +13,7 @@ impl OpNumberMathAbs {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "absolute value".to_string(),
+            description: "Returns the absolute value of a number.".to_string(),
         }
     }
 

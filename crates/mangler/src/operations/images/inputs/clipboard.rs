@@ -15,7 +15,8 @@ pub struct OpImageInputClipboard {}
 impl OpImageInputClipboard {
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "image from clipboard".to_string(),
+            name: "from clipboard".to_string(),
+            description: "Grabs an image from the clipboard.".to_string(),
         }
     }
 

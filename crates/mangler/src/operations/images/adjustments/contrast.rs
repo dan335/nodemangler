@@ -16,6 +16,7 @@ impl OpImageAdjustmentContrast {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "contrast".to_string(),
+            description: "Adjusts the contrast of an image.".to_string(),
         }
     }
 

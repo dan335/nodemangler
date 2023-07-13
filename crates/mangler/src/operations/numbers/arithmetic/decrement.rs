@@ -13,6 +13,7 @@ impl OpNumberMathDecrement {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "decrement".to_string(),
+            description: "Decrements a number by 1.".to_string(),
         }
     }
 

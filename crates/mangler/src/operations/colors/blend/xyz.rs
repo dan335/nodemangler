@@ -14,6 +14,7 @@ impl OpColorBlendXyz {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "blend xyz".to_string(),
+            description: "Blends two colors together using the XYZ color space.".to_string(),
         }
     }
 

@@ -14,6 +14,7 @@ impl OpColorInputHsva {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "hsv".to_string(),
+            description: "Creates a color using the HSV color space.".to_string(),
         }
     }
 

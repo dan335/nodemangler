@@ -18,6 +18,7 @@ impl OpImageNoiseWorleyDistance {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "worley noise distance".to_string(),
+            description: "Creates a worley noise distance image.".to_string(),
         }
     }
 

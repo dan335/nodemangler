@@ -14,6 +14,7 @@ impl OpColorOutputRgb {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "to rgb".to_string(),
+            description: "Converts a color to the RGB color space.".to_string(),
         }
     }
 

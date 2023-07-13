@@ -13,6 +13,7 @@ impl OpNumberMathSqrt {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "square root".to_string(),
+            description: "Returns the square root of a number.".to_string(),
         }
     }
 

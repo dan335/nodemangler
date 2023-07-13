@@ -13,6 +13,7 @@ impl OpNumberInputDecimal {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "decimal".to_string(),
+            description: "A decimal number input.".to_string(),
         }
     }
 

@@ -16,6 +16,7 @@ impl OpNumberInputInteger {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "integer".to_string(),
+            description: "An integer number input.".to_string(),
         }
     }
 

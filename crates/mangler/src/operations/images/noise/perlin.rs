@@ -1,6 +1,5 @@
-use image::{RgbaImage, ImageBuffer, DynamicImage};
-use crate::color::Color;
-use crate::color::color_spaces::rgb_linear::{nonlinear_to_linear_rgb, linear_to_nonlinear_srgb};
+use image::{ImageBuffer, DynamicImage};
+use crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -9,7 +8,7 @@ use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
-use noise::{NoiseFn, Perlin, Seedable};
+use noise::{NoiseFn, Perlin};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageNoisePerlin {}
@@ -18,6 +17,7 @@ impl OpImageNoisePerlin {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "perlin noise".to_string(),
+            description: "Creates an image from perlin noise.".to_string(),
         }
     }
 
@@ -26,7 +26,7 @@ impl OpImageNoisePerlin {
             Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
             Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
             Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("scale".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.01, 100.0), step_by: Some(0.1), clamp_to_range:false }), None),
+            Input::new("scale".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.01, 100.0), step_by: Some(0.01), clamp_to_range:false }), None),
         ]
     }
 

@@ -14,6 +14,7 @@ impl OpColorBlendYuv {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "blend yuv".to_string(),
+            description: "Blends two colors together using the YUV color space.".to_string(),
         }
     }
 

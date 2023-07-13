@@ -14,6 +14,7 @@ impl OpColorOutputCmyk {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "to cmyk".to_string(),
+            description: "Converts a color to the CMYK color space.".to_string(),
         }
     }
 

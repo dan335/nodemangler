@@ -14,7 +14,8 @@ pub struct OpImageInputUrl {}
 impl OpImageInputUrl {
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "image from url".to_string(),
+            name: "from url".to_string(),
+            description: "Grabs an image from a url.".to_string(),
         }
     }
 

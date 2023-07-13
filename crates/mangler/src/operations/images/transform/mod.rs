@@ -1,3 +1,10 @@
 pub mod resize;
 pub mod resize_exact;
 pub mod resize_fill;
+pub mod flip_horizontal;
+pub mod flip_vertical;
+pub mod rotate_90;
+pub mod rotate_180;
+pub mod rotate_270;
+pub mod rotate_around_center;
+pub mod crop;

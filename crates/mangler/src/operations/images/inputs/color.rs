@@ -15,7 +15,8 @@ pub struct OpImageInputColor {}
 impl OpImageInputColor {
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "image from color".to_string(),
+            name: "from color".to_string(),
+            description: "Creates an image from a color.".to_string(),
         }
     }
 

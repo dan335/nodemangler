@@ -61,7 +61,7 @@ impl GraphEditor {
             ui.allocate_rect(editor_rect, egui::Sense::drag().union(egui::Sense::hover()));
         //let panel_cursor_position = Pos2::new(cursor_position.x - editor_rect.min.x, cursor_position.y - editor_rect.min.y);
 
-        if !is_mouse_over_viewer {
+        if editor_rect.contains(cursor_position) && !is_mouse_over_viewer {
             ui.ctx().input(|input_state| {
                 // let mouse_x = cursor_position.x - editor_rect.min.x;
                 // let mouse_y = cursor_position.y - editor_rect.min.y;

@@ -14,6 +14,7 @@ impl OpColorInputLch {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "lch".to_string(),
+            description: "Creates a color using the LCH color space.".to_string(),
         }
     }
 

@@ -13,6 +13,7 @@ impl OpNumberMathMax {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "max".to_string(),
+            description: "Returns the largest of two numbers.".to_string(),
         }
     }
 

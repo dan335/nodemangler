@@ -13,6 +13,7 @@ impl OpNumberMathMultiply {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "multiply".to_string(),
+            description: "Multiplies two numbers.".to_string(),
         }
     }
 

@@ -14,6 +14,7 @@ impl OpColorInputRgba {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "rgb".to_string(),
+            description: "Creates a color using the sRGB color space.".to_string(),
         }
     }
 

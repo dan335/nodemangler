@@ -14,6 +14,7 @@ impl OpColorInputHsla {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "hsl".to_string(),
+            description: "Creates a color using the HSL color space.".to_string(),
         }
     }
 
