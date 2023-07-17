@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use image::{imageops::FilterType, DynamicImage, RgbaImage};
 use serde::{Deserialize, Serialize};
 
-use crate::{thumbnail::Thumbnail, get_id, color::Color, operations::images::noise::worley_distance::NoiseWorleyDistanceFunction};
+use crate::{
+    color::Color, get_id, operations::images::noise::worley_distance::NoiseWorleyDistanceFunction,
+    thumbnail::Thumbnail,
+};
 
 pub const THUMBNAIL_SIZE: [u32; 2] = [150, 150];
 
@@ -16,7 +19,7 @@ pub enum Value {
     Color(Color),
     DynamicImage {
         data: DynamicImage,
-        change_id: String,  // new id each time image changes
+        change_id: String, // new id each time image changes
     },
     Path(PathBuf),
     #[serde(
@@ -36,8 +39,6 @@ pub enum Value {
     ColorSpace(crate::color::color_spaces::ColorSpace),
     BlendMode(crate::color::blend::BlendMode),
 }
-
-
 
 pub enum PathType {
     PickFile,
@@ -61,21 +62,27 @@ impl Value {
                 }
 
                 Some(Thumbnail::Image(img))
-            },
+            }
             //Value::DynamicImage { data, change_id:_ } => Some(Thumbnail::Image(data.thumbnail(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]).into_rgba8())),
-            Value::DynamicImage { data, change_id:_ } => {
-                Some(Thumbnail::Image(data.resize(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[0], FilterType::Triangle).to_rgba8()))
-            },
+            Value::DynamicImage { data, change_id: _ } => Some(Thumbnail::Image(
+                data.resize(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[0], FilterType::Triangle)
+                    .to_rgba8(),
+            )),
             Value::Bool(value) => Some(Thumbnail::Text(value.to_string())),
             Value::Integer(value) => Some(Thumbnail::Text(value.to_string())),
             Value::Decimal(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::String(value) => Some(Thumbnail::Text(value.clone())),
-            Value::Path(path) => Some(Thumbnail::Text(format!("{}", path.to_str().unwrap_or("none").to_string()))),
+            Value::Path(path) => Some(Thumbnail::Text(format!(
+                "{}",
+                path.to_str().unwrap_or("none").to_string()
+            ))),
             Value::FilterType(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::ColorFormat(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::Trigger => Some(Thumbnail::Text("trigger".to_string())),
             Value::ImageType(value) => Some(Thumbnail::Text(format!("{:?}", value))),
-            Value::NoiseWorleyDistanceFunction(value) => Some(Thumbnail::Text(format!("{:?}", value))),
+            Value::NoiseWorleyDistanceFunction(value) => {
+                Some(Thumbnail::Text(format!("{:?}", value)))
+            }
             Value::ColorSpace(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::BlendMode(value) => Some(Thumbnail::Text(format!("{:?}", value))),
         }
@@ -92,7 +99,10 @@ impl Value {
             Value::Trigger => ValueType::Trigger,
             Value::FilterType(_) => ValueType::FilterType,
             Value::Path(_) => ValueType::Path,
-            Value::DynamicImage { data:_, change_id:_ } => ValueType::DynamicImage,
+            Value::DynamicImage {
+                data: _,
+                change_id: _,
+            } => ValueType::DynamicImage,
             Value::ImageType(_) => ValueType::ImageType,
             Value::NoiseWorleyDistanceFunction(_) => ValueType::NoiseWorleyDistanceFunction,
             Value::ColorSpace(_) => ValueType::ColorSpace,
@@ -125,6 +135,16 @@ impl Value {
                     } else {
                         Ok(Value::Color(Color::from_srgb_float(0.0, 0.0, 0.0, 1.0)))
                     }
+                }
+                ValueType::DynamicImage => {
+                    let mut imgbuf = image::RgbaImage::new(1, 1);
+                    let color_value: u8 = if *a { 255 } else { 0 };
+
+                    for (_x, _y, pixel) in imgbuf.enumerate_pixels_mut() {
+                        *pixel = image::Rgba([color_value, color_value, color_value, color_value]);
+                    }
+
+                    Ok(Value::DynamicImage(DynamicImage::ImageRgba8(imgbuf)))
                 }
                 _ => Err(ConversionError {
                     message: "Unable to convert bool to filter type.".to_string(),
@@ -186,7 +206,7 @@ impl Value {
                 _ => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
-            }
+            },
             Value::FilterType(a) => match other {
                 ValueType::FilterType => Ok(Value::FilterType(*a)),
                 _ => Err(ConversionError {
@@ -200,8 +220,11 @@ impl Value {
                 }),
             },
             Value::Trigger => todo!(),
-            Value::DynamicImage { data, change_id:_ } => match other {
-                ValueType::DynamicImage => Ok(Value::DynamicImage{ data: data.clone(), change_id: get_id() }),
+            Value::DynamicImage { data, change_id: _ } => match other {
+                ValueType::DynamicImage => Ok(Value::DynamicImage {
+                    data: data.clone(),
+                    change_id: get_id(),
+                }),
                 _ => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
@@ -215,33 +238,37 @@ impl Value {
                             message: "Unable to convert integer to image format.".to_string(),
                         })
                     }
-                },
-                ValueType::Path => {
-                    Ok(Value::Path(path.clone()))
-                },
+                }
+                ValueType::Path => Ok(Value::Path(path.clone())),
                 _ => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
                 }),
-            }
+            },
             Value::ImageType(image_format) => match other {
-                ValueType::ImageType => {
-                    Ok(Value::ImageType(image_format.clone()))
-                },
+                ValueType::ImageType => Ok(Value::ImageType(image_format.clone())),
                 _ => Err(ConversionError {
                     message: "Unable to convert.".to_string(),
                 }),
             },
             Value::NoiseWorleyDistanceFunction(a) => match other {
-                ValueType::NoiseWorleyDistanceFunction => Ok(Value::NoiseWorleyDistanceFunction(a.clone())),
-                _ => Err(ConversionError { message: "Unable to convert.".to_string() })
+                ValueType::NoiseWorleyDistanceFunction => {
+                    Ok(Value::NoiseWorleyDistanceFunction(a.clone()))
+                }
+                _ => Err(ConversionError {
+                    message: "Unable to convert.".to_string(),
+                }),
             },
             Value::ColorSpace(a) => match other {
                 ValueType::ColorSpace => Ok(Value::ColorSpace(a.clone())),
-                _ => Err(ConversionError { message: "Unable to convert.".to_string() })
+                _ => Err(ConversionError {
+                    message: "Unable to convert.".to_string(),
+                }),
             },
             Value::BlendMode(a) => match other {
                 ValueType::BlendMode => Ok(Value::BlendMode(a.clone())),
-                _ => Err(ConversionError { message: "Unable to convert.".to_string() })
+                _ => Err(ConversionError {
+                    message: "Unable to convert.".to_string(),
+                }),
             },
         }
     }
@@ -266,7 +293,6 @@ pub enum ValueType {
 }
 
 impl ValueType {
-
     pub fn types() -> [ValueType; 10] {
         let types: [ValueType; 10] = [
             ValueType::Bool,
@@ -315,25 +341,51 @@ impl ValueType {
                 }
 
                 list
-            },
+            }
             _ => vec![],
         }
     }
 
     pub fn valid_conversions(&self) -> Vec<ValueType> {
         match self {
-            ValueType::Bool => vec![ValueType::Bool, ValueType::Integer, ValueType::Decimal, ValueType::String, ValueType::Trigger],
-            ValueType::Integer => vec![ValueType::Bool, ValueType::Integer, ValueType::Decimal, ValueType::String, ValueType::Trigger],
-            ValueType::Decimal => vec![ValueType::Bool, ValueType::Integer, ValueType::Decimal, ValueType::String, ValueType::Trigger],
+            ValueType::Bool => vec![
+                ValueType::Bool,
+                ValueType::Integer,
+                ValueType::Decimal,
+                ValueType::String,
+                ValueType::Trigger,
+            ],
+            ValueType::Integer => vec![
+                ValueType::Bool,
+                ValueType::Integer,
+                ValueType::Decimal,
+                ValueType::String,
+                ValueType::Trigger,
+            ],
+            ValueType::Decimal => vec![
+                ValueType::Bool,
+                ValueType::Integer,
+                ValueType::Decimal,
+                ValueType::String,
+                ValueType::Trigger,
+            ],
             ValueType::String => vec![ValueType::String, ValueType::Trigger],
             ValueType::Color => vec![ValueType::Color, ValueType::Trigger],
             ValueType::DynamicImage => vec![ValueType::DynamicImage, ValueType::Trigger],
             ValueType::Path => vec![ValueType::String, ValueType::Path, ValueType::Trigger],
-            ValueType::FilterType => vec![ValueType::FilterType, ValueType::String, ValueType::Trigger],
-            ValueType::ColorFormat => vec![ValueType::ColorFormat, ValueType::String, ValueType::Trigger],
+            ValueType::FilterType => {
+                vec![ValueType::FilterType, ValueType::String, ValueType::Trigger]
+            }
+            ValueType::ColorFormat => vec![
+                ValueType::ColorFormat,
+                ValueType::String,
+                ValueType::Trigger,
+            ],
             ValueType::Trigger => vec![ValueType::Trigger],
             ValueType::ImageType => vec![ValueType::ImageType, ValueType::Trigger],
-            ValueType::NoiseWorleyDistanceFunction => vec![ValueType::NoiseWorleyDistanceFunction, ValueType::Trigger],
+            ValueType::NoiseWorleyDistanceFunction => {
+                vec![ValueType::NoiseWorleyDistanceFunction, ValueType::Trigger]
+            }
             ValueType::ColorSpace => vec![ValueType::ColorSpace, ValueType::Trigger],
             ValueType::BlendMode => vec![ValueType::BlendMode, ValueType::Trigger],
         }
@@ -344,9 +396,9 @@ impl ValueType {
 
         for value_type in ValueType::types().iter() {
             //if value_type != self {
-                if value_type.valid_conversions().contains(&self) {
-                    types.push(value_type.clone());
-                }
+            if value_type.valid_conversions().contains(&self) {
+                types.push(value_type.clone());
+            }
             //}
         }
 
@@ -407,7 +459,6 @@ impl ColorFormat {
     }
 }
 
-
 // https://docs.rs/image/latest/src/image/image.rs.html#28-73
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ImageType {
@@ -421,7 +472,7 @@ pub enum ImageType {
     //Dds,  // can't read or write
     Bmp,
     Ico,
-    Hdr,    // can't write
+    Hdr, // can't write
     OpenExr,
     Farbfeld,
     Avif,
@@ -503,13 +554,17 @@ where
 }
 
 fn serialize_image_format<S>(value: &image::ImageFormat, serializer: S) -> Result<S::Ok, S::Error>
-where S: serde::Serializer {
+where
+    S: serde::Serializer,
+{
     let serialized_value = image::ImageFormat::Jpeg.extensions_str()[0];
     serializer.serialize_str(serialized_value)
 }
 
 fn deserialize_image_format<'de, D>(deserializer: D) -> Result<image::ImageFormat, D::Error>
-where D: serde::Deserializer<'de> {
+where
+    D: serde::Deserializer<'de>,
+{
     if let Ok(s) = String::deserialize(deserializer) {
         if let Some(format) = image::ImageFormat::from_extension(s) {
             Ok(format)

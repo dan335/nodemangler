@@ -22,7 +22,8 @@ impl OpNumberMathAdd {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
-            Input::new("b".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+            Input::new("b".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
+            Input::new("mask".to_string(), Value::Bool(true), None, None),
         ]
     }
 
@@ -47,19 +48,31 @@ impl OpNumberMathAdd {
 
         let value = match &inputs[0].value {
             Value::Bool(a) => {
+                // mask
+                let mask_converted = inputs[2].value.try_convert_to(ValueType::Bool);
+                if image_converted.is_err() {
+                    return Err(OperationError {
+                        input_errors: vec![
+                            (2, "Error converting.".to_string())
+                        ],
+                        node_error: None
+                    });
+                }
+                let Ok(Value::Bool(mut mask)) = mask_converted else { return Err(OperationError { input_errors:vec![], node_error: Some("Error converting.".to_string()) }); };
+                
                 match &inputs[1].value {
                     Value::Bool(b) => {
-                        Value::Bool(*a || *b)
+                        Value::Bool(mask && (*a || *b))
                     },
                     Value::Integer(b) => {
-                        if *a {
+                        if mask && *a {
                             Value::Integer(*b + 1)
                         } else {
                             Value::Integer(*b)
                         }
                     },
                     Value::Decimal(b) => {
-                        if *a {
+                        if mask && *a {
                             Value::Decimal(*b + 1.0)
                         } else {
                             Value::Decimal(*b)
@@ -178,7 +191,15 @@ impl OpNumberMathAdd {
 
                         Value::DynamicImage { data: image_a.clone(), change_id: get_id() }
                     },
-                    Value::Integer(b) => todo!(),
+                    Value::Integer(b) => {
+                        for (_x, _y, pixel) in image_a.to_rgba32f().enumerate_pixels_mut() {
+                            if *a {
+                                *pixel = image::Rgba([pixel.0[0] + *b, pixel.0[1] + *b, pixel.0[3] + *b, pixel.0[4] + *b]);
+                            }
+                        }
+
+                        Value::DynamicImage { data: image_a.clone(), change_id: get_id() }
+                    },
                     Value::Decimal(b) => todo!(),
                     Value::DynamicImage { data: image_b, change_id } => todo!(),
                     Value::Color(b) => todo!(),
