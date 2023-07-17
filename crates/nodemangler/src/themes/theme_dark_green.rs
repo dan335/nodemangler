@@ -18,6 +18,8 @@ pub fn theme_dark_green() -> ThemeValues
         grid_connection_dot: Color32::from_rgb(24, 140, 159),
         grid_connection_dot_hover: Hsva::new(0.522, 0.85, 0.62, 1.0).into(),
         grid_connection_dot_disabled: Hsva::new(0.522, 0.1, 0.2, 1.0).into(),
+        grid_connection_dot_error: Color32::from_rgb(187, 52, 71),
+
         node_header_bg: Color32::from_rgb(48, 62, 63),
         node_header_selected_border: Color32::from_rgb(187, 52, 71),
         

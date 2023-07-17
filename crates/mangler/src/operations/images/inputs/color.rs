@@ -23,8 +23,8 @@ impl OpImageInputColor {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("color".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("width".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
         ]
     }
 
@@ -37,14 +37,29 @@ impl OpImageInputColor {
         ]
     }
 
-    pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
+        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let Ok(Value::Color(color)) = inputs[0].value.try_convert_to(ValueType::Color) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+        // convert inputs
+        let color_converted = inputs[0].value.try_convert_to(ValueType::Color);
+        let width_converted = inputs[1].value.try_convert_to(ValueType::Integer);
+        let height_converted = inputs[2].value.try_convert_to(ValueType::Integer);
 
-        let Ok(Value::Integer(mut width)) = inputs[1].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        let Ok(Value::Integer(mut height)) = inputs[2].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        
+        // gather errors
+        if color_converted.is_err() { input_errors.push((0, color_converted.as_ref().err().unwrap().message.clone())); }
+        if width_converted.is_err() { input_errors.push((1, width_converted.as_ref().err().unwrap().message.clone())); }
+        if height_converted.is_err() { input_errors.push((2, height_converted.as_ref().err().unwrap().message.clone())); }
+
+        // return if error
+        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+
+        // get values
+        let Ok(Value::Color(color)) = color_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::Integer(mut width)) = width_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::Integer(mut height)) = height_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+
+        // run node
         width = width.max(1);
         height = height.max(1);
 

@@ -21,6 +21,8 @@ pub struct Node {
     pub position: Vec2,
     pub node_type: NodeType,
     pub is_busy: bool,
+    pub is_error: bool,
+    pub error_message: Option<String>,
 }
 
 impl PartialEq for Node {
@@ -42,6 +44,8 @@ impl Node {
                 position,
                 node_type: NodeType::Operation { operation },
                 is_busy: false,
+                is_error: false,
+                error_message: None,
             },
             AddNodeType::Subgraph => Node {
                 id,
@@ -60,6 +64,8 @@ impl Node {
                     rx_node_changed: None,
                 },
                 is_busy: false,
+                is_error: false,
+                error_message: None,
             },
         }
     }
@@ -111,14 +117,14 @@ impl Node {
         }
     }
 
-    pub async fn run(&mut self, tx_output: Option<Sender<NodeChangedMessage>>) {
+    pub async fn run(&mut self, tx_node_changed: Option<Sender<NodeChangedMessage>>) {
         match &mut self.node_type {
             // if node is an operation
             NodeType::Operation { operation } => {
                 // run operation
                 // collect results
 
-                if let Some(tx) = tx_output.clone() {
+                if let Some(tx) = tx_node_changed.clone() {
                     let message = NodeChangedMessage::Busy { node_id: self.id.clone(), is_busy: true };
 
                     match tx.try_send(message) {
@@ -132,35 +138,59 @@ impl Node {
                     }
                 }
 
-                if let Ok(operation_response) = operation.run(&self.inputs).await {
-                    // time node took to run
-                    self.time = Some(operation_response.time);
+                // clear node error
+                if self.is_error {
+                    self.is_error = false;
 
-                    if let Some(tx) = tx_output.clone() {
-                        let message = NodeChangedMessage::InfoChanged {
+                    if let Some(tx) = &tx_node_changed {
+                        let message = NodeChangedMessage::Error {
                             node_id: self.id.clone(),
-                            time: operation_response.time,
+                            is_error: false,
+                            message: None,
                         };
-
+    
                         match tx.try_send(message) {
                             Ok(_) => {}
                             Err(err) => {
-                                println!(
-                                    "Error sending NodeChangedMessage::OutputChanged: {:?}",
-                                    err
-                                );
+                                println!("Error sending NodeChangedMessage::InputChanged: {:?}", err);
                             }
                         }
                     }
+                }
 
-                    for (index, response) in operation_response.responses.into_iter().enumerate() {
-                        // send messages to ui that outputs changed
-                        if let Some(tx) = tx_output.clone() {
-                            let message = NodeChangedMessage::OutputChanged {
+                // clear input errors
+                // notify ui of change
+                for (input_index, input) in self.inputs.iter_mut().enumerate() {
+                    if input.is_error {
+                        input.is_error = false;
+
+                        if let Some(tx) = &tx_node_changed {
+                            let message = NodeChangedMessage::InputErrorChanged {
                                 node_id: self.id.clone(),
-                                output_index: index,
-                                value: response.value.clone(),
-                                thumbnail: response.value.create_thumbnail(),
+                                input_index: input_index,
+                                is_error: false,
+                                message: None,
+                            };
+        
+                            match tx.try_send(message) {
+                                Ok(_) => {}
+                                Err(err) => {
+                                    println!("Error sending NodeChangedMessage::InputChanged: {:?}", err);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                match operation.run(&mut self.inputs).await {
+                    Ok(operation_response) => {
+                        // time node took to run
+                        self.time = Some(operation_response.time);
+
+                        if let Some(tx) = tx_node_changed.clone() {
+                            let message = NodeChangedMessage::InfoChanged {
+                                node_id: self.id.clone(),
+                                time: operation_response.time,
                             };
 
                             match tx.try_send(message) {
@@ -174,14 +204,102 @@ impl Node {
                             }
                         }
 
-                        // set output's value
-                        if let Some(output) = self.outputs.get_mut(index) {
-                            output.value = response.value;
+                        // TODO: change response to a Result?
+                        for (index, response) in operation_response.responses.into_iter().enumerate() {
+                            // send messages to ui that outputs changed
+                            if let Some(tx) = tx_node_changed.clone() {
+                                let message = NodeChangedMessage::OutputChanged {
+                                    node_id: self.id.clone(),
+                                    output_index: index,
+                                    value: response.value.clone(),
+                                    thumbnail: response.value.create_thumbnail(),
+                                };
+
+                                match tx.try_send(message) {
+                                    Ok(_) => {}
+                                    Err(err) => {
+                                        println!(
+                                            "Error sending NodeChangedMessage::OutputChanged: {:?}",
+                                            err
+                                        );
+                                    }
+                                }
+                            }
+
+                            // set output's value
+                            if let Some(output) = self.outputs.get_mut(index) {
+                                output.value = response.value;
+                            }
                         }
-                    }
+                    },
+                    Err(operation_error) => {
+                        // store node error message or none
+                        let mut node_error_message: Option<String> = operation_error.node_error.clone();
+
+                        // update inputs
+                        // send input error messages
+                        for input_error in operation_error.input_errors.iter() {
+                            let (input_index, error_message) = input_error;
+
+                            if let Some(input) = self.inputs.get_mut(*input_index) {
+                                input.is_error = true;
+                                input.error_message = Some(error_message.clone());
+
+                                // if node error is empty fill it in
+                                if node_error_message.is_none() {
+                                    node_error_message = Some("Input error.".to_string());
+                                }
+
+                                // send message
+                                if let Some(tx) = tx_node_changed.clone() {
+                                    let message = NodeChangedMessage::InputErrorChanged {
+                                        node_id: self.id.clone(),
+                                        input_index: input_index.clone(),
+                                        is_error: true,
+                                        message: Some(error_message.clone()),
+                                    };
+    
+                                    match tx.try_send(message) {
+                                        Ok(_) => {}
+                                        Err(err) => {
+                                            println!(
+                                                "Error sending NodeChangedMessage::OutputChanged: {:?}",
+                                                err
+                                            );
+                                        }
+                                    }
+                                }
+                            } else {
+                                panic!("Invalid input index: {}", input_index);
+                            }
+                        }
+
+                        // set node error
+                        self.is_error = true;
+                        self.error_message = node_error_message.clone();
+
+                        // send node error changed
+                        if let Some(tx) = tx_node_changed.clone() {
+                            let message = NodeChangedMessage::Error {
+                                node_id: self.id.clone(),
+                                is_error: true,
+                                message: node_error_message,
+                            };
+
+                            match tx.try_send(message) {
+                                Ok(_) => {}
+                                Err(err) => {
+                                    println!(
+                                        "Error sending NodeChangedMessage::OutputChanged: {:?}",
+                                        err
+                                    );
+                                }
+                            }
+                        }
+                    },
                 }
 
-                if let Some(tx) = tx_output.clone() {
+                if let Some(tx) = tx_node_changed.clone() {
                     let message = NodeChangedMessage::Busy { node_id: self.id.clone(), is_busy: false };
 
                     match tx.try_send(message) {
@@ -263,7 +381,7 @@ impl Node {
                         }
 
                         // let ui know that outputs changed
-                        if let Some(tx) = tx_output {
+                        if let Some(tx) = tx_node_changed {
                             for (output_index, output) in self.outputs.iter().enumerate() {
                                 let message = NodeChangedMessage::OutputChanged {
                                     node_id: self.id.clone(),

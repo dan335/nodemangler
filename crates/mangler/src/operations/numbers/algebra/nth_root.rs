@@ -30,8 +30,18 @@ impl OpNumberMathNthRt {
         ]
     }
 
-    pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
+        let mut input_errors: Vec<(usize, String)> = vec![];
+
+        // convert inputs
+        // gather errors
+
+        // return if error
+        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+
+        // get values
+        // run node
 
         let Ok(Value::Decimal(n)) = inputs[1].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
 

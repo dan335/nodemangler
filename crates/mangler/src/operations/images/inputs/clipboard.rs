@@ -36,6 +36,8 @@ impl OpImageInputClipboard {
 
     pub async fn run(_inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
+        
+        // run node
         let mut width = 0;
         let mut height = 0;
         let mut img = None;
@@ -66,7 +68,7 @@ impl OpImageInputClipboard {
                 ],
             })
         } else {
-            Err(OperationError { message: "Error grabbing image from clipboard.".to_string() })
+            Err(OperationError { input_errors: vec![], node_error: Some("Error grabbing clipboard or clipboard is empty.".to_string())  })
         }
     }
 }

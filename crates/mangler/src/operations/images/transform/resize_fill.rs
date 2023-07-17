@@ -36,24 +36,36 @@ impl OpImageTransformResizeFill {
         ]
     }
 
-    pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
+        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let Ok(Value::Integer(mut width)) = inputs[1].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        let Ok(Value::Integer(mut height)) = inputs[2].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        let Ok(Value::FilterType(filter_type)) = inputs[3].value.try_convert_to(ValueType::FilterType) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+        // convert inputs
+        let image_converted = inputs[0].value.try_convert_to(ValueType::DynamicImage);
+        let width_converted = inputs[1].value.try_convert_to(ValueType::Integer);
+        let height_converted = inputs[2].value.try_convert_to(ValueType::Integer);
+        let filter_type_converted = inputs[3].value.try_convert_to(ValueType::FilterType);
 
+        // gather errors
+        if image_converted.is_err() { input_errors.push((0, image_converted.as_ref().err().unwrap().message.clone())); }
+        if width_converted.is_err() { input_errors.push((1, width_converted.as_ref().err().unwrap().message.clone())); }
+        if height_converted.is_err() { input_errors.push((2, height_converted.as_ref().err().unwrap().message.clone())); }
+        if filter_type_converted.is_err() { input_errors.push((3, filter_type_converted.as_ref().err().unwrap().message.clone())); }
+
+        // return if error
+        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+
+        // get values
+        let Ok(Value::DynamicImage{data, change_id:_}) = image_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::Integer(mut width)) = width_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::Integer(mut height)) = height_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::FilterType(filter_type)) = filter_type_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+
+        // run node
         width = width.max(1);
         height = height.max(1);
 
-        let Value::DynamicImage{data, change_id:_} = inputs[0].value.clone() else { return Err(OperationError { message: "Error getting image.".to_string() }); };
-
         let resized = data.resize_to_fill(width as u32, height as u32, filter_type);
-
-        // let resized = tokio::spawn(async move {
-        //     let resized = data.resize_to_fill(width as u32, height as u32, filter_type);
-        //     resized
-        // }).await.unwrap();
 
         let value_width = Value::Integer(resized.width() as i32);
         let value_height = Value::Integer(resized.height() as i32);

@@ -207,6 +207,20 @@ impl Program {
                     }
                 }
 
+                NodeChangedMessage::InputErrorChanged {
+                    node_id,
+                    input_index,
+                    is_error,
+                    message,
+                } => {
+                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
+                        if let Some(input) = node.inputs.get_mut(input_index) {
+                            input.is_error = is_error;
+                            input.error_message = message;
+                        }
+                    }
+                }
+
                 NodeChangedMessage::OutputChanged {
                     node_id,
                     output_index,
@@ -333,6 +347,12 @@ impl Program {
                 NodeChangedMessage::InfoChanged { node_id, time } => {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
                         node.time = Some(time);
+                    }
+                },
+                NodeChangedMessage::Error { node_id, is_error, message } => {
+                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
+                        node.is_error = is_error;
+                        node.error_message = message;
                     }
                 },
             }

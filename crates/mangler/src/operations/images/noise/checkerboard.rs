@@ -36,8 +36,22 @@ impl OpImageNoiseCheckerboard {
         ]
     }
 
-    pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
+        let mut input_errors: Vec<(usize, String)> = vec![];
+
+        // convert inputs
+        let width_converted = inputs[0].value.try_convert_to(ValueType::Integer);
+        let height_converted = inputs[1].value.try_convert_to(ValueType::Integer);
+        let size_converted = inputs[2].value.try_convert_to(ValueType::Integer);
+        
+        // gather errors
+
+        // return if error
+        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+
+        // get values
+        // run node
 
         let Ok(Value::Integer(mut width)) = inputs[0].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
         let Ok(Value::Integer(mut height)) = inputs[1].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};

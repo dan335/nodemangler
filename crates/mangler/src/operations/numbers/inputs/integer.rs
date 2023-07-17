@@ -32,19 +32,28 @@ impl OpNumberInputInteger {
         ]
     }
 
-    pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
+        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        match &inputs[0].value.try_convert_to(ValueType::Integer) {
-            Ok(new_value) => Ok(OperationResponse {
-                time: Instant::now().duration_since(start_time),
-                responses: vec![OutputResponse {
-                    value: new_value.clone(),
-                }],
-            }),
-            Err(_) => Err(OperationError {
-                message: "Error converting. {:?}".to_string(),
-            }),
-        }
+        // convert inputs
+        let input_converted = inputs[0].value.try_convert_to(ValueType::Integer);
+
+        // gather errors
+        if input_converted.is_err() { input_errors.push((0, input_converted.as_ref().err().unwrap().message.clone())); }
+
+        // return if error
+        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+
+        // get values
+        let Ok(Value::Integer(input)) = input_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+
+        // run node
+        Ok(OperationResponse {
+            time: Instant::now().duration_since(start_time),
+            responses: vec![OutputResponse {
+                value: Value::Integer(input),
+            }],
+        })
     }
 }

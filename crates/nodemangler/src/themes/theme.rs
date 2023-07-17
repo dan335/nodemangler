@@ -25,6 +25,7 @@ pub struct ThemeValues {
     pub grid_connection_dot: Color32,
     pub grid_connection_dot_hover: Color32,
     pub grid_connection_dot_disabled: Color32,
+    pub grid_connection_dot_error: Color32,
     //pub grid_connection_dot_viewing: HsvaGamma,
     pub node_header_bg: Color32,
     pub node_header_selected_border: Color32,

@@ -11,30 +11,31 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OpImageInputGradient {}
+pub struct OpImageShapesCircle {}
 
-impl OpImageInputGradient {
+impl OpImageShapesCircle {
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "from gradient".to_string(),
-            description: "Creates an image from a gradient.".to_string(),
+            name: "circle".to_string(),
+            description: "Creates a circle.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("b".to_string(), Value::Color(Color::from_srgb_u8(255, 255, 255, 255)), None, None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
+            Input::new("color".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("background".to_string(), Value::Color(Color::from_srgb_u8(0, 0, 0, 0)), None, None),
+            Input::new("width".to_string(), Value::Decimal(512.0), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
+            Input::new("height".to_string(), Value::Decimal(512.0), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
+            Input::new("padding".to_string(), Value::Decimal(5.0), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
             Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Lab), None, None),
+            Input::new("blend mode".to_string(), Value::BlendMode(crate::color::blend::BlendMode::Lerp), None, None),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
-            Output::new("color".to_string(), Value::Color(Color::default()), None),
             Output::new("width".to_string(), Value::Integer(1), None),
             Output::new("height".to_string(), Value::Integer(1), None),
         ]
@@ -45,30 +46,22 @@ impl OpImageInputGradient {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let a_converted = inputs[0].value.try_convert_to(ValueType::Color);
-        let b_converted = inputs[1].value.try_convert_to(ValueType::Color);
-        let width_converted = inputs[2].value.try_convert_to(ValueType::Integer);
-        let height_converted = inputs[3].value.try_convert_to(ValueType::Integer);
-        let color_space_converted = inputs[4].value.try_convert_to(ValueType::ColorSpace);
-
         // gather errors
-        if a_converted.is_err() { input_errors.push((0, a_converted.as_ref().err().unwrap().message.clone())); }
-        if b_converted.is_err() { input_errors.push((1, b_converted.as_ref().err().unwrap().message.clone())); }
-        if width_converted.is_err() { input_errors.push((2, width_converted.as_ref().err().unwrap().message.clone())); }
-        if height_converted.is_err() { input_errors.push((3, height_converted.as_ref().err().unwrap().message.clone())); }
-        if color_space_converted.is_err() { input_errors.push((4, color_space_converted.as_ref().err().unwrap().message.clone())); }
 
         // return if error
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::Color(a)) = a_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Color(b)) = b_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Integer(mut width)) = width_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Integer(mut height)) = height_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::ColorSpace(color_space)) = color_space_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-
         // run node
+
+        let Ok(Value::Color(a)) = inputs[0].value.try_convert_to(ValueType::Color) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+        let Ok(Value::Color(b)) = inputs[1].value.try_convert_to(ValueType::Color) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+
+        let Ok(Value::Integer(mut width)) = inputs[2].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+        let Ok(Value::Integer(mut height)) = inputs[3].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+        
+        let Ok(Value::ColorSpace(color_space)) = inputs[4].value.try_convert_to(ValueType::ColorSpace) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+
         width = width.max(1);
         height = height.max(1);
 

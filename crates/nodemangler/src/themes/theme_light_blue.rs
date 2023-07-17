@@ -20,6 +20,8 @@ pub fn theme_light_blue() -> ThemeValues
         grid_connection_dot: Hsva::new(0.565, 0.81, 0.97, 1.0).into(),
         grid_connection_dot_hover: Hsva::new(0.565, 0.81, 0.97, 1.0).into(),
         grid_connection_dot_disabled: Hsva::new(0.565, 0.1, 0.62, 1.0).into(),
+        grid_connection_dot_error: Hsva::new(0.95, 0.69, 0.97, 1.0).into(),
+
         node_header_bg: Hsva::new(0.565, 0.25, 0.88, 1.0).into(),
         node_header_selected_border: Hsva::new(0.95, 0.69, 0.97, 1.0).into(),
         

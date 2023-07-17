@@ -50,6 +50,16 @@ impl OperationSubgraph {
 
     pub async fn run(inputs: &Vec<Input>, data: &mut Vec<Data>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
+        let mut input_errors: Vec<(usize, String)> = vec![];
+
+        // convert inputs
+        // gather errors
+
+        // return if error
+        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+
+        // get values
+        // run node
 
         if let Some(mut data) = data.get_mut(0) {
             let mut data_subgraph: Option<Data> = None;

@@ -4,7 +4,7 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value};
+use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Instant;
@@ -41,14 +41,32 @@ impl OpImageOutputFile {
         ]
     }
 
-    pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        
-        let Value::DynamicImage{data, change_id:_} = inputs[0].value.clone() else { return Err(OperationError { message: "Error getting image.".to_string() }); };
-        let Value::String(file_name) = &inputs[1].value else { return Err(OperationError { message: "Unable to convert to path.".to_string() })};
-        let Value::Path(mut folder_path) = inputs[2].value.clone() else { return Err(OperationError { message: "Unable to convert to path.".to_string() })};
-        let Value::ImageType(image_type) = inputs[3].value else { return Err(OperationError { message: "Unable to convert to path.".to_string() })};
+        let mut input_errors: Vec<(usize, String)> = vec![];
 
+        // convert inputs
+        let image_converted = inputs[0].value.try_convert_to(ValueType::DynamicImage);
+        let file_name_converted = inputs[1].value.try_convert_to(ValueType::String);
+        let folder_converted = inputs[2].value.try_convert_to(ValueType::Path);
+        let image_type_converted = inputs[3].value.try_convert_to(ValueType::ImageType);
+
+        // gather errors
+        if image_converted.is_err() { input_errors.push((0, image_converted.as_ref().err().unwrap().message.clone())); }
+        if file_name_converted.is_err() { input_errors.push((1, file_name_converted.as_ref().err().unwrap().message.clone())); }
+        if folder_converted.is_err() { input_errors.push((2, folder_converted.as_ref().err().unwrap().message.clone())); }
+        if image_type_converted.is_err() { input_errors.push((3, image_type_converted.as_ref().err().unwrap().message.clone())); }
+
+        // return if error
+        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+
+        // get values
+        let Ok(Value::DynamicImage{data, change_id:_}) = image_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::String(file_name)) = file_name_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::Path(mut folder_path)) = folder_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::ImageType(image_type)) = image_type_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+
+        // run node
         if folder_path.exists() {
             if !folder_path.ends_with("/") {
                 // not sure why this is needed
@@ -68,10 +86,10 @@ impl OpImageOutputFile {
                     }],
                 })
             } else {
-                Err(OperationError { message: "Unable to convert to path.".to_string() })
+                Err(OperationError { input_errors: vec![], node_error: Some("Unable to convert to path.".to_string()) })
             }
         } else {
-            Err(OperationError { message: "Unable to convert to path.".to_string() })
+            Err(OperationError { input_errors: vec![], node_error: Some("Folder does not exist.".to_string()) })
         }
 
         

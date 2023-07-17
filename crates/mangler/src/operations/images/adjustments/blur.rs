@@ -33,21 +33,28 @@ impl OpImageAdjustmentBlur {
         ]
     }
 
-    pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
+        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let Ok(Value::Decimal(mut sigma)) = inputs[1].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+        // convert inputs
+        let image_converted = inputs[0].value.try_convert_to(ValueType::DynamicImage);
+        let sigma_converted = inputs[1].value.try_convert_to(ValueType::Decimal);
 
+        // gather errors
+        if image_converted.is_err() { input_errors.push((0, image_converted.as_ref().err().unwrap().message.clone())); }
+        if sigma_converted.is_err() { input_errors.push((1, sigma_converted.as_ref().err().unwrap().message.clone())); }
+
+        // return if error
+        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+
+        // get values
+        let Ok(Value::DynamicImage{data, change_id:_}) = image_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::Decimal(mut sigma)) = sigma_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+
+        // run node
         sigma = sigma.max(0.0);
-
-        let Value::DynamicImage{data, change_id:_} = inputs[0].value.clone() else { return Err(OperationError { message: "Error getting image.".to_string() }); };
-
         let blurred = data.blur(sigma);
-
-        // let blurred = tokio::spawn(async move {
-        //     let resized = data.blur(sigma);
-        //     resized
-        // }).await.unwrap();
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

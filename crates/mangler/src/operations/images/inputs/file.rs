@@ -41,14 +41,26 @@ impl OpImageInputFile {
         ]
     }
 
-    pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
+        let mut input_errors: Vec<(usize, String)> = vec![];
+
+        // convert inputs
+        let path_converted = inputs[0].value.try_convert_to(ValueType::Path);
+
+        // gather errors
+        if path_converted.is_err() { input_errors.push((0, path_converted.as_ref().err().unwrap().message.clone())); }
+
+        // return if error
+        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+
+        // get values
+        let Ok(Value::Path(path)) = path_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+
+        // run node
         let mut width = 0;
         let mut height = 0;
         let mut img = None;
-
-        //let Ok(Value::Path { name, path, file_extensions }) = inputs[0].value.try_convert_to(ValueType::Path) else { return Err(OperationError { message: "Unable to convert to path.".to_string() })};
-        let Value::Path(path) = &inputs[0].value else { return Err(OperationError { message: "Unable to convert to path.".to_string() })};
 
         if let Ok(open) = ImageReader::open(path) {
             if let Ok(dynamic_image) = open.decode() {
@@ -68,7 +80,7 @@ impl OpImageInputFile {
                 ],
             })
         } else {
-            Err(OperationError { message: "Error grabbing image from clipboard.".to_string() })
+            Err(OperationError { input_errors, node_error: Some("Error opening image.".to_string()) })
         }
     }
 }

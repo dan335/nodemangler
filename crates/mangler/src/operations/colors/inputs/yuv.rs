@@ -33,14 +33,32 @@ impl OpColorInputYuv {
         ]
     }
 
-    pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
+        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let Ok(Value::Decimal(y)) = inputs[0].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        let Ok(Value::Decimal(u)) = inputs[1].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        let Ok(Value::Decimal(v)) = inputs[2].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        let Ok(Value::Decimal(alpha)) = inputs[3].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+        // convert inputs
+        let y_converted = inputs[0].value.try_convert_to(ValueType::Decimal);
+        let u_converted = inputs[1].value.try_convert_to(ValueType::Decimal);
+        let v_converted = inputs[2].value.try_convert_to(ValueType::Decimal);
+        let alpha_converted = inputs[3].value.try_convert_to(ValueType::Decimal);
 
+        // gather errors
+        if y_converted.is_err() { input_errors.push((0, y_converted.as_ref().err().unwrap().message.clone())); }
+        if u_converted.is_err() { input_errors.push((0, u_converted.as_ref().err().unwrap().message.clone())); }
+        if v_converted.is_err() { input_errors.push((0, v_converted.as_ref().err().unwrap().message.clone())); }
+        if alpha_converted.is_err() { input_errors.push((0, alpha_converted.as_ref().err().unwrap().message.clone())); }
+
+        // return if error
+        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+
+        // get values
+        let Ok(Value::Decimal(y)) = y_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::Decimal(u)) = u_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::Decimal(v)) = v_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::Decimal(alpha)) = alpha_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+
+        // run node
         let color = Color::from_yuv(y, u, v, alpha);
 
         Ok(OperationResponse {

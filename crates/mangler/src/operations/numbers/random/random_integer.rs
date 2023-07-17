@@ -31,12 +31,26 @@ impl OpNumberRandomInteger {
         ]
     }
 
-    pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
+        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let Ok(Value::Integer(minimum)) = inputs[1].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        let Ok(Value::Integer(mut maximum)) = inputs[2].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+        // convert inputs
+        let min_converted = inputs[1].value.try_convert_to(ValueType::Integer);
+        let max_converted = inputs[2].value.try_convert_to(ValueType::Integer);
 
+        // gather errors
+        if min_converted.is_err() { input_errors.push((1, min_converted.as_ref().err().unwrap().message.clone())); }
+        if max_converted.is_err() { input_errors.push((2, max_converted.as_ref().err().unwrap().message.clone())); }
+
+        // return if error
+        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+
+        // get values
+        let Ok(Value::Integer(minimum)) = min_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::Integer(mut maximum)) = max_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+
+        // run node
         maximum = maximum.max(minimum+1);
 
         Ok(OperationResponse {

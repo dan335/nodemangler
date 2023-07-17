@@ -48,7 +48,9 @@ pub fn draw_graph_input(
 
     response.is_cursor_over = input_response.hovered();
 
-    if response.is_disabled {
+    if input.is_error {
+        color = theme.get().grid_connection_dot_error;
+    } else if response.is_disabled {
         color = theme.get().grid_connection_dot_disabled;
     } else if input_response.hovered() {
         color = theme.get().grid_connection_dot_hover;

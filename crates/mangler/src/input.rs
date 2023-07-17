@@ -10,6 +10,8 @@ pub struct Input {
     pub default_value: Value,
     pub settings: Option<InputSettings>,
     pub connection: Option<(String, usize)>, // id of node with output, index of output
+    pub is_error: bool,
+    pub error_message: Option<String>,
     pub is_exposed: bool,
     // todo: need to link this somehow with exposed input
     // maybe it needs an id?
@@ -34,6 +36,8 @@ impl Input {
             default_value,
             settings,
             connection: None,
+            is_error: false,
+            error_message: None,
             is_exposed: false,
             link,
         }

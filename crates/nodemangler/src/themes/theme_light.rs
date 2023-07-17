@@ -21,6 +21,8 @@ pub fn theme_light() -> ThemeValues
         grid_connection_dot: Hsva::new(0.555, 0.0, 0.5, 1.0).into(),
         grid_connection_dot_hover: Hsva::new(0.555, 0.0, 0.6, 1.0).into(),
         grid_connection_dot_disabled: Hsva::new(0.555, 0.0, 0.75, 1.0).into(),
+        grid_connection_dot_error: Hsva::new(0.555, 0.79, 0.97, 1.0).into(),
+
         node_header_bg: Hsva::new(0.565, 0.0, 0.65, 1.0).into(),
         node_header_selected_border: Hsva::new(0.555, 0.79, 0.97, 1.0).into(),
         

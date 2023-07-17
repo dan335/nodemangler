@@ -29,6 +29,8 @@ pub struct GraphNode {
     pub thumbnail: Option<GraphNodeThumbnail>,
     pub is_subgraph: bool,
     pub is_busy: bool,
+    pub is_error: bool,
+    pub error_message: Option<String>,
 }
 
 impl GraphNode {
@@ -52,6 +54,8 @@ impl GraphNode {
             time: None,
             is_subgraph,
             is_busy: false,
+            is_error: false,
+            error_message: None,
         }
     }
 
@@ -346,6 +350,8 @@ pub struct InputOutputResponse {
     pub connection_to_position: Pos2,
     pub is_cursor_over: bool,
     pub is_disabled: bool,
+    pub is_error: bool,
+    pub error_message: Option<String>,
     pub view_output: Option<usize>, // clicked on output to view it
 }
 
@@ -358,6 +364,8 @@ impl InputOutputResponse {
             connection_to_position: Pos2::ZERO,
             is_cursor_over: false,
             is_disabled: false,
+            is_error: false,
+            error_message: None,
             view_output: None,
         }
     }

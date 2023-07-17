@@ -33,10 +33,21 @@ impl OpColorOutputXyz {
         ]
     }
 
-    pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
+        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let Ok(Value::Color(color)) = inputs[0].value.try_convert_to(ValueType::Color) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+        // convert inputs
+        let color_converted = inputs[0].value.try_convert_to(ValueType::Color);
+
+        // gather errors
+        if color_converted.is_err() { input_errors.push((0, color_converted.as_ref().err().unwrap().message.clone())); }
+
+        // return if error
+        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+
+        // get values
+        let Ok(Value::Color(color)) = color_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
 
         let (x, y, z, alpha) = color.to_xyz();
 

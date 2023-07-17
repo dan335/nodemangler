@@ -179,6 +179,7 @@ impl GraphEditor {
                                 ),
                                 input_graph_node.get_input_position(input_index, input_node_rect, self.zoom),
                                 theme,
+                                input.is_error,
                             );
 
                             connection_curves.push((curve, node_id.clone(), input_index));
@@ -326,10 +327,10 @@ impl GraphEditor {
         if let Some(temp_connection) = &self.temp_connection {
             match temp_connection.from_connection_type {
                 ConnectionType::Input => {
-                    self.draw_connection_line(ui, cursor_position, temp_connection.from_position, theme)
+                    self.draw_connection_line(ui, cursor_position, temp_connection.from_position, theme, false)
                 }
                 ConnectionType::Output => {
-                    self.draw_connection_line(ui, temp_connection.from_position, cursor_position, theme)
+                    self.draw_connection_line(ui, temp_connection.from_position, cursor_position, theme, false)
                 }
             };
         }
@@ -430,9 +431,16 @@ impl GraphEditor {
         from: Pos2,
         to: Pos2,
         theme: &Theme,
+        is_error: bool,
     ) -> CubicBezierShape {
         let offset_max = 150.0;
-        let color = egui::Color32::from(theme.get().grid_connection_line);
+
+        let mut color = egui::Color32::from(theme.get().grid_connection_line);
+
+        if is_error {
+            color = egui::Color32::from(theme.get().grid_connection_dot_error);
+        }
+
         let stroke = egui::Stroke::new(theme.get().grid_connection_line_width, color);
 
         let distance = from.distance(to);

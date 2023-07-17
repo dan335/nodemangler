@@ -41,20 +41,38 @@ impl OpImageNoiseWorleyValue {
         ]
     }
 
-    pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
+        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let Ok(Value::Integer(mut seed)) = inputs[0].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        let Ok(Value::Integer(mut width)) = inputs[1].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        let Ok(Value::Integer(mut height)) = inputs[2].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        //let Ok(Value::Decimal(mut scale)) = inputs[3].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        let Ok(Value::NoiseWorleyDistanceFunction(distance_function)) = inputs[3].value.try_convert_to(ValueType::NoiseWorleyDistanceFunction) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        let Ok(Value::Decimal(frequency)) = inputs[4].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+        // convert inputs
+        let seed_converted = inputs[0].value.try_convert_to(ValueType::Integer);
+        let width_converted = inputs[1].value.try_convert_to(ValueType::Integer);
+        let height_converted = inputs[2].value.try_convert_to(ValueType::Integer);
+        let distance_function_converted = inputs[3].value.try_convert_to(ValueType::NoiseWorleyDistanceFunction);
+        let frequency_converted = inputs[4].value.try_convert_to(ValueType::Decimal);
 
+        // gather errors
+        if seed_converted.is_err() { input_errors.push((0, seed_converted.as_ref().err().unwrap().message.clone())); }
+        if width_converted.is_err() { input_errors.push((1, width_converted.as_ref().err().unwrap().message.clone())); }
+        if height_converted.is_err() { input_errors.push((2, height_converted.as_ref().err().unwrap().message.clone())); }
+        if distance_function_converted.is_err() { input_errors.push((3, distance_function_converted.as_ref().err().unwrap().message.clone())); }
+        if frequency_converted.is_err() { input_errors.push((4, frequency_converted.as_ref().err().unwrap().message.clone())); }
+
+        // return if error
+        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+
+        // get values
+        let Ok(Value::Integer(mut seed)) = seed_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::Integer(mut width)) = width_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::Integer(mut height)) = height_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::NoiseWorleyDistanceFunction(distance_function)) = distance_function_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::Decimal(mut frequency)) = frequency_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+
+        // run node
         width = width.max(1);
         height = height.max(1);
         seed = seed.max(1);
-        //scale = scale.max(0.0001);
 
         let mut image_buffer = ImageBuffer::new(width as u32, height as u32);
 

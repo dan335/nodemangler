@@ -34,6 +34,7 @@ pub enum Value {
     Trigger,
     NoiseWorleyDistanceFunction(NoiseWorleyDistanceFunction),
     ColorSpace(crate::color::color_spaces::ColorSpace),
+    BlendMode(crate::color::blend::BlendMode),
 }
 
 
@@ -60,10 +61,11 @@ impl Value {
                 }
 
                 Some(Thumbnail::Image(img))
-
-                //Some(Thumbnail::Image(DynamicImage::ImageRgba8(img).thumbnail(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]).to_rgba8()))
             },
-            Value::DynamicImage { data, change_id:_ } => Some(Thumbnail::Image(data.thumbnail(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]).to_rgba8())),
+            //Value::DynamicImage { data, change_id:_ } => Some(Thumbnail::Image(data.thumbnail(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]).into_rgba8())),
+            Value::DynamicImage { data, change_id:_ } => {
+                Some(Thumbnail::Image(data.resize(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[0], FilterType::Triangle).to_rgba8()))
+            },
             Value::Bool(value) => Some(Thumbnail::Text(value.to_string())),
             Value::Integer(value) => Some(Thumbnail::Text(value.to_string())),
             Value::Decimal(value) => Some(Thumbnail::Text(format!("{:?}", value))),
@@ -75,6 +77,7 @@ impl Value {
             Value::ImageType(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::NoiseWorleyDistanceFunction(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::ColorSpace(value) => Some(Thumbnail::Text(format!("{:?}", value))),
+            Value::BlendMode(value) => Some(Thumbnail::Text(format!("{:?}", value))),
         }
     }
 
@@ -93,6 +96,7 @@ impl Value {
             Value::ImageType(_) => ValueType::ImageType,
             Value::NoiseWorleyDistanceFunction(_) => ValueType::NoiseWorleyDistanceFunction,
             Value::ColorSpace(_) => ValueType::ColorSpace,
+            Value::BlendMode(_) => ValueType::BlendMode,
         }
     }
 
@@ -235,6 +239,10 @@ impl Value {
                 ValueType::ColorSpace => Ok(Value::ColorSpace(a.clone())),
                 _ => Err(ConversionError { message: "Unable to convert.".to_string() })
             },
+            Value::BlendMode(a) => match other {
+                ValueType::BlendMode => Ok(Value::BlendMode(a.clone())),
+                _ => Err(ConversionError { message: "Unable to convert.".to_string() })
+            },
         }
     }
 }
@@ -254,6 +262,7 @@ pub enum ValueType {
     Path,
     NoiseWorleyDistanceFunction,
     ColorSpace,
+    BlendMode,
 }
 
 impl ValueType {
@@ -290,6 +299,7 @@ impl ValueType {
             ValueType::ImageType => "image format".to_string(),
             ValueType::NoiseWorleyDistanceFunction => "worley noise distance function".to_string(),
             ValueType::ColorSpace => "color space".to_string(),
+            ValueType::BlendMode => "blend mode".to_string(),
         }
     }
 
@@ -325,6 +335,7 @@ impl ValueType {
             ValueType::ImageType => vec![ValueType::ImageType, ValueType::Trigger],
             ValueType::NoiseWorleyDistanceFunction => vec![ValueType::NoiseWorleyDistanceFunction, ValueType::Trigger],
             ValueType::ColorSpace => vec![ValueType::ColorSpace, ValueType::Trigger],
+            ValueType::BlendMode => vec![ValueType::BlendMode, ValueType::Trigger],
         }
     }
 

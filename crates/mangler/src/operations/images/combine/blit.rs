@@ -33,21 +33,38 @@ impl OpImageCombineBlit {
         ]
     }
 
-    pub async fn run(inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
+        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let Value::DynamicImage{data:mut image_a, change_id:_} = inputs[0].value.clone() else { return Err(OperationError { message: "Error getting image.".to_string() }); };
-        let Value::DynamicImage{data:image_b, change_id:_} = inputs[1].value.clone() else { return Err(OperationError { message: "Error getting image.".to_string() }); };
+        // convert inputs
+        let background_converted = inputs[0].value.try_convert_to(ValueType::DynamicImage);
+        let foreground_converted = inputs[1].value.try_convert_to(ValueType::DynamicImage);
+        let position_x_converted = inputs[2].value.try_convert_to(ValueType::Integer);
+        let position_y_converted = inputs[3].value.try_convert_to(ValueType::Integer);
 
-        let Ok(Value::Integer(x)) = inputs[2].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        let Ok(Value::Integer(y)) = inputs[3].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+        // gather errors
+        if background_converted.is_err() { input_errors.push((0, background_converted.as_ref().err().unwrap().message.clone())); }
+        if foreground_converted.is_err() { input_errors.push((1, foreground_converted.as_ref().err().unwrap().message.clone())); }
+        if position_x_converted.is_err() { input_errors.push((2, position_x_converted.as_ref().err().unwrap().message.clone())); }
+        if position_y_converted.is_err() { input_errors.push((3, position_y_converted.as_ref().err().unwrap().message.clone())); }
 
-        image::imageops::overlay(&mut image_a, &image_b, x as i64, y as i64);
+        // return if error
+        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+
+        // get values
+        let Ok(Value::DynamicImage{data:mut background, change_id:_}) = background_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::DynamicImage{data:foreground, change_id:_}) = foreground_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::Integer(x)) = position_x_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::Integer(y)) = position_y_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+
+        // run node
+        image::imageops::overlay(&mut background, &foreground, x as i64, y as i64);
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse {value: Value::DynamicImage { data:image_a, change_id:get_id() }},
+                OutputResponse {value: Value::DynamicImage { data:background, change_id:get_id() }},
             ],
         })
     }

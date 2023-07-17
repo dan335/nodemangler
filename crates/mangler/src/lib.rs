@@ -59,6 +59,12 @@ pub enum NodeChangedMessage {
         input_index: usize,
         value: Value,
     },
+    InputErrorChanged {
+        node_id: String,
+        input_index: usize,
+        is_error: bool,
+        message: Option<String>,
+    },
     OutputChanged {
         node_id: String,
         output_index: usize,
@@ -84,6 +90,11 @@ pub enum NodeChangedMessage {
     Busy {
         node_id: String,
         is_busy: bool,
+    },
+    Error {
+        node_id: String,
+        is_error: bool,
+        message: Option<String>,
     },
     InfoChanged {
         node_id: String,

@@ -31,6 +31,16 @@ impl OpNumberRandomDecimal {
 
     pub async fn run(_inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
+        let mut input_errors: Vec<(usize, String)> = vec![];
+
+        // convert inputs
+        // gather errors
+
+        // return if error
+        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+
+        // get values
+        // run node
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

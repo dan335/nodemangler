@@ -84,6 +84,7 @@ impl ViewPanel {
                     mangler::value::Value::Trigger => TextViewer::show(ui, "trigger".to_string()),
                     mangler::value::Value::NoiseWorleyDistanceFunction(value) => TextViewer::show(ui, format!("{:?}", value)),
                     mangler::value::Value::ColorSpace(value) => TextViewer::show(ui, format!("{:?}", value)),
+                    mangler::value::Value::BlendMode(value) => TextViewer::show(ui, format!("{:?}", value)),
                 }
             }
 

@@ -1,9 +1,1 @@
-pub mod cmyk;
-pub mod hsl;
-pub mod hsv;
-pub mod lab;
-pub mod lch;
-pub mod rgb_linear;
-pub mod srgb;
-pub mod xyz;
-pub mod yuv;
+pub mod lerp;

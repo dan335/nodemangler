@@ -29,6 +29,7 @@ pub enum UiType {
     UiButton,
 }
 
+// TODO: somehow find errors in inputs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OperationResponse {
     pub responses: Vec<OutputResponse>,
@@ -42,8 +43,10 @@ pub struct OutputResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OperationError {
-    pub message: String,
+    pub input_errors: Vec<(usize, String)>, // index of input, error message
+    pub node_error: Option<String>,
 }
+
 
 #[derive(Clone)]
 pub enum OperationListItem {
@@ -58,7 +61,13 @@ pub enum OperationListItem {
 }
 
 pub fn default_image() -> DynamicImage {
-    DynamicImage::ImageRgba8(image::RgbaImage::new(1, 1))
+    let mut imgbuf = image::RgbaImage::new(1, 1);
+
+    for (_x, _y, pixel) in imgbuf.enumerate_pixels_mut() {
+        *pixel = image::Rgba([255, 255, 255, 255]);
+    }
+
+    DynamicImage::ImageRgba8(imgbuf)
 }
 
 #[macro_export]
@@ -88,7 +97,7 @@ macro_rules! operations {
                 }
             }
 
-            pub async fn run(&self, inputs: &Vec<Input>) -> Result<crate::operations::OperationResponse, crate::operations::OperationError> {
+            pub async fn run(&self, inputs: &mut Vec<Input>) -> Result<crate::operations::OperationResponse, crate::operations::OperationError> {
                 match self {
                     $(Operation::$variant => <$inner>::run(inputs).await,)*
                 }
@@ -102,31 +111,28 @@ operations! {
     OpNumberInputInteger(crate::operations::numbers::inputs::integer::OpNumberInputInteger),
     OpNumberInputDecimal(crate::operations::numbers::inputs::decimal::OpNumberInputDecimal),
 
-    OpNumberCastToInteger(crate::operations::numbers::cast::to_integer::OpNumberCastToInteger),
-    OpNumberCastToDecimal(crate::operations::numbers::cast::to_decimal::OpNumberCastToDecimal),
-
     OpNumberMathAdd(crate::operations::numbers::arithmetic::add::OpNumberMathAdd),
-    OpNumberMathSubtract(crate::operations::numbers::arithmetic::subtract::OpNumberMathSubtract),
-    OpNumberMathMultiply(crate::operations::numbers::arithmetic::multiply::OpNumberMathMultiply),
-    OpNumberMathDivide(crate::operations::numbers::arithmetic::divide::OpNumberMathDivide),
-    OpNumberMathDecrement(crate::operations::numbers::arithmetic::decrement::OpNumberMathDecrement),
-    OpNumberMathIncrement(crate::operations::numbers::arithmetic::increment::OpNumberMathIncrement),
-    OpNumberMathMax(crate::operations::numbers::arithmetic::max::OpNumberMathMax),
-    OpNumberMathMin(crate::operations::numbers::arithmetic::min::OpNumberMathMin),
-    OpNumberMathClamp(crate::operations::numbers::arithmetic::clamp::OpNumberMathClamp),
-    OpNumberMathModulus(crate::operations::numbers::arithmetic::modulus::OpNumberMathModulus),
-    OpNumberMathRound(crate::operations::numbers::arithmetic::round::OpNumberMathRound),
-    OpNumberMathSign(crate::operations::numbers::arithmetic::sign::OpNumberMathSign),
+    // OpNumberMathSubtract(crate::operations::numbers::arithmetic::subtract::OpNumberMathSubtract),
+    // OpNumberMathMultiply(crate::operations::numbers::arithmetic::multiply::OpNumberMathMultiply),
+    // OpNumberMathDivide(crate::operations::numbers::arithmetic::divide::OpNumberMathDivide),
+    // OpNumberMathDecrement(crate::operations::numbers::arithmetic::decrement::OpNumberMathDecrement),
+    // OpNumberMathIncrement(crate::operations::numbers::arithmetic::increment::OpNumberMathIncrement),
+    // OpNumberMathMax(crate::operations::numbers::arithmetic::max::OpNumberMathMax),
+    // OpNumberMathMin(crate::operations::numbers::arithmetic::min::OpNumberMathMin),
+    // OpNumberMathClamp(crate::operations::numbers::arithmetic::clamp::OpNumberMathClamp),
+    // OpNumberMathModulus(crate::operations::numbers::arithmetic::modulus::OpNumberMathModulus),
+    // OpNumberMathRound(crate::operations::numbers::arithmetic::round::OpNumberMathRound),
+    // OpNumberMathSign(crate::operations::numbers::arithmetic::sign::OpNumberMathSign),
 
     // random
     OpNumberRandomDecimal(crate::operations::numbers::random::random_decimal::OpNumberRandomDecimal),
     OpNumberRandomInteger(crate::operations::numbers::random::random_integer::OpNumberRandomInteger),
 
     // algebra
-    OpNumberMathAbs(crate::operations::numbers::algebra::abs::OpNumberMathAbs),
-    OpNumberMathSqrt(crate::operations::numbers::algebra::sqrt::OpNumberMathSqrt),
-    OpNumberMathCbrt(crate::operations::numbers::algebra::cbrt::OpNumberMathCbrt),
-    OpNumberMathNthRt(crate::operations::numbers::algebra::nth_root::OpNumberMathNthRt),
+    // OpNumberMathAbs(crate::operations::numbers::algebra::abs::OpNumberMathAbs),
+    // OpNumberMathSqrt(crate::operations::numbers::algebra::sqrt::OpNumberMathSqrt),
+    // OpNumberMathCbrt(crate::operations::numbers::algebra::cbrt::OpNumberMathCbrt),
+    // OpNumberMathNthRt(crate::operations::numbers::algebra::nth_root::OpNumberMathNthRt),
 
     // colors
     OpColorInputCmyk(crate::operations::colors::inputs::cmyk::OpColorInputCmyk),
@@ -149,15 +155,7 @@ operations! {
     OpColorOutputXyz(crate::operations::colors::outputs::to_xyz::OpColorOutputXyz),
     OpColorOutputYuv(crate::operations::colors::outputs::to_yuv::OpColorOutputYuv),
 
-    OpColorBlendCmyk(crate::operations::colors::blend::cmyk::OpColorBlendCmyk),
-    OpColorBlendHsl(crate::operations::colors::blend::hsl::OpColorBlendHsl),
-    OpColorBlendHsv(crate::operations::colors::blend::hsv::OpColorBlendHsv),
-    OpColorBlendLab(crate::operations::colors::blend::lab::OpColorBlendLab),
-    OpColorBlendLch(crate::operations::colors::blend::lch::OpColorBlendLch),
-    OpColorBlendSrgb(crate::operations::colors::blend::srgb::OpColorBlendSrgb),
-    OpColorBlendRgbLinear(crate::operations::colors::blend::rgb_linear::OpColorBlendRgbLinear),
-    OpColorBlendXyz(crate::operations::colors::blend::xyz::OpColorBlendXyz),
-    OpColorBlendYuv(crate::operations::colors::blend::yuv::OpColorBlendYuv),
+    OpColorBlendLerp(crate::operations::colors::blend::lerp::OpColorBlendLerp),
 
     OpColorSampleMostCommonColors(crate::operations::colors::sample_image::most_common_colors::OpColorSampleMostCommonColors),
 
@@ -172,6 +170,7 @@ operations! {
     OpImageOutputFile(crate::operations::images::outputs::file::OpImageOutputFile),
 
     OpImageCombineBlit(crate::operations::images::combine::blit::OpImageCombineBlit),
+    OpImageCombineBlend(crate::operations::images::combine::blend::OpImageCombineBlend),
 
     OpImageTransformCrop(crate::operations::images::transform::crop::OpImageTransformCrop),
     OpImageTransformResize(crate::operations::images::transform::resize::OpImageTransformResize),
@@ -217,23 +216,23 @@ pub fn operation_list() -> Vec<OperationListItem> {
             ]},
             OperationListItem::Category { name: "arithmetic".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpNumberMathAdd },
-                OperationListItem::Operation { operation: Operation::OpNumberMathSubtract },
-                OperationListItem::Operation { operation: Operation::OpNumberMathMultiply },
-                OperationListItem::Operation { operation: Operation::OpNumberMathDivide },
-                OperationListItem::Operation { operation: Operation::OpNumberMathDecrement },
-                OperationListItem::Operation { operation: Operation::OpNumberMathIncrement },
-                OperationListItem::Operation { operation: Operation::OpNumberMathMax },
-                OperationListItem::Operation { operation: Operation::OpNumberMathMin },
-                OperationListItem::Operation { operation: Operation::OpNumberMathClamp },
-                OperationListItem::Operation { operation: Operation::OpNumberMathModulus },
-                OperationListItem::Operation { operation: Operation::OpNumberMathRound },
-                OperationListItem::Operation { operation: Operation::OpNumberMathSign },
+                // OperationListItem::Operation { operation: Operation::OpNumberMathSubtract },
+                // OperationListItem::Operation { operation: Operation::OpNumberMathMultiply },
+                // OperationListItem::Operation { operation: Operation::OpNumberMathDivide },
+                // OperationListItem::Operation { operation: Operation::OpNumberMathDecrement },
+                // OperationListItem::Operation { operation: Operation::OpNumberMathIncrement },
+                // OperationListItem::Operation { operation: Operation::OpNumberMathMax },
+                // OperationListItem::Operation { operation: Operation::OpNumberMathMin },
+                // OperationListItem::Operation { operation: Operation::OpNumberMathClamp },
+                // OperationListItem::Operation { operation: Operation::OpNumberMathModulus },
+                // OperationListItem::Operation { operation: Operation::OpNumberMathRound },
+                // OperationListItem::Operation { operation: Operation::OpNumberMathSign },
             ]},
             OperationListItem::Category { name: "algebraic".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::OpNumberMathAbs },
-                OperationListItem::Operation { operation: Operation::OpNumberMathSqrt },
-                OperationListItem::Operation { operation: Operation::OpNumberMathCbrt },
-                OperationListItem::Operation { operation: Operation::OpNumberMathNthRt },
+                // OperationListItem::Operation { operation: Operation::OpNumberMathAbs },
+                // OperationListItem::Operation { operation: Operation::OpNumberMathSqrt },
+                // OperationListItem::Operation { operation: Operation::OpNumberMathCbrt },
+                // OperationListItem::Operation { operation: Operation::OpNumberMathNthRt },
             ]},
             OperationListItem::Category { name: "random".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpNumberRandomDecimal },
@@ -264,15 +263,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpColorOutputYuv },
             ]},
             OperationListItem::Category { name: "blend".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::OpColorBlendCmyk },
-                OperationListItem::Operation { operation: Operation::OpColorBlendHsl },
-                OperationListItem::Operation { operation: Operation::OpColorBlendHsv },
-                OperationListItem::Operation { operation: Operation::OpColorBlendLab },
-                OperationListItem::Operation { operation: Operation::OpColorBlendLch },
-                OperationListItem::Operation { operation: Operation::OpColorBlendRgbLinear },
-                OperationListItem::Operation { operation: Operation::OpColorBlendSrgb },
-                OperationListItem::Operation { operation: Operation::OpColorBlendXyz },
-                OperationListItem::Operation { operation: Operation::OpColorBlendYuv },
+                OperationListItem::Operation { operation: Operation::OpColorBlendLerp },
             ]},
             OperationListItem::Category { name: "sample image".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpColorSampleMostCommonColors },
@@ -292,6 +283,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
             ]},
             OperationListItem::Category { name: "combine".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageCombineBlit },
+                OperationListItem::Operation { operation: Operation::OpImageCombineBlend },
             ]},
             OperationListItem::Category { name: "transform".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageTransformCrop },

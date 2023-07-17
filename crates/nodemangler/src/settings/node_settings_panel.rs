@@ -4,7 +4,7 @@ use image::imageops::FilterType;
 use mangler::{
     input::{Input, InputSettings},
     value::{ColorFormat, Value},
-    ChangeNodeMessage, operations::images::noise::worley_distance::NoiseWorleyDistanceFunction, color::color_spaces::ColorSpace,
+    ChangeNodeMessage, operations::images::noise::worley_distance::NoiseWorleyDistanceFunction, color::{color_spaces::ColorSpace, blend::BlendMode},
 };
 use egui_extras::{TableBuilder, Column};
 use tokio::sync::mpsc::Sender;
@@ -621,6 +621,22 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                     for color_space in ColorSpace::types().iter() {
                         if ui.selectable_value(&mut x, color_space.clone(), format!("{:?}", color_space)).changed() {
                             let value = Value::ColorSpace(color_space.clone());
+                            change_value(tx_change_node.clone(), node_id.clone(), input_index, input, value.clone());
+                            input.value = value;
+                        }
+                    }
+                });
+        }
+        Value::BlendMode(a) => if input.connection.is_some() {
+            ui.label(format!("{:?}", a));
+        } else {
+            let mut x = a;
+            egui::ComboBox::from_label("blend mode")
+                .selected_text(format!("{:?}", x))
+                .show_ui(ui, |ui| {
+                    for blend_mode in BlendMode::types().iter() {
+                        if ui.selectable_value(&mut x, blend_mode.clone(), format!("{:?}", blend_mode)).changed() {
+                            let value = Value::BlendMode(blend_mode.clone());
                             change_value(tx_change_node.clone(), node_id.clone(), input_index, input, value.clone());
                             input.value = value;
                         }
