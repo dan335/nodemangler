@@ -6,7 +6,6 @@ use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,7 +23,6 @@ impl OpNumberMathAdd {
         vec![
             Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
             Input::new("b".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
-            Input::new("mask".to_string(), Value::Bool(true), None, None),
         ]
     }
 
@@ -36,7 +34,7 @@ impl OpNumberMathAdd {
 
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
+        let input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
         // gather errors
@@ -49,31 +47,19 @@ impl OpNumberMathAdd {
 
         let value = match &inputs[0].value {
             Value::Bool(a) => {
-                // mask
-                let mask_converted = inputs[2].value.try_convert_to(ValueType::Bool);
-                if mask_converted.is_err() {
-                    return Err(OperationError {
-                        input_errors: vec![
-                            (2, "Unable to convert 'mask' to Bool.".to_string())
-                        ],
-                        node_error: None
-                    });
-                }
-                let Ok(Value::Bool(mut mask)) = mask_converted else { return Err(OperationError { input_errors:vec![], node_error: Some(format!("Unexpected type for 'mask', expected Bool")) }); };
-                
                 match &inputs[1].value {
                     Value::Bool(b) => {
-                        Value::Bool(mask && (*a || *b))
+                        Value::Bool(*a || *b)
                     },
                     Value::Integer(b) => {
-                        if mask && *a {
+                        if *a {
                             Value::Integer(*b + 1)
                         } else {
                             Value::Integer(*b)
                         }
                     },
                     Value::Decimal(b) => {
-                        if mask && *a {
+                        if *a {
                             Value::Decimal(*b + 1.0)
                         } else {
                             Value::Decimal(*b)
@@ -199,9 +185,9 @@ impl OpNumberMathAdd {
 
                         Value::DynamicImage { data: image_a.clone(), change_id: get_id() }
                     },
-                    Value::Decimal(b) => todo!(),
-                    Value::DynamicImage { data: image_b, change_id } => todo!(),
-                    Value::Color(b) => todo!(),
+                    Value::Decimal(_b) => todo!(),
+                    Value::DynamicImage { data: _image_b, change_id: _change_id } => todo!(),
+                    Value::Color(_b) => todo!(),
                     _ => {return Err(OperationError {
                         input_errors: vec![
                             (1, "Unsupported type for 'b' in add operation.".to_string())
@@ -210,14 +196,14 @@ impl OpNumberMathAdd {
                     }); }
                 }
             },
-            Value::String(a) => {
+            Value::String(_a) => {
                 match &inputs[1].value {
-                    Value::Bool(b) => todo!(),
-                    Value::Integer(b) => todo!(),
-                    Value::Decimal(b) => todo!(),
-                    Value::String(b) => todo!(),
-                    Value::Color(b) => todo!(),
-                    Value::Path(b) => todo!(),
+                    Value::Bool(_b) => todo!(),
+                    Value::Integer(_b) => todo!(),
+                    Value::Decimal(_b) => todo!(),
+                    Value::String(_b) => todo!(),
+                    Value::Color(_b) => todo!(),
+                    Value::Path(_b) => todo!(),
                     _ => {return Err(OperationError {
                         input_errors: vec![
                             (1, "Unsupported type for 'b' in add operation.".to_string())
@@ -226,13 +212,13 @@ impl OpNumberMathAdd {
                     }); }
                 }
             },
-            Value::Path(a) => {
+            Value::Path(_a) => {
                 match &inputs[1].value {
-                    Value::Bool(b) => todo!(),
-                    Value::Integer(b) => todo!(),
-                    Value::Decimal(b) => todo!(),
-                    Value::String(b) => todo!(),
-                    Value::Path(b) => todo!(),
+                    Value::Bool(_b) => todo!(),
+                    Value::Integer(_b) => todo!(),
+                    Value::Decimal(_b) => todo!(),
+                    Value::String(_b) => todo!(),
+                    Value::Path(_b) => todo!(),
                     _ => {return Err(OperationError {
                         input_errors: vec![
                             (1, "Unsupported type for 'b' in add operation.".to_string())
@@ -277,11 +263,10 @@ mod tests {
         };
     }
 
-    fn make_inputs(a: Value, b: Value, mask: Value) -> Vec<Input> {
+    fn make_inputs(a: Value, b: Value) -> Vec<Input> {
         vec![
             Input::new("a".to_string(), a, None, None),
             Input::new("b".to_string(), b, None, None),
-            Input::new("mask".to_string(), mask, None, None),
         ]
     }
 
@@ -290,7 +275,6 @@ mod tests {
         let mut inputs = make_inputs(
             Value::Decimal(5.0),
             Value::Decimal(10.0),
-            Value::Bool(true),
         );
         let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
         assert_value!(result.responses[0].value, Decimal(15.0));
@@ -301,7 +285,6 @@ mod tests {
         let mut inputs = make_inputs(
             Value::Integer(5),
             Value::Integer(10),
-            Value::Bool(true),
         );
         let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
         assert_value!(result.responses[0].value, Integer(15));
@@ -312,7 +295,6 @@ mod tests {
         let mut inputs = make_inputs(
             Value::Integer(5),
             Value::Decimal(2.5),
-            Value::Bool(true),
         );
         let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
         assert_value!(result.responses[0].value, Decimal(7.5));
@@ -323,7 +305,6 @@ mod tests {
         let mut inputs = make_inputs(
             Value::Decimal(2.5),
             Value::Integer(5),
-            Value::Bool(true),
         );
         let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
         assert_value!(result.responses[0].value, Decimal(7.5));
@@ -334,7 +315,6 @@ mod tests {
         let mut inputs = make_inputs(
             Value::Bool(true),
             Value::Integer(5),
-            Value::Bool(true),
         );
         let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
         assert_value!(result.responses[0].value, Integer(6));
@@ -345,7 +325,6 @@ mod tests {
         let mut inputs = make_inputs(
             Value::Bool(false),
             Value::Integer(5),
-            Value::Bool(true),
         );
         let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
         assert_value!(result.responses[0].value, Integer(5));
@@ -356,7 +335,6 @@ mod tests {
         let mut inputs = make_inputs(
             Value::Bool(true),
             Value::Bool(false),
-            Value::Bool(true),
         );
         let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
         assert_value!(result.responses[0].value, Bool(true));
@@ -367,7 +345,6 @@ mod tests {
         let mut inputs = make_inputs(
             Value::Bool(true),
             Value::Decimal(5.5),
-            Value::Bool(true),
         );
         let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
         assert_value!(result.responses[0].value, Decimal(6.5));
@@ -377,7 +354,6 @@ mod tests {
     async fn test_add_integer_bool_true() {
         let mut inputs = make_inputs(
             Value::Integer(10),
-            Value::Bool(true),
             Value::Bool(true),
         );
         let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
@@ -389,7 +365,6 @@ mod tests {
         let mut inputs = make_inputs(
             Value::Decimal(10.0),
             Value::Bool(true),
-            Value::Bool(true),
         );
         let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
         assert_value!(result.responses[0].value, Decimal(11.0));
@@ -400,7 +375,6 @@ mod tests {
         let mut inputs = make_inputs(
             Value::Decimal(0.0),
             Value::Decimal(0.0),
-            Value::Bool(true),
         );
         let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
         assert_value!(result.responses[0].value, Decimal(0.0));
@@ -411,7 +385,6 @@ mod tests {
         let mut inputs = make_inputs(
             Value::Integer(-5),
             Value::Integer(-10),
-            Value::Bool(true),
         );
         let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
         assert_value!(result.responses[0].value, Integer(-15));
@@ -422,7 +395,6 @@ mod tests {
         let mut inputs = make_inputs(
             Value::Bool(true),
             Value::String("hello".to_string()),
-            Value::Bool(true),
         );
         let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
         assert_value!(result.responses[0].value, String("truehello"));
@@ -433,7 +405,6 @@ mod tests {
         let mut inputs = make_inputs(
             Value::Integer(42),
             Value::String("hello".to_string()),
-            Value::Bool(true),
         );
         let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
         assert_value!(result.responses[0].value, String("42hello"));
@@ -448,7 +419,7 @@ mod tests {
     #[tokio::test]
     async fn test_add_create_inputs_count() {
         let inputs = OpNumberMathAdd::create_inputs();
-        assert_eq!(inputs.len(), 3);
+        assert_eq!(inputs.len(), 2);
     }
 
     #[tokio::test]

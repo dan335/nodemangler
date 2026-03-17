@@ -550,7 +550,7 @@ impl ImageType {
 }
 
 #[derive(Debug, Clone)]
-pub struct UiButton(bool);
+pub struct UiButton(pub bool);
 
 fn serialize_filter_type<S>(value: &FilterType, serializer: S) -> Result<S::Ok, S::Error>
 where

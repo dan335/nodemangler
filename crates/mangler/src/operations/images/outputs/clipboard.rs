@@ -1,8 +1,7 @@
-use image::RgbaImage;
 use crate::get_id;
-use crate::input::{Input, InputSettings};
+use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};

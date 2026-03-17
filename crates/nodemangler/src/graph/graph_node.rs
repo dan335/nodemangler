@@ -202,7 +202,7 @@ impl GraphNode {
 
             if let Some(view_output_index) = input_output_response.view_output {
                 graph_node_response.view_node = Some(view_output_index);
-            } 
+            }
 
             // started dragging from connection
             // create temp connection object
@@ -319,6 +319,7 @@ pub struct GraphNodeResponse {
     pub temp_connection: Option<TempConnection>,
     pub has_stopped_creating_connection: bool,
     pub connection_to_position: Pos2,
+    #[allow(dead_code)]
     pub edit_node: bool,
     pub view_node: Option<usize>,   // usize = output index to view
     pub is_right_click: bool,
@@ -350,7 +351,9 @@ pub struct InputOutputResponse {
     pub connection_to_position: Pos2,
     pub is_cursor_over: bool,
     pub is_disabled: bool,
+    #[allow(dead_code)]
     pub is_error: bool,
+    #[allow(dead_code)]
     pub error_message: Option<String>,
     pub view_output: Option<usize>, // clicked on output to view it
 }

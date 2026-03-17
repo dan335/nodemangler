@@ -1,4 +1,10 @@
-// pub mod abs;
-// pub mod sqrt;
-// pub mod cbrt;
-// pub mod nth_root;
+pub mod abs;
+pub mod sqrt;
+pub mod cbrt;
+pub mod nth_root;
+pub mod pow;
+pub mod factorial;
+pub mod gcd;
+pub mod lcm;
+pub mod frac;
+pub mod trunc;

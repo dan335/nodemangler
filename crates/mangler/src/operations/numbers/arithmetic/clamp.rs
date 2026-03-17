@@ -33,7 +33,7 @@ impl OpNumberMathClamp {
 
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
+        let input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
         // gather errors
@@ -44,15 +44,15 @@ impl OpNumberMathClamp {
         // get values
         // run node
 
-        let Ok(Value::Decimal(min)) = inputs[1].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        let Ok(Value::Decimal(max)) = inputs[2].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+        let Ok(Value::Decimal(min)) = inputs[1].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { input_errors: vec![(1, "Unable to convert 'min' to Decimal.".to_string())], node_error: None })};
+        let Ok(Value::Decimal(max)) = inputs[2].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { input_errors: vec![(2, "Unable to convert 'max' to Decimal.".to_string())], node_error: None })};
 
         let value = match &inputs[0].value {
-            Value::Integer(a) => Value::Integer(*a.clamp(&(min as i32), &(max as i32))),
+            Value::Integer(a) => Value::Integer((*a as f32).clamp(min, max).round() as i32),
             Value::Decimal(a) => Value::Decimal(a.clone().clamp(min, max)),
 
             _ => {return Err(OperationError {
-                message: "Error converting. {:?}".to_string(),
+                input_errors: vec![], node_error: Some("Error converting.".to_string()),
             });}
         };
 

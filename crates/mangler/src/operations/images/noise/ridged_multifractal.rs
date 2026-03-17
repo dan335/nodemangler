@@ -1,5 +1,4 @@
-use image::{RgbaImage, ImageBuffer, DynamicImage};
-use crate::color::Color;
+use image::{ImageBuffer, DynamicImage};
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -9,7 +8,7 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
-use noise::{NoiseFn, Seedable, BasicMulti, MultiFractal, Perlin, HybridMulti, RidgedMulti};
+use noise::{NoiseFn, MultiFractal, Perlin, RidgedMulti};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageNoiseRidgedMultifractalNoise {}
@@ -104,29 +103,5 @@ impl OpImageNoiseRidgedMultifractalNoise {
                 OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
             ],
         })
-    }
-}
-
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum NoiseWorleyDistanceFunction {
-    Chebyshev,
-    Euclidean,
-    EuclideanSquared,
-    Manhattan,
-    Quadratic,
-}
-
-impl NoiseWorleyDistanceFunction {
-    pub fn types() -> [NoiseWorleyDistanceFunction; 5] {
-        let types: [NoiseWorleyDistanceFunction; 5] = [
-            NoiseWorleyDistanceFunction::Chebyshev,
-            NoiseWorleyDistanceFunction::Euclidean,
-            NoiseWorleyDistanceFunction::EuclideanSquared,
-            NoiseWorleyDistanceFunction::Manhattan,
-            NoiseWorleyDistanceFunction::Quadratic,
-        ];
-
-        types
     }
 }

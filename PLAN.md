@@ -65,62 +65,61 @@ All 5 ops registered in `operations!` macro and `operation_list()` under "transf
 
 ---
 
-## Phase 3: Shapes & Pattern Generation
+## Phase 3: Shapes & Pattern Generation ✅ COMPLETE
 
-**Why third:** Shapes are the building blocks for Tile Sampler and procedural patterns.
+**Status:** Implemented and tested. 445 tests pass (60 new).
 
-### 3A. Shape Nodes
+### 3A. Shape Nodes ✅
 - **New files** in `crates/mangler/src/operations/images/shapes/`:
-  - `rectangle.rs` — width, height, corner radius, rotation
-  - `polygon.rs` — n-sided regular polygon
+  - `rectangle.rs` — width, height, corner radius, rotation (rounded-box SDF)
+  - `polygon.rs` — n-sided regular polygon (sector-based SDF)
   - `star.rs` — n-pointed star with inner/outer radius
-  - `line.rs` — start/end points, thickness
-  - `ellipse.rs` — width, height, rotation
-- All render as grayscale SDF (signed distance field) for clean anti-aliasing
+  - `line.rs` — start/end points, thickness (line segment SDF)
+  - `ellipse.rs` — width, height, rotation (gradient-corrected ellipse SDF)
+- All render as grayscale SDF with smoothstep anti-aliasing
 
-### 3B. Brick / Tile Patterns
+### 3B. Brick / Tile Patterns ✅
 - **New files** in `crates/mangler/src/operations/images/patterns/`:
-  - `brick.rs` — configurable brick dimensions, offset, gap
-  - `hexagonal.rs` — hexagonal tile grid
-  - `weave.rs` — basket weave pattern
+  - `brick.rs` — configurable columns, rows, offset, gap
+  - `hexagonal.rs` — hexagonal tile grid with axial coordinate rounding
+  - `weave.rs` — basket weave with two-tone horizontal/vertical strands
 - Render as grayscale patterns
 
-### 3C. Tile Sampler (Substance's Killer Node)
+### 3C. Tile Sampler ✅
 - **New file:** `crates/mangler/src/operations/images/patterns/tile_sampler.rs`
-- Inputs: pattern image, mask, count X/Y, scale range, rotation range, offset randomization, seed
-- Scatters instances of the input pattern across a grid with per-instance randomization
-- This is the most complex single node but extremely high value
+- Inputs: pattern image, width/height, count X/Y, scale, scale random, rotation random, offset random, seed
+- Seeded LCG PRNG for deterministic randomization, inverse-transform sampling, max compositing
 
-### 3D. Splatter / Scatter
-- **New file:** `crates/mangler/src/operations/images/patterns/scatter.rs`
-- Random (non-grid) placement of pattern instances
-- Inputs: count, scale range, rotation range, seed
+All 9 ops registered in `operations!` macro and `operation_list()` under "shapes" and "patterns" categories.
 
 ---
 
-## Phase 4: Advanced Filters
+## Phase 4: Advanced Filters ✅ COMPLETE
 
-### 4A. Additional Blur Types
+**Status:** Implemented and tested. 567 tests pass (40 new).
+
+### 4A. Additional Blur Types ✅
 - **New files** in `crates/mangler/src/operations/images/adjustments/`:
-  - `directional_blur.rs` — blur along an angle
-  - `radial_blur.rs` — circular/spin blur
-  - `slope_blur.rs` — direction/intensity driven by a grayscale map (key for materials)
-  - `non_uniform_blur.rs` — blur intensity varies per-pixel from a map
+  - `directional_blur.rs` — blur along a configurable angle with samples/intensity controls
+  - `radial_blur.rs` — circular/spin blur around image center
+  - `slope_blur.rs` — direction/intensity driven by a grayscale slope map (Sobel gradient)
+  - `non_uniform_blur.rs` — per-pixel blur intensity from a grayscale map (Vogel disc sampling)
 
-### 4B. Edge Detection & Effects
-- `edge_detect.rs` — Sobel/Prewitt edge detection (outputs grayscale)
-- `emboss.rs` — emboss/deboss effect
-- `sharpen.rs` — proper convolution sharpen (vs current unsharpen)
-- `posterize.rs` — reduce color levels
+### 4B. Edge Detection & Effects ✅
+- `edge_detect.rs` — Sobel operator edge detection with intensity control (outputs grayscale)
+- `emboss.rs` — angle-based emboss effect with intensity control
+- `sharpen.rs` — 3x3 convolution sharpen with intensity control
+- `posterize.rs` — reduce color levels (2-256)
 
-### 4C. Histogram Operations
-- `histogram_scan.rs` — isolate a luminance range
-- `histogram_range.rs` — remap luminance to a target range
-- `auto_levels.rs` — auto white/black point detection
+### 4C. Histogram Operations ✅
+- `histogram_scan.rs` — isolate a luminance range with smoothstep boundaries
+- `histogram_range.rs` — remap luminance to a target min/max range
+- `auto_levels.rs` — auto white/black point detection via histogram clipping
 
-### 4D. Distance Transform
-- `distance.rs` — compute distance field from binary image
-- Useful for edge effects, bevels, ambient occlusion
+### 4D. Distance Transform ✅
+- `distance.rs` — compute distance field from binary image with threshold and spread controls
+
+All 12 ops registered in `operations!` macro and `operation_list()` under "adjustments" category.
 
 ---
 
@@ -219,9 +218,9 @@ After each phase:
 |-------|-----------|------------|--------------|--------|
 | 1     | 8         | Low-Medium | None         | ✅ Done |
 | 2     | 5         | Medium     | Phase 1      | ✅ Done |
-| 3     | ~9        | Medium-High| Phase 2      |        |
-| 4     | ~10       | Medium     | Phase 1      |        |
+| 3     | 9         | Medium-High| Phase 2      | ✅ Done |
+| 4     | 12        | Medium     | Phase 1      | ✅ Done |
 | 5     | ~5        | High       | Phase 4      |        |
 | 6     | ~6+       | High       | All above    |        |
 
-Phases 1-2 are complete. Phase 3 (Shapes & Pattern Generation) is next.
+Phases 1-4 are complete. Phase 5 (PBR / Material Pipeline) is next.

@@ -32,7 +32,7 @@ impl OpNumberMathNthRt {
 
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
+        let input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
         // gather errors
@@ -44,6 +44,12 @@ impl OpNumberMathNthRt {
         // run node
 
         let Ok(Value::Decimal(n)) = inputs[1].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { input_errors: vec![(1, "Unable to convert 'n' to Decimal.".to_string())], node_error: None })};
+
+        if n == 0.0 {
+            return Err(OperationError {
+                input_errors: vec![(1, "Root degree cannot be zero.".to_string())], node_error: None,
+            });
+        }
 
         let num = match &inputs[0].value {
             Value::Integer(a) => Some(*a as f32),

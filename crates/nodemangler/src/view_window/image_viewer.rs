@@ -1,5 +1,5 @@
-use eframe::egui::{self, RichText};
-use epaint::{Vec2, TextureHandle, Pos2, CornerRadius, Rect, Stroke, Color32};
+use eframe::egui::{self};
+use epaint::{TextureHandle, Pos2, CornerRadius, Rect, Stroke, Color32};
 use image::DynamicImage;
 
 use crate::{view_to_graph_space, graph_to_view_space, themes::theme::Theme, view_to_graph_space_pos2, graph_to_view_space_pos2};
@@ -30,7 +30,7 @@ impl ImageViewer {
         }
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, node_id: String, output_index: usize, change_id: String, dynamic_image: &DynamicImage, cursor_position: Pos2, theme: &Theme) {;
+    pub fn show(&mut self, ui: &mut egui::Ui, node_id: String, output_index: usize, change_id: String, dynamic_image: &DynamicImage, cursor_position: Pos2, theme: &Theme) {
         
         let view_rect = Rect::from_min_size(
             ui.cursor().left_top(),

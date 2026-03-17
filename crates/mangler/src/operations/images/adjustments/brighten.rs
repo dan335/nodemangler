@@ -1,6 +1,5 @@
 use crate::get_id;
 use crate::value::ValueType;
-use image::RgbaImage;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};

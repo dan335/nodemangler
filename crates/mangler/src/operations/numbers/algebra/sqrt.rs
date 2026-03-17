@@ -31,7 +31,7 @@ impl OpNumberMathSqrt {
 
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
+        let input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
         // gather errors
@@ -44,11 +44,21 @@ impl OpNumberMathSqrt {
 
         let value = match &inputs[0].value {
 
+            Value::Integer(a) if *a < 0 => {
+                return Err(OperationError {
+                    input_errors: vec![(0, "Cannot take square root of a negative number.".to_string())], node_error: None,
+                });
+            },
+            Value::Decimal(a) if *a < 0.0 => {
+                return Err(OperationError {
+                    input_errors: vec![(0, "Cannot take square root of a negative number.".to_string())], node_error: None,
+                });
+            },
             Value::Integer(a) => Value::Decimal((*a as f32).sqrt()),
             Value::Decimal(a) => Value::Decimal(a.sqrt()),
 
             _ => {return Err(OperationError {
-                message: "Error converting. {:?}".to_string(),
+                input_errors: vec![], node_error: Some("Error converting.".to_string()),
             });}
         };
 

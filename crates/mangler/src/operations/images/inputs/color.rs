@@ -1,4 +1,4 @@
-use image::{RgbaImage, ImageBuffer, DynamicImage};
+use image::{ImageBuffer, DynamicImage};
 use crate::color::Color;
 use crate::get_id;
 use crate::input::{Input, InputSettings};

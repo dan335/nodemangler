@@ -53,9 +53,9 @@ impl OpImageNoiseCheckerboard {
         // get values
         // run node
 
-        let Ok(Value::Integer(mut width)) = inputs[0].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        let Ok(Value::Integer(mut height)) = inputs[1].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        let Ok(Value::Integer(mut size)) = inputs[2].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+        let Ok(Value::Integer(mut width)) = inputs[0].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { input_errors: vec![(0, "Unable to convert to integer.".to_string())], node_error: None })};
+        let Ok(Value::Integer(mut height)) = inputs[1].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { input_errors: vec![(1, "Unable to convert to integer.".to_string())], node_error: None })};
+        let Ok(Value::Integer(mut size)) = inputs[2].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { input_errors: vec![(2, "Unable to convert to integer.".to_string())], node_error: None })};
         
         width = width.max(1);
         height = height.max(1);

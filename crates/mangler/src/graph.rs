@@ -81,7 +81,7 @@ impl Graph {
                                     println!("Error sending added_node_message: {:?}", err);
                                 }
                             }
-                        } 
+                        }
                     }
 
                     Ok(graph)
@@ -136,7 +136,7 @@ impl Graph {
                 outputs: node.outputs.clone(),
                 is_subgraph,
             };
-    
+
             match tx.try_send(message) {
                 Ok(_) => {}
                 Err(err) => {
@@ -147,6 +147,7 @@ impl Graph {
 
         self.is_dirty = true;
         self.nodes.insert(node_id.clone(), node);
+
 
         node_id
     }
@@ -208,7 +209,7 @@ impl Graph {
             && self.nodes.get_mut(&output_node_id).is_some()
         {
             let mut is_valid = false;
-            
+
             // check if valid connection
             if let Some(from_output) = self.nodes.get(&output_node_id) {
                 if let Some(to_input) = self.nodes.get(&input_node_id) {
@@ -228,7 +229,7 @@ impl Graph {
                         input_node_id.clone(),
                         input_connection_index,
                     );
-    
+
                     from_output.is_dirty = true;
                 }
 
@@ -253,7 +254,7 @@ impl Graph {
                         output_node_id,
                         output_connection_index,
                     };
-    
+
                     match tx.try_send(message) {
                         Ok(_) => {}
                         Err(err) => {
@@ -292,7 +293,7 @@ impl Graph {
                 node_id,
                 input_index,
             };
-    
+
             match tx.try_send(message)
             {
                 Ok(_) => {}
@@ -326,7 +327,7 @@ impl Graph {
                                     subgraph_node.set_input_value(i, value.clone());
                                 }
                             }
-                            
+
                         }
                     }
                 }
@@ -337,7 +338,7 @@ impl Graph {
                 // if value is subgraph location
                 // load subgraph
                 if let Value::Path(path) = value {
-                    
+
                     // create graph from path
                     let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
                     match Graph::load(path.clone(), Some(tx_node_changed), None, true) {
@@ -391,7 +392,7 @@ impl Graph {
                                     inputs: node.inputs.clone(),
                                     outputs: node.outputs.clone(),
                                 };
-    
+
                                 match tx.try_send(message) {
                                     Ok(_) => {}
                                     Err(err) => {
@@ -403,11 +404,11 @@ impl Graph {
                         Err(error) => {
                             println!("Error loading subgraph. {:#?}", error);
                         },
-                        
+
                     }
                 }
 
-                
+
             }
         }
     }
@@ -568,7 +569,7 @@ impl Graph {
         if self.is_subgraph {
             return;
         }
-        
+
         if let Some(save_path) = &self.save_path {
             let data = GraphSaveData {
                 nodes: self.nodes.clone(),
@@ -589,6 +590,7 @@ impl Graph {
 
     /// Topological sort that returns levels for parallel execution.
     /// Each level contains nodes that are independent and can run concurrently.
+    #[allow(dead_code)]
     fn topological_sort_levels(
         &self,
         nodes: &HashMap<String, Node>,

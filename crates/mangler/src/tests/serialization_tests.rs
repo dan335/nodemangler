@@ -50,7 +50,7 @@ mod serialization_tests {
         assert_eq!(loaded.nodes.len(), 1);
         let loaded_node = loaded.nodes.get(&node_id).unwrap();
         assert_eq!(loaded_node.settings.name, "add");
-        assert_eq!(loaded_node.inputs.len(), 3);
+        assert_eq!(loaded_node.inputs.len(), 2);
         assert_eq!(loaded_node.outputs.len(), 1);
         assert_eq!(loaded_node.position, glam::Vec2::new(100.0, 200.0));
     }

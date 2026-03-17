@@ -31,7 +31,7 @@ impl OpNumberMathRound {
 
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
+        let input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
         // gather errors
@@ -44,10 +44,11 @@ impl OpNumberMathRound {
 
         let value = match &inputs[0].value {
 
-            Value::Decimal(a)=> Value::Decimal(a.clone().round()),
+            Value::Integer(a) => Value::Integer(*a),
+            Value::Decimal(a)=> Value::Decimal(a.round()),
 
             _ => {return Err(OperationError {
-                message: "Error converting. {:?}".to_string(),
+                input_errors: vec![], node_error: Some("Error converting.".to_string()),
             });}
         };
 

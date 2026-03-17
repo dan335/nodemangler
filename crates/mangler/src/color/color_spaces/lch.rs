@@ -87,7 +87,7 @@ impl Color {
         } else {
             (CIE_KAPPA * yr + 16.0) / 116.0
         };
-        let fz = if yr > CIE_EPSILON {
+        let fz = if zr > CIE_EPSILON {
             zr.cbrt()
         } else {
             (CIE_KAPPA * zr + 16.0) / 116.0
@@ -100,7 +100,7 @@ impl Color {
         // http://www.brucelindbloom.com/index.html?Eqn_Lab_to_LCH.html
         let c = (a.powf(2.0) + b.powf(2.0)).sqrt();
         let h = {
-            let h = b.to_radians().atan2(a.to_radians()).to_degrees();
+            let h = b.atan2(a).to_degrees();
 
             if h < 0.0 {
                 h + 360.0

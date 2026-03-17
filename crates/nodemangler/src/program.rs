@@ -1,8 +1,11 @@
 use eframe::egui;
-use epaint::{ColorImage, CornerRadius, Pos2, Rect, Color32};
+use epaint::{Color32, ColorImage, CornerRadius, Pos2, Rect};
 use mangler::{
-    get_id, node_type::NodeType, AddNodeType, ChangeGraphMessage, ChangeNodeMessage,
-    GraphChangedMessage, NewGraphError, NodeChangedMessage, value::{Value, ValueType},
+    get_id,
+    node_type::NodeType,
+    value::{Value, ValueType},
+    AddNodeType, ChangeGraphMessage, ChangeNodeMessage, GraphChangedMessage, NewGraphError,
+    NodeChangedMessage,
 };
 use std::path::PathBuf;
 use std::time::Duration;
@@ -14,14 +17,16 @@ use crate::{
         graph_node::GraphNode,
         graph_node_thumbnail::GraphNodeThumbnail,
     },
+    graph_to_view_space,
     node_menu::{menu_item::MenuItemsResult, menu_panel::MenuPanel},
     settings::{graph_settings_panel, node_settings_panel},
+    themes::theme::Theme,
+    view_to_graph_space_pos2,
     view_window::view_panel::ViewPanel,
-    view_to_graph_space_pos2, APP_MENU_HEIGHT, NODE_MENU_WIDTH, ManglerError, themes::theme::Theme, NODE_SIZE, graph_to_view_space, SETTINGS_PANEL_WIDTH,
+    ManglerError, APP_MENU_HEIGHT, NODE_MENU_WIDTH, NODE_SIZE, SETTINGS_PANEL_WIDTH,
 };
 
 pub struct Program {
-
     pub app: mangler::app::App,
     tx_change_graph: mpsc::Sender<ChangeGraphMessage>,
     tx_change_node: mpsc::Sender<ChangeNodeMessage>,
@@ -31,7 +36,7 @@ pub struct Program {
     view_panel: ViewPanel,
     menu_panel: MenuPanel,
     editing_node_id: Option<String>,
-    viewing_node_id_index: Option<(String, usize)>,   // id and output index
+    viewing_node_id_index: Option<(String, usize)>, // id and output index
     dragging_menu_button: MenuItemsResult,
     pointer_position: Pos2,
     graph_run_time: Duration,
@@ -39,32 +44,40 @@ pub struct Program {
 
 impl Program {
     pub fn new(id: Option<String>, save_file: Option<PathBuf>) -> Result<Self, NewGraphError> {
-        let (tx_change_graph,rx_change_graph) = mpsc::channel::<ChangeGraphMessage>(256);
+        let (tx_change_graph, rx_change_graph) = mpsc::channel::<ChangeGraphMessage>(256);
         let (tx_change_node, rx_change_node) = mpsc::channel::<ChangeNodeMessage>(1024);
         let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(256);
         let (tx_graph_changed, rx_graph_changed) = mpsc::channel::<GraphChangedMessage>(256);
 
-        let app_result = mangler::app::App::new(id, save_file, rx_change_graph, rx_change_node, tx_node_changed, tx_graph_changed);
+        let app_result = mangler::app::App::new(
+            id,
+            save_file,
+            rx_change_graph,
+            rx_change_node,
+            tx_node_changed,
+            tx_graph_changed,
+        );
 
         match app_result {
-            Ok(app) => {
-                Ok(Program {
-                    tx_change_graph,
-                    app,
-                    graph_editor: GraphEditor::new(),
-                    view_panel: ViewPanel::new(),
-                    menu_panel: MenuPanel::new(),
-                    dragging_menu_button: MenuItemsResult::default(),
-                    editing_node_id: None,
-                    viewing_node_id_index: None,
-                    rx_node_changed,
-                    tx_change_node,
-                    rx_graph_changed,
-                    pointer_position: Pos2::ZERO,
-                    graph_run_time: Duration::ZERO,
-                })
-            },
-            Err(error) => Err(NewGraphError(format!("Error creating program. {:?}", error))),
+            Ok(app) => Ok(Program {
+                tx_change_graph,
+                app,
+                graph_editor: GraphEditor::new(),
+                view_panel: ViewPanel::new(),
+                menu_panel: MenuPanel::new(),
+                dragging_menu_button: MenuItemsResult::default(),
+                editing_node_id: None,
+                viewing_node_id_index: None,
+                rx_node_changed,
+                tx_change_node,
+                rx_graph_changed,
+                pointer_position: Pos2::ZERO,
+                graph_run_time: Duration::ZERO,
+            }),
+            Err(error) => Err(NewGraphError(format!(
+                "Error creating program. {:?}",
+                error
+            ))),
         }
     }
 
@@ -99,6 +112,7 @@ impl Program {
                         Pos2::new(position.x, position.y),
                         is_subgraph,
                     );
+
                     //self.needs_to_save = true;
                 }
                 GraphChangedMessage::LoadedNode { node } => {
@@ -244,10 +258,11 @@ impl Program {
                                                         thumbnail.height() as usize,
                                                     ];
 
-                                                    let color_image = ColorImage::from_rgba_unmultiplied(
-                                                        size,
-                                                        pixels.as_slice(),
-                                                    );
+                                                    let color_image =
+                                                        ColorImage::from_rgba_unmultiplied(
+                                                            size,
+                                                            pixels.as_slice(),
+                                                        );
 
                                                     Some(GraphNodeThumbnail::Color {
                                                         texture_handle: ui.ctx().load_texture(
@@ -256,8 +271,8 @@ impl Program {
                                                             Default::default(),
                                                         ),
                                                     })
-                                                },
-                                                Value::DynamicImage { data, change_id } => {
+                                                }
+                                                Value::DynamicImage { data, change_id: _ } => {
                                                     let pixels = thumbnail.as_flat_samples();
 
                                                     let size = [
@@ -265,20 +280,23 @@ impl Program {
                                                         thumbnail.height() as usize,
                                                     ];
 
-                                                    let color_image = ColorImage::from_rgba_unmultiplied(
-                                                        size,
-                                                        pixels.as_slice(),
-                                                    );
+                                                    let color_image =
+                                                        ColorImage::from_rgba_unmultiplied(
+                                                            size,
+                                                            pixels.as_slice(),
+                                                        );
 
                                                     // color format
-                                                    let bits = data.color().bits_per_pixel() / data.color().channel_count() as u16;
-                                                    let channels = match data.color().channel_count() {
-                                                        1 => "r".to_string(),
-                                                        2 => "rg".to_string(),
-                                                        3 => "rgb".to_string(),
-                                                        4 => "rgba".to_string(),
-                                                        _ => "".to_string(),
-                                                    };
+                                                    let bits = data.color().bits_per_pixel()
+                                                        / data.color().channel_count() as u16;
+                                                    let channels =
+                                                        match data.color().channel_count() {
+                                                            1 => "r".to_string(),
+                                                            2 => "rg".to_string(),
+                                                            3 => "rgb".to_string(),
+                                                            4 => "rgba".to_string(),
+                                                            _ => "".to_string(),
+                                                        };
 
                                                     Some(GraphNodeThumbnail::Image {
                                                         texture_handle: ui.ctx().load_texture(
@@ -291,8 +309,8 @@ impl Program {
                                                         channels,
                                                         bits,
                                                     })
-                                                },
-                                                _ => None
+                                                }
+                                                _ => None,
                                             }
                                         }
                                         mangler::thumbnail::Thumbnail::Text(v) => {
@@ -316,7 +334,7 @@ impl Program {
                             input.is_exposed = set_to;
                         }
                     }
-                },
+                }
                 NodeChangedMessage::ExposeOutputChanged {
                     node_id,
                     output_index,
@@ -327,7 +345,7 @@ impl Program {
                             output.is_exposed = set_to;
                         }
                     }
-                },
+                }
                 NodeChangedMessage::SubgraphLoaded {
                     node_id,
                     settings,
@@ -339,7 +357,7 @@ impl Program {
                         node.inputs = inputs;
                         node.outputs = outputs;
                     }
-                },
+                }
                 NodeChangedMessage::Busy { node_id, is_busy } => {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
                         node.is_busy = is_busy;
@@ -349,22 +367,24 @@ impl Program {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
                         node.time = Some(time);
                     }
-                },
+                }
                 NodeChangedMessage::GraphRunCompleted { total_time } => {
                     self.graph_run_time = total_time;
-                },
-                NodeChangedMessage::Error { node_id, is_error, message } => {
+                }
+                NodeChangedMessage::Error {
+                    node_id,
+                    is_error,
+                    message,
+                } => {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
                         node.is_error = is_error;
                         node.error_message = message;
                     }
-                },
+                }
             }
         }
 
-
-
-        let app_rect = ctx.screen_rect();
+        let app_rect = ctx.content_rect();
 
         if let Some(pos) = ctx.pointer_latest_pos() {
             self.pointer_position = pos;
@@ -388,7 +408,7 @@ impl Program {
                                                 let y = app_rect.center().y + fastrand::f32() * random_size - random_size * 0.5;
                                                 let pos = view_to_graph_space_pos2(self.graph_editor.zoom, Pos2::new(x, y)) - self.graph_editor.position.to_vec2();
                                                 if let Ok(node_id) = self.add_node(AddNodeType::Operation(mangler::operations::Operation::OpImageInputFile), pos) {
-                                                    
+
                                                     let message = ChangeNodeMessage::SetInput { node_id, input_index: 0, value: Value::Path(path.clone()) };
 
                                                     match self.tx_change_node.try_send(message) {
@@ -411,11 +431,9 @@ impl Program {
         });
 
         let cursor_primary_down: bool = ui.ctx().input(|i| i.pointer.primary_down());
-        
+
         let cursor_inside = app_rect.contains(self.pointer_position);
 
-
-        
         let menu_panel_rect = Rect::from_two_pos(
             Pos2::new(0.0, APP_MENU_HEIGHT),
             Pos2::new(NODE_MENU_WIDTH, app_rect.height()),
@@ -431,12 +449,10 @@ impl Program {
             Pos2::new(app_rect.width(), app_rect.height()),
         );
 
-        
-
         // -------------------------
         // menu panel
-        
-        ui.allocate_ui_at_rect(menu_panel_rect, |ui| {
+
+        ui.scope_builder(egui::UiBuilder::new().max_rect(menu_panel_rect), |ui| {
             puffin::profile_scope!("menu panel");
             let r = self.menu_panel.show(ui, theme);
 
@@ -449,13 +465,10 @@ impl Program {
             }
         });
 
-
-
         // -------------------------
         // settings panel - top right
-        
 
-        ui.allocate_ui_at_rect(settings_panel_rect, |ui| {
+        ui.scope_builder(egui::UiBuilder::new().max_rect(settings_panel_rect), |ui| {
             puffin::profile_scope!("settings panel");
 
             let left_top = ui.max_rect().left_top();
@@ -468,13 +481,14 @@ impl Program {
                 egui::Pos2::new(right_bottom.x - padding, right_bottom.y - padding),
             );
 
-            ui.allocate_ui_at_rect(ui_rect, |ui| {
+            ui.scope_builder(egui::UiBuilder::new().max_rect(ui_rect), |ui| {
                 let mut show_graph_settings = true;
 
                 // show node settings
                 if let Some(editing_node_id) = &self.editing_node_id {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(editing_node_id) {
-                        let node_settings_response = node_settings_panel::show(ui, node, &self.tx_change_node, theme);
+                        let node_settings_response =
+                            node_settings_panel::show(ui, node, &self.tx_change_node, theme);
                         show_graph_settings = false;
 
                         if node_settings_response.deselect_node {
@@ -522,7 +536,14 @@ impl Program {
 
         if let Some((viewing_node_id, graph_node_output_index)) = &self.viewing_node_id_index {
             if let Some(graph_node) = self.graph_editor.graph_nodes.get(viewing_node_id) {
-                let view_panel_response = self.view_panel.show(ctx, graph_node, *graph_node_output_index, theme, view_in_separate_window, self.pointer_position);
+                let view_panel_response = self.view_panel.show(
+                    ctx,
+                    graph_node,
+                    *graph_node_output_index,
+                    theme,
+                    view_in_separate_window,
+                    self.pointer_position,
+                );
 
                 if !view_in_separate_window && view_panel_response.is_mouse_over {
                     is_mouse_over_viewer = true;
@@ -534,12 +555,9 @@ impl Program {
             }
         }
 
-
-
         // -------------------------
 
-
-        ui.allocate_ui_at_rect(node_graph_rect, |ui| {
+        ui.scope_builder(egui::UiBuilder::new().max_rect(node_graph_rect), |ui| {
             puffin::profile_scope!("graph panel");
             let graph_editor_response: GraphEditorResponse = self.graph_editor.show(
                 ui,
@@ -573,7 +591,9 @@ impl Program {
                 self.edit_node(editing_node_id);
             }
 
-            if let Some((viewing_node_id, viewing_output_index)) = graph_editor_response.viewing_node_id_index {
+            if let Some((viewing_node_id, viewing_output_index)) =
+                graph_editor_response.viewing_node_id_index
+            {
                 self.view_node(viewing_node_id, viewing_output_index);
             }
 
@@ -617,19 +637,23 @@ impl Program {
                 if let Some(operation) = &self.dragging_menu_button.operation_being_created {
                     if node_graph_rect.contains(self.pointer_position) {
                         //let node_position_view_space = Pos2::new(cursor_position.x - bottom_panel_rect.min.x, cursor_position.y - bottom_panel_rect.min.y);
-                        let _ = self.add_node(
+                        if let Ok(node_id) = self.add_node(
                             AddNodeType::Operation(operation.clone()),
                             view_to_graph_space_pos2(self.graph_editor.zoom, self.pointer_position)
                                 - self.graph_editor.position.to_vec2(),
-                        );
+                        ) {
+                            self.edit_node(node_id);
+                        }
                     }
                 } else if self.dragging_menu_button.subgraph_being_created {
                     if node_graph_rect.contains(self.pointer_position) {
-                        let _ = self.add_node(
+                        if let Ok(node_id) = self.add_node(
                             AddNodeType::Subgraph,
                             view_to_graph_space_pos2(self.graph_editor.zoom, self.pointer_position)
                                 - self.graph_editor.position.to_vec2(),
-                        );
+                        ) {
+                            self.edit_node(node_id);
+                        }
                     }
                 }
 
@@ -684,7 +708,10 @@ impl Program {
         }
 
         // show help in bottom left
-        let pos = Pos2::new(app_rect.left() + NODE_MENU_WIDTH + 20.0, app_rect.bottom() - 10.0);
+        let pos = Pos2::new(
+            app_rect.left() + NODE_MENU_WIDTH + 20.0,
+            app_rect.bottom() - 10.0,
+        );
         let txt =
             "left click: edit      right click: view      ctrl + left click: delete".to_string();
         ui.painter().text(
@@ -695,10 +722,6 @@ impl Program {
             egui::Color32::from(theme.get().text_faint),
         );
 
-        
-
-        
-
         // // if a node is busy request redraw
         // for (_, node) in self.graph_editor.graph_nodes.iter() {
         //     if node.is_busy {
@@ -706,10 +729,13 @@ impl Program {
         //         break;
         //     }
         // }
-        
     }
 
-    pub fn add_node(&mut self, node_type: AddNodeType, position_graph_space: Pos2) -> Result<String, ManglerError> {
+    pub fn add_node(
+        &mut self,
+        node_type: AddNodeType,
+        position_graph_space: Pos2,
+    ) -> Result<String, ManglerError> {
         let node_id = get_id();
 
         let add_node_message = ChangeGraphMessage::AddNode {
@@ -719,10 +745,8 @@ impl Program {
         };
 
         match self.tx_change_graph.try_send(add_node_message) {
-            Ok(_) => {Ok(node_id)}
-            Err(err) => {
-                Err(ManglerError(format!("{:?}", err)))
-            }
+            Ok(_) => Ok(node_id),
+            Err(err) => Err(ManglerError(format!("{:?}", err))),
         }
     }
 
@@ -786,7 +810,6 @@ impl Program {
         }
     }
 }
-
 
 #[derive(Debug)]
 pub struct NewConnection {

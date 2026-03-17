@@ -31,7 +31,7 @@ impl OpNumberMathCbrt {
 
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
+        let input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
         // gather errors
@@ -48,7 +48,7 @@ impl OpNumberMathCbrt {
             Value::Decimal(a) => Value::Decimal(a.cbrt()),
 
             _ => {return Err(OperationError {
-                message: "Error converting. {:?}".to_string(),
+                input_errors: vec![], node_error: Some("Error converting.".to_string()),
             });}
         };
 

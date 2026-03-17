@@ -29,7 +29,7 @@ impl AppMenu {
         // show that we know which to highlight
 
         // draw background
-        let app_menu_rect = Rect::from_two_pos(Pos2::ZERO, Pos2::new(ctx.screen_rect().max.x, APP_MENU_HEIGHT));
+        let app_menu_rect = Rect::from_two_pos(Pos2::ZERO, Pos2::new(ctx.content_rect().max.x, APP_MENU_HEIGHT));
         ui.painter().add(egui::Shape::rect_filled(
             app_menu_rect,
             CornerRadius::ZERO,
@@ -54,7 +54,7 @@ impl AppMenu {
     
         //ui.spacing_mut().item_spacing = egui::vec2(0.0, ui.spacing_mut().item_spacing.y);
     
-        ui.allocate_ui_at_rect(app_menu_rect, |ui| {
+        ui.scope_builder(egui::UiBuilder::new().max_rect(app_menu_rect), |ui| {
             ui.allocate_ui_with_layout(
                 app_menu_rect.size(),
                 Layout::left_to_right(egui::Align::TOP),
@@ -62,7 +62,7 @@ impl AppMenu {
                     ui.horizontal(|ui| {
                         ui.add_space(15.0);
     
-                        egui::Frame::none().inner_margin(8.0).show(ui, |ui| {
+                        egui::Frame::NONE.inner_margin(8.0).show(ui, |ui| {
                             ui.horizontal(|ui| {
                                 if ui.button("new").clicked() {
                                     if let Ok(new_program) = Program::new(None, None) {
@@ -124,7 +124,7 @@ impl AppMenu {
     
                         // show programs
                         for (program_id, program_name) in program_list.iter() {
-                            let r = egui::Frame::none()
+                            let r = egui::Frame::NONE
                                 .inner_margin(8.0)
                                 .show(ui, |ui| {
                                     let name = program_name.clone();
@@ -197,7 +197,7 @@ impl AppMenu {
 
 //     //let rounding = CornerRadius::ZERO;
 
-//     ui.allocate_ui_at_rect(app_menu_rect, |ui| {
+//     ui.scope_builder(egui::UiBuilder::new().max_rect(app_menu_rect), |ui| {
 //         ui.allocate_ui_with_layout(
 //             app_menu_rect.size(),
 //             Layout::right_to_left(egui::Align::Center),

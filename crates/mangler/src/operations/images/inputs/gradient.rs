@@ -1,4 +1,4 @@
-use image::{RgbaImage, ImageBuffer, DynamicImage};
+use image::{ImageBuffer, DynamicImage};
 use crate::color::Color;
 use crate::color::color_spaces::ColorSpace;
 use crate::get_id;
@@ -35,7 +35,6 @@ impl OpImageInputGradient {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
-            Output::new("color".to_string(), Value::Color(Color::default()), None),
             Output::new("width".to_string(), Value::Integer(1), None),
             Output::new("height".to_string(), Value::Integer(1), None),
         ]

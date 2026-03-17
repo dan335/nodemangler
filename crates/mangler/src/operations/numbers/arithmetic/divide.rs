@@ -32,7 +32,7 @@ impl OpNumberMathDivide {
 
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
+        let input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
         // gather errors
@@ -42,6 +42,18 @@ impl OpNumberMathDivide {
 
         // get values
         // run node
+
+        // Check for division by zero
+        let is_zero = match &inputs[1].value {
+            Value::Integer(b) => *b == 0,
+            Value::Decimal(b) => *b == 0.0,
+            _ => false,
+        };
+        if is_zero {
+            return Err(OperationError {
+                input_errors: vec![(1, "Division by zero.".to_string())], node_error: None,
+            });
+        }
 
         let value = match (&inputs[0].value, &inputs[1].value) {
             (Value::Integer(a), Value::Decimal(b)) => Value::Decimal(*a as f32 / *b),
@@ -53,7 +65,7 @@ impl OpNumberMathDivide {
             (Value::Decimal(a), Value::Integer(b)) => Value::Decimal(*a / *b as f32),
 
             _ => {return Err(OperationError {
-                message: "Error converting. {:?}".to_string(),
+                input_errors: vec![], node_error: Some("Error converting.".to_string()),
             });}
         };
 

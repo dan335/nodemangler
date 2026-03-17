@@ -27,7 +27,7 @@ impl OpNumberRandomInteger {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Decimal(0.0), None)
+            Output::new("output".to_string(), Value::Integer(0), None)
         ]
     }
 
@@ -48,7 +48,7 @@ impl OpNumberRandomInteger {
         let Value::Integer(mut maximum) = max_converted.unwrap() else { unreachable!() };
 
         // run node
-        maximum = maximum.max(minimum+1);
+        maximum = maximum.max(minimum.saturating_add(1));
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

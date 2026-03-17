@@ -69,15 +69,15 @@ impl GraphEditor {
                 let new_zoom = (self.zoom * (1.0 + input_state.smooth_scroll_delta.y * ZOOM_MULTIPLIER))
                     .min(ZOOM_BOUNDS[1])
                     .max(ZOOM_BOUNDS[0]);
-    
+
                 let old_x = view_to_graph_space(self.zoom, editor_rect.max.x - editor_rect.min.x);
                 let new_x = view_to_graph_space(new_zoom, editor_rect.max.x - editor_rect.min.x);
                 let old_y = view_to_graph_space(self.zoom, editor_rect.max.y - editor_rect.min.y);
                 let new_y = view_to_graph_space(new_zoom, editor_rect.max.y - editor_rect.min.y);
-    
+
                 let mouse_percent_x = cursor_position.x / (editor_rect.max.x - editor_rect.min.x);
                 let mouse_percent_y = cursor_position.y / (editor_rect.max.y - editor_rect.min.y);
-    
+
                 self.position.x += view_to_graph_space(
                     new_zoom,
                     mouse_percent_x * graph_to_view_space(new_zoom, new_x - old_x),
@@ -86,11 +86,11 @@ impl GraphEditor {
                     new_zoom,
                     mouse_percent_y * graph_to_view_space(new_zoom, new_y - old_y),
                 );
-    
+
                 self.zoom = new_zoom;
             });
         }
-        
+
 
         ui.set_clip_rect(editor_rect);
 
@@ -512,7 +512,9 @@ pub struct TempConnection {
 
 pub struct GraphEditorResponse {
     pub new_connection: Option<NewConnection>,
+    #[allow(dead_code)]
     pub is_left_click_node_id: Option<String>, // if a node was clicked on return it's id
+    #[allow(dead_code)]
     pub is_right_click_node_id: Option<String>,
     pub request_redraw: bool,
     pub editing_node_id: Option<String>,

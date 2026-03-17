@@ -25,13 +25,13 @@ impl OpNumberCastToInteger {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+            Output::new("output".to_string(), Value::Integer(i32::default()), None)
         ]
     }
 
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
+        let input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
         // gather errors
@@ -42,7 +42,7 @@ impl OpNumberCastToInteger {
         // get values
         // run node
 
-        let Ok(Value::Integer(n)) = inputs[0].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+        let Ok(Value::Integer(n)) = inputs[0].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { input_errors: vec![(0, "Unable to convert to integer.".to_string())], node_error: None })};
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

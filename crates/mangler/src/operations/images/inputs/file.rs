@@ -1,4 +1,3 @@
-use image::RgbaImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;

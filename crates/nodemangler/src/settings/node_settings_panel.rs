@@ -138,7 +138,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: &Sender<Cha
                 // });
             })
             .body(|mut body| {
-                for (output_index, output) in node.outputs.iter_mut().enumerate() {
+                for (_output_index, output) in node.outputs.iter_mut().enumerate() {
                     body.row(30.0, |mut row| {
                         row.col(|ui| {
                             ui.horizontal_centered(|ui| {
@@ -234,11 +234,11 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
 
                 if let Some(input_type) = &input.settings {
                     match input_type {
-                        InputSettings::DragValue { clamp, speed } => {
+                        InputSettings::DragValue { clamp, speed: _ } => {
                             let mut drag = egui::DragValue::new(&mut x);
 
                             drag = if let Some(clamp) = clamp {
-                                drag.clamp_range(clamp.0..=clamp.1)
+                                drag.range(clamp.0..=clamp.1)
                             } else {
                                 drag
                             };
@@ -254,8 +254,8 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                                 );
                             }
                         },
-                        InputSettings::Slider { range, step_by, clamp_to_range } => {
-                            if ui.add(egui::Slider::new(&mut x, range.0 as i32..=range.1 as i32).clamp_to_range(*clamp_to_range)).changed() {
+                        InputSettings::Slider { range, step_by: _, clamp_to_range } => {
+                            if ui.add(egui::Slider::new(&mut x, range.0 as i32..=range.1 as i32).clamping(if *clamp_to_range { egui::SliderClamping::Always } else { egui::SliderClamping::Never })).changed() {
                                 let value = Value::Integer(x);
                                 change_value(
                                     tx_change_node,
@@ -289,7 +289,7 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                             };
 
                             drag = if let Some(clamp) = clamp {
-                                drag.clamp_range(clamp.0..=clamp.1)
+                                drag.range(clamp.0..=clamp.1)
                             } else {
                                 drag
                             };
@@ -305,8 +305,8 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                                 );
                             }
                         },
-                        InputSettings::Slider { range, step_by, clamp_to_range } => {
-                            if ui.add(egui::Slider::new(&mut x, range.0..=range.1).clamp_to_range(*clamp_to_range)).changed() {
+                        InputSettings::Slider { range, step_by: _, clamp_to_range } => {
+                            if ui.add(egui::Slider::new(&mut x, range.0..=range.1).clamping(if *clamp_to_range { egui::SliderClamping::Always } else { egui::SliderClamping::Never })).changed() {
                                 let value = Value::Decimal(x);
                                 change_value(
                                     tx_change_node,
@@ -382,7 +382,7 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 ui.label(format!("{:?}", a));
             } else {
                 let mut x = a;
-                egui::ComboBox::from_id_source("Filter Type")
+                egui::ComboBox::from_id_salt("Filter Type")
                     .selected_text(format!("{:?}", x))
                     .show_ui(ui, |ui| {
                         if ui
@@ -524,8 +524,8 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 if ui.button("🗀").clicked() {
                     if let Some(InputSettings::Path {
                         extension_filter,
-                        set_directory,
-                        set_file_name,
+                        set_directory: _,
+                        set_file_name: _,
                         set_title,
                         file_dialog_type
                     }) = input.settings.clone() {

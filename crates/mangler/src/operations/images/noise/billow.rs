@@ -97,27 +97,3 @@ impl OpImageNoiseBillow {
         })
     }
 }
-
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum NoiseWorleyDistanceFunction {
-    Chebyshev,
-    Euclidean,
-    EuclideanSquared,
-    Manhattan,
-    Quadratic,
-}
-
-impl NoiseWorleyDistanceFunction {
-    pub fn types() -> [NoiseWorleyDistanceFunction; 5] {
-        let types: [NoiseWorleyDistanceFunction; 5] = [
-            NoiseWorleyDistanceFunction::Chebyshev,
-            NoiseWorleyDistanceFunction::Euclidean,
-            NoiseWorleyDistanceFunction::EuclideanSquared,
-            NoiseWorleyDistanceFunction::Manhattan,
-            NoiseWorleyDistanceFunction::Quadratic,
-        ];
-
-        types
-    }
-}

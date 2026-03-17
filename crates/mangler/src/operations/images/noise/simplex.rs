@@ -1,6 +1,5 @@
-use image::{RgbaImage, ImageBuffer, DynamicImage};
-use crate::color::Color;
-use crate::color::color_spaces::rgb_linear::{nonlinear_to_linear_rgb, linear_to_nonlinear_srgb};
+use image::{ImageBuffer, DynamicImage};
+use crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -10,7 +9,7 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
-use noise::{NoiseFn, Perlin, Seedable, OpenSimplex, Simplex};
+use noise::{NoiseFn, Simplex};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageNoiseSimplex {}

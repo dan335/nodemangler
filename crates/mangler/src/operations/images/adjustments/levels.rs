@@ -59,7 +59,7 @@ impl OpImageAdjustmentLevels {
         let mut buffer = data.to_rgba32f();
         let black_point = black_point as f32;
         let white_point = white_point as f32;
-        let range = white_point - black_point;
+        let range = (white_point - black_point).max(0.001);
         let inv_gamma = (1.0 / gamma) as f32;
 
         for pixel in buffer.pixels_mut() {

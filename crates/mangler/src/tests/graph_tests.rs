@@ -36,7 +36,7 @@ mod graph_tests {
         assert!(graph.is_dirty);
 
         let node = graph.nodes.get(&node_id).unwrap();
-        assert_eq!(node.inputs.len(), 3); // a, b, mask
+        assert_eq!(node.inputs.len(), 2); // a, b
         assert_eq!(node.outputs.len(), 1);
         assert_eq!(node.settings.name, "add");
     }

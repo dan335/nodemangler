@@ -31,7 +31,7 @@ impl OpNumberCastToDecimal {
 
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
+        let input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
         // gather errors
@@ -42,7 +42,7 @@ impl OpNumberCastToDecimal {
         // get values
         // run node
 
-        let Ok(Value::Decimal(n)) = inputs[0].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { message: "Unable to convert to decimal.".to_string() })};
+        let Ok(Value::Decimal(n)) = inputs[0].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { input_errors: vec![(0, "Unable to convert to decimal.".to_string())], node_error: None })};
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

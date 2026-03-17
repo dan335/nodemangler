@@ -4,7 +4,6 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
-use image::{DynamicImage, Pixel};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use std::collections::HashMap;
@@ -82,6 +81,13 @@ impl OpColorSampleMostCommonColors {
             let l = (hsl[2] as f32) / lightness_precision;
             responses.push(OutputResponse {
                 value: Value::Color(Color::from_hsl(h, s, l, 1.0)),
+            });
+        }
+
+        // Pad to always have 5 responses
+        while responses.len() < 5 {
+            responses.push(OutputResponse {
+                value: Value::Color(Color::default()),
             });
         }
 

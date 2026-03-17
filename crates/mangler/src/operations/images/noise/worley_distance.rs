@@ -1,6 +1,5 @@
-use image::{RgbaImage, ImageBuffer, DynamicImage};
-use noise::core::worley::{self, distance_functions};
-use crate::color::Color;
+use image::{ImageBuffer, DynamicImage};
+use noise::core::worley::distance_functions;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -10,7 +9,7 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
-use noise::{NoiseFn, Worley, Seedable, Perlin};
+use noise::{NoiseFn, Worley};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageNoiseWorleyDistance {}
@@ -60,7 +59,7 @@ impl OpImageNoiseWorleyDistance {
         let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
         let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
         let Value::NoiseWorleyDistanceFunction(distance_function) = distance_function_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(mut frequency) = frequency_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(frequency) = frequency_converted.unwrap() else { unreachable!() };
 
         // run node
         width = width.max(1);

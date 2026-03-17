@@ -1,4 +1,4 @@
-use image::{RgbaImage, ImageFormat};
+use image::ImageFormat;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -63,14 +63,7 @@ impl OpImageOutputFile {
 
         // run node
         if folder_path.exists() {
-            if !folder_path.ends_with("/") {
-                // not sure why this is needed
-                // if path does not end in / then last dir is removed
-                // when setting filename
-                folder_path.push("asdf");
-            }
-            
-            folder_path.set_file_name(file_name);
+            folder_path.push(file_name);
             folder_path.set_extension(image_type.extensions_str()[0]);
 
             if let Ok(_) = data.save_with_format(folder_path.clone(), image_type) {

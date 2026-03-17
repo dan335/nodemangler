@@ -5,3 +5,6 @@ pub mod adjustments;
 pub mod noise;
 pub mod combine;
 pub mod channels;
+pub mod shapes;
+pub mod patterns;
+pub mod pbr;

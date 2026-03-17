@@ -32,7 +32,7 @@ impl OpNumberMathModulus {
 
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
+        let input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
         // gather errors
@@ -43,7 +43,13 @@ impl OpNumberMathModulus {
         // get values
         // run node
 
-        let Ok(Value::Decimal(n)) = inputs[1].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+        let Ok(Value::Decimal(n)) = inputs[1].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { input_errors: vec![(1, "Unable to convert 'n' to Decimal.".to_string())], node_error: None })};
+
+        if n == 0.0 {
+            return Err(OperationError {
+                input_errors: vec![(1, "Division by zero.".to_string())], node_error: None,
+            });
+        }
 
         let value = match &inputs[0].value {
             Value::Integer(a) => Value::Integer(*a % n as i32),
@@ -51,7 +57,7 @@ impl OpNumberMathModulus {
             Value::Decimal(a) => Value::Decimal(*a % n as f32),
 
             _ => {return Err(OperationError {
-                message: "Error converting. {:?}".to_string(),
+                input_errors: vec![], node_error: Some("Error converting.".to_string()),
             });}
         };
 

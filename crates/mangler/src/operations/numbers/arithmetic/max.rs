@@ -32,7 +32,7 @@ impl OpNumberMathMax {
 
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
+        let input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
         // gather errors
@@ -48,12 +48,12 @@ impl OpNumberMathMax {
 
             (Value::Integer(a), Value::Integer(b)) => Value::Integer(*a.max(b)),
 
-            (Value::Decimal(a), Value::Decimal(b)) => Value::Decimal(a.clone().max(b.clone())),
+            (Value::Decimal(a), Value::Decimal(b)) => Value::Decimal(a.max(*b)),
 
-            (Value::Decimal(a), Value::Integer(b)) => Value::Decimal(a.clone().max(*b as f32)),
+            (Value::Decimal(a), Value::Integer(b)) => Value::Decimal(a.max(*b as f32)),
 
             _ => {return Err(OperationError {
-                message: "Error converting. {:?}".to_string(),
+                input_errors: vec![], node_error: Some("Error converting.".to_string()),
             });}
         };
 
