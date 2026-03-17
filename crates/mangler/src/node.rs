@@ -23,6 +23,8 @@ pub struct Node {
     pub is_busy: bool,
     pub is_error: bool,
     pub error_message: Option<String>,
+    #[serde(skip)]
+    pub cached_input_hash: Option<u64>,
 }
 
 impl PartialEq for Node {
@@ -46,6 +48,7 @@ impl Node {
                 is_busy: false,
                 is_error: false,
                 error_message: None,
+                cached_input_hash: None,
             },
             AddNodeType::Subgraph => Node {
                 id,
@@ -66,6 +69,7 @@ impl Node {
                 is_busy: false,
                 is_error: false,
                 error_message: None,
+                cached_input_hash: None,
             },
         }
     }

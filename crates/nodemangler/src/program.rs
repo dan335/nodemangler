@@ -5,6 +5,7 @@ use mangler::{
     GraphChangedMessage, NewGraphError, NodeChangedMessage, value::{Value, ValueType},
 };
 use std::path::PathBuf;
+use std::time::Duration;
 use tokio::sync::mpsc;
 
 use crate::{
@@ -33,6 +34,7 @@ pub struct Program {
     viewing_node_id_index: Option<(String, usize)>,   // id and output index
     dragging_menu_button: MenuItemsResult,
     pointer_position: Pos2,
+    graph_run_time: Duration,
 }
 
 impl Program {
@@ -59,6 +61,7 @@ impl Program {
                     tx_change_node,
                     rx_graph_changed,
                     pointer_position: Pos2::ZERO,
+                    graph_run_time: Duration::ZERO,
                 })
             },
             Err(error) => Err(NewGraphError(format!("Error creating program. {:?}", error))),
@@ -349,6 +352,9 @@ impl Program {
                         node.time = Some(time);
                     }
                 },
+                NodeChangedMessage::GraphRunCompleted { total_time } => {
+                    self.graph_run_time = total_time;
+                },
                 NodeChangedMessage::Error { node_id, is_error, message } => {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
                         node.is_error = is_error;
@@ -358,7 +364,6 @@ impl Program {
             }
         }
 
-        
 
 
         let app_rect = ctx.screen_rect();
@@ -666,15 +671,22 @@ impl Program {
             );
         }
 
-        // show cpu usage in bototm right corner
-        if let Some(cpu_usage) = frame.info().cpu_usage {
+        // show timing in bottom right corner
+        {
+            let graph_ms = self.graph_run_time.as_secs_f64() * 1000.0;
+            let cpu_txt = if let Some(cpu_usage) = frame.info().cpu_usage {
+                format!("frame: {:.1}ms", cpu_usage * 1000.0)
+            } else {
+                String::new()
+            };
+            let graph_txt = format!("graph: {:.1}ms", graph_ms);
+            let txt = format!("{}  {}", graph_txt, cpu_txt);
             let pos = Pos2::new(app_rect.right() - 10.0, app_rect.bottom() - 10.0);
-            let txt = format!("{:.1} ms", cpu_usage * 1000.0);
             ui.painter().text(
                 pos,
                 egui::Align2::RIGHT_BOTTOM,
                 txt,
-                egui::FontId::monospace(8.0),
+                egui::FontId::monospace(10.0),
                 egui::Color32::from(theme.get().text_faint),
             );
         }

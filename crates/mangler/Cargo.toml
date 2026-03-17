@@ -8,7 +8,7 @@ nanoid = "0.4"
 image = "0.24"
 tokio = { version = "1", features = ["rt-multi-thread"] }
 arboard = "3.2.0"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 glam = { version = "0.24", features = ["serde"] }
 async-recursion = "1.0.4"

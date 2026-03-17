@@ -7,6 +7,7 @@ use crate::operations::{OperationResponse, OperationError, OutputResponse, defau
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Instant;
 use noise::{NoiseFn, Seedable, BasicMulti, MultiFractal, Perlin, HybridMulti, RidgedMulti};
 
@@ -109,7 +110,7 @@ impl OpImageNoiseRidgedMultifractalNoise {
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: dynamic_image, change_id: get_id() } },
+                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
             ],
         })
     }

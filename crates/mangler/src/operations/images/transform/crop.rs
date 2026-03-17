@@ -6,6 +6,7 @@ use crate::operations::{OperationResponse, OperationError, OutputResponse, defau
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,19 +60,20 @@ impl OpImageTransformCrop {
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::DynamicImage{mut data, change_id:_}) = image_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::DynamicImage{data, change_id:_}) = image_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
         let Ok(Value::Integer(mut x)) = x_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
         let Ok(Value::Integer(mut y)) = y_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
         let Ok(Value::Integer(mut width)) = width_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
         let Ok(Value::Integer(mut height)) = height_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
 
         // run node
-        x = x.max(0).min(data.width() as i32 - 1);
-        y = y.max(0).min(data.height() as i32 - 1);
-        width = width.max(1).min(data.width() as i32);
-        height = height.max(1).min(data.height() as i32);
+        let mut data_inner = Arc::try_unwrap(data).unwrap_or_else(|a| (*a).clone());
+        x = x.max(0).min(data_inner.width() as i32 - 1);
+        y = y.max(0).min(data_inner.height() as i32 - 1);
+        width = width.max(1).min(data_inner.width() as i32);
+        height = height.max(1).min(data_inner.height() as i32);
 
-        let resized = image::imageops::crop(&mut data, x as u32, y as u32, width as u32, height as u32).to_image();
+        let resized = image::imageops::crop(&mut data_inner, x as u32, y as u32, width as u32, height as u32).to_image();
 
         let value_width = Value::Integer(resized.width() as i32);
         let value_height = Value::Integer(resized.height() as i32);
@@ -79,7 +81,7 @@ impl OpImageTransformCrop {
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse {value: Value::DynamicImage { data:image::DynamicImage::ImageRgba8(resized), change_id:get_id() }},
+                OutputResponse {value: Value::DynamicImage { data:Arc::new(image::DynamicImage::ImageRgba8(resized)), change_id:get_id() }},
                 OutputResponse {value: value_width},
                 OutputResponse {value: value_height},
             ],

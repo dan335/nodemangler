@@ -7,6 +7,7 @@ use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 use image::io::Reader as ImageReader;
 
@@ -74,7 +75,7 @@ impl OpImageInputFile {
             Ok(OperationResponse {
                 time: Instant::now().duration_since(start_time),
                 responses: vec![
-                    OutputResponse { value: Value::DynamicImage { data: value, change_id: get_id() } },
+                    OutputResponse { value: Value::DynamicImage { data: Arc::new(value), change_id: get_id() } },
                     OutputResponse { value: Value::Integer(width as i32) },
                     OutputResponse { value: Value::Integer(height as i32) },
                 ],

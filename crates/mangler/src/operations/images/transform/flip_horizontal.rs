@@ -5,6 +5,7 @@ use crate::operations::{OperationResponse, OperationError, OutputResponse, defau
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,15 +45,16 @@ impl OpImageTransformFlipHorizontal {
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::DynamicImage{mut data, change_id:_}) = image_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::DynamicImage{data, change_id:_}) = image_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
 
         // run node
-        image::imageops::flip_horizontal_in_place(&mut data);
+        let mut data_inner = Arc::try_unwrap(data).unwrap_or_else(|a| (*a).clone());
+        image::imageops::flip_horizontal_in_place(&mut data_inner);
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse {value: Value::DynamicImage { data, change_id:get_id() }},
+                OutputResponse {value: Value::DynamicImage { data: Arc::new(data_inner), change_id:get_id() }},
             ],
         })
     }

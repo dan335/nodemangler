@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use image::{imageops::FilterType, DynamicImage, RgbaImage};
 use serde::{Deserialize, Serialize};
@@ -18,7 +19,7 @@ pub enum Value {
     String(String),
     Color(Color),
     DynamicImage {
-        data: DynamicImage,
+        data: Arc<DynamicImage>,
         change_id: String, // new id each time image changes
     },
     Path(PathBuf),
@@ -65,7 +66,7 @@ impl Value {
             }
             //Value::DynamicImage { data, change_id:_ } => Some(Thumbnail::Image(data.thumbnail(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]).into_rgba8())),
             Value::DynamicImage { data, change_id: _ } => Some(Thumbnail::Image(
-                data.resize(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[0], FilterType::Triangle)
+                data.thumbnail(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1])
                     .to_rgba8(),
             )),
             Value::Bool(value) => Some(Thumbnail::Text(value.to_string())),
@@ -86,6 +87,32 @@ impl Value {
             Value::ColorSpace(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::BlendMode(value) => Some(Thumbnail::Text(format!("{:?}", value))),
         }
+    }
+
+    /// Zero-allocation fingerprint for cache comparison.
+    /// Returns a u64 hash that changes when the value changes.
+    pub fn fingerprint(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+        let mut h = DefaultHasher::new();
+        std::mem::discriminant(self).hash(&mut h);
+        match self {
+            Value::Bool(v) => v.hash(&mut h),
+            Value::Integer(v) => v.hash(&mut h),
+            Value::Decimal(v) => v.to_bits().hash(&mut h),
+            Value::String(v) => v.hash(&mut h),
+            Value::Color(c) => { c.r.to_bits().hash(&mut h); c.g.to_bits().hash(&mut h); c.b.to_bits().hash(&mut h); c.a.to_bits().hash(&mut h); },
+            Value::DynamicImage { data: _, change_id } => change_id.hash(&mut h),
+            Value::Path(p) => p.hash(&mut h),
+            Value::FilterType(f) => (*f as u8).hash(&mut h),
+            Value::ColorFormat(cf) => (*cf as u8).hash(&mut h),
+            Value::ImageType(it) => format!("{:?}", it).hash(&mut h),
+            Value::Trigger => 0u8.hash(&mut h), // always same — triggers re-run via is_dirty
+            Value::NoiseWorleyDistanceFunction(w) => format!("{:?}", w).hash(&mut h),
+            Value::ColorSpace(cs) => format!("{:?}", cs).hash(&mut h),
+            Value::BlendMode(bm) => format!("{:?}", bm).hash(&mut h),
+        }
+        h.finish()
     }
 
     pub fn value_type(&self) -> ValueType {
@@ -144,7 +171,7 @@ impl Value {
                         *pixel = image::Rgba([color_value, color_value, color_value, color_value]);
                     }
 
-                    Ok(Value::DynamicImage(DynamicImage::ImageRgba8(imgbuf)))
+                    Ok(Value::DynamicImage { data: Arc::new(DynamicImage::ImageRgba8(imgbuf)), change_id: get_id() })
                 }
                 _ => Err(ConversionError {
                     message: "Unable to convert bool to filter type.".to_string(),
@@ -220,10 +247,10 @@ impl Value {
                 }),
             },
             Value::Trigger => todo!(),
-            Value::DynamicImage { data, change_id: _ } => match other {
+            Value::DynamicImage { data, change_id } => match other {
                 ValueType::DynamicImage => Ok(Value::DynamicImage {
                     data: data.clone(),
-                    change_id: get_id(),
+                    change_id: change_id.clone(),
                 }),
                 _ => Err(ConversionError {
                     message: "Unable to convert integer to image format.".to_string(),
@@ -557,7 +584,7 @@ fn serialize_image_format<S>(value: &image::ImageFormat, serializer: S) -> Resul
 where
     S: serde::Serializer,
 {
-    let serialized_value = image::ImageFormat::Jpeg.extensions_str()[0];
+    let serialized_value = value.extensions_str()[0];
     serializer.serialize_str(serialized_value)
 }
 
@@ -573,5 +600,336 @@ where
         }
     } else {
         Err(serde::de::Error::custom("Unknown enum value"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    // Helper to match Value variants since Value doesn't impl PartialEq
+    macro_rules! assert_value {
+        ($val:expr, Bool($expected:expr)) => {
+            match &$val { Value::Bool(v) => assert_eq!(*v, $expected), other => panic!("Expected Bool({}), got {:?}", $expected, other) }
+        };
+        ($val:expr, Integer($expected:expr)) => {
+            match &$val { Value::Integer(v) => assert_eq!(*v, $expected), other => panic!("Expected Integer({}), got {:?}", $expected, other) }
+        };
+        ($val:expr, Decimal($expected:expr)) => {
+            match &$val { Value::Decimal(v) => assert!((*v - $expected).abs() < 1e-6, "Expected Decimal({}), got Decimal({})", $expected, v), other => panic!("Expected Decimal({}), got {:?}", $expected, other) }
+        };
+        ($val:expr, String($expected:expr)) => {
+            match &$val { Value::String(v) => assert_eq!(v, $expected), other => panic!("Expected String({}), got {:?}", $expected, other) }
+        };
+    }
+
+    // value_type tests
+    #[test]
+    fn test_value_type_bool() {
+        assert_eq!(Value::Bool(true).value_type(), ValueType::Bool);
+    }
+
+    #[test]
+    fn test_value_type_integer() {
+        assert_eq!(Value::Integer(42).value_type(), ValueType::Integer);
+    }
+
+    #[test]
+    fn test_value_type_decimal() {
+        assert_eq!(Value::Decimal(3.14).value_type(), ValueType::Decimal);
+    }
+
+    #[test]
+    fn test_value_type_string() {
+        assert_eq!(Value::String("hi".to_string()).value_type(), ValueType::String);
+    }
+
+    #[test]
+    fn test_value_type_color() {
+        assert_eq!(Value::Color(Color::default()).value_type(), ValueType::Color);
+    }
+
+    #[test]
+    fn test_value_type_path() {
+        assert_eq!(Value::Path(PathBuf::new()).value_type(), ValueType::Path);
+    }
+
+    #[test]
+    fn test_value_type_trigger() {
+        assert_eq!(Value::Trigger.value_type(), ValueType::Trigger);
+    }
+
+    // try_convert_to: Bool conversions
+    #[test]
+    fn test_bool_true_to_integer() {
+        let result = Value::Bool(true).try_convert_to(ValueType::Integer).unwrap();
+        assert_value!(result, Integer(1));
+    }
+
+    #[test]
+    fn test_bool_false_to_integer() {
+        let result = Value::Bool(false).try_convert_to(ValueType::Integer).unwrap();
+        assert_value!(result, Integer(0));
+    }
+
+    #[test]
+    fn test_bool_true_to_decimal() {
+        let result = Value::Bool(true).try_convert_to(ValueType::Decimal).unwrap();
+        assert_value!(result, Decimal(1.0));
+    }
+
+    #[test]
+    fn test_bool_false_to_decimal() {
+        let result = Value::Bool(false).try_convert_to(ValueType::Decimal).unwrap();
+        assert_value!(result, Decimal(0.0));
+    }
+
+    #[test]
+    fn test_bool_to_string() {
+        let result = Value::Bool(true).try_convert_to(ValueType::String).unwrap();
+        assert_value!(result, String("true"));
+    }
+
+    #[test]
+    fn test_bool_to_bool_identity() {
+        let result = Value::Bool(true).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    #[test]
+    fn test_bool_to_color_true() {
+        let result = Value::Bool(true).try_convert_to(ValueType::Color).unwrap();
+        match result {
+            Value::Color(c) => {
+                assert_eq!(c.r, 1.0);
+                assert_eq!(c.g, 1.0);
+                assert_eq!(c.b, 1.0);
+            },
+            other => panic!("Expected Color, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_bool_to_color_false() {
+        let result = Value::Bool(false).try_convert_to(ValueType::Color).unwrap();
+        match result {
+            Value::Color(c) => {
+                assert_eq!(c.r, 0.0);
+                assert_eq!(c.g, 0.0);
+                assert_eq!(c.b, 0.0);
+            },
+            other => panic!("Expected Color, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_bool_to_dynamic_image() {
+        let result = Value::Bool(true).try_convert_to(ValueType::DynamicImage);
+        assert!(result.is_ok());
+        match result.unwrap() {
+            Value::DynamicImage { data: _, change_id: _ } => {},
+            other => panic!("Expected DynamicImage, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_bool_to_filter_type_fails() {
+        let result = Value::Bool(true).try_convert_to(ValueType::FilterType);
+        assert!(result.is_err());
+    }
+
+    // try_convert_to: Integer conversions
+    #[test]
+    fn test_integer_to_bool_nonzero() {
+        let result = Value::Integer(42).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    #[test]
+    fn test_integer_to_bool_zero() {
+        let result = Value::Integer(0).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(false));
+    }
+
+    #[test]
+    fn test_integer_to_decimal() {
+        let result = Value::Integer(42).try_convert_to(ValueType::Decimal).unwrap();
+        assert_value!(result, Decimal(42.0));
+    }
+
+    #[test]
+    fn test_integer_to_string() {
+        let result = Value::Integer(42).try_convert_to(ValueType::String).unwrap();
+        assert_value!(result, String("42"));
+    }
+
+    #[test]
+    fn test_integer_to_integer_identity() {
+        let result = Value::Integer(42).try_convert_to(ValueType::Integer).unwrap();
+        assert_value!(result, Integer(42));
+    }
+
+    #[test]
+    fn test_integer_to_color_fails() {
+        let result = Value::Integer(42).try_convert_to(ValueType::Color);
+        assert!(result.is_err());
+    }
+
+    // try_convert_to: Decimal conversions
+    #[test]
+    fn test_decimal_to_bool_nonzero() {
+        let result = Value::Decimal(3.14).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    #[test]
+    fn test_decimal_to_bool_zero() {
+        let result = Value::Decimal(0.0).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(false));
+    }
+
+    #[test]
+    fn test_decimal_to_integer() {
+        let result = Value::Decimal(3.14).try_convert_to(ValueType::Integer).unwrap();
+        assert_value!(result, Integer(3));
+    }
+
+    #[test]
+    fn test_decimal_to_string() {
+        let result = Value::Decimal(3.14).try_convert_to(ValueType::String).unwrap();
+        match result {
+            Value::String(_) => {},
+            other => panic!("Expected String, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_decimal_to_decimal_identity() {
+        let result = Value::Decimal(3.14).try_convert_to(ValueType::Decimal).unwrap();
+        assert_value!(result, Decimal(3.14));
+    }
+
+    // try_convert_to: String conversions
+    #[test]
+    fn test_string_to_bool_true() {
+        let result = Value::String("true".to_string()).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    #[test]
+    fn test_string_to_bool_false() {
+        let result = Value::String("false".to_string()).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(false));
+    }
+
+    #[test]
+    fn test_string_to_bool_invalid() {
+        let result = Value::String("not a bool".to_string()).try_convert_to(ValueType::Bool);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_string_to_integer() {
+        let result = Value::String("42".to_string()).try_convert_to(ValueType::Integer).unwrap();
+        assert_value!(result, Integer(42));
+    }
+
+    #[test]
+    fn test_string_to_integer_invalid() {
+        let result = Value::String("abc".to_string()).try_convert_to(ValueType::Integer);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_string_to_decimal() {
+        let result = Value::String("3.14".to_string()).try_convert_to(ValueType::Decimal).unwrap();
+        assert_value!(result, Decimal(3.14));
+    }
+
+    #[test]
+    fn test_string_to_decimal_invalid() {
+        let result = Value::String("abc".to_string()).try_convert_to(ValueType::Decimal);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_string_to_string_identity() {
+        let result = Value::String("hello".to_string()).try_convert_to(ValueType::String).unwrap();
+        assert_value!(result, String("hello"));
+    }
+
+    // try_convert_to: Other types
+    #[test]
+    fn test_color_to_color_identity() {
+        let color = Color::from_srgb_float(0.5, 0.3, 0.7, 1.0);
+        let result = Value::Color(color).try_convert_to(ValueType::Color).unwrap();
+        match result {
+            Value::Color(c) => assert_eq!(c, color),
+            other => panic!("Expected Color, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_color_to_integer_fails() {
+        let result = Value::Color(Color::default()).try_convert_to(ValueType::Integer);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_path_to_string() {
+        let result = Value::Path(PathBuf::from("/test/path")).try_convert_to(ValueType::String).unwrap();
+        match result {
+            Value::String(s) => assert!(s.contains("test")),
+            other => panic!("Expected String, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_path_to_path_identity() {
+        let result = Value::Path(PathBuf::from("/test")).try_convert_to(ValueType::Path).unwrap();
+        match result {
+            Value::Path(p) => assert_eq!(p, PathBuf::from("/test")),
+            other => panic!("Expected Path, got {:?}", other),
+        }
+    }
+
+    // valid_conversions tests
+    #[test]
+    fn test_bool_valid_conversions() {
+        let conversions = ValueType::Bool.valid_conversions();
+        assert!(conversions.contains(&ValueType::Bool));
+        assert!(conversions.contains(&ValueType::Integer));
+        assert!(conversions.contains(&ValueType::Decimal));
+        assert!(conversions.contains(&ValueType::String));
+        assert!(conversions.contains(&ValueType::Trigger));
+    }
+
+    #[test]
+    fn test_dynamic_image_valid_conversions() {
+        let conversions = ValueType::DynamicImage.valid_conversions();
+        assert!(conversions.contains(&ValueType::DynamicImage));
+        assert!(conversions.contains(&ValueType::Trigger));
+        assert!(!conversions.contains(&ValueType::Integer));
+    }
+
+    #[test]
+    fn test_integer_valid_conversions() {
+        let conversions = ValueType::Integer.valid_conversions();
+        assert!(conversions.contains(&ValueType::Bool));
+        assert!(conversions.contains(&ValueType::Integer));
+        assert!(conversions.contains(&ValueType::Decimal));
+        assert!(conversions.contains(&ValueType::String));
+    }
+
+    #[test]
+    fn test_value_type_name() {
+        assert_eq!(ValueType::Bool.value_name(), "bool");
+        assert_eq!(ValueType::Integer.value_name(), "integer");
+        assert_eq!(ValueType::Decimal.value_name(), "decimal");
+        assert_eq!(ValueType::String.value_name(), "string");
+        assert_eq!(ValueType::Color.value_name(), "color");
+        assert_eq!(ValueType::DynamicImage.value_name(), "image");
+        assert_eq!(ValueType::Path.value_name(), "path");
     }
 }

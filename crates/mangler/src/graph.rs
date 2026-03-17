@@ -416,6 +416,7 @@ impl Graph {
     // so that their thumbnails will know to update
     #[async_recursion]
     pub async fn run(&mut self) {
+        let run_start = std::time::Instant::now();
         let mut dirty_nodes: HashSet<String> = HashSet::new();
         let mut checked_nodes: HashSet<String> = HashSet::new();
         let mut nodes_to_check: VecDeque<String> = VecDeque::new();
@@ -446,8 +447,8 @@ impl Graph {
                 checked_nodes.insert(node_id.clone());
 
                 // add connections to queue
-                if let Some(node) = self.nodes.get_mut(&node_id.clone()) {
-                    for output in node.outputs.iter_mut() {
+                if let Some(node) = self.nodes.get(&node_id) {
+                    for output in node.outputs.iter() {
                         if let Some(connections) = &output.connection {
                             for (connection_node_id, _connection_input_index) in connections {
                                 nodes_to_check.push_back(connection_node_id.clone());
@@ -462,12 +463,56 @@ impl Graph {
         let sorted_nodes = self.topological_sort(&self.nodes, &dirty_nodes);
 
         for node_id in sorted_nodes.into_iter() {
-            // run node
-            let mut output_data: Vec<(String, usize, Value)> = Vec::new(); // connected_node_id, input_index, output.value
+            // Compute input hash for cache check
+            let input_hash = if let Some(node) = self.nodes.get(&node_id) {
+                use std::hash::{Hash, Hasher};
+                use std::collections::hash_map::DefaultHasher;
+                let mut h = DefaultHasher::new();
+                for input in &node.inputs {
+                    input.value.fingerprint().hash(&mut h);
+                }
+                h.finish()
+            } else {
+                continue;
+            };
+
+            // Skip if inputs unchanged since last run
+            let skip = if let Some(node) = self.nodes.get(&node_id) {
+                node.cached_input_hash == Some(input_hash)
+            } else {
+                false
+            };
+
+            if skip {
+                // Still propagate existing outputs to downstream nodes
+                let mut output_data: Vec<(String, usize, Value)> = Vec::new();
+                if let Some(node) = self.nodes.get(&node_id) {
+                    for output in node.outputs.iter() {
+                        if let Some(connections) = &output.connection {
+                            for (connected_node_id, input_index) in connections.iter() {
+                                output_data.push((
+                                    connected_node_id.clone(),
+                                    *input_index,
+                                    output.value.clone(),
+                                ));
+                            }
+                        }
+                    }
+                }
+                for (connected_node_id, input_index, value) in output_data.into_iter() {
+                    if let Some(connected_node) = self.nodes.get_mut(&connected_node_id) {
+                        connected_node.inputs[input_index].value = value;
+                    }
+                }
+                continue;
+            }
+
+            // Run node
+            let mut output_data: Vec<(String, usize, Value)> = Vec::new();
 
             if let Some(node) = self.nodes.get_mut(&node_id) {
-                // run
                 node.run(self.tx_node_changed.clone()).await;
+                node.cached_input_hash = Some(input_hash);
 
                 // gather data to pass to connections
                 for output in node.outputs.iter() {
@@ -483,19 +528,14 @@ impl Graph {
                 }
             }
 
-            for (connected_node_id, input_index, value) in output_data.iter() {
-                if let Some(connected_node) = self.nodes.get_mut(&connected_node_id.clone()) {
-
-                    //connected_node.set_input_value(*input_index, value.clone());
-                    connected_node.inputs[*input_index].value = value.clone();
-
+            for (connected_node_id, input_index, value) in output_data.into_iter() {
+                if let Some(connected_node) = self.nodes.get_mut(&connected_node_id) {
                     if let Some(tx) = &self.tx_node_changed {
                         let message = NodeChangedMessage::InputChanged {
                             node_id: connected_node_id.clone(),
-                            input_index: *input_index,
+                            input_index,
                             value: value.clone(),
                         };
-    
                         match tx.try_send(message) {
                             Ok(_) => {}
                             Err(err) => {
@@ -503,8 +543,18 @@ impl Graph {
                             }
                         }
                     }
+
+                    // Move value into the connected input (no clone)
+                    connected_node.inputs[input_index].value = value;
                 }
             }
+        }
+
+        // Send total graph run time
+        if let Some(tx) = &self.tx_node_changed {
+            let _ = tx.try_send(NodeChangedMessage::GraphRunCompleted {
+                total_time: run_start.elapsed(),
+            });
         }
     }
 
@@ -531,6 +581,63 @@ impl Graph {
                 }
             }
         }
+    }
+
+    /// Topological sort that returns levels for parallel execution.
+    /// Each level contains nodes that are independent and can run concurrently.
+    fn topological_sort_levels(
+        &self,
+        nodes: &HashMap<String, Node>,
+        dirty_nodes: &HashSet<String>,
+    ) -> Vec<Vec<String>> {
+        // Build adjacency and in-degree maps restricted to dirty_nodes
+        let mut in_degree: HashMap<String, usize> = HashMap::new();
+        let mut adjacency: HashMap<String, Vec<String>> = HashMap::new();
+
+        for node_id in dirty_nodes {
+            in_degree.entry(node_id.clone()).or_insert(0);
+            adjacency.entry(node_id.clone()).or_insert_with(Vec::new);
+        }
+
+        for node_id in dirty_nodes {
+            if let Some(node) = nodes.get(node_id) {
+                for output in &node.outputs {
+                    if let Some(connections) = &output.connection {
+                        for (connected_id, _) in connections {
+                            if dirty_nodes.contains(connected_id) {
+                                *in_degree.entry(connected_id.clone()).or_insert(0) += 1;
+                                adjacency.entry(node_id.clone()).or_default().push(connected_id.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut levels: Vec<Vec<String>> = Vec::new();
+        let mut queue: Vec<String> = in_degree.iter()
+            .filter(|(_, &deg)| deg == 0)
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        while !queue.is_empty() {
+            levels.push(queue.clone());
+            let mut next_queue = Vec::new();
+            for node_id in &queue {
+                if let Some(neighbors) = adjacency.get(node_id) {
+                    for neighbor in neighbors {
+                        let deg = in_degree.get_mut(neighbor).unwrap();
+                        *deg -= 1;
+                        if *deg == 0 {
+                            next_queue.push(neighbor.clone());
+                        }
+                    }
+                }
+            }
+            queue = next_queue;
+        }
+
+        levels
     }
 
     // Perform topological sorting on the dirty nodes

@@ -6,6 +6,7 @@ use crate::operations::{OperationResponse, OperationError, OutputResponse, defau
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Instant;
 use arboard::Clipboard;
 
@@ -53,7 +54,7 @@ impl OpImageInputClipboard {
                 if let Some(image) = image_option{
                     width = image.width();
                     height = image.height();
-                    img = Some(Value::DynamicImage{ data:image::DynamicImage::ImageRgba8(image), change_id:get_id() });
+                    img = Some(Value::DynamicImage{ data:Arc::new(image::DynamicImage::ImageRgba8(image)), change_id:get_id() });
                 } 
             }
         }

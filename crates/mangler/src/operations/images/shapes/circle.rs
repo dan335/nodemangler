@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use image::{RgbaImage, ImageBuffer, DynamicImage};
 use crate::color::Color;
 use crate::color::color_spaces::ColorSpace;
@@ -151,7 +152,7 @@ impl OpImageShapesCircle {
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: dynamic_image, change_id: get_id() } },
+                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
                 OutputResponse { value: Value::Integer(width as i32) },
                 OutputResponse { value: Value::Integer(height as i32) },
             ],

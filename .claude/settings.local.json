@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo update:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo tree:*)",
+      "Bash(cargo search:*)",
+      "Bash(cd:*)",
+      "Bash(cargo test:*)",
+      "Read(//c/Users/danph/.cargo/registry/src//**)",
+      "Bash(2)",
+      "Bash(cargo outdated:*)"
+    ]
+  }
+}

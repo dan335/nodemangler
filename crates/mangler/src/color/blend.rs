@@ -205,3 +205,135 @@ impl BlendMode {
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + t * (b - a)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const EPSILON: f32 = 1e-4;
+
+    fn assert_color_approx(c1: &Color, c2: &Color, eps: f32) {
+        assert!((c1.r - c2.r).abs() < eps, "Red: {} vs {}", c1.r, c2.r);
+        assert!((c1.g - c2.g).abs() < eps, "Green: {} vs {}", c1.g, c2.g);
+        assert!((c1.b - c2.b).abs() < eps, "Blue: {} vs {}", c1.b, c2.b);
+        assert!((c1.a - c2.a).abs() < eps, "Alpha: {} vs {}", c1.a, c2.a);
+    }
+
+    #[test]
+    fn test_lerp_boundaries() {
+        assert_eq!(lerp(0.0, 1.0, 0.0), 0.0);
+        assert_eq!(lerp(0.0, 1.0, 1.0), 1.0);
+        assert_eq!(lerp(0.0, 1.0, 0.5), 0.5);
+        assert_eq!(lerp(2.0, 4.0, 0.5), 3.0);
+    }
+
+    #[test]
+    fn test_blend_srgb_lerp_identity() {
+        let color = Color::from_srgb_float(0.5, 0.3, 0.7, 1.0);
+        let result = Color::blend_srgb(color, color, &BlendMode::Lerp, 0.5);
+        assert_color_approx(&color, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_srgb_lerp_zero() {
+        let a = Color::from_srgb_float(1.0, 0.0, 0.0, 1.0);
+        let b = Color::from_srgb_float(0.0, 0.0, 1.0, 1.0);
+        let result = Color::blend_srgb(a, b, &BlendMode::Lerp, 0.0);
+        assert_color_approx(&a, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_srgb_lerp_one() {
+        let a = Color::from_srgb_float(1.0, 0.0, 0.0, 1.0);
+        let b = Color::from_srgb_float(0.0, 0.0, 1.0, 1.0);
+        let result = Color::blend_srgb(a, b, &BlendMode::Lerp, 1.0);
+        assert_color_approx(&b, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_srgb_lerp_midpoint() {
+        let a = Color::from_srgb_float(1.0, 0.0, 0.0, 1.0);
+        let b = Color::from_srgb_float(0.0, 0.0, 1.0, 1.0);
+        let result = Color::blend_srgb(a, b, &BlendMode::Lerp, 0.5);
+        let expected = Color::from_srgb_float(0.5, 0.0, 0.5, 1.0);
+        assert_color_approx(&expected, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_srgb_normal_opaque() {
+        let a = Color::from_srgb_float(1.0, 0.0, 0.0, 1.0);
+        let b = Color::from_srgb_float(0.0, 0.0, 1.0, 1.0);
+        // Normal mode: factor = amount * b.alpha = 1.0 * 1.0 = 1.0
+        let result = Color::blend_srgb(a, b, &BlendMode::Normal, 1.0);
+        assert_color_approx(&b, &result, EPSILON);
+        // Alpha should be preserved from a in Normal mode
+        assert!((result.a - a.a).abs() < EPSILON);
+    }
+
+    #[test]
+    fn test_blend_srgb_normal_transparent() {
+        let a = Color::from_srgb_float(1.0, 0.0, 0.0, 1.0);
+        let b = Color::from_srgb_float(0.0, 0.0, 1.0, 0.0);
+        // Normal mode: factor = amount * b.alpha = 1.0 * 0.0 = 0.0
+        let result = Color::blend_srgb(a, b, &BlendMode::Normal, 1.0);
+        assert_color_approx(&a, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_linear_lerp_midpoint() {
+        let a = Color::from_srgb_float(0.5, 0.5, 0.5, 1.0);
+        let b = Color::from_srgb_float(1.0, 1.0, 1.0, 1.0);
+        let result = Color::blend_linear(a, b, &BlendMode::Lerp, 0.0);
+        assert_color_approx(&a, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_hsl_lerp_identity() {
+        let color = Color::from_srgb_float(0.5, 0.3, 0.7, 1.0);
+        let result = Color::blend_hsl(color, color, &BlendMode::Lerp, 0.5);
+        assert_color_approx(&color, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_hsv_lerp_identity() {
+        let color = Color::from_srgb_float(0.5, 0.3, 0.7, 1.0);
+        let result = Color::blend_hsv(color, color, &BlendMode::Lerp, 0.5);
+        assert_color_approx(&color, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_lab_lerp_identity() {
+        let color = Color::from_srgb_float(0.5, 0.3, 0.7, 1.0);
+        let result = Color::blend_lab(color, color, &BlendMode::Lerp, 0.5);
+        assert_color_approx(&color, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_xyz_lerp_identity() {
+        let color = Color::from_srgb_float(0.5, 0.3, 0.7, 1.0);
+        let result = Color::blend_xyz(color, color, &BlendMode::Lerp, 0.5);
+        assert_color_approx(&color, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_yuv_lerp_identity() {
+        let color = Color::from_srgb_float(0.5, 0.3, 0.7, 1.0);
+        let result = Color::blend_yuv(color, color, &BlendMode::Lerp, 0.5);
+        assert_color_approx(&color, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_cmyk_lerp_identity() {
+        let color = Color::from_srgb_float(0.5, 0.3, 0.7, 1.0);
+        let result = Color::blend_cmyk(color, color, &BlendMode::Lerp, 0.5);
+        assert_color_approx(&color, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_mode_types() {
+        let types = BlendMode::types();
+        assert_eq!(types.len(), 2);
+        assert_eq!(types[0], BlendMode::Normal);
+        assert_eq!(types[1], BlendMode::Lerp);
+    }
+}

@@ -5,6 +5,7 @@ use crate::operations::{OperationResponse, OperationError, OutputResponse, defau
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,18 +54,19 @@ impl OpImageCombineBlit {
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::DynamicImage{data:mut background, change_id:_}) = background_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Ok(Value::DynamicImage{data:background_arc, change_id:_}) = background_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
         let Ok(Value::DynamicImage{data:foreground, change_id:_}) = foreground_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
         let Ok(Value::Integer(x)) = position_x_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
         let Ok(Value::Integer(y)) = position_y_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
 
         // run node
-        image::imageops::overlay(&mut background, &foreground, x as i64, y as i64);
+        let mut background = Arc::try_unwrap(background_arc).unwrap_or_else(|a| (*a).clone());
+        image::imageops::overlay(&mut background, &*foreground, x as i64, y as i64);
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse {value: Value::DynamicImage { data:background, change_id:get_id() }},
+                OutputResponse {value: Value::DynamicImage { data: Arc::new(background), change_id:get_id() }},
             ],
         })
     }

@@ -4,8 +4,9 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::Value;
+use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,7 +51,7 @@ impl OpNumberMathAdd {
             Value::Bool(a) => {
                 // mask
                 let mask_converted = inputs[2].value.try_convert_to(ValueType::Bool);
-                if image_converted.is_err() {
+                if mask_converted.is_err() {
                     return Err(OperationError {
                         input_errors: vec![
                             (2, "Error converting.".to_string())
@@ -81,7 +82,7 @@ impl OpNumberMathAdd {
                     Value::DynamicImage { data: image_b, change_id: _ } => {
                         for (_x, _y, pixel) in image_b.to_rgba32f().enumerate_pixels_mut() {
                             if *a {
-                                *pixel = image::Rgba([pixel.0[0] + 1.0, pixel.0[1] + 1.0, pixel.0[3] + 1.0, pixel.0[4] + 1.0]);
+                                *pixel = image::Rgba([pixel.0[0] + 1.0, pixel.0[1] + 1.0, pixel.0[2] + 1.0, pixel.0[3] + 1.0]);
                             }
                         }
 
@@ -123,7 +124,7 @@ impl OpNumberMathAdd {
                     },
                     Value::DynamicImage { data: image_b, change_id: _ } => {
                         for (_x, _y, pixel) in image_b.to_rgba32f().enumerate_pixels_mut() {
-                            *pixel = image::Rgba([pixel.0[0] + *a as f32, pixel.0[1] + *a as f32, pixel.0[3] + *a as f32, pixel.0[4] + *a as f32]);
+                            *pixel = image::Rgba([pixel.0[0] + *a as f32, pixel.0[1] + *a as f32, pixel.0[2] + *a as f32, pixel.0[3] + *a as f32]);
                         }
 
                         Value::DynamicImage { data: image_b.clone(), change_id: get_id() }
@@ -160,7 +161,7 @@ impl OpNumberMathAdd {
                     },
                     Value::DynamicImage { data: image_b, change_id: _ } => {
                         for (_x, _y, pixel) in image_b.to_rgba32f().enumerate_pixels_mut() {
-                            *pixel = image::Rgba([pixel.0[0] + *a, pixel.0[1] + *a, pixel.0[3] + *a, pixel.0[4] + *a]);
+                            *pixel = image::Rgba([pixel.0[0] + *a, pixel.0[1] + *a, pixel.0[2] + *a, pixel.0[3] + *a]);
                         }
 
                         Value::DynamicImage { data: image_b.clone(), change_id: get_id() }
@@ -180,12 +181,12 @@ impl OpNumberMathAdd {
                     }); }
                 }
             },
-            Value::DynamicImage { data: image_a, change_id } => {
+            Value::DynamicImage { data: image_a, change_id: _ } => {
                 match &inputs[1].value {
                     Value::Bool(b) => {
                         for (_x, _y, pixel) in image_a.to_rgba32f().enumerate_pixels_mut() {
-                            if *a {
-                                *pixel = image::Rgba([pixel.0[0] + 1.0, pixel.0[1] + 1.0, pixel.0[3] + 1.0, pixel.0[4] + 1.0]);
+                            if *b {
+                                *pixel = image::Rgba([pixel.0[0] + 1.0, pixel.0[1] + 1.0, pixel.0[2] + 1.0, pixel.0[3] + 1.0]);
                             }
                         }
 
@@ -193,9 +194,7 @@ impl OpNumberMathAdd {
                     },
                     Value::Integer(b) => {
                         for (_x, _y, pixel) in image_a.to_rgba32f().enumerate_pixels_mut() {
-                            if *a {
-                                *pixel = image::Rgba([pixel.0[0] + *b, pixel.0[1] + *b, pixel.0[3] + *b, pixel.0[4] + *b]);
-                            }
+                            *pixel = image::Rgba([pixel.0[0] + *b as f32, pixel.0[1] + *b as f32, pixel.0[2] + *b as f32, pixel.0[3] + *b as f32]);
                         }
 
                         Value::DynamicImage { data: image_a.clone(), change_id: get_id() }
@@ -256,5 +255,205 @@ impl OpNumberMathAdd {
                 value: value,
             }],
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! assert_value {
+        ($val:expr, Integer($expected:expr)) => {
+            match &$val { Value::Integer(v) => assert_eq!(*v, $expected), other => panic!("Expected Integer({}), got {:?}", $expected, other) }
+        };
+        ($val:expr, Decimal($expected:expr)) => {
+            match &$val { Value::Decimal(v) => assert!((*v - $expected).abs() < 1e-6, "Expected Decimal({}), got Decimal({})", $expected, v), other => panic!("Expected Decimal({}), got {:?}", $expected, other) }
+        };
+        ($val:expr, Bool($expected:expr)) => {
+            match &$val { Value::Bool(v) => assert_eq!(*v, $expected), other => panic!("Expected Bool({}), got {:?}", $expected, other) }
+        };
+        ($val:expr, String($expected:expr)) => {
+            match &$val { Value::String(v) => assert_eq!(v, $expected), other => panic!("Expected String, got {:?}", other) }
+        };
+    }
+
+    fn make_inputs(a: Value, b: Value, mask: Value) -> Vec<Input> {
+        vec![
+            Input::new("a".to_string(), a, None, None),
+            Input::new("b".to_string(), b, None, None),
+            Input::new("mask".to_string(), mask, None, None),
+        ]
+    }
+
+    #[tokio::test]
+    async fn test_add_decimal_decimal() {
+        let mut inputs = make_inputs(
+            Value::Decimal(5.0),
+            Value::Decimal(10.0),
+            Value::Bool(true),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Decimal(15.0));
+    }
+
+    #[tokio::test]
+    async fn test_add_integer_integer() {
+        let mut inputs = make_inputs(
+            Value::Integer(5),
+            Value::Integer(10),
+            Value::Bool(true),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Integer(15));
+    }
+
+    #[tokio::test]
+    async fn test_add_integer_decimal() {
+        let mut inputs = make_inputs(
+            Value::Integer(5),
+            Value::Decimal(2.5),
+            Value::Bool(true),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Decimal(7.5));
+    }
+
+    #[tokio::test]
+    async fn test_add_decimal_integer() {
+        let mut inputs = make_inputs(
+            Value::Decimal(2.5),
+            Value::Integer(5),
+            Value::Bool(true),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Decimal(7.5));
+    }
+
+    #[tokio::test]
+    async fn test_add_bool_true_integer() {
+        let mut inputs = make_inputs(
+            Value::Bool(true),
+            Value::Integer(5),
+            Value::Bool(true),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Integer(6));
+    }
+
+    #[tokio::test]
+    async fn test_add_bool_false_integer() {
+        let mut inputs = make_inputs(
+            Value::Bool(false),
+            Value::Integer(5),
+            Value::Bool(true),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Integer(5));
+    }
+
+    #[tokio::test]
+    async fn test_add_bool_bool() {
+        let mut inputs = make_inputs(
+            Value::Bool(true),
+            Value::Bool(false),
+            Value::Bool(true),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Bool(true));
+    }
+
+    #[tokio::test]
+    async fn test_add_bool_decimal() {
+        let mut inputs = make_inputs(
+            Value::Bool(true),
+            Value::Decimal(5.5),
+            Value::Bool(true),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Decimal(6.5));
+    }
+
+    #[tokio::test]
+    async fn test_add_integer_bool_true() {
+        let mut inputs = make_inputs(
+            Value::Integer(10),
+            Value::Bool(true),
+            Value::Bool(true),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Integer(11));
+    }
+
+    #[tokio::test]
+    async fn test_add_decimal_bool_true() {
+        let mut inputs = make_inputs(
+            Value::Decimal(10.0),
+            Value::Bool(true),
+            Value::Bool(true),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Decimal(11.0));
+    }
+
+    #[tokio::test]
+    async fn test_add_decimal_zero() {
+        let mut inputs = make_inputs(
+            Value::Decimal(0.0),
+            Value::Decimal(0.0),
+            Value::Bool(true),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Decimal(0.0));
+    }
+
+    #[tokio::test]
+    async fn test_add_negative_numbers() {
+        let mut inputs = make_inputs(
+            Value::Integer(-5),
+            Value::Integer(-10),
+            Value::Bool(true),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Integer(-15));
+    }
+
+    #[tokio::test]
+    async fn test_add_string_concat() {
+        let mut inputs = make_inputs(
+            Value::Bool(true),
+            Value::String("hello".to_string()),
+            Value::Bool(true),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, String("truehello"));
+    }
+
+    #[tokio::test]
+    async fn test_add_integer_string_concat() {
+        let mut inputs = make_inputs(
+            Value::Integer(42),
+            Value::String("hello".to_string()),
+            Value::Bool(true),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, String("42hello"));
+    }
+
+    #[tokio::test]
+    async fn test_add_settings() {
+        let settings = OpNumberMathAdd::settings();
+        assert_eq!(settings.name, "add");
+    }
+
+    #[tokio::test]
+    async fn test_add_create_inputs_count() {
+        let inputs = OpNumberMathAdd::create_inputs();
+        assert_eq!(inputs.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_add_create_outputs_count() {
+        let outputs = OpNumberMathAdd::create_outputs();
+        assert_eq!(outputs.len(), 1);
     }
 }

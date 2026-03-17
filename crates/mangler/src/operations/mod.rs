@@ -3,6 +3,7 @@ use image::DynamicImage;
 use serde::{Deserialize, Serialize};
 use crate::value::Value;
 use core::fmt::Debug;
+use std::sync::Arc;
 use std::time::Duration;
 use crate::{node_settings::NodeSettings, operations};
 use crate::{input::Input, output::Output};
@@ -60,14 +61,14 @@ pub enum OperationListItem {
     Subgraph
 }
 
-pub fn default_image() -> DynamicImage {
+pub fn default_image() -> Arc<DynamicImage> {
     let mut imgbuf = image::RgbaImage::new(1, 1);
 
     for (_x, _y, pixel) in imgbuf.enumerate_pixels_mut() {
         *pixel = image::Rgba([255, 255, 255, 255]);
     }
 
-    DynamicImage::ImageRgba8(imgbuf)
+    Arc::new(DynamicImage::ImageRgba8(imgbuf))
 }
 
 #[macro_export]

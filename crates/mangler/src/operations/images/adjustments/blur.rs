@@ -7,6 +7,7 @@ use crate::operations::{OperationResponse, OperationError, OutputResponse, defau
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,7 +60,7 @@ impl OpImageAdjustmentBlur {
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse {value: Value::DynamicImage { data:blurred, change_id:get_id() }},
+                OutputResponse {value: Value::DynamicImage { data:Arc::new(blurred), change_id:get_id() }},
             ],
         })
     }

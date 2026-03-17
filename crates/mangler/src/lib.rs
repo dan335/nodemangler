@@ -99,7 +99,10 @@ pub enum NodeChangedMessage {
     InfoChanged {
         node_id: String,
         time: Duration,
-    }
+    },
+    GraphRunCompleted {
+        total_time: Duration,
+    },
 }
 
 #[derive(Debug)]
