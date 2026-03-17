@@ -54,12 +54,12 @@ impl OpNumberMathAdd {
                 if mask_converted.is_err() {
                     return Err(OperationError {
                         input_errors: vec![
-                            (2, "Error converting.".to_string())
+                            (2, "Unable to convert 'mask' to Bool.".to_string())
                         ],
                         node_error: None
                     });
                 }
-                let Ok(Value::Bool(mut mask)) = mask_converted else { return Err(OperationError { input_errors:vec![], node_error: Some("Error converting.".to_string()) }); };
+                let Ok(Value::Bool(mut mask)) = mask_converted else { return Err(OperationError { input_errors:vec![], node_error: Some(format!("Unexpected type for 'mask', expected Bool")) }); };
                 
                 match &inputs[1].value {
                     Value::Bool(b) => {
@@ -101,7 +101,7 @@ impl OpNumberMathAdd {
                     },
                     _ => {return Err(OperationError {
                         input_errors: vec![
-                            (1, "Error converting.".to_string())
+                            (1, "Unsupported type for 'b' in add operation.".to_string())
                         ],
                         node_error: None
                     }); }
@@ -138,7 +138,7 @@ impl OpNumberMathAdd {
                     },
                     _ => {return Err(OperationError {
                         input_errors: vec![
-                            (1, "Error converting.".to_string())
+                            (1, "Unsupported type for 'b' in add operation.".to_string())
                         ],
                         node_error: None
                     }); }
@@ -175,7 +175,7 @@ impl OpNumberMathAdd {
                     },
                     _ => {return Err(OperationError {
                         input_errors: vec![
-                            (1, "Error converting.".to_string())
+                            (1, "Unsupported type for 'b' in add operation.".to_string())
                         ],
                         node_error: None
                     }); }
@@ -204,7 +204,7 @@ impl OpNumberMathAdd {
                     Value::Color(b) => todo!(),
                     _ => {return Err(OperationError {
                         input_errors: vec![
-                            (1, "Error converting.".to_string())
+                            (1, "Unsupported type for 'b' in add operation.".to_string())
                         ],
                         node_error: None
                     }); }
@@ -220,7 +220,7 @@ impl OpNumberMathAdd {
                     Value::Path(b) => todo!(),
                     _ => {return Err(OperationError {
                         input_errors: vec![
-                            (1, "Error converting.".to_string())
+                            (1, "Unsupported type for 'b' in add operation.".to_string())
                         ],
                         node_error: None
                     }); }
@@ -235,7 +235,7 @@ impl OpNumberMathAdd {
                     Value::Path(b) => todo!(),
                     _ => {return Err(OperationError {
                         input_errors: vec![
-                            (1, "Error converting.".to_string())
+                            (1, "Unsupported type for 'b' in add operation.".to_string())
                         ],
                         node_error: None
                     }); }
@@ -243,7 +243,7 @@ impl OpNumberMathAdd {
             },
             _ => {return Err(OperationError {
                 input_errors: vec![
-                    (0, "Error converting.".to_string())
+                    (0, "Unsupported type for 'a' in add operation.".to_string())
                 ],
                 node_error: None
             }); }

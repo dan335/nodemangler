@@ -1,4 +1,4 @@
-use epaint::{Color32, Hsva, Rounding, Shadow, Stroke};
+use epaint::{Color32, CornerRadius, Hsva, Shadow, Stroke};
 use super::theme::ThemeValues;
 
 pub fn theme_light_blue() -> ThemeValues 
@@ -28,7 +28,7 @@ pub fn theme_light_blue() -> ThemeValues
         override_text_color: Hsva::new(0.565, 0.05, 0.1, 1.0).into(),
         text_faint: Hsva::new(0.565, 0.05, 0.3, 1.0).into(),
 
-        window_rounding: Rounding::same(1.0),
+        window_corner_radius: CornerRadius::same(1),
         window_shadow: Shadow::NONE,
         window_fill: Hsva::new(0.565, 0.4, 0.82, 1.0).into(),
         window_stroke: Stroke::NONE,

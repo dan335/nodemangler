@@ -2,7 +2,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -42,25 +42,20 @@ impl OpImageTransformResizeFill {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let image_converted = inputs[0].value.try_convert_to(ValueType::DynamicImage);
-        let width_converted = inputs[1].value.try_convert_to(ValueType::Integer);
-        let height_converted = inputs[2].value.try_convert_to(ValueType::Integer);
-        let filter_type_converted = inputs[3].value.try_convert_to(ValueType::FilterType);
+        let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
+        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
+        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
+        let filter_type_converted = convert_input(inputs, 3, ValueType::FilterType, &mut input_errors);
 
-        // gather errors
-        if image_converted.is_err() { input_errors.push((0, image_converted.as_ref().err().unwrap().message.clone())); }
-        if width_converted.is_err() { input_errors.push((1, width_converted.as_ref().err().unwrap().message.clone())); }
-        if height_converted.is_err() { input_errors.push((2, height_converted.as_ref().err().unwrap().message.clone())); }
-        if filter_type_converted.is_err() { input_errors.push((3, filter_type_converted.as_ref().err().unwrap().message.clone())); }
 
         // return if error
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::DynamicImage{data, change_id:_}) = image_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Integer(mut width)) = width_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Integer(mut height)) = height_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::FilterType(filter_type)) = filter_type_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
+        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
+        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
+        let Value::FilterType(filter_type) = filter_type_converted.unwrap() else { unreachable!() };
 
         // run node
         width = width.max(1);

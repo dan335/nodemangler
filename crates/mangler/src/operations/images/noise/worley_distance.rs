@@ -4,7 +4,7 @@ use crate::color::Color;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -45,28 +45,22 @@ impl OpImageNoiseWorleyDistance {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let seed_converted = inputs[0].value.try_convert_to(ValueType::Integer);
-        let width_converted = inputs[1].value.try_convert_to(ValueType::Integer);
-        let height_converted = inputs[2].value.try_convert_to(ValueType::Integer);
-        let distance_function_converted = inputs[3].value.try_convert_to(ValueType::NoiseWorleyDistanceFunction);
-        let frequency_converted = inputs[4].value.try_convert_to(ValueType::Decimal);
+        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
+        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
+        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
+        let distance_function_converted = convert_input(inputs, 3, ValueType::NoiseWorleyDistanceFunction, &mut input_errors);
+        let frequency_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
 
-        // gather errors
-        if seed_converted.is_err() { input_errors.push((0, seed_converted.as_ref().err().unwrap().message.clone())); }
-        if width_converted.is_err() { input_errors.push((1, width_converted.as_ref().err().unwrap().message.clone())); }
-        if height_converted.is_err() { input_errors.push((2, height_converted.as_ref().err().unwrap().message.clone())); }
-        if distance_function_converted.is_err() { input_errors.push((3, distance_function_converted.as_ref().err().unwrap().message.clone())); }
-        if frequency_converted.is_err() { input_errors.push((4, frequency_converted.as_ref().err().unwrap().message.clone())); }
 
         // return if error
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::Integer(mut seed)) = seed_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Integer(mut width)) = width_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Integer(mut height)) = height_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::NoiseWorleyDistanceFunction(distance_function)) = distance_function_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(mut frequency)) = frequency_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
+        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
+        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
+        let Value::NoiseWorleyDistanceFunction(distance_function) = distance_function_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(mut frequency) = frequency_converted.unwrap() else { unreachable!() };
 
         // run node
         width = width.max(1);

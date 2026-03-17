@@ -1,7 +1,10 @@
 pub mod blur;
 pub mod contrast;
+pub mod curves;
+pub mod gradient_map;
 pub mod grayscale;
 pub mod invert;
 pub mod brighten;
 pub mod hue_rotate;
+pub mod levels;
 pub mod unsharpen;

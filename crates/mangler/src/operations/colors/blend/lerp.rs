@@ -2,7 +2,7 @@ use crate::color::Color;
 use crate::color::color_spaces::ColorSpace;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -39,25 +39,20 @@ impl OpColorBlendLerp {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let a_converted = inputs[0].value.try_convert_to(ValueType::Color);
-        let b_converted = inputs[1].value.try_convert_to(ValueType::Color);
-        let amount_converted = inputs[2].value.try_convert_to(ValueType::Decimal);
-        let color_space_converted = inputs[3].value.try_convert_to(ValueType::ColorSpace);
+        let a_converted = convert_input(inputs, 0, ValueType::Color, &mut input_errors);
+        let b_converted = convert_input(inputs, 1, ValueType::Color, &mut input_errors);
+        let amount_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
+        let color_space_converted = convert_input(inputs, 3, ValueType::ColorSpace, &mut input_errors);
 
-        // gather errors
-        if a_converted.is_err() { input_errors.push((0, a_converted.as_ref().err().unwrap().message.clone())); }
-        if b_converted.is_err() { input_errors.push((0, b_converted.as_ref().err().unwrap().message.clone())); }
-        if amount_converted.is_err() { input_errors.push((0, amount_converted.as_ref().err().unwrap().message.clone())); }
-        if color_space_converted.is_err() { input_errors.push((0, color_space_converted.as_ref().err().unwrap().message.clone())); }
 
         // return if error
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::Color(a)) = a_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Color(b)) = b_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(amount)) = amount_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::ColorSpace(color_space)) = color_space_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };  
+        let Value::Color(a) = a_converted.unwrap() else { unreachable!() };
+        let Value::Color(b) = b_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
+        let Value::ColorSpace(color_space) = color_space_converted.unwrap() else { unreachable!() };  
 
         // run node
         let color = match color_space {

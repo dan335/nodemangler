@@ -43,7 +43,7 @@ impl OpNumberMathNthRt {
         // get values
         // run node
 
-        let Ok(Value::Decimal(n)) = inputs[1].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
+        let Ok(Value::Decimal(n)) = inputs[1].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { input_errors: vec![(1, "Unable to convert 'n' to Decimal.".to_string())], node_error: None })};
 
         let num = match &inputs[0].value {
             Value::Integer(a) => Some(*a as f32),
@@ -64,7 +64,8 @@ impl OpNumberMathNthRt {
             })
         } else {
             return Err(OperationError {
-                message: "Error converting.".to_string(),
+                input_errors: vec![(0, "Unable to convert to a number.".to_string())],
+                node_error: None,
             });
         }
 

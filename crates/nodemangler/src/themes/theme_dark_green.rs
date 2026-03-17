@@ -1,4 +1,4 @@
-use epaint::{Color32, Rgba, Rounding, Shadow, Stroke, Hsva};
+use epaint::{Color32, CornerRadius, Rgba, Shadow, Stroke, Hsva};
 use super::theme::ThemeValues;
 
 pub fn theme_dark_green() -> ThemeValues 
@@ -25,7 +25,7 @@ pub fn theme_dark_green() -> ThemeValues
         
         text_faint: Color32::from_rgb(82, 128, 134),
 
-        window_rounding: Rounding::same(1.0),
+        window_corner_radius: CornerRadius::same(1),
         window_shadow: Shadow::NONE,
         window_fill: Hsva::new(0.525, 0.25, 0.018, 1.0).into(),
         window_stroke: Stroke::NONE,

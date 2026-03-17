@@ -1,6 +1,6 @@
 use crate::{app_menu::app_menu::AppMenu, themes::theme::{Theme, set_theme}};
 use eframe::egui;
-use epaint::Rounding;
+use epaint::CornerRadius;
 use crate::program::Program;
 use std::collections::HashMap;
 
@@ -15,14 +15,15 @@ pub struct App {
     programs: HashMap<String, Program>,
     current_program: Option<String>,
     theme: Theme,
+    view_in_separate_window: bool,
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if PROFILE {
             puffin::profile_function!();
             puffin::GlobalProfiler::lock().new_frame(); // call once per frame!
-            puffin_egui::profiler_window(ctx);
+            // puffin_egui::profiler_window(ctx); // disabled: puffin_egui not compatible with egui 0.33
         }
 
         ctx.request_repaint();
@@ -31,11 +32,11 @@ impl eframe::App for App {
             // bg
             ui.painter().add(egui::Shape::rect_filled(
                 ui.max_rect(),
-                Rounding::same(0.0),
+                CornerRadius::ZERO,
                 self.theme.get().panel_fill,
             ));
 
-            let bar_response = self.app_menu.show(ctx, ui, &self.programs, &self.current_program, &self.theme);
+            let bar_response = self.app_menu.show(ctx, ui, &self.programs, &self.current_program, &self.theme, &mut self.view_in_separate_window);
 
             if let Some(new_program) = bar_response.new_program {
                 let program_id = new_program.app.id.clone();
@@ -54,7 +55,7 @@ impl eframe::App for App {
 
             if let Some(current_program) = &self.current_program {
                 if let Some(program) = self.programs.get_mut(current_program) {
-                    program.show(ctx, frame, ui, &self.theme);
+                    program.show(ctx, ui, &self.theme, self.view_in_separate_window);
                 }
             }
 
@@ -77,12 +78,6 @@ impl eframe::App for App {
 
     fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
 
-    fn on_close_event(&mut self) -> bool {
-        true
-    }
-
-    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {}
-
     fn auto_save_interval(&self) -> std::time::Duration {
         std::time::Duration::from_secs(30)
     }
@@ -96,19 +91,9 @@ impl eframe::App for App {
     //     // _visuals.window_fill() would also be a natural choice
     // }
 
-    fn persist_native_window(&self) -> bool {
-        true
-    }
-
     fn persist_egui_memory(&self) -> bool {
         true
     }
-
-    fn warm_up_enabled(&self) -> bool {
-        false
-    }
-
-    fn post_rendering(&mut self, _window_size_px: [u32; 2], _frame: &eframe::Frame) {}
 }
 
 impl App {
@@ -129,6 +114,7 @@ impl App {
             programs: programs,
             current_program: current_program,
             theme: crate::DEFAULT_THEME,
+            view_in_separate_window: true,
         }
     }
 }
@@ -137,26 +123,20 @@ fn setup_fonts(ctx: &egui::Context) {
     // Start with the default fonts (we will be adding to them rather than replacing them).
     let mut fonts = egui::FontDefinitions::default();
 
-    egui_phosphor::add_to_fonts(&mut fonts);
+    egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
 
-    fonts.font_data.get_mut("phosphor").unwrap().tweak.y_offset_factor = 0.1;
+    std::sync::Arc::make_mut(fonts.font_data.get_mut("phosphor").unwrap()).tweak.y_offset_factor = 0.1;
 
     // Install my own font (maybe supporting non-latin characters).
     // .ttf and .otf files supported.
     fonts.font_data.insert(
         "manrope-light".to_owned(),
-        egui::FontData::from_static(include_bytes!(
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
             "../assets/Manrope-Light.ttf"
-        )),
+        ))),
     );
 
     // Put my font first (highest priority) for proportional text:
-    fonts
-        .families
-        .entry(egui::FontFamily::Proportional)
-        .or_default()
-        .insert(0, "manrope-light".to_owned());
-
     fonts
         .families
         .entry(egui::FontFamily::Proportional)

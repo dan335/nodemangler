@@ -12,14 +12,14 @@ use tokio::sync::mpsc::Sender;
 use crate::{graph::graph_node::GraphNode, themes::theme::Theme};
 
 fn change_value(
-    tx_change_node: Sender<ChangeNodeMessage>,
-    node_id: String,
+    tx_change_node: &Sender<ChangeNodeMessage>,
+    node_id: &str,
     input_index: usize,
     input: &mut Input,
     value: Value,
 ) {
     let message = ChangeNodeMessage::SetInput {
-        node_id,
+        node_id: node_id.to_owned(),
         input_index,
         value: value.clone(),
     };
@@ -34,13 +34,11 @@ fn change_value(
     input.value = value;
 }
 
-pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<ChangeNodeMessage>, theme: &Theme) -> NodeSettingsResponse {
+pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: &Sender<ChangeNodeMessage>, theme: &Theme) -> NodeSettingsResponse {
     let mut node_settings_response = NodeSettingsResponse::new();
 
-    let name = node.settings.name.clone();
-
     ui.horizontal(|ui| {
-        ui.heading(format!("{} settings", name));
+        ui.heading(format!("{} settings", &node.settings.name));
         ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.button("X").clicked() {
                 node_settings_response.deselect_node = true;
@@ -79,13 +77,13 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                 body.row(30.0, |mut row| {
                     row.col(|ui| {
                         ui.horizontal_centered(|ui| {
-                            ui.label(input.name.clone());
+                            ui.label(&input.name);
                         });
                     });
 
                     row.col(|ui| {
                         ui.horizontal_centered(|ui| {
-                            input_value(ui, input.value.clone(), input, input_index, node.id.clone(), tx_change_node.clone());
+                            input_value(ui, input.value.clone(), input, input_index, &node.id, &tx_change_node);
                         });
                     });                        
 
@@ -144,7 +142,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: Sender<Chan
                     body.row(30.0, |mut row| {
                         row.col(|ui| {
                             ui.horizontal_centered(|ui| {
-                                ui.label(output.name.clone());
+                                ui.label(&output.name);
                             });
                         });
 
@@ -209,7 +207,7 @@ fn output_value(ui: &mut egui::Ui,  value: &Value) {
 }
 
 
-fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: usize, node_id: String, tx_change_node: Sender<ChangeNodeMessage>) {
+fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: usize, node_id: &str, tx_change_node: &Sender<ChangeNodeMessage>) {
     match value {
         Value::Bool(a) => {
             if input.connection.is_some() {
@@ -219,13 +217,12 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 if ui.add(egui::Checkbox::new(&mut x, "")).changed() {
                     let value = Value::Bool(x);
                     change_value(
-                        tx_change_node.clone(),
+                        tx_change_node,
                         node_id,
                         input_index,
                         input,
-                        value.clone(),
+                        value,
                     );
-                    input.value = value;
                 }
             }
         }
@@ -235,8 +232,7 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
             } else {
                 let mut x = a;
 
-                let settings = input.settings.clone();
-                if let Some(input_type) = settings {
+                if let Some(input_type) = &input.settings {
                     match input_type {
                         InputSettings::DragValue { clamp, speed } => {
                             let mut drag = egui::DragValue::new(&mut x);
@@ -250,26 +246,24 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                             if ui.add(drag).changed() {
                                 let value = Value::Integer(x);
                                 change_value(
-                                    tx_change_node.clone(),
+                                    tx_change_node,
                                     node_id,
                                     input_index,
                                     input,
-                                    value.clone(),
+                                    value,
                                 );
-                                input.value = value;
                             }
                         },
                         InputSettings::Slider { range, step_by, clamp_to_range } => {
-                            if ui.add(egui::Slider::new(&mut x, range.0 as i32..=range.1 as i32).clamp_to_range(clamp_to_range)).changed() {
+                            if ui.add(egui::Slider::new(&mut x, range.0 as i32..=range.1 as i32).clamp_to_range(*clamp_to_range)).changed() {
                                 let value = Value::Integer(x);
                                 change_value(
-                                    tx_change_node.clone(),
+                                    tx_change_node,
                                     node_id,
                                     input_index,
                                     input,
-                                    value.clone(),
+                                    value,
                                 );
-                                input.value = value;
                             }
                         },
                         _ => {}
@@ -283,13 +277,12 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
             } else {
                 let mut x: f32 = a;
 
-                let settings = input.settings.clone();
-                if let Some(input_type) = settings {
+                if let Some(input_type) = &input.settings {
                     match input_type {
                         InputSettings::DragValue { speed, clamp } => {
                             let mut drag = egui::DragValue::new(&mut x);
 
-                            drag = if let Some(speed) = speed {
+                            drag = if let Some(speed) = *speed {
                                 drag.speed(speed)
                             } else {
                                 drag
@@ -304,26 +297,24 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                             if ui.add(drag).changed() {
                                 let value = Value::Decimal(x);
                                 change_value(
-                                    tx_change_node.clone(),
+                                    tx_change_node,
                                     node_id,
                                     input_index,
                                     input,
-                                    value.clone(),
+                                    value,
                                 );
-                                input.value = value;
                             }
                         },
                         InputSettings::Slider { range, step_by, clamp_to_range } => {
-                            if ui.add(egui::Slider::new(&mut x, range.0..=range.1).clamp_to_range(clamp_to_range)).changed() {
+                            if ui.add(egui::Slider::new(&mut x, range.0..=range.1).clamp_to_range(*clamp_to_range)).changed() {
                                 let value = Value::Decimal(x);
                                 change_value(
-                                    tx_change_node.clone(),
+                                    tx_change_node,
                                     node_id,
                                     input_index,
                                     input,
-                                    value.clone(),
+                                    value,
                                 );
-                                input.value = value;
                             }
                         },
                         _ => {}
@@ -355,13 +346,12 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                             if edit.changed() {
                                 let value = Value::String(x);
                                 change_value(
-                                    tx_change_node.clone(),
+                                    tx_change_node,
                                     node_id,
                                     input_index,
                                     input,
-                                    value.clone(),
+                                    value,
                                 );
-                                input.value = value;
                             }
                         }
                     }
@@ -378,13 +368,12 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 if ui.color_edit_button_srgba_unmultiplied(&mut x).changed() {
                     let value = Value::Color(mangler::color::Color::from_srgb_u8(x[0], x[1], x[2], x[3]));
                     change_value(
-                        tx_change_node.clone(),
+                        tx_change_node,
                         node_id,
                         input_index,
                         input,
-                        value.clone(),
+                        value,
                     );
-                    input.value = value;
                 }
             }
         },
@@ -406,13 +395,12 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         {
                             let value = Value::FilterType(x);
                             change_value(
-                                tx_change_node.clone(),
-                                node_id.clone(),
+                                tx_change_node,
+                                node_id,
                                 input_index,
                                 input,
-                                value.clone(),
+                                value,
                             );
-                            input.value = value;
                         }
                         if ui
                             .selectable_value(
@@ -424,13 +412,12 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         {
                             let value = Value::FilterType(x);
                             change_value(
-                                tx_change_node.clone(),
-                                node_id.clone(),
+                                tx_change_node,
+                                node_id,
                                 input_index,
                                 input,
-                                value.clone(),
+                                value,
                             );
-                            input.value = value;
                         }
                         if ui
                             .selectable_value(
@@ -442,13 +429,12 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         {
                             let value = Value::FilterType(x);
                             change_value(
-                                tx_change_node.clone(),
-                                node_id.clone(),
+                                tx_change_node,
+                                node_id,
                                 input_index,
                                 input,
-                                value.clone(),
+                                value,
                             );
-                            input.value = value;
                         }
                         if ui
                             .selectable_value(
@@ -460,13 +446,12 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         {
                             let value = Value::FilterType(x);
                             change_value(
-                                tx_change_node.clone(),
-                                node_id.clone(),
+                                tx_change_node,
+                                node_id,
                                 input_index,
                                 input,
-                                value.clone(),
+                                value,
                             );
-                            input.value = value;
                         }
                         if ui
                             .selectable_value(
@@ -478,13 +463,12 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         {
                             let value = Value::FilterType(x);
                             change_value(
-                                tx_change_node.clone(),
-                                node_id.clone(),
+                                tx_change_node,
+                                node_id,
                                 input_index,
                                 input,
-                                value.clone(),
+                                value,
                             );
-                            input.value = value;
                         }
                     });
             }
@@ -500,8 +484,7 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         for color_format in ColorFormat::types().iter() {
                             if ui.selectable_value(&mut x, color_format.clone(), format!("{:?}", color_format)).changed() {
                                 let value = Value::ColorFormat(color_format.clone());
-                                change_value(tx_change_node.clone(), node_id.clone(), input_index, input, value.clone());
-                                input.value = value;
+                                change_value(tx_change_node, node_id, input_index, input, value);
                             }
                         }
                     });
@@ -512,7 +495,7 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 ui.label(format!("trigger"));
             } else if ui.add(egui::Button::new(input.name.clone())).clicked() {
                 change_value(
-                    tx_change_node.clone(),
+                    tx_change_node,
                     node_id,
                     input_index,
                     input,
@@ -563,13 +546,12 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         } {
                             let value = Value::Path(save_path);
                             change_value(
-                                tx_change_node.clone(),
+                                tx_change_node,
                                 node_id,
                                 input_index,
                                 input,
-                                value.clone(),
+                                value,
                             );
-                            input.value = value;
                         }
                     }
                 }
@@ -586,8 +568,7 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         for image_type in mangler::value::ImageType::types().iter() {
                             if ui.selectable_value(&mut x, image_type.format(), image_type.format().extensions_str()[0].to_string()).changed() {
                                 let value = Value::ImageType(image_type.format());
-                                change_value(tx_change_node.clone(), node_id.clone(), input_index, input, value.clone());
-                                input.value = value;
+                                change_value(tx_change_node, node_id, input_index, input, value);
                             }
                         }
                     });
@@ -604,8 +585,7 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         for distance_function in NoiseWorleyDistanceFunction::types().iter() {
                             if ui.selectable_value(&mut x, distance_function.clone(), format!("{:?}", distance_function)).changed() {
                                 let value = Value::NoiseWorleyDistanceFunction(distance_function.clone());
-                                change_value(tx_change_node.clone(), node_id.clone(), input_index, input, value.clone());
-                                input.value = value;
+                                change_value(tx_change_node, node_id, input_index, input, value);
                             }
                         }
                     });
@@ -621,8 +601,7 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                     for color_space in ColorSpace::types().iter() {
                         if ui.selectable_value(&mut x, color_space.clone(), format!("{:?}", color_space)).changed() {
                             let value = Value::ColorSpace(color_space.clone());
-                            change_value(tx_change_node.clone(), node_id.clone(), input_index, input, value.clone());
-                            input.value = value;
+                            change_value(tx_change_node, node_id, input_index, input, value);
                         }
                     }
                 });
@@ -637,8 +616,7 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                     for blend_mode in BlendMode::types().iter() {
                         if ui.selectable_value(&mut x, blend_mode.clone(), format!("{:?}", blend_mode)).changed() {
                             let value = Value::BlendMode(blend_mode.clone());
-                            change_value(tx_change_node.clone(), node_id.clone(), input_index, input, value.clone());
-                            input.value = value;
+                            change_value(tx_change_node, node_id, input_index, input, value);
                         }
                     }
                 });

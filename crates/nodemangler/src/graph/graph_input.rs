@@ -17,7 +17,7 @@ pub fn draw_graph_input(
     _node_rect: Rect,
     ui: &mut egui::Ui,
     show_names: bool,
-    temp_connection: Option<TempConnection>,
+    temp_connection: Option<&TempConnection>,
     theme: &Theme,
     graph_zoom: f32,
 ) -> InputOutputResponse {
@@ -62,7 +62,7 @@ pub fn draw_graph_input(
     if input_response.drag_started() {
         response.has_started_creating_connection = true;
         response.connection_from_position = input_position;
-    } else if input_response.drag_released() {
+    } else if input_response.drag_stopped() {
         response.has_stopped_creating_connection = true;
         response.connection_to_position = input_position;
     }
@@ -75,7 +75,7 @@ pub fn draw_graph_input(
         let galley = ui.painter().layout_no_wrap(input.name.clone(), font_id.clone(), color);
         
         // bg
-        ui.painter().rect_filled(Rect::from_min_size(Pos2::new(pos.x - galley.rect.width(), pos.y - (galley.rect.height() * 0.5)), galley.rect.size()), egui::Rounding::same(1.0), theme.get().grid_bg);
+        ui.painter().rect_filled(Rect::from_min_size(Pos2::new(pos.x - galley.rect.width(), pos.y - (galley.rect.height() * 0.5)), galley.rect.size()), egui::CornerRadius::same(1), theme.get().grid_bg);
 
         // text
         ui.painter().text(
@@ -88,7 +88,7 @@ pub fn draw_graph_input(
     }
 
     if response.is_cursor_over {
-        let valid_conversions = input.value.value_type().valid_coversions_from();
+        let valid_conversions = input.value.value_type().valid_conversions_from();
 
         if valid_conversions.len() == 0 {
             let txt = "none".to_string();
@@ -97,7 +97,7 @@ pub fn draw_graph_input(
             let galley = ui.painter().layout_no_wrap(txt.clone(), font_id.clone(), color);
 
             // bg
-            ui.painter().rect_filled(Rect::from_min_size(Pos2::new(txt_pos.x - galley.rect.width(), txt_pos.y - (galley.rect.height() * 0.5)), galley.rect.size()), egui::Rounding::same(1.0), theme.get().grid_bg);
+            ui.painter().rect_filled(Rect::from_min_size(Pos2::new(txt_pos.x - galley.rect.width(), txt_pos.y - (galley.rect.height() * 0.5)), galley.rect.size()), egui::CornerRadius::same(1), theme.get().grid_bg);
 
             // text
             ui.painter().text(
@@ -108,14 +108,14 @@ pub fn draw_graph_input(
                 color,
             );
         } else {
-            for (index, valid_type) in input.value.value_type().valid_coversions_from().iter().enumerate() {
+            for (index, valid_type) in input.value.value_type().valid_conversions_from().iter().enumerate() {
                 let txt = valid_type.value_name();
                 let txt_pos = Pos2::new(pos.x, graph_to_view_space(graph_zoom, 25.0) + pos.y + graph_to_view_space(graph_zoom, 15.0) * index as f32);
     
                 let galley = ui.painter().layout_no_wrap(txt.clone(), font_id.clone(), theme.get().text_faint);
     
                 // bg
-                ui.painter().rect_filled(Rect::from_min_size(Pos2::new(txt_pos.x - galley.rect.width(), txt_pos.y - (galley.rect.height() * 0.5)), galley.rect.size()), egui::Rounding::same(1.0), theme.get().grid_bg);
+                ui.painter().rect_filled(Rect::from_min_size(Pos2::new(txt_pos.x - galley.rect.width(), txt_pos.y - (galley.rect.height() * 0.5)), galley.rect.size()), egui::CornerRadius::same(1), theme.get().grid_bg);
     
                 // text
                 ui.painter().text(

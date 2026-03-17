@@ -1,6 +1,6 @@
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -36,19 +36,16 @@ impl OpNumberRandomInteger {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let min_converted = inputs[1].value.try_convert_to(ValueType::Integer);
-        let max_converted = inputs[2].value.try_convert_to(ValueType::Integer);
+        let min_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
+        let max_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
 
-        // gather errors
-        if min_converted.is_err() { input_errors.push((1, min_converted.as_ref().err().unwrap().message.clone())); }
-        if max_converted.is_err() { input_errors.push((2, max_converted.as_ref().err().unwrap().message.clone())); }
 
         // return if error
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::Integer(minimum)) = min_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Integer(mut maximum)) = max_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Value::Integer(minimum) = min_converted.unwrap() else { unreachable!() };
+        let Value::Integer(mut maximum) = max_converted.unwrap() else { unreachable!() };
 
         // run node
         maximum = maximum.max(minimum+1);

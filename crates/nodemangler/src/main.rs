@@ -10,7 +10,6 @@ mod node_menu;
 mod program;
 mod settings;
 mod themes;
-mod title_bar;
 mod view_window;
 mod app;
 use egui::Pos2;
@@ -32,13 +31,11 @@ async fn main() -> Result<(), eframe::Error> {
     let icon_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/mangler_icon.png");
 
     let options = eframe::NativeOptions {
-        //initial_window_size: Some(egui::vec2(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)),
-        icon_data: Some(load_icon(icon_path.to_str().unwrap())),
-        maximized: true,
-        //fullscreen: true,
-        //drag_and_drop_support: true,
-        resizable: true,
-        decorated: true,
+        viewport: egui::ViewportBuilder::default()
+            .with_maximized(true)
+            .with_resizable(true)
+            .with_decorations(true)
+            .with_icon(load_icon(icon_path.to_str().unwrap())),
         ..Default::default()
     };
 
@@ -46,14 +43,14 @@ async fn main() -> Result<(), eframe::Error> {
         "Mangler",
         options,
         Box::new(|cc| {
-            Box::<app::App>::new(app::App::new(cc))
+            Ok(Box::<app::App>::new(app::App::new(cc)))
         }),
     )
 }
 
 
 // do this without image crate?
-fn load_icon(path: &str) -> eframe::IconData {
+fn load_icon(path: &str) -> egui::IconData {
     let (icon_rgba, icon_width, icon_height) = {
         let image = image::open(path)
             .expect("Failed to open icon path")
@@ -63,7 +60,7 @@ fn load_icon(path: &str) -> eframe::IconData {
         (rgba, width, height)
     };
 
-    eframe::IconData {
+    egui::IconData {
         rgba: icon_rgba,
         width: icon_width,
         height: icon_height,

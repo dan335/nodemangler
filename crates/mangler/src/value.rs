@@ -419,7 +419,7 @@ impl ValueType {
         }
     }
 
-    pub fn valid_coversions_from(&self) -> Vec<ValueType> {
+    pub fn valid_conversions_from(&self) -> Vec<ValueType> {
         let mut types: Vec<ValueType> = Vec::new();
 
         for value_type in ValueType::types().iter() {
@@ -558,7 +558,7 @@ where
 {
     let serialized_value = match value {
         FilterType::CatmullRom => "catmullrom",
-        FilterType::Gaussian => "guassian",
+        FilterType::Gaussian => "gaussian",
         FilterType::Lanczos3 => "lanczos3",
         FilterType::Nearest => "nearest",
         FilterType::Triangle => "triangle",
@@ -573,7 +573,7 @@ where
     let deserialized_value = String::deserialize(deserializer)?;
     match deserialized_value.as_str() {
         "catmullrom" => Ok(FilterType::CatmullRom),
-        "guassian" => Ok(FilterType::Gaussian),
+        "gaussian" | "guassian" => Ok(FilterType::Gaussian),
         "lanczos3" => Ok(FilterType::Lanczos3),
         "nearest" => Ok(FilterType::Nearest),
         "triangle" => Ok(FilterType::Triangle),

@@ -1,4 +1,4 @@
-use eframe::epaint::{Color32, Rounding};
+use eframe::epaint::{Color32, CornerRadius};
 use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect};
 
@@ -9,7 +9,7 @@ use crate::themes::theme::Theme;
 
 pub fn show_graph_node_header(
     ui: &mut egui::Ui,
-    name: String,
+    name: &str,
     node_rect: Rect,
     is_editing: bool,
     is_subgraph: bool,
@@ -21,13 +21,13 @@ pub fn show_graph_node_header(
     if is_busy {
         ui.painter().add(egui::Shape::rect_filled(
             node_rect,
-            Rounding::same(NODE_ROUNDING),
+            CornerRadius::same(NODE_ROUNDING as u8),
             theme.get().grid_connection_line,
         ));
     } else {
         ui.painter().add(egui::Shape::rect_filled(
             node_rect,
-            Rounding::same(NODE_ROUNDING),
+            CornerRadius::same(NODE_ROUNDING as u8),
             theme.get().node_header_bg,
         ));
     }
@@ -37,8 +37,9 @@ pub fn show_graph_node_header(
     if is_editing {
         ui.painter().add(egui::Shape::rect_stroke(
             node_rect,
-            NODE_ROUNDING,
+            CornerRadius::same(NODE_ROUNDING as u8),
             egui::Stroke::new(graph_to_view_space(graph_zoom, 3.0), theme.get().node_header_selected_border),
+            egui::StrokeKind::Outside,
         ));
     }
 

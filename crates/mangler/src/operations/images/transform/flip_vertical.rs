@@ -1,7 +1,7 @@
 use crate::get_id;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -36,16 +36,14 @@ impl OpImageTransformFlipVertical {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let image_converted = inputs[0].value.try_convert_to(ValueType::DynamicImage);
+        let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
 
-        // gather errors
-        if image_converted.is_err() { input_errors.push((0, image_converted.as_ref().err().unwrap().message.clone())); }
 
         // return if error
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::DynamicImage{data, change_id:_}) = image_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
 
         // run node
         let mut data_inner = Arc::try_unwrap(data).unwrap_or_else(|a| (*a).clone());

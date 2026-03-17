@@ -3,7 +3,7 @@ use crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -42,25 +42,20 @@ impl OpImageNoiseOpenSimplex {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let seed_converted = inputs[0].value.try_convert_to(ValueType::Integer);
-        let width_converted = inputs[1].value.try_convert_to(ValueType::Integer);
-        let height_converted = inputs[2].value.try_convert_to(ValueType::Integer);
-        let scale_converted = inputs[3].value.try_convert_to(ValueType::Decimal);
+        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
+        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
+        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
+        let scale_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
 
-        // gather errors
-        if seed_converted.is_err() { input_errors.push((0, seed_converted.as_ref().err().unwrap().message.clone())); }
-        if width_converted.is_err() { input_errors.push((1, width_converted.as_ref().err().unwrap().message.clone())); }
-        if height_converted.is_err() { input_errors.push((2, height_converted.as_ref().err().unwrap().message.clone())); }
-        if scale_converted.is_err() { input_errors.push((3, scale_converted.as_ref().err().unwrap().message.clone())); }
 
         // return if error
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::Integer(mut seed)) = seed_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Integer(mut width)) = width_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Integer(mut height)) = height_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(mut scale)) = scale_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
+        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
+        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(mut scale) = scale_converted.unwrap() else { unreachable!() };
 
         // run node
         width = width.max(1);

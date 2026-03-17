@@ -1,5 +1,5 @@
 use eframe::egui::{self, RichText};
-use epaint::{Vec2, TextureHandle, Pos2, Rounding, Rect, Stroke, Color32};
+use epaint::{Vec2, TextureHandle, Pos2, CornerRadius, Rect, Stroke, Color32};
 use image::DynamicImage;
 
 use crate::{view_to_graph_space, graph_to_view_space, themes::theme::Theme, view_to_graph_space_pos2, graph_to_view_space_pos2};
@@ -42,7 +42,7 @@ impl ImageViewer {
         // bg
         ui.painter().add(egui::Shape::rect_filled(
             view_rect,
-            Rounding::none(),
+            CornerRadius::ZERO,
             theme.get().grid_bg,
         ));
 
@@ -54,7 +54,7 @@ impl ImageViewer {
 
         if view_rect_response.drag_started_by(egui::PointerButton::Primary) {
             self.start_dragging();
-        } else if view_rect_response.drag_released_by(egui::PointerButton::Primary) {
+        } else if view_rect_response.drag_stopped_by(egui::PointerButton::Primary) {
             self.stop_dragging();
         }
         
@@ -67,7 +67,7 @@ impl ImageViewer {
                 // let mouse_x = cursor_position.x - editor_rect.min.x;
                 // let mouse_y = cursor_position.y - editor_rect.min.y;
                 //println!("{} {}, {:?}", mouse_x, mouse_y, self.position);
-                let new_zoom = (self.zoom * (1.0 + input_state.scroll_delta.y * ZOOM_MULTIPLIER))
+                let new_zoom = (self.zoom * (1.0 + input_state.smooth_scroll_delta.y * ZOOM_MULTIPLIER))
                     .min(ZOOM_BOUNDS[1])
                     .max(ZOOM_BOUNDS[0]);
     
@@ -77,7 +77,7 @@ impl ImageViewer {
                 let new_y = view_to_graph_space(new_zoom, view_rect.max.y - view_rect.min.y);
     
                 let mouse_percent_x = cursor_position.x / (view_rect.max.x - view_rect.min.x);
-                let mouse_perceny_y = cursor_position.y / (view_rect.max.y - view_rect.min.y);
+                let mouse_percent_y = cursor_position.y / (view_rect.max.y - view_rect.min.y);
     
                 self.position.x += view_to_graph_space(
                     new_zoom,
@@ -85,7 +85,7 @@ impl ImageViewer {
                 );
                 self.position.y += view_to_graph_space(
                     new_zoom,
-                    mouse_perceny_y * graph_to_view_space(new_zoom, new_y - old_y),
+                    mouse_percent_y * graph_to_view_space(new_zoom, new_y - old_y),
                 );
     
                 self.zoom = new_zoom;
@@ -134,19 +134,17 @@ impl ImageViewer {
     }
 
     fn draw_image(&mut self, node_id: String, output_index: usize, change_id: String, dynamic_image: &DynamicImage, ui: &mut egui::Ui, view_rect: Rect) {
-        match self.image_id_index.clone() {
+        let needs_update = match &self.image_id_index {
             Some((image_node_id, image_output_index, image_change_id)) => {
-                if image_node_id != node_id || image_output_index != output_index || change_id != image_change_id {
-                    let texture_handle = self.create_egui_image(ui, dynamic_image.clone(), node_id.clone());
-                    self.image_texture_handle = Some(texture_handle);
-                    self.image_id_index = Some((node_id.clone(), output_index, change_id.clone()));
-                }
+                image_node_id != &node_id || *image_output_index != output_index || image_change_id != &change_id
             },
-            None => {
-                let texture_handle = self.create_egui_image(ui, dynamic_image.clone(), node_id.clone());
-                self.image_texture_handle = Some(texture_handle);
-                self.image_id_index = Some((node_id.clone(), output_index, change_id.clone()));
-            },
+            None => true,
+        };
+
+        if needs_update {
+            let texture_handle = self.create_egui_image(ui, dynamic_image, node_id.clone());
+            self.image_texture_handle = Some(texture_handle);
+            self.image_id_index = Some((node_id.clone(), output_index, change_id.clone()));
         }
 
         if let Some(texture_handle) = &self.image_texture_handle {
@@ -173,22 +171,18 @@ impl ImageViewer {
         let mut y = graph_to_view_space(self.zoom, graph_position.y % grid_size);
 
         while x <= editor_rect.max.x {
-            let points: Vec<Pos2> = vec![
-                Pos2::new(x, editor_rect.min.y),
-                Pos2::new(x, editor_rect.max.y),
-            ];
-            ui.painter().add(egui::Shape::line(points.clone(), stroke));
-
+            ui.painter().line_segment(
+                [Pos2::new(x, editor_rect.min.y), Pos2::new(x, editor_rect.max.y)],
+                stroke,
+            );
             x += graph_to_view_space(self.zoom, grid_size);
         }
 
         while y <= editor_rect.max.y {
-            let points: Vec<Pos2> = vec![
-                Pos2::new(editor_rect.min.x, y),
-                Pos2::new(editor_rect.max.x, y),
-            ];
-            ui.painter().add(egui::Shape::line(points.clone(), stroke));
-
+            ui.painter().line_segment(
+                [Pos2::new(editor_rect.min.x, y), Pos2::new(editor_rect.max.x, y)],
+                stroke,
+            );
             y += graph_to_view_space(self.zoom, grid_size);
         }
     }
@@ -217,7 +211,7 @@ impl ImageViewer {
     }
 
 
-    fn create_egui_image(&self, ui: &mut egui::Ui, dynamic_image: DynamicImage, name: String) -> TextureHandle {
+    fn create_egui_image(&self, ui: &mut egui::Ui, dynamic_image: &DynamicImage, name: String) -> TextureHandle {
         let rgba_image = dynamic_image.to_rgba8();
 
         let pixels = rgba_image.as_flat_samples();

@@ -27,7 +27,7 @@ pub fn theme_dark() -> ThemeValues
         
         text_faint: desaturate(dark_green.text_faint),
 
-        window_rounding: dark_green.window_rounding,
+        window_corner_radius: dark_green.window_corner_radius,
         window_shadow: dark_green.window_shadow,
         window_fill: desaturate(dark_green.window_fill),
         window_stroke: dark_green.window_stroke,

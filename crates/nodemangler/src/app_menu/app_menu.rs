@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use eframe::egui::{self, Layout};
-use epaint::{Pos2, Rect, Rounding};
+use epaint::{CornerRadius, Pos2, Rect};
 
 use crate::{
     program::Program,
@@ -22,6 +22,7 @@ impl AppMenu {
         programs: &HashMap<String, Program>,
         current_program: &Option<String>,
         current_theme: &Theme,
+        view_in_separate_window: &mut bool,
     ) -> BarResponse {
 
         // save current theme
@@ -31,11 +32,11 @@ impl AppMenu {
         let app_menu_rect = Rect::from_two_pos(Pos2::ZERO, Pos2::new(ctx.screen_rect().max.x, APP_MENU_HEIGHT));
         ui.painter().add(egui::Shape::rect_filled(
             app_menu_rect,
-            Rounding::none(),
+            CornerRadius::ZERO,
             current_theme.get().menu_bar,
         ));
 
-        let bar_response = self.show_menu(ui, programs, current_program, app_menu_rect, current_theme);
+        let bar_response = self.show_menu(ui, programs, current_program, app_menu_rect, current_theme, view_in_separate_window);
 
         bar_response
     }
@@ -47,6 +48,7 @@ impl AppMenu {
         current_program: &Option<String>,
         app_menu_rect: Rect,
         current_theme: &Theme,
+        view_in_separate_window: &mut bool,
     ) -> BarResponse {
         let mut bar_response = BarResponse::new();
     
@@ -87,20 +89,18 @@ impl AppMenu {
                             ui.add_space(10.0);
                             
                             ui.menu_button("settings", |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.menu_button("theme", |ui| {
-                                        for theme in Theme::list().iter() {
-                                            if theme == current_theme {
-                                                ui.button(theme.name()).highlight();
-                                            } else {
-                                                if ui.button(theme.name()).clicked() {
-                                                    bar_response.theme_changed_to = Some(theme.clone());
-                                                }
+                                ui.menu_button("theme", |ui| {
+                                    for theme in Theme::list().iter() {
+                                        if theme == current_theme {
+                                            ui.button(theme.name()).highlight();
+                                        } else {
+                                            if ui.button(theme.name()).clicked() {
+                                                bar_response.theme_changed_to = Some(theme.clone());
                                             }
-                                            
                                         }
-                                    });
+                                    }
                                 });
+                                ui.checkbox(view_in_separate_window, "viewer in separate window");
                             });
                         });
     
@@ -144,7 +144,7 @@ impl AppMenu {
                             );
     
                             if current_program == &Some(program_id.clone()) {
-                                ui.painter().add(egui::Shape::rect_filled(egui::Rect::from_min_max(Pos2::new(r.response.rect.left(), APP_MENU_HEIGHT - 3.0), Pos2::new(r.response.rect.right(), APP_MENU_HEIGHT)), Rounding::none(), current_theme.get().menu_bar_button_selected));
+                                ui.painter().add(egui::Shape::rect_filled(egui::Rect::from_min_max(Pos2::new(r.response.rect.left(), APP_MENU_HEIGHT - 3.0), Pos2::new(r.response.rect.right(), APP_MENU_HEIGHT)), CornerRadius::ZERO, current_theme.get().menu_bar_button_selected));
                             }
     
                             ui.add_space(10.0);
@@ -169,7 +169,7 @@ impl AppMenu {
 //     let app_rect = ctx.screen_rect();
 //     let app_menu_rect = Rect::from_two_pos(Pos2::ZERO, Pos2::new(app_rect.max.x, APP_MENU_HEIGHT));
 
-//     let rounding = Rounding::none();
+//     let rounding = CornerRadius::ZERO;
 
 //     ui.painter().add(egui::Shape::rect_filled(
 //         app_menu_rect,
@@ -195,7 +195,7 @@ impl AppMenu {
 //         Pos2::new(app_rect.max.x, APP_MENU_HEIGHT),
 //     );
 
-//     //let rounding = Rounding::none();
+//     //let rounding = CornerRadius::ZERO;
 
 //     ui.allocate_ui_at_rect(app_menu_rect, |ui| {
 //         ui.allocate_ui_with_layout(

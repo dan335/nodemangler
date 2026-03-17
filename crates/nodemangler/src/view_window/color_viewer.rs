@@ -1,4 +1,4 @@
-use eframe::{egui::{self, RichText}, egui_glow::painter};
+use eframe::egui::{self, RichText};
 use epaint::Color32;
 use mangler::color::Color;
 

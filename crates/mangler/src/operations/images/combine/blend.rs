@@ -3,7 +3,7 @@ use crate::color::color_spaces::ColorSpace;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -45,37 +45,28 @@ impl OpImageCombineBlend {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let background_converted = inputs[0].value.try_convert_to(ValueType::DynamicImage);
-        let foreground_converted = inputs[1].value.try_convert_to(ValueType::DynamicImage);
-        let amount_converted = inputs[2].value.try_convert_to(ValueType::Decimal);
-        let alpha_converted = inputs[3].value.try_convert_to(ValueType::DynamicImage);
-        let blend_mode_converted = inputs[4].value.try_convert_to(ValueType::BlendMode);
-        let color_space_converted = inputs[5].value.try_convert_to(ValueType::ColorSpace);
-        let position_x_converted = inputs[6].value.try_convert_to(ValueType::Integer);
-        let position_y_converted = inputs[7].value.try_convert_to(ValueType::Integer);
+        let background_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
+        let foreground_converted = convert_input(inputs, 1, ValueType::DynamicImage, &mut input_errors);
+        let amount_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
+        let alpha_converted = convert_input(inputs, 3, ValueType::DynamicImage, &mut input_errors);
+        let blend_mode_converted = convert_input(inputs, 4, ValueType::BlendMode, &mut input_errors);
+        let color_space_converted = convert_input(inputs, 5, ValueType::ColorSpace, &mut input_errors);
+        let position_x_converted = convert_input(inputs, 6, ValueType::Integer, &mut input_errors);
+        let position_y_converted = convert_input(inputs, 7, ValueType::Integer, &mut input_errors);
 
-        // gather errors
-        if background_converted.is_err() { input_errors.push((0, background_converted.as_ref().err().unwrap().message.clone())); }
-        if foreground_converted.is_err() { input_errors.push((1, foreground_converted.as_ref().err().unwrap().message.clone())); }
-        if amount_converted.is_err() { input_errors.push((2, amount_converted.as_ref().err().unwrap().message.clone())); }
-        if alpha_converted.is_err() { input_errors.push((3, alpha_converted.as_ref().err().unwrap().message.clone())); }
-        if blend_mode_converted.is_err() { input_errors.push((4, blend_mode_converted.as_ref().err().unwrap().message.clone())); }
-        if color_space_converted.is_err() { input_errors.push((5, color_space_converted.as_ref().err().unwrap().message.clone())); }
-        if position_x_converted.is_err() { input_errors.push((6, position_x_converted.as_ref().err().unwrap().message.clone())); }
-        if position_y_converted.is_err() { input_errors.push((7, position_y_converted.as_ref().err().unwrap().message.clone())); }
 
         // return if error
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::DynamicImage{data:background, change_id:_}) = background_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::DynamicImage{data:foreground, change_id:_}) = foreground_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(amount)) = amount_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::DynamicImage{data:alpha, change_id:_}) = alpha_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::BlendMode(blend_mode)) = blend_mode_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::ColorSpace(color_space)) = color_space_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Integer(mut position_x)) = position_x_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Integer(mut position_y)) = position_y_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Value::DynamicImage{data:background, change_id:_} = background_converted.unwrap() else { unreachable!() };
+        let Value::DynamicImage{data:foreground, change_id:_} = foreground_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
+        let Value::DynamicImage{data:alpha, change_id:_} = alpha_converted.unwrap() else { unreachable!() };
+        let Value::BlendMode(blend_mode) = blend_mode_converted.unwrap() else { unreachable!() };
+        let Value::ColorSpace(color_space) = color_space_converted.unwrap() else { unreachable!() };
+        let Value::Integer(mut position_x) = position_x_converted.unwrap() else { unreachable!() };
+        let Value::Integer(mut position_y) = position_y_converted.unwrap() else { unreachable!() };
 
         // run node
         let mut background_image = background.to_rgba32f();

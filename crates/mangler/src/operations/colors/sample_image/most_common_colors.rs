@@ -1,7 +1,7 @@
 use crate::color::Color;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use image::{DynamicImage, Pixel};
@@ -44,25 +44,20 @@ impl OpColorSampleMostCommonColors {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let image_converted = inputs[0].value.try_convert_to(ValueType::DynamicImage);
-        let hue_precision_converted = inputs[1].value.try_convert_to(ValueType::Decimal);
-        let saturation_precision_converted = inputs[2].value.try_convert_to(ValueType::Decimal);
-        let lightness_precision_converted = inputs[3].value.try_convert_to(ValueType::Decimal);
+        let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
+        let hue_precision_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
+        let saturation_precision_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
+        let lightness_precision_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
 
-        // gather errors
-        if image_converted.is_err() { input_errors.push((0, image_converted.as_ref().err().unwrap().message.clone())); }
-        if hue_precision_converted.is_err() { input_errors.push((1, hue_precision_converted.as_ref().err().unwrap().message.clone())); }
-        if saturation_precision_converted.is_err() { input_errors.push((2, saturation_precision_converted.as_ref().err().unwrap().message.clone())); }
-        if lightness_precision_converted.is_err() { input_errors.push((3, lightness_precision_converted.as_ref().err().unwrap().message.clone())); }
 
         // return if error
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::DynamicImage{data:image, change_id:_}) = image_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(hue_precision)) = hue_precision_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(saturation_precision)) = saturation_precision_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(lightness_precision)) = lightness_precision_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Value::DynamicImage{data:image, change_id:_} = image_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(hue_precision) = hue_precision_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(saturation_precision) = saturation_precision_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(lightness_precision) = lightness_precision_converted.unwrap() else { unreachable!() };
 
         // run node
         let mut color_counts: HashMap<[i32; 3], u32> = HashMap::new();

@@ -1,7 +1,7 @@
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -39,25 +39,20 @@ impl OpImageCombineBlit {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let background_converted = inputs[0].value.try_convert_to(ValueType::DynamicImage);
-        let foreground_converted = inputs[1].value.try_convert_to(ValueType::DynamicImage);
-        let position_x_converted = inputs[2].value.try_convert_to(ValueType::Integer);
-        let position_y_converted = inputs[3].value.try_convert_to(ValueType::Integer);
+        let background_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
+        let foreground_converted = convert_input(inputs, 1, ValueType::DynamicImage, &mut input_errors);
+        let position_x_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
+        let position_y_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
 
-        // gather errors
-        if background_converted.is_err() { input_errors.push((0, background_converted.as_ref().err().unwrap().message.clone())); }
-        if foreground_converted.is_err() { input_errors.push((1, foreground_converted.as_ref().err().unwrap().message.clone())); }
-        if position_x_converted.is_err() { input_errors.push((2, position_x_converted.as_ref().err().unwrap().message.clone())); }
-        if position_y_converted.is_err() { input_errors.push((3, position_y_converted.as_ref().err().unwrap().message.clone())); }
 
         // return if error
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::DynamicImage{data:background_arc, change_id:_}) = background_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::DynamicImage{data:foreground, change_id:_}) = foreground_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Integer(x)) = position_x_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Integer(y)) = position_y_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Value::DynamicImage{data:background_arc, change_id:_} = background_converted.unwrap() else { unreachable!() };
+        let Value::DynamicImage{data:foreground, change_id:_} = foreground_converted.unwrap() else { unreachable!() };
+        let Value::Integer(x) = position_x_converted.unwrap() else { unreachable!() };
+        let Value::Integer(y) = position_y_converted.unwrap() else { unreachable!() };
 
         // run node
         let mut background = Arc::try_unwrap(background_arc).unwrap_or_else(|a| (*a).clone());

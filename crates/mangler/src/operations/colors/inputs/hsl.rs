@@ -1,7 +1,7 @@
 use crate::color::Color;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -38,25 +38,20 @@ impl OpColorInputHsla {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let hue_converted = inputs[0].value.try_convert_to(ValueType::Decimal);
-        let saturation_converted = inputs[1].value.try_convert_to(ValueType::Decimal);
-        let lightness_converted = inputs[2].value.try_convert_to(ValueType::Decimal);
-        let alpha_converted = inputs[3].value.try_convert_to(ValueType::Decimal);
+        let hue_converted = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
+        let saturation_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
+        let lightness_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
+        let alpha_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
 
-        // gather errors
-        if hue_converted.is_err() { input_errors.push((0, hue_converted.as_ref().err().unwrap().message.clone())); }
-        if saturation_converted.is_err() { input_errors.push((0, saturation_converted.as_ref().err().unwrap().message.clone())); }
-        if lightness_converted.is_err() { input_errors.push((0, lightness_converted.as_ref().err().unwrap().message.clone())); }
-        if alpha_converted.is_err() { input_errors.push((0, alpha_converted.as_ref().err().unwrap().message.clone())); }
 
         // return if error
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::Decimal(hue)) = hue_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(saturation)) = saturation_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(lightness)) = lightness_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(alpha)) = alpha_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Value::Decimal(hue) = hue_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(saturation) = saturation_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(lightness) = lightness_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(alpha) = alpha_converted.unwrap() else { unreachable!() };
 
         // run node
         let color = Color::from_hsl(hue, saturation, lightness, alpha);

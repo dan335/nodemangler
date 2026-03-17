@@ -1,6 +1,6 @@
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -34,16 +34,14 @@ impl OpNumberInputDecimal {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let input_converted = inputs[0].value.try_convert_to(ValueType::Decimal);
+        let input_converted = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
 
-        // gather errors
-        if input_converted.is_err() { input_errors.push((0, input_converted.as_ref().err().unwrap().message.clone())); }
 
         // return if error
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::Decimal(input)) = input_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Value::Decimal(input) = input_converted.unwrap() else { unreachable!() };
 
         // run node
         Ok(OperationResponse {

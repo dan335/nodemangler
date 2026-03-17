@@ -22,7 +22,8 @@ impl Color {
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
                 lerp(la.4, lb.4, amount),
-            )
+            ),
+            _ => Color::blend_srgb(a, b, blend_mode, amount),
         }
     }
 
@@ -42,7 +43,8 @@ impl Color {
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
-            )
+            ),
+            _ => Color::blend_srgb(a, b, blend_mode, amount),
         }
     }
 
@@ -62,7 +64,8 @@ impl Color {
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
-            )
+            ),
+            _ => Color::blend_srgb(a, b, blend_mode, amount),
         }
     }
 
@@ -82,7 +85,8 @@ impl Color {
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
-            )
+            ),
+            _ => Color::blend_srgb(a, b, blend_mode, amount),
         }
     }
 
@@ -102,7 +106,8 @@ impl Color {
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
-            )
+            ),
+            _ => Color::blend_srgb(a, b, blend_mode, amount),
         }
     }
 
@@ -123,7 +128,8 @@ impl Color {
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
-            )
+            ),
+            _ => Color::blend_srgb(a, b, blend_mode, amount),
         }
     }
 
@@ -140,8 +146,20 @@ impl Color {
                 lerp(a.g, b.g, amount),
                 lerp(a.b, b.b, amount),
                 lerp(a.a, b.a, amount),
-            )
-        } 
+            ),
+            _ => {
+                let blended_r = apply_blend_mode(a.r, b.r, blend_mode);
+                let blended_g = apply_blend_mode(a.g, b.g, blend_mode);
+                let blended_b = apply_blend_mode(a.b, b.b, blend_mode);
+                let factor = amount * b.a;
+                Color::from_srgb_float(
+                    lerp(a.r, blended_r, factor),
+                    lerp(a.g, blended_g, factor),
+                    lerp(a.b, blended_b, factor),
+                    a.a,
+                )
+            }
+        }
     }
 
     pub fn blend_xyz(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
@@ -160,7 +178,8 @@ impl Color {
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
-            )
+            ),
+            _ => Color::blend_srgb(a, b, blend_mode, amount),
         }
     }
 
@@ -180,7 +199,8 @@ impl Color {
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
-            )
+            ),
+            _ => Color::blend_srgb(a, b, blend_mode, amount),
         }
     }
 }
@@ -189,16 +209,87 @@ impl Color {
 pub enum BlendMode {
     Normal,
     Lerp,
+    Multiply,
+    Screen,
+    Overlay,
+    SoftLight,
+    HardLight,
+    ColorDodge,
+    ColorBurn,
+    Darken,
+    Lighten,
+    Difference,
+    Exclusion,
+    LinearBurn,
+    LinearDodge,
+    Divide,
+    Subtract,
 }
 
 impl BlendMode {
-    pub fn types() -> [BlendMode; 2] {
-        let types: [BlendMode; 2] = [
+    pub fn types() -> [BlendMode; 17] {
+        [
             BlendMode::Normal,
             BlendMode::Lerp,
-        ];
+            BlendMode::Multiply,
+            BlendMode::Screen,
+            BlendMode::Overlay,
+            BlendMode::SoftLight,
+            BlendMode::HardLight,
+            BlendMode::ColorDodge,
+            BlendMode::ColorBurn,
+            BlendMode::Darken,
+            BlendMode::Lighten,
+            BlendMode::Difference,
+            BlendMode::Exclusion,
+            BlendMode::LinearBurn,
+            BlendMode::LinearDodge,
+            BlendMode::Divide,
+            BlendMode::Subtract,
+        ]
+    }
+}
 
-        types
+fn apply_blend_mode(a: f32, b: f32, mode: &BlendMode) -> f32 {
+    match mode {
+        BlendMode::Multiply => a * b,
+        BlendMode::Screen => 1.0 - (1.0 - a) * (1.0 - b),
+        BlendMode::Overlay => {
+            if a < 0.5 { 2.0 * a * b } else { 1.0 - 2.0 * (1.0 - a) * (1.0 - b) }
+        }
+        BlendMode::SoftLight => {
+            if b < 0.5 {
+                a - (1.0 - 2.0 * b) * a * (1.0 - a)
+            } else {
+                let d = if a <= 0.25 {
+                    ((16.0 * a - 12.0) * a + 4.0) * a
+                } else {
+                    a.sqrt()
+                };
+                a + (2.0 * b - 1.0) * (d - a)
+            }
+        }
+        BlendMode::HardLight => {
+            if b < 0.5 { 2.0 * a * b } else { 1.0 - 2.0 * (1.0 - a) * (1.0 - b) }
+        }
+        BlendMode::ColorDodge => {
+            if b >= 1.0 { 1.0 } else { (a / (1.0 - b)).min(1.0) }
+        }
+        BlendMode::ColorBurn => {
+            if b <= 0.0 { 0.0 } else { 1.0 - ((1.0 - a) / b).min(1.0) }
+        }
+        BlendMode::Darken => a.min(b),
+        BlendMode::Lighten => a.max(b),
+        BlendMode::Difference => (a - b).abs(),
+        BlendMode::Exclusion => a + b - 2.0 * a * b,
+        BlendMode::LinearBurn => (a + b - 1.0).max(0.0),
+        BlendMode::LinearDodge => (a + b).min(1.0),
+        BlendMode::Divide => {
+            if b <= 0.0 { 1.0 } else { (a / b).min(1.0) }
+        }
+        BlendMode::Subtract => (a - b).max(0.0),
+        // Normal and Lerp are handled directly in blend methods, not here
+        BlendMode::Normal | BlendMode::Lerp => unreachable!(),
     }
 }
 
@@ -332,8 +423,102 @@ mod tests {
     #[test]
     fn test_blend_mode_types() {
         let types = BlendMode::types();
-        assert_eq!(types.len(), 2);
+        assert_eq!(types.len(), 17);
         assert_eq!(types[0], BlendMode::Normal);
         assert_eq!(types[1], BlendMode::Lerp);
+        assert_eq!(types[2], BlendMode::Multiply);
+        assert_eq!(types[3], BlendMode::Screen);
+    }
+
+    #[test]
+    fn test_blend_srgb_multiply() {
+        let a = Color::from_srgb_float(0.5, 0.8, 1.0, 1.0);
+        let b = Color::from_srgb_float(0.4, 0.5, 0.6, 1.0);
+        let result = Color::blend_srgb(a, b, &BlendMode::Multiply, 1.0);
+        // Multiply: a * b per channel, full amount with opaque foreground
+        let expected = Color::from_srgb_float(0.2, 0.4, 0.6, 1.0);
+        assert_color_approx(&expected, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_srgb_screen() {
+        let a = Color::from_srgb_float(0.5, 0.5, 0.0, 1.0);
+        let b = Color::from_srgb_float(0.5, 0.0, 0.5, 1.0);
+        let result = Color::blend_srgb(a, b, &BlendMode::Screen, 1.0);
+        // Screen: 1 - (1-a)*(1-b) = 1 - 0.5*0.5 = 0.75 for R, etc.
+        let expected = Color::from_srgb_float(0.75, 0.5, 0.5, 1.0);
+        assert_color_approx(&expected, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_srgb_overlay() {
+        // Overlay with a < 0.5: 2*a*b
+        let a = Color::from_srgb_float(0.25, 0.75, 0.0, 1.0);
+        let b = Color::from_srgb_float(0.5, 0.5, 1.0, 1.0);
+        let result = Color::blend_srgb(a, b, &BlendMode::Overlay, 1.0);
+        // R: a=0.25 < 0.5 => 2*0.25*0.5 = 0.25
+        // G: a=0.75 >= 0.5 => 1 - 2*(0.25)*(0.5) = 1 - 0.25 = 0.75
+        // B: a=0.0 < 0.5 => 2*0.0*1.0 = 0.0
+        let expected = Color::from_srgb_float(0.25, 0.75, 0.0, 1.0);
+        assert_color_approx(&expected, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_srgb_multiply_half_amount() {
+        let a = Color::from_srgb_float(0.5, 0.8, 1.0, 1.0);
+        let b = Color::from_srgb_float(0.4, 0.5, 0.6, 1.0);
+        let result = Color::blend_srgb(a, b, &BlendMode::Multiply, 0.5);
+        // blended = (0.2, 0.4, 0.6), factor = 0.5 * 1.0 = 0.5
+        // lerp(0.5, 0.2, 0.5) = 0.35
+        // lerp(0.8, 0.4, 0.5) = 0.6
+        // lerp(1.0, 0.6, 0.5) = 0.8
+        let expected = Color::from_srgb_float(0.35, 0.6, 0.8, 1.0);
+        assert_color_approx(&expected, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_srgb_darken() {
+        let a = Color::from_srgb_float(0.3, 0.7, 0.5, 1.0);
+        let b = Color::from_srgb_float(0.5, 0.2, 0.5, 1.0);
+        let result = Color::blend_srgb(a, b, &BlendMode::Darken, 1.0);
+        let expected = Color::from_srgb_float(0.3, 0.2, 0.5, 1.0);
+        assert_color_approx(&expected, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_srgb_lighten() {
+        let a = Color::from_srgb_float(0.3, 0.7, 0.5, 1.0);
+        let b = Color::from_srgb_float(0.5, 0.2, 0.5, 1.0);
+        let result = Color::blend_srgb(a, b, &BlendMode::Lighten, 1.0);
+        let expected = Color::from_srgb_float(0.5, 0.7, 0.5, 1.0);
+        assert_color_approx(&expected, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_srgb_difference() {
+        let a = Color::from_srgb_float(0.8, 0.3, 0.5, 1.0);
+        let b = Color::from_srgb_float(0.3, 0.7, 0.5, 1.0);
+        let result = Color::blend_srgb(a, b, &BlendMode::Difference, 1.0);
+        let expected = Color::from_srgb_float(0.5, 0.4, 0.0, 1.0);
+        assert_color_approx(&expected, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_srgb_subtract() {
+        let a = Color::from_srgb_float(0.8, 0.3, 0.5, 1.0);
+        let b = Color::from_srgb_float(0.3, 0.7, 0.2, 1.0);
+        let result = Color::blend_srgb(a, b, &BlendMode::Subtract, 1.0);
+        // (0.8-0.3).max(0) = 0.5, (0.3-0.7).max(0) = 0.0, (0.5-0.2).max(0) = 0.3
+        let expected = Color::from_srgb_float(0.5, 0.0, 0.3, 1.0);
+        assert_color_approx(&expected, &result, EPSILON);
+    }
+
+    #[test]
+    fn test_blend_hsl_multiply_delegates_to_srgb() {
+        let a = Color::from_srgb_float(0.5, 0.8, 1.0, 1.0);
+        let b = Color::from_srgb_float(0.4, 0.5, 0.6, 1.0);
+        let result_hsl = Color::blend_hsl(a, b, &BlendMode::Multiply, 1.0);
+        let result_srgb = Color::blend_srgb(a, b, &BlendMode::Multiply, 1.0);
+        assert_color_approx(&result_hsl, &result_srgb, EPSILON);
     }
 }

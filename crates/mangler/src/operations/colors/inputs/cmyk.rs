@@ -1,7 +1,7 @@
 use crate::color::Color;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -39,28 +39,22 @@ impl OpColorInputCmyk {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let c_converted = inputs[0].value.try_convert_to(ValueType::Decimal);
-        let m_converted = inputs[1].value.try_convert_to(ValueType::Decimal);
-        let y_converted = inputs[2].value.try_convert_to(ValueType::Decimal);
-        let k_converted = inputs[3].value.try_convert_to(ValueType::Decimal);
-        let alpha_converted = inputs[4].value.try_convert_to(ValueType::Decimal);
+        let c_converted = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
+        let m_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
+        let y_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
+        let k_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
+        let alpha_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
 
-        // gather errors
-        if c_converted.is_err() { input_errors.push((0, c_converted.as_ref().err().unwrap().message.clone())); }
-        if m_converted.is_err() { input_errors.push((0, m_converted.as_ref().err().unwrap().message.clone())); }
-        if y_converted.is_err() { input_errors.push((0, y_converted.as_ref().err().unwrap().message.clone())); }
-        if k_converted.is_err() { input_errors.push((0, k_converted.as_ref().err().unwrap().message.clone())); }
-        if alpha_converted.is_err() { input_errors.push((0, alpha_converted.as_ref().err().unwrap().message.clone())); }
 
         // return if error
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::Decimal(c)) = c_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(m)) = m_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(y)) = y_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(k)) = k_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(alpha)) = alpha_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Value::Decimal(c) = c_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(m) = m_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(y) = y_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(k) = k_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(alpha) = alpha_converted.unwrap() else { unreachable!() };
 
         // run node
         let color = Color::from_cmyk(c, m, y, k, alpha);

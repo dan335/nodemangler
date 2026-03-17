@@ -3,7 +3,7 @@ use eframe::{
     egui,
     epaint::{Pos2, Rect, Shape},
 };
-use epaint::Rounding;
+use epaint::CornerRadius;
 
 use super::{graph_editor::TempConnection, graph_node::ConnectionType};
 use mangler::output::Output;
@@ -18,7 +18,7 @@ pub fn draw_graph_output(
     _rect: Rect,
     ui: &mut egui::Ui,
     show_type: bool,
-    temp_connection: Option<TempConnection>,
+    temp_connection: Option<&TempConnection>,
     theme: &Theme,
     graph_zoom: f32,
 ) -> InputOutputResponse {
@@ -68,7 +68,7 @@ pub fn draw_graph_output(
     if output_response.drag_started() {
         response.has_started_creating_connection = true;
         response.connection_from_position = output_position;
-    } else if output_response.drag_released() {
+    } else if output_response.drag_stopped() {
         response.has_stopped_creating_connection = true;
         response.connection_to_position = output_position;
     }
@@ -85,7 +85,7 @@ pub fn draw_graph_output(
         let galley = ui.painter().layout_no_wrap(txt.clone(), font_id.clone(), color);
         
         // bg
-        ui.painter().rect_filled(Rect::from_min_size(Pos2::new(pos.x, pos.y - (galley.rect.height() * 0.5)), galley.rect.size()), Rounding::same(1.0), theme.get().grid_bg);
+        ui.painter().rect_filled(Rect::from_min_size(Pos2::new(pos.x, pos.y - (galley.rect.height() * 0.5)), galley.rect.size()), CornerRadius::same(1), theme.get().grid_bg);
 
         // text
         ui.painter().text(

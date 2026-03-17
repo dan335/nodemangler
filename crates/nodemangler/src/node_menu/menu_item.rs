@@ -76,10 +76,10 @@ impl MenuItem {
             } => {
                 let container_rect = ui.max_rect();
 
-                let mut icon = egui_phosphor::CARET_DOWN;
+                let mut icon = egui_phosphor::regular::CARET_DOWN;
 
                 if *is_collapsed {
-                    icon = egui_phosphor::CARET_RIGHT;
+                    icon = egui_phosphor::regular::CARET_RIGHT;
                 }
 
                 if ui.add(egui::Button::new(egui::RichText::new(format!("    {} {}  {}", " ".repeat(*level * 8), icon, name)).color(theme.get().text_faint).size(15.0)).frame(false).min_size(Vec2::new(container_rect.width(), 24.0))).clicked() {

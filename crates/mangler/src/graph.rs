@@ -239,6 +239,7 @@ impl Graph {
                         output_node_id.clone(),
                         output_connection_index,
                     );
+                    to.cached_input_hash = None;
                 }
 
                 // mark graph as dirty
@@ -273,13 +274,15 @@ impl Graph {
             }
 
             node.clear_input_connection(input_index);
+            node.cached_input_hash = None;
         }
 
         if let Some((output_node_id, output_index)) = output {
             if let Some(node) = self.nodes.get_mut(&output_node_id) {
                 if let Some(c) = node.outputs.get_mut(output_index) {
-                    let d = c.connection.as_mut().unwrap();
-                    d.remove(output_index);
+                    if let Some(d) = c.connection.as_mut() {
+                        d.retain(|item| *item != (node_id.clone(), input_index));
+                    }
                 }
             }
         }
@@ -311,6 +314,7 @@ impl Graph {
 
                 // mark node as dirty so that it will run next time graph runs
                 node.is_dirty = true;
+                node.cached_input_hash = None;
 
                 // if input has a link then pass value to linked input
                 if let Some(link) = &input.link {

@@ -117,7 +117,7 @@ impl GraphNode {
             graph_node_response.is_right_click = true;
         } else if bg_response.drag_started_by(egui::PointerButton::Primary) {
             self.start_dragging();
-        } else if bg_response.drag_released_by(egui::PointerButton::Primary) {
+        } else if bg_response.drag_stopped_by(egui::PointerButton::Primary) {
             self.stop_dragging();
         }
 
@@ -125,7 +125,7 @@ impl GraphNode {
 
         show_graph_node_header(
             ui,
-            self.settings.name.clone(),
+            &self.settings.name,
             node_rect,
             is_editing,
             self.is_subgraph,
@@ -136,7 +136,7 @@ impl GraphNode {
 
         show_graph_node_info(ui, self.time, node_rect, graph_zoom, theme);
 
-        if let Some(thumbnail) = self.thumbnail.clone() {
+        if let Some(thumbnail) = &self.thumbnail {
             thumbnail.show(ui, self.get_rect(graph_position, graph_zoom).center_bottom(), graph_zoom, theme);
         }
 
@@ -154,7 +154,7 @@ impl GraphNode {
                 node_rect,
                 ui,
                 bg_response.hovered(),
-                temp_connection.clone(),
+                temp_connection.as_ref(),
                 theme,
                 graph_zoom,
             );
@@ -195,7 +195,7 @@ impl GraphNode {
                 node_rect,
                 ui,
                 bg_response.hovered(),
-                temp_connection.clone(),
+                temp_connection.as_ref(),
                 theme,
                 graph_zoom
             );

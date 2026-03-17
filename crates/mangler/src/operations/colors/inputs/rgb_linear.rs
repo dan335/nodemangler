@@ -1,7 +1,7 @@
 use crate::color::Color;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -38,25 +38,20 @@ impl OpColorInputRgbaLinear {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let red_converted = inputs[0].value.try_convert_to(ValueType::Decimal);
-        let green_converted = inputs[1].value.try_convert_to(ValueType::Decimal);
-        let blue_converted = inputs[2].value.try_convert_to(ValueType::Decimal);
-        let alpha_converted = inputs[3].value.try_convert_to(ValueType::Decimal);
+        let red_converted = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
+        let green_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
+        let blue_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
+        let alpha_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
 
-        // gather errors
-        if red_converted.is_err() { input_errors.push((0, red_converted.as_ref().err().unwrap().message.clone())); }
-        if green_converted.is_err() { input_errors.push((0, green_converted.as_ref().err().unwrap().message.clone())); }
-        if blue_converted.is_err() { input_errors.push((0, blue_converted.as_ref().err().unwrap().message.clone())); }
-        if alpha_converted.is_err() { input_errors.push((0, alpha_converted.as_ref().err().unwrap().message.clone())); }
 
         // return if error
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::Decimal(red)) = red_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(green)) = green_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(blue)) = blue_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(alpha)) = alpha_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Value::Decimal(red) = red_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(green) = green_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(blue) = blue_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(alpha) = alpha_converted.unwrap() else { unreachable!() };
 
         // run node
         let color = Color::from_rgb_linear(red, green, blue, alpha);

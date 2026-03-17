@@ -5,7 +5,7 @@ use crate::{
 };
 use eframe::{
     egui,
-    epaint::{Rect, Rounding, Stroke},
+    epaint::{CornerRadius, Rect, Stroke},
 };
 use egui::epaint::CubicBezierShape;
 use egui::Pos2;
@@ -66,7 +66,7 @@ impl GraphEditor {
                 // let mouse_x = cursor_position.x - editor_rect.min.x;
                 // let mouse_y = cursor_position.y - editor_rect.min.y;
                 //println!("{} {}, {:?}", mouse_x, mouse_y, self.position);
-                let new_zoom = (self.zoom * (1.0 + input_state.scroll_delta.y * ZOOM_MULTIPLIER))
+                let new_zoom = (self.zoom * (1.0 + input_state.smooth_scroll_delta.y * ZOOM_MULTIPLIER))
                     .min(ZOOM_BOUNDS[1])
                     .max(ZOOM_BOUNDS[0]);
     
@@ -76,7 +76,7 @@ impl GraphEditor {
                 let new_y = view_to_graph_space(new_zoom, editor_rect.max.y - editor_rect.min.y);
     
                 let mouse_percent_x = cursor_position.x / (editor_rect.max.x - editor_rect.min.x);
-                let mouse_perceny_y = cursor_position.y / (editor_rect.max.y - editor_rect.min.y);
+                let mouse_percent_y = cursor_position.y / (editor_rect.max.y - editor_rect.min.y);
     
                 self.position.x += view_to_graph_space(
                     new_zoom,
@@ -84,7 +84,7 @@ impl GraphEditor {
                 );
                 self.position.y += view_to_graph_space(
                     new_zoom,
-                    mouse_perceny_y * graph_to_view_space(new_zoom, new_y - old_y),
+                    mouse_percent_y * graph_to_view_space(new_zoom, new_y - old_y),
                 );
     
                 self.zoom = new_zoom;
@@ -97,7 +97,7 @@ impl GraphEditor {
         // bg
         ui.painter().add(egui::Shape::rect_filled(
             editor_rect,
-            Rounding::none(),
+            CornerRadius::ZERO,
             theme.get().grid_bg,
         ));
 
@@ -159,7 +159,7 @@ impl GraphEditor {
         // connections
         // collect curves to tell if we clicked on one to delete it
         // curve, input node id, input index
-        let mut connection_curves: Vec<(CubicBezierShape, String, usize)> = Vec::new();
+        let mut connection_curves: Vec<(CubicBezierShape, String, usize)> = Vec::with_capacity(self.graph_nodes.len() * 2);
         for (node_id, node) in self.graph_nodes.iter() {
             for (input_index, input) in node.inputs.iter().enumerate() {
                 if let Some((output_node_id, output_connection_index)) = &input.connection {
@@ -348,7 +348,7 @@ impl GraphEditor {
             && !is_cursor_over_node
         {
             self.start_dragging();
-        } else if editor_bg_response.drag_released_by(egui::PointerButton::Primary) {
+        } else if editor_bg_response.drag_stopped_by(egui::PointerButton::Primary) {
             self.stop_dragging();
         }
 
@@ -404,22 +404,18 @@ impl GraphEditor {
         let mut y = graph_to_view_space(self.zoom, graph_position.y % grid_size);
 
         while x <= editor_rect.max.x {
-            let points: Vec<Pos2> = vec![
-                Pos2::new(x, editor_rect.min.y),
-                Pos2::new(x, editor_rect.max.y),
-            ];
-            ui.painter().add(egui::Shape::line(points.clone(), stroke));
-
+            ui.painter().line_segment(
+                [Pos2::new(x, editor_rect.min.y), Pos2::new(x, editor_rect.max.y)],
+                stroke,
+            );
             x += graph_to_view_space(self.zoom, grid_size);
         }
 
         while y <= editor_rect.max.y {
-            let points: Vec<Pos2> = vec![
-                Pos2::new(editor_rect.min.x, y),
-                Pos2::new(editor_rect.max.x, y),
-            ];
-            ui.painter().add(egui::Shape::line(points.clone(), stroke));
-
+            ui.painter().line_segment(
+                [Pos2::new(editor_rect.min.x, y), Pos2::new(editor_rect.max.x, y)],
+                stroke,
+            );
             y += graph_to_view_space(self.zoom, grid_size);
         }
     }
@@ -457,10 +453,10 @@ impl GraphEditor {
             points,
             closed: false,
             fill: egui::Color32::from_black_alpha(0),
-            stroke,
+            stroke: stroke.into(),
         };
 
-        ui.painter().add(egui::Shape::CubicBezier(curve_shape));
+        ui.painter().add(egui::Shape::CubicBezier(curve_shape.clone()));
 
         curve_shape
     }

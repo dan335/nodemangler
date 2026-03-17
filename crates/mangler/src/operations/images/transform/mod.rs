@@ -8,3 +8,8 @@ pub mod rotate_180;
 pub mod rotate_270;
 pub mod rotate_around_center;
 pub mod crop;
+pub mod warp;
+pub mod directional_warp;
+pub mod safe_transform;
+pub mod make_tile;
+pub mod mirror;

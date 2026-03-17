@@ -1,12 +1,12 @@
-use crate::{value::ValueType};
+use crate::value::{Value, ValueType};
+use crate::input::Input;
 use image::DynamicImage;
 use serde::{Deserialize, Serialize};
-use crate::value::Value;
 use core::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 use crate::{node_settings::NodeSettings, operations};
-use crate::{input::Input, output::Output};
+use crate::output::Output;
 
 pub mod numbers;
 pub mod images;
@@ -48,6 +48,22 @@ pub struct OperationError {
     pub node_error: Option<String>,
 }
 
+/// Converts an input value to the target type, pushing any error to `errors`.
+/// Returns `Some(value)` on success, `None` on failure (error is recorded).
+pub fn convert_input(
+    inputs: &[Input],
+    index: usize,
+    target_type: ValueType,
+    errors: &mut Vec<(usize, String)>,
+) -> Option<Value> {
+    match inputs[index].value.try_convert_to(target_type) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            errors.push((index, e.message));
+            None
+        }
+    }
+}
 
 #[derive(Clone)]
 pub enum OperationListItem {
@@ -184,6 +200,12 @@ operations! {
     OpImageTransformRotate270(crate::operations::images::transform::rotate_270::OpImageTransformRotate270),
     OpImageTransformRotateAroundCenter(crate::operations::images::transform::rotate_around_center::OpImageTransformRotateAroundCenter),
 
+    OpImageTransformWarp(crate::operations::images::transform::warp::OpImageTransformWarp),
+    OpImageTransformDirectionalWarp(crate::operations::images::transform::directional_warp::OpImageTransformDirectionalWarp),
+    OpImageTransformSafeTransform(crate::operations::images::transform::safe_transform::OpImageTransformSafeTransform),
+    OpImageTransformMakeTile(crate::operations::images::transform::make_tile::OpImageTransformMakeTile),
+    OpImageTransformMirror(crate::operations::images::transform::mirror::OpImageTransformMirror),
+
     OpImageAdjustmentBlur(crate::operations::images::adjustments::blur::OpImageAdjustmentBlur),
     OpImageAdjustmentContrast(crate::operations::images::adjustments::contrast::OpImageAdjustmentContrast),
     OpImageAdjustmentGrayscale(crate::operations::images::adjustments::grayscale::OpImageAdjustmentGrayscale),
@@ -191,6 +213,13 @@ operations! {
     OpImageAdjustmentBrighten(crate::operations::images::adjustments::brighten::OpImageAdjustmentBrighten),
     OpImageAdjustmentHueRotate(crate::operations::images::adjustments::hue_rotate::OpImageAdjustmentHueRotate),
     OpImageAdjustmentUnsharpen(crate::operations::images::adjustments::unsharpen::OpImageAdjustmentUnsharpen),
+    OpImageAdjustmentLevels(crate::operations::images::adjustments::levels::OpImageAdjustmentLevels),
+    OpImageAdjustmentCurves(crate::operations::images::adjustments::curves::OpImageAdjustmentCurves),
+    OpImageAdjustmentGradientMap(crate::operations::images::adjustments::gradient_map::OpImageAdjustmentGradientMap),
+
+    OpImageChannelSplit(crate::operations::images::channels::split::OpImageChannelSplit),
+    OpImageChannelMerge(crate::operations::images::channels::merge::OpImageChannelMerge),
+    OpImageChannelShuffle(crate::operations::images::channels::shuffle::OpImageChannelShuffle),
 
     OpImageNoisePerlin(crate::operations::images::noise::perlin::OpImageNoisePerlin),
     OpImageNoiseWorleyDistance(crate::operations::images::noise::worley_distance::OpImageNoiseWorleyDistance),
@@ -297,6 +326,11 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageTransformRotate180 },
                 OperationListItem::Operation { operation: Operation::OpImageTransformRotate270 },
                 OperationListItem::Operation { operation: Operation::OpImageTransformRotateAroundCenter },
+                OperationListItem::Operation { operation: Operation::OpImageTransformWarp },
+                OperationListItem::Operation { operation: Operation::OpImageTransformDirectionalWarp },
+                OperationListItem::Operation { operation: Operation::OpImageTransformSafeTransform },
+                OperationListItem::Operation { operation: Operation::OpImageTransformMakeTile },
+                OperationListItem::Operation { operation: Operation::OpImageTransformMirror },
             ]},
             OperationListItem::Category { name: "adjustments".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentBlur },
@@ -306,6 +340,14 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentBrighten },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentHueRotate },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentUnsharpen },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentLevels },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentCurves },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentGradientMap },
+            ]},
+            OperationListItem::Category { name: "channels".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpImageChannelSplit },
+                OperationListItem::Operation { operation: Operation::OpImageChannelMerge },
+                OperationListItem::Operation { operation: Operation::OpImageChannelShuffle },
             ]},
             OperationListItem::Category { name: "noise".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageNoiseOpenSimplex },

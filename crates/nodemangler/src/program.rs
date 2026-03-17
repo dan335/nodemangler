@@ -1,5 +1,5 @@
 use eframe::egui;
-use epaint::{ColorImage, Pos2, Rect, Rounding, Color32};
+use epaint::{ColorImage, CornerRadius, Pos2, Rect, Color32};
 use mangler::{
     get_id, node_type::NodeType, AddNodeType, ChangeGraphMessage, ChangeNodeMessage,
     GraphChangedMessage, NewGraphError, NodeChangedMessage, value::{Value, ValueType},
@@ -75,9 +75,9 @@ impl Program {
     pub fn show(
         &mut self,
         ctx: &egui::Context,
-        frame: &mut eframe::Frame,
         ui: &mut egui::Ui,
         theme: &Theme,
+        view_in_separate_window: bool,
     ) {
         puffin::profile_scope!("central panel show");
 
@@ -125,13 +125,11 @@ impl Program {
                     self.graph_editor.graph_nodes.insert(node.id, graph_node);
                 }
                 GraphChangedMessage::RemovedNode { node_id } => {
-                    if self.editing_node_id == Some(node_id.clone()) {
+                    if self.editing_node_id.as_ref() == Some(&node_id) {
                         self.editing_node_id = None;
                     }
-                    if let Some((viewing_node_id, _viewing_node_output_index)) = self.viewing_node_id_index.clone() {
-                        if viewing_node_id == node_id.clone() {
-                            self.viewing_node_id_index = None;
-                        }
+                    if self.viewing_node_id_index.as_ref().map(|(id, _)| id) == Some(&node_id) {
+                        self.viewing_node_id_index = None;
                     }
                     self.graph_editor.remove_node(&node_id);
                     //self.needs_to_save = true;
@@ -476,7 +474,7 @@ impl Program {
                 // show node settings
                 if let Some(editing_node_id) = &self.editing_node_id {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(editing_node_id) {
-                        let node_settings_response = node_settings_panel::show(ui, node, self.tx_change_node.clone(), theme);
+                        let node_settings_response = node_settings_panel::show(ui, node, &self.tx_change_node, theme);
                         show_graph_settings = false;
 
                         if node_settings_response.deselect_node {
@@ -524,12 +522,12 @@ impl Program {
 
         if let Some((viewing_node_id, graph_node_output_index)) = &self.viewing_node_id_index {
             if let Some(graph_node) = self.graph_editor.graph_nodes.get(viewing_node_id) {
-                let view_panel_response = self.view_panel.show(ctx, graph_node, *graph_node_output_index, theme, self.pointer_position);
+                let view_panel_response = self.view_panel.show(ctx, graph_node, *graph_node_output_index, theme, view_in_separate_window, self.pointer_position);
 
-                if view_panel_response.is_mouse_over {
+                if !view_in_separate_window && view_panel_response.is_mouse_over {
                     is_mouse_over_viewer = true;
                 }
-                
+
                 if self.view_panel.close_window {
                     self.viewing_node_id_index = None;
                 }
@@ -539,7 +537,7 @@ impl Program {
 
 
         // -------------------------
-        
+
 
         ui.allocate_ui_at_rect(node_graph_rect, |ui| {
             puffin::profile_scope!("graph panel");
@@ -656,7 +654,7 @@ impl Program {
 
             ui.painter().add(egui::Shape::rect_filled(
                 drag_rect,
-                Rounding::none(),
+                CornerRadius::ZERO,
                 theme.get().node_header_bg,
             ));
 
@@ -674,18 +672,12 @@ impl Program {
         // show timing in bottom right corner
         {
             let graph_ms = self.graph_run_time.as_secs_f64() * 1000.0;
-            let cpu_txt = if let Some(cpu_usage) = frame.info().cpu_usage {
-                format!("frame: {:.1}ms", cpu_usage * 1000.0)
-            } else {
-                String::new()
-            };
             let graph_txt = format!("graph: {:.1}ms", graph_ms);
-            let txt = format!("{}  {}", graph_txt, cpu_txt);
             let pos = Pos2::new(app_rect.right() - 10.0, app_rect.bottom() - 10.0);
             ui.painter().text(
                 pos,
                 egui::Align2::RIGHT_BOTTOM,
-                txt,
+                graph_txt,
                 egui::FontId::monospace(10.0),
                 egui::Color32::from(theme.get().text_faint),
             );

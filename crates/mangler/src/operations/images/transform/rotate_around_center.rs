@@ -3,7 +3,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -40,22 +40,18 @@ impl OpImageTransformRotateAroundCenter {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let image_converted = inputs[0].value.try_convert_to(ValueType::DynamicImage);
-        let degrees_converted = inputs[1].value.try_convert_to(ValueType::Decimal);
-        let bg_color_converted = inputs[2].value.try_convert_to(ValueType::Color);
+        let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
+        let degrees_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
+        let bg_color_converted = convert_input(inputs, 2, ValueType::Color, &mut input_errors);
 
-        // gather errors
-        if image_converted.is_err() { input_errors.push((0, image_converted.as_ref().err().unwrap().message.clone())); }
-        if degrees_converted.is_err() { input_errors.push((1, degrees_converted.as_ref().err().unwrap().message.clone())); }
-        if bg_color_converted.is_err() { input_errors.push((2, bg_color_converted.as_ref().err().unwrap().message.clone())); }
 
         // return if error
         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Ok(Value::DynamicImage{data, change_id:_}) = image_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Decimal(degrees)) = degrees_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
-        let Ok(Value::Color(bg_color)) = bg_color_converted else { return Err(OperationError { input_errors, node_error: Some("Error converting.".to_string()) }); };
+        let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(degrees) = degrees_converted.unwrap() else { unreachable!() };
+        let Value::Color(bg_color) = bg_color_converted.unwrap() else { unreachable!() };
 
         // run node
         let color = bg_color.to_srgb_u8();

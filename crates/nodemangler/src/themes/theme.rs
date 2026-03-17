@@ -2,8 +2,8 @@ use eframe::egui;
 use eframe::egui::style::WidgetVisuals;
 use eframe::egui::style::Widgets;
 use epaint::Color32;
+use epaint::CornerRadius;
 use epaint::Hsva;
-use epaint::Rounding;
 use epaint::Shadow;
 use epaint::Stroke;
 
@@ -31,7 +31,7 @@ pub struct ThemeValues {
     pub node_header_selected_border: Color32,
     pub text_faint: Color32,
 
-    pub window_rounding: Rounding,
+    pub window_corner_radius: CornerRadius,
     pub window_shadow: Shadow,
     pub window_fill: Color32,
     pub window_stroke: Stroke,
@@ -117,20 +117,20 @@ pub fn set_theme(ctx: &egui::Context, theme: Theme) {
         override_text_color: Some(Color32::from(theme_values.override_text_color)),
         dark_mode: theme_values.dark_mode,
 
-        window_rounding: theme_values.window_rounding,
+        window_corner_radius: theme_values.window_corner_radius,
         window_shadow: theme_values.window_shadow,
         window_fill: Color32::from(theme_values.window_fill),
         window_stroke: theme_values.window_stroke,
 
-        menu_rounding: Rounding::same(1.0),
+        menu_corner_radius: CornerRadius::same(1),
         popup_shadow: Shadow::NONE,
         
         widgets: Widgets {
-            noninteractive: WidgetVisuals { bg_fill: Color32::from(theme_values.widgets_noninteractive_bg_fill), weak_bg_fill: Color32::from(theme_values.widgets_noninteractive_weak_bg_fill), bg_stroke: Stroke::new(theme_values.widgets_noninteractive_bg_stroke.0, theme_values.widgets_noninteractive_bg_stroke.1), rounding: Rounding::same(theme_values.widgets_noninteractive_rounding), fg_stroke: Stroke::new(theme_values.widgets_noninteractive_fg_stroke.0, theme_values.widgets_noninteractive_fg_stroke.1), expansion: theme_values.widgets_noninteractive_expansion },
-            inactive: WidgetVisuals { bg_fill: Color32::from(theme_values.widgets_interactive_bg_fill), weak_bg_fill: Color32::from(theme_values.widgets_interactive_weak_bg_fill), bg_stroke: Stroke::new(theme_values.widgets_interactive_bg_stroke.0, theme_values.widgets_interactive_bg_stroke.1), rounding: Rounding::same(theme_values.widgets_interactive_rounding), fg_stroke: Stroke::new(theme_values.widgets_interactive_fg_stroke.0, theme_values.widgets_interactive_fg_stroke.1), expansion: theme_values.widgets_interactive_expansion },
-            hovered: WidgetVisuals { bg_fill: Color32::from(theme_values.widgets_hovered_bg_fill), weak_bg_fill: Color32::from(theme_values.widgets_hovered_weak_bg_fill), bg_stroke: Stroke::new(theme_values.widgets_hovered_bg_stroke.0, theme_values.widgets_hovered_bg_stroke.1), rounding: Rounding::same(theme_values.widgets_hovered_rounding), fg_stroke: Stroke::new(theme_values.widgets_hovered_fg_stroke.0, theme_values.widgets_hovered_fg_stroke.1), expansion: theme_values.widgets_hovered_expansion },
-            active: WidgetVisuals { bg_fill: Color32::from(theme_values.widgets_active_bg_fill), weak_bg_fill: Color32::from(theme_values.widgets_active_weak_bg_fill), bg_stroke: Stroke::new(theme_values.widgets_active_bg_stroke.0, theme_values.widgets_active_bg_stroke.1), rounding: Rounding::same(theme_values.widgets_active_rounding), fg_stroke: Stroke::new(theme_values.widgets_active_fg_stroke.0, theme_values.widgets_active_fg_stroke.1), expansion: theme_values.widgets_active_expansion },
-            open: WidgetVisuals { bg_fill: Color32::from(theme_values.widgets_open_bg_fill), weak_bg_fill: Color32::from(theme_values.widgets_open_weak_bg_fill), bg_stroke: Stroke::new(theme_values.widgets_open_bg_stroke.0, theme_values.widgets_open_bg_stroke.1), rounding: Rounding::same(theme_values.widgets_open_rounding), fg_stroke: Stroke::new(theme_values.widgets_open_fg_stroke.0, theme_values.widgets_open_fg_stroke.1), expansion: theme_values.widgets_open_expansion },
+            noninteractive: WidgetVisuals { bg_fill: Color32::from(theme_values.widgets_noninteractive_bg_fill), weak_bg_fill: Color32::from(theme_values.widgets_noninteractive_weak_bg_fill), bg_stroke: Stroke::new(theme_values.widgets_noninteractive_bg_stroke.0, theme_values.widgets_noninteractive_bg_stroke.1), corner_radius: CornerRadius::same(theme_values.widgets_noninteractive_rounding as u8), fg_stroke: Stroke::new(theme_values.widgets_noninteractive_fg_stroke.0, theme_values.widgets_noninteractive_fg_stroke.1), expansion: theme_values.widgets_noninteractive_expansion },
+            inactive: WidgetVisuals { bg_fill: Color32::from(theme_values.widgets_interactive_bg_fill), weak_bg_fill: Color32::from(theme_values.widgets_interactive_weak_bg_fill), bg_stroke: Stroke::new(theme_values.widgets_interactive_bg_stroke.0, theme_values.widgets_interactive_bg_stroke.1), corner_radius: CornerRadius::same(theme_values.widgets_interactive_rounding as u8), fg_stroke: Stroke::new(theme_values.widgets_interactive_fg_stroke.0, theme_values.widgets_interactive_fg_stroke.1), expansion: theme_values.widgets_interactive_expansion },
+            hovered: WidgetVisuals { bg_fill: Color32::from(theme_values.widgets_hovered_bg_fill), weak_bg_fill: Color32::from(theme_values.widgets_hovered_weak_bg_fill), bg_stroke: Stroke::new(theme_values.widgets_hovered_bg_stroke.0, theme_values.widgets_hovered_bg_stroke.1), corner_radius: CornerRadius::same(theme_values.widgets_hovered_rounding as u8), fg_stroke: Stroke::new(theme_values.widgets_hovered_fg_stroke.0, theme_values.widgets_hovered_fg_stroke.1), expansion: theme_values.widgets_hovered_expansion },
+            active: WidgetVisuals { bg_fill: Color32::from(theme_values.widgets_active_bg_fill), weak_bg_fill: Color32::from(theme_values.widgets_active_weak_bg_fill), bg_stroke: Stroke::new(theme_values.widgets_active_bg_stroke.0, theme_values.widgets_active_bg_stroke.1), corner_radius: CornerRadius::same(theme_values.widgets_active_rounding as u8), fg_stroke: Stroke::new(theme_values.widgets_active_fg_stroke.0, theme_values.widgets_active_fg_stroke.1), expansion: theme_values.widgets_active_expansion },
+            open: WidgetVisuals { bg_fill: Color32::from(theme_values.widgets_open_bg_fill), weak_bg_fill: Color32::from(theme_values.widgets_open_weak_bg_fill), bg_stroke: Stroke::new(theme_values.widgets_open_bg_stroke.0, theme_values.widgets_open_bg_stroke.1), corner_radius: CornerRadius::same(theme_values.widgets_open_rounding as u8), fg_stroke: Stroke::new(theme_values.widgets_open_fg_stroke.0, theme_values.widgets_open_fg_stroke.1), expansion: theme_values.widgets_open_expansion },
         },
         ..old
     });

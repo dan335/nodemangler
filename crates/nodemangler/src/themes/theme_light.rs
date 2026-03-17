@@ -28,7 +28,7 @@ pub fn theme_light() -> ThemeValues
         
         text_faint: desaturate(other.text_faint),
 
-        window_rounding: other.window_rounding,
+        window_corner_radius: other.window_corner_radius,
         window_shadow:other.window_shadow,
         window_fill: Hsva::new(0.565, 0.0, 0.7, 1.0).into(),
         window_stroke: other.window_stroke,
