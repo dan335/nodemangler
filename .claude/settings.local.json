@@ -9,7 +9,12 @@
       "Bash(cargo test:*)",
       "Read(//c/Users/danph/.cargo/registry/src//**)",
       "Bash(2)",
-      "Bash(cargo outdated:*)"
+      "Bash(cargo outdated:*)",
+      "Read(//c/Users/danph/.cargo/git/checkouts//**)",
+      "Bash(find . -path *oovm*image* -name *.rs -exec grep -l \"Serialize\\\\|Deserialize\" {})",
+      "Bash(grep:*)",
+      "Bash(cargo install:*)",
+      "Bash(cargo llvm-cov:*)"
     ]
   }
 }

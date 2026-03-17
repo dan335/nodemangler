@@ -23,6 +23,3 @@ egui_extras = "0.22.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.9", features = ["winuser", "windef"] }
-
-[patch.crates-io]
-"image" = { git = 'https://github.com/oovm/image.git' }

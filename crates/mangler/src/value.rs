@@ -19,6 +19,7 @@ pub enum Value {
     String(String),
     Color(Color),
     DynamicImage {
+        #[serde(with = "crate::dynamic_image_serde")]
         data: Arc<DynamicImage>,
         change_id: String, // new id each time image changes
     },
