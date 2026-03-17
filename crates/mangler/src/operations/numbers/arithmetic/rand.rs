@@ -58,3 +58,93 @@ impl OpNumberMathRand {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::input::Input;
+    use crate::value::Value;
+
+    #[tokio::test]
+    async fn test_rand_settings() {
+        let s = OpNumberMathRand::settings();
+        assert_eq!(s.name, "random");
+        assert_eq!(OpNumberMathRand::create_inputs().len(), 2);
+        assert_eq!(OpNumberMathRand::create_outputs().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_rand_returns_decimal() {
+        let mut inputs = vec![
+            Input::new("min".to_string(), Value::Decimal(0.0), None, None),
+            Input::new("max".to_string(), Value::Decimal(1.0), None, None),
+        ];
+        let result = OpNumberMathRand::run(&mut inputs).await.unwrap();
+        match &result.responses[0].value {
+            Value::Decimal(v) => assert!(*v >= 0.0 && *v <= 1.0, "Got {}", v),
+            other => panic!("Expected Decimal, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_rand_within_large_range() {
+        let mut inputs = vec![
+            Input::new("min".to_string(), Value::Decimal(-1000.0), None, None),
+            Input::new("max".to_string(), Value::Decimal(1000.0), None, None),
+        ];
+        let result = OpNumberMathRand::run(&mut inputs).await.unwrap();
+        match &result.responses[0].value {
+            Value::Decimal(v) => assert!(*v >= -1000.0 && *v <= 1000.0, "Got {}", v),
+            other => panic!("Expected Decimal, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_rand_min_equals_max_errors() {
+        let mut inputs = vec![
+            Input::new("min".to_string(), Value::Decimal(5.0), None, None),
+            Input::new("max".to_string(), Value::Decimal(5.0), None, None),
+        ];
+        let result = OpNumberMathRand::run(&mut inputs).await;
+        assert!(result.is_err(), "Expected error when min == max");
+    }
+
+    #[tokio::test]
+    async fn test_rand_min_greater_than_max_errors() {
+        let mut inputs = vec![
+            Input::new("min".to_string(), Value::Decimal(10.0), None, None),
+            Input::new("max".to_string(), Value::Decimal(5.0), None, None),
+        ];
+        let result = OpNumberMathRand::run(&mut inputs).await;
+        assert!(result.is_err(), "Expected error when min > max");
+    }
+
+    #[tokio::test]
+    async fn test_rand_accepts_integer_inputs() {
+        let mut inputs = vec![
+            Input::new("min".to_string(), Value::Integer(0), None, None),
+            Input::new("max".to_string(), Value::Integer(100), None, None),
+        ];
+        let result = OpNumberMathRand::run(&mut inputs).await.unwrap();
+        match &result.responses[0].value {
+            Value::Decimal(v) => assert!(*v >= 0.0 && *v <= 100.0, "Got {}", v),
+            other => panic!("Expected Decimal, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_rand_multiple_calls_in_range() {
+        // Run many times to confirm we always stay in range
+        for _ in 0..20 {
+            let mut inputs = vec![
+                Input::new("min".to_string(), Value::Decimal(0.0), None, None),
+                Input::new("max".to_string(), Value::Decimal(1.0), None, None),
+            ];
+            let result = OpNumberMathRand::run(&mut inputs).await.unwrap();
+            match &result.responses[0].value {
+                Value::Decimal(v) => assert!(*v >= 0.0 && *v <= 1.0, "Got out-of-range value: {}", v),
+                other => panic!("Expected Decimal, got {:?}", other),
+            }
+        }
+    }
+}

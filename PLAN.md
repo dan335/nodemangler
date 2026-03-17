@@ -2,148 +2,20 @@
 
 ## Context
 
-NodeMangler has a solid async graph engine, 14 noise generators, 9 color spaces, and subgraph support, but lacks the deep filter library, PBR pipeline, and advanced pattern generators that make Substance Designer powerful. This plan adds features in priority order — each phase delivers standalone value and unlocks the next.
+NodeMangler has a solid async graph engine, 14 noise generators, 9 color spaces, and subgraph support. Phases 1-4 added blend modes, channel ops, distortion/tiling, shapes/patterns, and advanced filters. Phase 5 partially complete (3 of 5 PBR nodes). This plan covers remaining work.
 
 ---
 
-## Phase 1: Foundation — Blend Modes & Channel Operations ✅ COMPLETE
+## Phase 5: PBR / Material Pipeline (IN PROGRESS)
 
-**Status:** Implemented and tested. 334 tests pass (22 new).
+**Status:** 4 of 5 nodes implemented (normal_from_height, ao_from_height, curvature, height_blend).
 
-### 1A. Blend Modes ✅
-- **File:** `crates/mangler/src/color/blend.rs`
-- Expanded `BlendMode` from 2 → 17 modes: Normal, Lerp, Multiply, Screen, Overlay, SoftLight, HardLight, ColorDodge, ColorBurn, Darken, Lighten, Difference, Exclusion, LinearBurn, LinearDodge, Divide, Subtract
-- `apply_blend_mode()` helper for per-channel sRGB formulas
-- All 9 color space blend methods updated (non-sRGB modes delegate to `blend_srgb`)
-
-### 1B. Channel Split / Merge / Shuffle ✅
-- `crates/mangler/src/operations/images/channels/split.rs` — 1 image → 4 grayscale (R, G, B, A)
-- `crates/mangler/src/operations/images/channels/merge.rs` — 4 grayscale → 1 RGBA
-- `crates/mangler/src/operations/images/channels/shuffle.rs` — remap channels via 4 integer selectors
-
-### 1C. Levels & Curves ✅
-- `crates/mangler/src/operations/images/adjustments/levels.rs` — black point, white point, gamma on Rgba32F
-- `crates/mangler/src/operations/images/adjustments/curves.rs` — contrast curve with strength + midpoint
-
-### 1D. Gradient Map ✅
-- `crates/mangler/src/operations/images/adjustments/gradient_map.rs` — luminance → 2 or 3 color stops (Rec. 709)
-
-All ops registered in `operations!` macro and `operation_list()` (under "adjustments" and "channels" categories).
-
----
-
-## Phase 2: Distortion & Tiling ✅ COMPLETE
-
-**Status:** Implemented and tested. 385 tests pass (51 new).
-
-### 2A. Warp / Displacement Node ✅
-- **File:** `crates/mangler/src/operations/images/transform/warp.rs`
-- Inputs: source image, displacement map (R=X offset, G=Y offset), intensity (0-200)
-- Bilinear interpolation for sub-pixel sampling
-- Reusable `bilinear_sample_rgba()` helper used by other Phase 2 nodes
-
-### 2B. Directional Warp ✅
-- **File:** `crates/mangler/src/operations/images/transform/directional_warp.rs`
-- Displacement along a single configurable angle, intensity driven by grayscale map
-- Uses Rec. 601 luminance weighting
-
-### 2C. Safe Transform ✅
-- **File:** `crates/mangler/src/operations/images/transform/safe_transform.rs`
-- Translate (normalized -1..1), rotate (degrees), scale with edge wrapping
-- Near-zero scale clamped to prevent division by zero
-
-### 2D. Make It Tile ✅
-- **File:** `crates/mangler/src/operations/images/transform/make_tile.rs`
-- Cross-fade horizontal then vertical edges with configurable blend size (1-50%)
-- Handles edge cases: 1x1 images, zero blend regions
-
-### 2E. Mirror / Symmetry ✅
-- **File:** `crates/mangler/src/operations/images/transform/mirror.rs`
-- Mirror across X, Y, or both axes with configurable offset (0-1)
-
-All 5 ops registered in `operations!` macro and `operation_list()` under "transform" category.
-
----
-
-## Phase 3: Shapes & Pattern Generation ✅ COMPLETE
-
-**Status:** Implemented and tested. 445 tests pass (60 new).
-
-### 3A. Shape Nodes ✅
-- **New files** in `crates/mangler/src/operations/images/shapes/`:
-  - `rectangle.rs` — width, height, corner radius, rotation (rounded-box SDF)
-  - `polygon.rs` — n-sided regular polygon (sector-based SDF)
-  - `star.rs` — n-pointed star with inner/outer radius
-  - `line.rs` — start/end points, thickness (line segment SDF)
-  - `ellipse.rs` — width, height, rotation (gradient-corrected ellipse SDF)
-- All render as grayscale SDF with smoothstep anti-aliasing
-
-### 3B. Brick / Tile Patterns ✅
-- **New files** in `crates/mangler/src/operations/images/patterns/`:
-  - `brick.rs` — configurable columns, rows, offset, gap
-  - `hexagonal.rs` — hexagonal tile grid with axial coordinate rounding
-  - `weave.rs` — basket weave with two-tone horizontal/vertical strands
-- Render as grayscale patterns
-
-### 3C. Tile Sampler ✅
-- **New file:** `crates/mangler/src/operations/images/patterns/tile_sampler.rs`
-- Inputs: pattern image, width/height, count X/Y, scale, scale random, rotation random, offset random, seed
-- Seeded LCG PRNG for deterministic randomization, inverse-transform sampling, max compositing
-
-All 9 ops registered in `operations!` macro and `operation_list()` under "shapes" and "patterns" categories.
-
----
-
-## Phase 4: Advanced Filters ✅ COMPLETE
-
-**Status:** Implemented and tested. 567 tests pass (40 new).
-
-### 4A. Additional Blur Types ✅
-- **New files** in `crates/mangler/src/operations/images/adjustments/`:
-  - `directional_blur.rs` — blur along a configurable angle with samples/intensity controls
-  - `radial_blur.rs` — circular/spin blur around image center
-  - `slope_blur.rs` — direction/intensity driven by a grayscale slope map (Sobel gradient)
-  - `non_uniform_blur.rs` — per-pixel blur intensity from a grayscale map (Vogel disc sampling)
-
-### 4B. Edge Detection & Effects ✅
-- `edge_detect.rs` — Sobel operator edge detection with intensity control (outputs grayscale)
-- `emboss.rs` — angle-based emboss effect with intensity control
-- `sharpen.rs` — 3x3 convolution sharpen with intensity control
-- `posterize.rs` — reduce color levels (2-256)
-
-### 4C. Histogram Operations ✅
-- `histogram_scan.rs` — isolate a luminance range with smoothstep boundaries
-- `histogram_range.rs` — remap luminance to a target min/max range
-- `auto_levels.rs` — auto white/black point detection via histogram clipping
-
-### 4D. Distance Transform ✅
-- `distance.rs` — compute distance field from binary image with threshold and spread controls
-
-All 12 ops registered in `operations!` macro and `operation_list()` under "adjustments" category.
-
----
-
-## Phase 5: PBR / Material Pipeline
-
-**Why fifth:** Requires the filter foundation from Phase 4.
-
-### 5A. Normal Map from Height
-- **New file:** `crates/mangler/src/operations/images/pbr/normal_from_height.rs`
-- Sobel-based normal computation from grayscale height map
-- Output: RGB normal map in tangent space
-- Inputs: height map, intensity/scale
-
-### 5B. Ambient Occlusion from Height
-- **New file:** `crates/mangler/src/operations/images/pbr/ao_from_height.rs`
-- SSAO-style computation from height map
-
-### 5C. Curvature from Normal
-- **New file:** `crates/mangler/src/operations/images/pbr/curvature.rs`
-- Detect convex/concave areas from normal map
-
-### 5D. Height Blend
-- **New file:** `crates/mangler/src/operations/images/pbr/height_blend.rs`
-- Blend two materials using their height maps for realistic layering
+### 5D. Height Blend ✅
+- **File:** `crates/mangler/src/operations/images/pbr/height_blend.rs`
+- Blends two materials using their height maps; overlay shows through where its height exceeds the base
+- Inputs: base color, base height, overlay color, overlay height, blend amount (0-1), contrast (0-1)
+- Outputs: blended color image + blended height image
+- 8 tests passing
 
 ### 5E. PBR Material Export
 - **New file:** `crates/mangler/src/operations/images/outputs/pbr_export.rs`
@@ -152,30 +24,94 @@ All 12 ops registered in `operations!` macro and `operation_list()` under "adjus
 
 ---
 
-## Phase 6: Graph & UI Enhancements
+## Phase 6: Logic Nodes
 
-### 6A. Logic Nodes
+**Why:** Adds conditional/branching logic to the graph, enabling dynamic workflows where node behavior changes based on input values.
+
+### 6A. Switch Node
+- **New file:** `crates/mangler/src/operations/logic/switch.rs`
+- Select between N inputs based on an integer index
+- Inputs: index (integer), input_0 through input_N (any Value type)
+- Output: the Value at the selected index (clamped to valid range)
+- Implementation: accept `Value` type inputs so it works with images, colors, numbers, etc. Use `convert_input()` to get the index, then pass through the selected input unchanged.
+
+### 6B. If/Else Node
+- **New file:** `crates/mangler/src/operations/logic/if_else.rs`
+- Conditional routing: if condition is true, output input A; otherwise output input B
+- Inputs: condition (bool), if_true (any Value), if_false (any Value)
+- Output: the selected Value
+- Implementation: similar to switch but with a boolean selector. The condition input uses `ValueType::Bool`. Both branches are evaluated (since the graph is dataflow, not control flow), but only one is forwarded.
+
+### 6C. Compare Node
+- **New file:** `crates/mangler/src/operations/logic/compare.rs`
+- Comparison operators returning a boolean
+- Inputs: A (decimal), B (decimal), operator (enum: Equal, NotEqual, LessThan, LessEqual, GreaterThan, GreaterEqual)
+- Output: Bool result
+- Implementation: add a new `CompareOp` enum to `value.rs` (similar to how `BlendMode` works). The `run()` function converts both inputs to decimal, applies the selected comparison, outputs a `Value::Bool`.
+
+### 6D. Boolean Logic Nodes
 - **New files** in `crates/mangler/src/operations/logic/`:
-  - `switch.rs` — select between inputs based on boolean/integer
-  - `if_else.rs` — conditional routing
-  - `compare.rs` — comparison operators returning bool
+  - `and.rs` — logical AND of two bool inputs
+  - `or.rs` — logical OR of two bool inputs
+  - `not.rs` — logical NOT of a single bool input
+- Simple pass-through operations on `Value::Bool`
 
-### 6B. Pixel Processor Node
-- **New file:** `crates/mangler/src/operations/images/pixel_processor.rs`
-- Per-pixel custom expression evaluation
-- Mini expression language or subgraph-per-pixel
-- Very powerful but complex — could start with a simple math expression evaluator
+### Registration
+- Create `crates/mangler/src/operations/logic/mod.rs` with `pub mod` for each node
+- Add all logic nodes to the `operations!` macro in `crates/mangler/src/operations/mod.rs`
+- Add a new "logic" category in `operation_list()` with subcategories for conditional and boolean ops
 
-### 6C. UI Improvements (in `crates/nodemangler/`)
-- Frame/Comment nodes for graph organization
-- Dot/Reroute nodes for cleaner wiring
-- Exposed parameters UI on subgraphs
-- 3D preview panel (mesh + material, using wgpu) — stretch goal
+---
 
-### 6D. Text Rendering
+## Phase 7: Text Rendering
+
+**Why:** Text-to-image is essential for labels, watermarks, and texture stamping. Enables generating text masks that feed into blend/composite workflows.
+
+### 7A. Text Node
 - **New file:** `crates/mangler/src/operations/images/inputs/text.rs`
-- Render text string to image with font, size, color inputs
-- Use `rusttype` or `ab_glyph` crate
+- Render a text string to a grayscale image (white text on black background)
+- Inputs:
+  - text (String) — the text to render
+  - font_size (Decimal, default 64.0) — size in pixels
+  - image_width (Integer, default 512) — output image width
+  - image_height (Integer, default 512) — output image height
+  - x_position (Decimal, 0-1, default 0.5) — horizontal position (normalized)
+  - y_position (Decimal, 0-1, default 0.5) — vertical position (normalized)
+- Output: grayscale DynamicImage
+
+### Implementation Details
+- **Crate dependency:** Add `ab_glyph` to `crates/mangler/Cargo.toml` — it's a pure-Rust font rasterizer with no system dependencies
+- **Font handling:** Embed a default font (e.g., `DejaVuSans.ttf` or `Roboto-Regular.ttf`) using `include_bytes!()` so the node works without external font files
+- **Rendering pipeline:**
+  1. Load font with `ab_glyph::FontArc::try_from_slice()`
+  2. Scale glyphs to requested `font_size` using `font.as_scaled(font_size)`
+  3. Layout glyphs: iterate chars, accumulate `h_advance` for x positions, use `height()` for line height
+  4. Rasterize: for each glyph, call `font.outline_glyph()` then `draw()` to get per-pixel coverage values
+  5. Write coverage values (0.0-1.0) into a `GrayImage`, then convert to `DynamicImage`
+- **Positioning:** The x/y position inputs define where the text center lands on the image (0.5, 0.5 = centered). Calculate text bounding box first, then offset all glyphs so the bbox center aligns with the target position.
+- Register under the "images > inputs" category in `operation_list()`
+
+---
+
+## Phase 8: UI Improvements
+
+**Scope:** All changes in `crates/nodemangler/` (GUI crate).
+
+### 8A. Frame / Comment Nodes
+- Allow users to draw labeled rectangles around groups of nodes for organization
+- Implementation: add a `FrameNode` type to the graph editor that renders as a colored, labeled background rectangle behind contained nodes. Frames are draggable and resize to fit their contents.
+
+### 8B. Dot / Reroute Nodes
+- Small passthrough nodes for cleaner wire routing
+- Implementation: a minimal node with one input and one output of type `Value` (passthrough). Renders as a small dot rather than a full node box.
+
+### 8C. Exposed Parameters UI on Subgraphs
+- When a subgraph exposes inputs/outputs, show a clean parameter panel on the parent node
+- Implementation: surface the exposed inputs as editable widgets on the subgraph node's inspector panel
+
+### 8D. 3D Preview Panel (Stretch Goal)
+- Display a mesh with the generated PBR material applied
+- Requires wgpu integration alongside egui
 
 ---
 
@@ -196,17 +132,13 @@ Every new operation follows the established pattern:
 - `crates/mangler/src/operations/mod.rs` — macro registration + menu
 - Parent category `mod.rs` — module declaration
 
-**For new Value/enum variants (Phase 1A blend modes):**
-- `crates/mangler/src/color/blend.rs` — BlendMode enum + formulas
-- `crates/mangler/src/value.rs` — display names if needed
-
 ---
 
 ## Verification
 
 After each phase:
 - `cargo build` — must compile cleanly
-- `cargo test` — all existing tests pass
+- `cargo test -p mangler` — all existing tests pass
 - `cargo run -p nodemangler` — new nodes appear in menu, can be placed and connected
 - Manual test: create a small graph exercising the new nodes, verify output images are correct
 
@@ -214,13 +146,9 @@ After each phase:
 
 ## Estimated Scope
 
-| Phase | New Nodes | Complexity | Dependencies | Status |
-|-------|-----------|------------|--------------|--------|
-| 1     | 8         | Low-Medium | None         | ✅ Done |
-| 2     | 5         | Medium     | Phase 1      | ✅ Done |
-| 3     | 9         | Medium-High| Phase 2      | ✅ Done |
-| 4     | 12        | Medium     | Phase 1      | ✅ Done |
-| 5     | ~5        | High       | Phase 4      |        |
-| 6     | ~6+       | High       | All above    |        |
-
-Phases 1-4 are complete. Phase 5 (PBR / Material Pipeline) is next.
+| Phase | New Nodes | Complexity | Status |
+|-------|-----------|------------|--------|
+| 5     | 2 remaining | High     | In Progress |
+| 6     | ~7        | Medium     | |
+| 7     | 1         | Medium     | |
+| 8     | ~3+       | High       | |

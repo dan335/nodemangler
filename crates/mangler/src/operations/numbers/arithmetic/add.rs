@@ -427,4 +427,100 @@ mod tests {
         let outputs = OpNumberMathAdd::create_outputs();
         assert_eq!(outputs.len(), 1);
     }
+
+    #[tokio::test]
+    async fn test_add_large_integers() {
+        let mut inputs = make_inputs(
+            Value::Integer(i32::MAX / 2),
+            Value::Integer(i32::MAX / 2),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Integer(i32::MAX - 1));
+    }
+
+    #[tokio::test]
+    async fn test_add_large_decimals() {
+        let mut inputs = make_inputs(
+            Value::Decimal(1e15_f32),
+            Value::Decimal(1e15_f32),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        match &result.responses[0].value {
+            Value::Decimal(v) => assert!(*v > 0.0),
+            other => panic!("Expected Decimal, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_add_tiny_decimals() {
+        let mut inputs = make_inputs(
+            Value::Decimal(0.0001),
+            Value::Decimal(0.0001),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Decimal(0.0002));
+    }
+
+    #[tokio::test]
+    async fn test_add_mixed_sign() {
+        let mut inputs = make_inputs(
+            Value::Integer(100),
+            Value::Integer(-100),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Integer(0));
+    }
+
+    #[tokio::test]
+    async fn test_add_decimal_negative() {
+        let mut inputs = make_inputs(
+            Value::Decimal(-3.5),
+            Value::Decimal(-1.5),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Decimal(-5.0));
+    }
+
+    #[tokio::test]
+    async fn test_add_integer_zero() {
+        let mut inputs = make_inputs(
+            Value::Integer(0),
+            Value::Integer(0),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Integer(0));
+    }
+
+    #[tokio::test]
+    async fn test_add_invalid_type_returns_error() {
+        let mut inputs = vec![
+            Input::new("a".to_string(), Value::Bool(true), None, None),
+            Input::new("b".to_string(), Value::Trigger, None, None),
+        ];
+        let result = OpNumberMathAdd::run(&mut inputs).await;
+        assert!(result.is_err(), "Expected error for unsupported type combination");
+    }
+
+    #[tokio::test]
+    async fn test_add_bool_false_decimal() {
+        let mut inputs = make_inputs(
+            Value::Bool(false),
+            Value::Decimal(5.5),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        assert_value!(result.responses[0].value, Decimal(5.5));
+    }
+
+    #[tokio::test]
+    async fn test_add_integer_decimal_fractional_result() {
+        let mut inputs = make_inputs(
+            Value::Integer(3),
+            Value::Decimal(0.14159),
+        );
+        let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
+        match &result.responses[0].value {
+            Value::Decimal(v) => assert!((*v - 3.14159).abs() < 1e-4),
+            other => panic!("Expected Decimal, got {:?}", other),
+        }
+    }
 }

@@ -35,7 +35,18 @@
       "WebFetch",
       "Bash(python:*)",
       "Bash(cd /tmp)",
-      "Bash(unzip -q /c/Users/danph/.cargo/registry/cache/index.crates.io-1949cf8c6b5b557f/egui-0.33.3.crate)"
+      "Bash(unzip -q /c/Users/danph/.cargo/registry/cache/index.crates.io-1949cf8c6b5b557f/egui-0.33.3.crate)",
+      "Bash(python3 append_tests.py)",
+      "Bash(py D:/rust/nodemangler/append_tests.py)",
+      "Bash(py3 D:/rust/nodemangler/append_tests.py)",
+      "Bash(py append_tests2.py)",
+      "Bash(py append_tests3.py)",
+      "Bash(for f:*)",
+      "Bash(do)",
+      "Read(//d/rust/nodemangler/**)",
+      "Bash(done)",
+      "Bash(py append_tests4.py)",
+      "Bash(py fix_tests.py)"
     ]
   }
 }

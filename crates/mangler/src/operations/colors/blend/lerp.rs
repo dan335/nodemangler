@@ -75,3 +75,93 @@ impl OpColorBlendLerp {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::color::Color;
+    use crate::color::color_spaces::ColorSpace;
+    use crate::input::Input;
+    use crate::value::Value;
+
+    fn blend_inputs(color_space: ColorSpace, amount: f32) -> Vec<Input> {
+        vec![
+            Input::new("a".to_string(), Value::Color(Color::from_srgb_float(1.0, 0.0, 0.0, 1.0)), None, None),
+            Input::new("b".to_string(), Value::Color(Color::from_srgb_float(0.0, 0.0, 1.0, 1.0)), None, None),
+            Input::new("amount".to_string(), Value::Decimal(amount), None, None),
+            Input::new("color space".to_string(), Value::ColorSpace(color_space), None, None),
+        ]
+    }
+
+    #[tokio::test]
+    async fn test_blend_srgb() {
+        let mut inputs = blend_inputs(ColorSpace::Srgb, 0.5);
+        let result = OpColorBlendLerp::run(&mut inputs).await.unwrap();
+        match &result.responses[0].value {
+            Value::Color(_) => {}
+            other => panic!("Expected Color, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_blend_amount_zero() {
+        let mut inputs = blend_inputs(ColorSpace::Srgb, 0.0);
+        let result = OpColorBlendLerp::run(&mut inputs).await.unwrap();
+        match &result.responses[0].value {
+            Value::Color(_) => {}
+            other => panic!("Expected Color, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_blend_amount_one() {
+        let mut inputs = blend_inputs(ColorSpace::Srgb, 1.0);
+        let result = OpColorBlendLerp::run(&mut inputs).await.unwrap();
+        match &result.responses[0].value {
+            Value::Color(_) => {}
+            other => panic!("Expected Color, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_blend_settings() {
+        let s = OpColorBlendLerp::settings();
+        assert_eq!(s.name, "blend");
+        assert_eq!(OpColorBlendLerp::create_inputs().len(), 4);
+        assert_eq!(OpColorBlendLerp::create_outputs().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_blend_all_color_spaces() {
+        use crate::color::color_spaces::ColorSpace;
+        let spaces = [
+            ColorSpace::Srgb, ColorSpace::RgbLinear, ColorSpace::Hsl, ColorSpace::Hsv,
+            ColorSpace::Lch, ColorSpace::Xyz, ColorSpace::Lab, ColorSpace::Yuv, ColorSpace::Cmyk,
+        ];
+        for cs in &spaces {
+            let mut inputs = blend_inputs(cs.clone(), 0.5);
+            let result = OpColorBlendLerp::run(&mut inputs).await;
+            assert!(result.is_ok(), "blend in {:?} failed: {:?}", cs, result.err());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_blend_same_colors() {
+        // Blending a color with itself should give the same color regardless of amount
+        let red = Color::from_srgb_float(0.8, 0.2, 0.1, 1.0);
+        let mut inputs = vec![
+            Input::new("a".to_string(), Value::Color(red.clone()), None, None),
+            Input::new("b".to_string(), Value::Color(red.clone()), None, None),
+            Input::new("amount".to_string(), Value::Decimal(0.7), None, None),
+            Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Srgb), None, None),
+        ];
+        let result = OpColorBlendLerp::run(&mut inputs).await.unwrap();
+        match &result.responses[0].value {
+            Value::Color(c) => {
+                let (r, _, _, _) = c.to_srgb_float();
+                assert!((r - 0.8).abs() < 0.01, "same color blend R mismatch: {}", r);
+            }
+            other => panic!("Expected Color, got {:?}", other),
+        }
+    }
+}
