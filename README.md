@@ -4,26 +4,33 @@ A node-based visual programming tool for image and color manipulation, built in 
 
 NodeMangler lets you construct processing pipelines by connecting nodes in a visual graph editor. Each node performs a single operation — load an image, adjust contrast, convert color spaces, generate noise — and data flows through connections between them. The result is a non-destructive, composable workflow for image and color work.
 
-## Project Structure
+## Repository Structure
 
-This is a Cargo workspace with two crates:
+The repository is organized as a monorepo:
+
+- `app/` — Rust application (Cargo workspace)
+- `website/` — Website (future)
+
+### App Crates
 
 | Crate | Path | Purpose |
 |-------|------|---------|
-| **mangler** | `crates/mangler/` | Core library — value system, node graph engine, operations, color spaces |
-| **nodemangler** | `crates/nodemangler/` | GUI application built with egui/eframe |
+| **mangler** | `app/crates/mangler/` | Core library — value system, node graph engine, operations, color spaces |
+| **nodemangler** | `app/crates/nodemangler/` | GUI application built with egui/eframe |
 
 See each crate's README for details:
-- [mangler README](crates/mangler/README.md) — the engine and operation library
-- [nodemangler README](crates/nodemangler/README.md) — the desktop application
+- [mangler README](app/crates/mangler/README.md) — the engine and operation library
+- [nodemangler README](app/crates/nodemangler/README.md) — the desktop application
 
 ## Requirements
 
-- **Rust nightly** toolchain (configured in `rust-toolchain.toml`)
+- **Rust nightly** toolchain (configured in `app/rust-toolchain.toml`)
 
 ## Build & Run
 
 ```bash
+cd app
+
 # Build everything
 cargo build
 

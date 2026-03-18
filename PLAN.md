@@ -11,7 +11,7 @@ NodeMangler has a solid async graph engine, 14 noise generators, 9 color spaces,
 **Status:** 4 of 5 nodes implemented (normal_from_height, ao_from_height, curvature, height_blend). Remaining:
 
 ### 5E. PBR Material Export
-- **New file:** `crates/mangler/src/operations/images/outputs/pbr_export.rs`
+- **New file:** `app/crates/mangler/src/operations/images/outputs/pbr_export.rs`
 - Package BaseColor + Normal + Roughness + Metallic + Height + AO into standard formats
 - Export to folder with naming conventions (Unity, Unreal, glTF)
 
@@ -25,13 +25,13 @@ NodeMangler has a solid async graph engine, 14 noise generators, 9 color spaces,
 
 ## Phase 7: Text Rendering ✅ COMPLETE
 
-Text node implemented in `crates/mangler/src/operations/images/inputs/text.rs`. Uses embedded Manrope-Regular font via `ab_glyph`. Inputs: text, font_size, image_width, image_height, x_position, y_position. 7 tests passing.
+Text node implemented in `app/crates/mangler/src/operations/images/inputs/text.rs`. Uses embedded Manrope-Regular font via `ab_glyph`. Inputs: text, font_size, image_width, image_height, x_position, y_position. 7 tests passing.
 
 ---
 
 ## Phase 8: UI Improvements
 
-**Scope:** All changes in `crates/nodemangler/` (GUI crate).
+**Scope:** All changes in `app/crates/nodemangler/` (GUI crate).
 
 ### 8A. Frame / Comment Nodes
 - Allow users to draw labeled rectangles around groups of nodes for organization
@@ -60,19 +60,19 @@ Every new operation follows the established pattern:
 3. Implement `create_inputs()` → `Vec<Input>` with `InputSettings` (Slider, DragValue, etc.)
 4. Implement `create_outputs()` → `Vec<Output>`
 5. Implement `async fn run(inputs)` using `convert_input()` + the 5-step pattern
-6. Register in `operations!` macro in `crates/mangler/src/operations/mod.rs`
+6. Register in `operations!` macro in `app/crates/mangler/src/operations/mod.rs`
 7. Add to `operation_list()` in appropriate category
 8. Add `pub mod` in parent `mod.rs` files
 
 **Key files to modify for every operation:**
-- `crates/mangler/src/operations/mod.rs` — macro registration + menu
+- `app/crates/mangler/src/operations/mod.rs` — macro registration + menu
 - Parent category `mod.rs` — module declaration
 
 ---
 
 ## Verification
 
-After each phase:
+After each phase (from `app/` directory):
 - `cargo build` — must compile cleanly
 - `cargo test -p mangler` — all existing tests pass
 - `cargo run -p nodemangler` — new nodes appear in menu, can be placed and connected

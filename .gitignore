@@ -1,6 +1,7 @@
 # Cargo build artifacts
 debug/
 target/
+app/target/
 
 # Rustfmt backup files
 **/*.rs.bk
