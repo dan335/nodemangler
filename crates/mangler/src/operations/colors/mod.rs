@@ -14,3 +14,11 @@ pub mod blend;
 pub mod sample_image;
 /// Cast operations for converting values to colors.
 pub mod cast;
+/// Operations for generating colors (from hex, to hex, random color).
+pub mod generation;
+/// Operations for analyzing color properties such as distance, luminance, and contrast.
+pub mod analysis;
+/// Color manipulation operations (invert, grayscale, HSV adjustment, clamp, set alpha).
+pub mod manipulation;
+/// Color relationship operations (complementary, triadic, analogous).
+pub mod relationship;

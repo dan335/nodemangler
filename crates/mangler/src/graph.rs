@@ -279,6 +279,24 @@ impl Graph {
                     to.cached_input_hash = None;
                 }
 
+                // immediately propagate the source node's current output value to the
+                // downstream input so the right panel shows the correct value before
+                // the graph runs
+                let source_value = self.nodes.get(&output_node_id)
+                    .map(|n| n.outputs[output_connection_index].value.clone());
+                if let Some(value) = source_value {
+                    if let Some(node) = self.nodes.get_mut(&input_node_id) {
+                        node.inputs[input_connection_index].value = value.clone();
+                    }
+                    if let Some(tx) = &self.tx_node_changed {
+                        let _ = tx.try_send(NodeChangedMessage::InputChanged {
+                            node_id: input_node_id.clone(),
+                            input_index: input_connection_index,
+                            value,
+                        });
+                    }
+                }
+
                 // adapt accepts_any_type inputs/outputs to match the connected type
                 let source_type = self.nodes.get(&output_node_id)
                     .map(|n| n.outputs[output_connection_index].value.value_type());

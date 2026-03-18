@@ -361,7 +361,9 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
         }
         Value::Color(a) => {
             if input.connection.is_some() {
-                ui.label(format!("{:?}", a));
+                let rgba = a.to_srgb_u8();
+                let color = Color32::from_rgba_unmultiplied(rgba.0, rgba.1, rgba.2, rgba.3);
+                ui.label(RichText::new("                        ").background_color(color));
             } else {
                 let rgba = a.to_srgb_u8();
                 let mut x = [rgba.0, rgba.1, rgba.2, rgba.3];

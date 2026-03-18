@@ -193,7 +193,7 @@ mod serialization_tests {
             Operation::OpNumberInputDecimal,
             Operation::OpNumberInputInteger,
             Operation::OpNumberMathAdd,
-            Operation::OpColorBlendLerp,
+            Operation::OpColorBlendMode,
         ];
 
         for op in operations {

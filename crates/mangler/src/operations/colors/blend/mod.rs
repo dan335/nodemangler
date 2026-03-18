@@ -1,6 +1,4 @@
-//! Color blending operations.
-//!
-//! Contains operations that combine two colors using various blending strategies.
+//! Color blend operations.
 
-/// Linear interpolation (lerp) blend operation between two colors.
-pub mod lerp;
+/// Color blend using any of 17 blend modes in a chosen color space.
+pub mod blend_mode;

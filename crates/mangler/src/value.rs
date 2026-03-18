@@ -462,7 +462,7 @@ impl ValueType {
                 Value::NoiseWorleyDistanceFunction(NoiseWorleyDistanceFunction::Euclidean)
             }
             ValueType::ColorSpace => Value::ColorSpace(crate::color::color_spaces::ColorSpace::Srgb),
-            ValueType::BlendMode => Value::BlendMode(crate::color::blend::BlendMode::Normal),
+            ValueType::BlendMode => Value::BlendMode(crate::color::blend::BlendMode::Over),
         }
     }
 

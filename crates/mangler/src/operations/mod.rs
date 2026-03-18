@@ -291,11 +291,36 @@ operations! {
     OpColorOutputXyz(crate::operations::colors::outputs::to_xyz::OpColorOutputXyz),
     OpColorOutputYuv(crate::operations::colors::outputs::to_yuv::OpColorOutputYuv),
 
-    OpColorBlendLerp(crate::operations::colors::blend::lerp::OpColorBlendLerp),
+    OpColorBlendMode(crate::operations::colors::blend::blend_mode::OpColorBlendMode),
 
     OpColorSampleMostCommonColors(crate::operations::colors::sample_image::most_common_colors::OpColorSampleMostCommonColors),
 
     OpColorCastToColor(crate::operations::colors::cast::to_color::OpColorCastToColor),
+
+    OpColorGenerationFromHex(crate::operations::colors::generation::from_hex::OpColorGenerationFromHex),
+    OpColorGenerationToHex(crate::operations::colors::generation::to_hex::OpColorGenerationToHex),
+    OpColorGenerationRandomColor(crate::operations::colors::generation::random_color::OpColorGenerationRandomColor),
+
+    OpColorManipulationInvert(crate::operations::colors::manipulation::invert::OpColorManipulationInvert),
+    OpColorManipulationGrayscale(crate::operations::colors::manipulation::grayscale::OpColorManipulationGrayscale),
+    OpColorManipulationAdjustHsv(crate::operations::colors::manipulation::adjust_hsv::OpColorManipulationAdjustHsv),
+    OpColorManipulationClamp(crate::operations::colors::manipulation::clamp::OpColorManipulationClamp),
+    OpColorManipulationSetAlpha(crate::operations::colors::manipulation::set_alpha::OpColorManipulationSetAlpha),
+
+    OpColorAnalysisDistance(crate::operations::colors::analysis::distance::OpColorAnalysisDistance),
+    OpColorAnalysisLuminance(crate::operations::colors::analysis::luminance::OpColorAnalysisLuminance),
+    OpColorAnalysisContrastRatio(crate::operations::colors::analysis::contrast_ratio::OpColorAnalysisContrastRatio),
+    OpColorAnalysisColorTemperature(crate::operations::colors::analysis::color_temperature::OpColorAnalysisColorTemperature),
+    OpColorAnalysisDominantHue(crate::operations::colors::analysis::dominant_hue::OpColorAnalysisDominantHue),
+    OpColorAnalysisHarmonyScore(crate::operations::colors::analysis::harmony_score::OpColorAnalysisHarmonyScore),
+    OpColorAnalysisMixRatio(crate::operations::colors::analysis::mix_ratio::OpColorAnalysisMixRatio),
+
+    OpColorHarmonyComplementary(crate::operations::colors::relationship::complementary::OpColorHarmonyComplementary),
+    OpColorHarmonyTriadic(crate::operations::colors::relationship::triadic::OpColorHarmonyTriadic),
+    OpColorHarmonyAnalogous(crate::operations::colors::relationship::analogous::OpColorHarmonyAnalogous),
+    OpColorHarmonyTetradic(crate::operations::colors::relationship::tetradic::OpColorHarmonyTetradic),
+    OpColorHarmonyDoubleSplitComplementary(crate::operations::colors::relationship::double_split_complementary::OpColorHarmonyDoubleSplitComplementary),
+    OpColorHarmonyMonochromatic(crate::operations::colors::relationship::monochromatic::OpColorHarmonyMonochromatic),
 
     // image
     OpImageInputUrl(crate::operations::images::inputs::url::OpImageInputUrl),
@@ -534,13 +559,40 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpColorOutputYuv },
             ]},
             OperationListItem::Category { name: "blend".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::OpColorBlendLerp },
+                OperationListItem::Operation { operation: Operation::OpColorBlendMode },
             ]},
             OperationListItem::Category { name: "analysis".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpColorSampleMostCommonColors },
+                OperationListItem::Operation { operation: Operation::OpColorAnalysisDistance },
+                OperationListItem::Operation { operation: Operation::OpColorAnalysisLuminance },
+                OperationListItem::Operation { operation: Operation::OpColorAnalysisContrastRatio },
+                OperationListItem::Operation { operation: Operation::OpColorAnalysisColorTemperature },
+                OperationListItem::Operation { operation: Operation::OpColorAnalysisDominantHue },
+                OperationListItem::Operation { operation: Operation::OpColorAnalysisHarmonyScore },
+                OperationListItem::Operation { operation: Operation::OpColorAnalysisMixRatio },
             ]},
             OperationListItem::Category { name: "cast".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpColorCastToColor },
+            ]},
+            OperationListItem::Category { name: "generation".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpColorGenerationFromHex },
+                OperationListItem::Operation { operation: Operation::OpColorGenerationToHex },
+                OperationListItem::Operation { operation: Operation::OpColorGenerationRandomColor },
+            ]},
+            OperationListItem::Category { name: "manipulation".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpColorManipulationInvert },
+                OperationListItem::Operation { operation: Operation::OpColorManipulationGrayscale },
+                OperationListItem::Operation { operation: Operation::OpColorManipulationAdjustHsv },
+                OperationListItem::Operation { operation: Operation::OpColorManipulationClamp },
+                OperationListItem::Operation { operation: Operation::OpColorManipulationSetAlpha },
+            ]},
+            OperationListItem::Category { name: "relationship".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpColorHarmonyComplementary },
+                OperationListItem::Operation { operation: Operation::OpColorHarmonyTriadic },
+                OperationListItem::Operation { operation: Operation::OpColorHarmonyAnalogous },
+                OperationListItem::Operation { operation: Operation::OpColorHarmonyTetradic },
+                OperationListItem::Operation { operation: Operation::OpColorHarmonyDoubleSplitComplementary },
+                OperationListItem::Operation { operation: Operation::OpColorHarmonyMonochromatic },
             ]},
         ]},
         OperationListItem::Category { name: "images".to_string(), operation_list_items: vec![
@@ -603,6 +655,10 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentEmboss },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentSharpen },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentUnsharpen },
+                OperationListItem::Operation { operation: Operation::OpImagePbrNormalFromHeight },
+                OperationListItem::Operation { operation: Operation::OpImagePbrAoFromHeight },
+                OperationListItem::Operation { operation: Operation::OpImagePbrCurvature },
+                OperationListItem::Operation { operation: Operation::OpImagePbrHeightBlend },
             ]},
             OperationListItem::Category { name: "channels".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageChannelSplit },
@@ -621,12 +677,6 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImagePatternHexagonal },
                 OperationListItem::Operation { operation: Operation::OpImagePatternWeave },
                 OperationListItem::Operation { operation: Operation::OpImagePatternTileSampler },
-            ]},
-            OperationListItem::Category { name: "PBR".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::OpImagePbrNormalFromHeight },
-                OperationListItem::Operation { operation: Operation::OpImagePbrAoFromHeight },
-                OperationListItem::Operation { operation: Operation::OpImagePbrCurvature },
-                OperationListItem::Operation { operation: Operation::OpImagePbrHeightBlend },
             ]},
             OperationListItem::Category { name: "noise".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageNoiseOpenSimplex },

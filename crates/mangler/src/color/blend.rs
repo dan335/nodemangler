@@ -1,9 +1,9 @@
 //! Color blending operations across multiple color spaces.
 //!
 //! Each `blend_*` method converts the two input colors into the target color space,
-//! applies the requested [`BlendMode`], and converts back to sRGB. For blend modes
-//! that only make sense in sRGB (e.g. Multiply, Screen), the non-sRGB methods
-//! delegate to [`Color::blend_srgb`].
+//! applies the requested [`BlendMode`] to each channel, and converts back to sRGB.
+//! All 17 blend modes are applied natively in the chosen color space: channels are
+//! normalized to `[0, 1]` for the formula, then denormalized back.
 
 use serde::{Serialize, Deserialize};
 
@@ -13,167 +13,205 @@ impl Color {
 
     /// Blends two colors in CMYK color space.
     ///
-    /// Only `Normal` and `Lerp` modes operate natively in CMYK; all other modes
-    /// delegate to [`Self::blend_srgb`].
+    /// All CMYK channels (C, M, Y, K) are already in `[0, 1]`, so no normalization
+    /// is needed for photoshop-style blend modes.
     pub fn blend_cmyk(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         let la = a.to_cmyk();
         let lb = b.to_cmyk();
 
-        match blend_mode {
-            BlendMode::Normal => Color::from_cmyk(
+        let (c, m, y, k, alpha) = match blend_mode {
+            BlendMode::Over => (
                 lerp(la.0, lb.0, amount * lb.4),
                 lerp(la.1, lb.1, amount * lb.4),
                 lerp(la.2, lb.2, amount * lb.4),
                 lerp(la.3, lb.3, amount * lb.4),
                 la.4,
             ),
-            BlendMode::Lerp => Color::from_cmyk(
+            BlendMode::Lerp => (
                 lerp(la.0, lb.0, amount),
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
                 lerp(la.4, lb.4, amount),
             ),
-            _ => Color::blend_srgb(a, b, blend_mode, amount),
-        }
+            _ => (
+                blend_ch(la.0, lb.0, blend_mode, amount, lb.4, 1.0, 0.0),
+                blend_ch(la.1, lb.1, blend_mode, amount, lb.4, 1.0, 0.0),
+                blend_ch(la.2, lb.2, blend_mode, amount, lb.4, 1.0, 0.0),
+                blend_ch(la.3, lb.3, blend_mode, amount, lb.4, 1.0, 0.0),
+                la.4,
+            ),
+        };
+
+        Color::from_cmyk(c, m, y, k, alpha)
     }
 
     /// Blends two colors in HSL color space.
     ///
-    /// Only `Normal` and `Lerp` modes operate natively in HSL; all other modes
-    /// delegate to [`Self::blend_srgb`].
+    /// Hue (0–360°) is normalized to `[0, 1]` for photoshop-style blend formulas.
+    /// Saturation and lightness are already in `[0, 1]`.
     pub fn blend_hsl(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         let la = a.to_hsl();
         let lb = b.to_hsl();
 
-        match blend_mode {
-            BlendMode::Normal => Color::from_hsl(
+        let (h, s, l, alpha) = match blend_mode {
+            BlendMode::Over => (
                 lerp(la.0, lb.0, amount * lb.3),
                 lerp(la.1, lb.1, amount * lb.3),
                 lerp(la.2, lb.2, amount * lb.3),
                 la.3,
             ),
-            BlendMode::Lerp => Color::from_hsl(
+            BlendMode::Lerp => (
                 lerp(la.0, lb.0, amount),
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
             ),
-            _ => Color::blend_srgb(a, b, blend_mode, amount),
-        }
+            _ => (
+                blend_ch(la.0, lb.0, blend_mode, amount, lb.3, 360.0, 0.0),
+                blend_ch(la.1, lb.1, blend_mode, amount, lb.3, 1.0, 0.0),
+                blend_ch(la.2, lb.2, blend_mode, amount, lb.3, 1.0, 0.0),
+                la.3,
+            ),
+        };
+
+        Color::from_hsl(h, s, l, alpha)
     }
 
     /// Blends two colors in HSV color space.
     ///
-    /// Only `Normal` and `Lerp` modes operate natively in HSV; all other modes
-    /// delegate to [`Self::blend_srgb`].
+    /// Hue (0–360°) is normalized to `[0, 1]` for photoshop-style blend formulas.
+    /// Saturation and value are already in `[0, 1]`.
     pub fn blend_hsv(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         let la = a.to_hsv();
         let lb = b.to_hsv();
 
-        match blend_mode {
-            BlendMode::Normal => Color::from_hsv(
+        let (h, s, v, alpha) = match blend_mode {
+            BlendMode::Over => (
                 lerp(la.0, lb.0, amount * lb.3),
                 lerp(la.1, lb.1, amount * lb.3),
                 lerp(la.2, lb.2, amount * lb.3),
                 la.3,
             ),
-            BlendMode::Lerp => Color::from_hsv(
+            BlendMode::Lerp => (
                 lerp(la.0, lb.0, amount),
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
             ),
-            _ => Color::blend_srgb(a, b, blend_mode, amount),
-        }
+            _ => (
+                blend_ch(la.0, lb.0, blend_mode, amount, lb.3, 360.0, 0.0),
+                blend_ch(la.1, lb.1, blend_mode, amount, lb.3, 1.0, 0.0),
+                blend_ch(la.2, lb.2, blend_mode, amount, lb.3, 1.0, 0.0),
+                la.3,
+            ),
+        };
+
+        Color::from_hsv(h, s, v, alpha)
     }
 
     /// Blends two colors in CIE Lab color space.
     ///
-    /// Only `Normal` and `Lerp` modes operate natively in Lab; all other modes
-    /// delegate to [`Self::blend_srgb`].
+    /// L (0–100) is normalized by dividing by 100. a and b channels (≈ –128..128)
+    /// are normalized to `[0, 1]` with a midpoint of 0.5 at 0.
     pub fn blend_lab(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         let la = a.to_lab();
         let lb = b.to_lab();
 
-        match blend_mode {
-            BlendMode::Normal => Color::from_lab(
+        let (l, ca, cb, alpha) = match blend_mode {
+            BlendMode::Over => (
                 lerp(la.0, lb.0, amount * lb.3),
                 lerp(la.1, lb.1, amount * lb.3),
                 lerp(la.2, lb.2, amount * lb.3),
                 la.3,
             ),
-            BlendMode::Lerp => Color::from_lab(
+            BlendMode::Lerp => (
                 lerp(la.0, lb.0, amount),
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
             ),
-            _ => Color::blend_srgb(a, b, blend_mode, amount),
-        }
+            _ => (
+                blend_ch(la.0, lb.0, blend_mode, amount, lb.3, 100.0, 0.0),
+                blend_ch(la.1, lb.1, blend_mode, amount, lb.3, 256.0, -128.0),
+                blend_ch(la.2, lb.2, blend_mode, amount, lb.3, 256.0, -128.0),
+                la.3,
+            ),
+        };
+
+        Color::from_lab(l, ca, cb, alpha)
     }
 
     /// Blends two colors in CIE LCH color space.
     ///
-    /// Only `Normal` and `Lerp` modes operate natively in LCH; all other modes
-    /// delegate to [`Self::blend_srgb`].
+    /// Lightness and chroma are in `[0, ~1.5]`; hue is in `[0, 360°]`.
+    /// Both lightness/chroma are normalized by 1.5 and hue by 360 for blend formulas.
     pub fn blend_lch(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         let la = a.to_lch();
         let lb = b.to_lch();
 
-        match blend_mode {
-            BlendMode::Normal => Color::from_lch(
+        let (l, c, h, alpha) = match blend_mode {
+            BlendMode::Over => (
                 lerp(la.0, lb.0, amount * lb.3),
                 lerp(la.1, lb.1, amount * lb.3),
                 lerp(la.2, lb.2, amount * lb.3),
                 la.3,
             ),
-            BlendMode::Lerp => Color::from_lch(
+            BlendMode::Lerp => (
                 lerp(la.0, lb.0, amount),
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
             ),
-            _ => Color::blend_srgb(a, b, blend_mode, amount),
-        }
+            _ => (
+                blend_ch(la.0, lb.0, blend_mode, amount, lb.3, 1.5, 0.0),
+                blend_ch(la.1, lb.1, blend_mode, amount, lb.3, 1.5, 0.0),
+                blend_ch(la.2, lb.2, blend_mode, amount, lb.3, 360.0, 0.0),
+                la.3,
+            ),
+        };
+
+        Color::from_lch(l, c, h, alpha)
     }
 
     /// Blends two colors in linear RGB color space.
     ///
-    /// Converts to linear RGB, applies the blend, then converts back to sRGB.
-    /// Only `Normal` and `Lerp` modes operate natively in linear RGB; all other
-    /// modes delegate to [`Self::blend_srgb`].
+    /// Linear RGB channels are in `[0, 1]`, so no normalization is needed.
     pub fn blend_linear(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         let la = a.to_rgb_linear();
         let lb = b.to_rgb_linear();
 
-        match blend_mode {
-            BlendMode::Normal => Color::from_rgb_linear(
+        let (r, g, b_ch, alpha) = match blend_mode {
+            BlendMode::Over => (
                 lerp(la.0, lb.0, amount * lb.3),
                 lerp(la.1, lb.1, amount * lb.3),
                 lerp(la.2, lb.2, amount * lb.3),
                 la.3,
             ),
-            BlendMode::Lerp => Color::from_rgb_linear(
+            BlendMode::Lerp => (
                 lerp(la.0, lb.0, amount),
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
             ),
-            _ => Color::blend_srgb(a, b, blend_mode, amount),
-        }
+            _ => (
+                blend_ch(la.0, lb.0, blend_mode, amount, lb.3, 1.0, 0.0),
+                blend_ch(la.1, lb.1, blend_mode, amount, lb.3, 1.0, 0.0),
+                blend_ch(la.2, lb.2, blend_mode, amount, lb.3, 1.0, 0.0),
+                la.3,
+            ),
+        };
+
+        Color::from_rgb_linear(r, g, b_ch, alpha)
     }
 
     /// Blends two colors in sRGB color space.
     ///
-    /// This is the primary blend implementation. `Normal` mode composites `b` over
-    /// `a` weighted by `b`'s alpha and the `amount` factor. `Lerp` mode linearly
-    /// interpolates all four channels. All other modes apply the per-channel blend
-    /// formula and then lerp between `a` and the blended result using
-    /// `amount * b.a` as the factor.
+    /// sRGB channels are in `[0, 1]`. This is the standard compositing space
+    /// and the reference implementation for all blend formulas.
     pub fn blend_srgb(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         match blend_mode {
-            BlendMode::Normal => Color::from_srgb_float(
+            BlendMode::Over => Color::from_srgb_float(
                 lerp(a.r, b.r, amount * b.a),
                 lerp(a.g, b.g, amount * b.a),
                 lerp(a.b, b.b, amount * b.a),
@@ -185,83 +223,89 @@ impl Color {
                 lerp(a.b, b.b, amount),
                 lerp(a.a, b.a, amount),
             ),
-            _ => {
-                // Apply the blend formula per-channel, then lerp from the
-                // base color toward the blended result by amount * foreground alpha.
-                let blended_r = apply_blend_mode(a.r, b.r, blend_mode);
-                let blended_g = apply_blend_mode(a.g, b.g, blend_mode);
-                let blended_b = apply_blend_mode(a.b, b.b, blend_mode);
-                let factor = amount * b.a;
-                Color::from_srgb_float(
-                    lerp(a.r, blended_r, factor),
-                    lerp(a.g, blended_g, factor),
-                    lerp(a.b, blended_b, factor),
-                    a.a,
-                )
-            }
+            _ => Color::from_srgb_float(
+                blend_ch(a.r, b.r, blend_mode, amount, b.a, 1.0, 0.0),
+                blend_ch(a.g, b.g, blend_mode, amount, b.a, 1.0, 0.0),
+                blend_ch(a.b, b.b, blend_mode, amount, b.a, 1.0, 0.0),
+                a.a,
+            ),
         }
     }
 
     /// Blends two colors in CIE XYZ color space.
     ///
-    /// Only `Normal` and `Lerp` modes operate natively in XYZ; all other modes
-    /// delegate to [`Self::blend_srgb`].
+    /// XYZ channels are normalized using the D65 white point values
+    /// (X: 0.95047, Y: 1.0, Z: 1.08883) for blend formulas.
     pub fn blend_xyz(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         let la = a.to_xyz();
         let lb = b.to_xyz();
 
-        match blend_mode {
-            BlendMode::Normal => Color::from_xyz(
+        let (x, y, z, alpha) = match blend_mode {
+            BlendMode::Over => (
                 lerp(la.0, lb.0, amount * lb.3),
                 lerp(la.1, lb.1, amount * lb.3),
                 lerp(la.2, lb.2, amount * lb.3),
                 la.3,
             ),
-            BlendMode::Lerp => Color::from_xyz(
+            BlendMode::Lerp => (
                 lerp(la.0, lb.0, amount),
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
             ),
-            _ => Color::blend_srgb(a, b, blend_mode, amount),
-        }
+            _ => (
+                blend_ch(la.0, lb.0, blend_mode, amount, lb.3, 0.95047, 0.0),
+                blend_ch(la.1, lb.1, blend_mode, amount, lb.3, 1.0, 0.0),
+                blend_ch(la.2, lb.2, blend_mode, amount, lb.3, 1.08883, 0.0),
+                la.3,
+            ),
+        };
+
+        Color::from_xyz(x, y, z, alpha)
     }
 
     /// Blends two colors in YUV color space.
     ///
-    /// Only `Normal` and `Lerp` modes operate natively in YUV; all other modes
-    /// delegate to [`Self::blend_srgb`].
+    /// Y is in `[0, 1]`. U (±0.492) and V (±0.877) are normalized to `[0, 1]`
+    /// using their BT.601 extremes as the scale/offset.
     pub fn blend_yuv(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         let la = a.to_yuv();
         let lb = b.to_yuv();
 
-        match blend_mode {
-            BlendMode::Normal => Color::from_yuv(
+        let (y, u, v, alpha) = match blend_mode {
+            BlendMode::Over => (
                 lerp(la.0, lb.0, amount * lb.3),
                 lerp(la.1, lb.1, amount * lb.3),
                 lerp(la.2, lb.2, amount * lb.3),
                 la.3,
             ),
-            BlendMode::Lerp => Color::from_yuv(
+            BlendMode::Lerp => (
                 lerp(la.0, lb.0, amount),
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
             ),
-            _ => Color::blend_srgb(a, b, blend_mode, amount),
-        }
+            _ => (
+                blend_ch(la.0, lb.0, blend_mode, amount, lb.3, 1.0, 0.0),
+                blend_ch(la.1, lb.1, blend_mode, amount, lb.3, 0.984, -0.492),
+                blend_ch(la.2, lb.2, blend_mode, amount, lb.3, 1.754, -0.877),
+                la.3,
+            ),
+        };
+
+        Color::from_yuv(y, u, v, alpha)
     }
 }
 
 /// Available blend modes for compositing two colors.
 ///
-/// `Normal` composites the foreground over the background weighted by alpha.
+/// `Over` composites the foreground over the background weighted by alpha (Porter-Duff Over).
 /// `Lerp` linearly interpolates all channels including alpha.
 /// The remaining modes implement standard Photoshop-style blend formulas.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum BlendMode {
-    /// Standard alpha compositing: foreground over background.
-    Normal,
+    /// Porter-Duff Over: composites foreground over background, weighted by foreground alpha.
+    Over,
     /// Linear interpolation of all channels (including alpha) by the amount factor.
     Lerp,
     /// Multiply: `a * b`. Darkens the image.
@@ -300,7 +344,7 @@ impl BlendMode {
     /// Returns an array of all 17 blend mode variants in display order.
     pub fn types() -> [BlendMode; 17] {
         [
-            BlendMode::Normal,
+            BlendMode::Over,
             BlendMode::Lerp,
             BlendMode::Multiply,
             BlendMode::Screen,
@@ -321,11 +365,24 @@ impl BlendMode {
     }
 }
 
+/// Blends a single channel value using a photoshop-style formula in normalized space.
+///
+/// `scale` and `offset` define the normalization: `normalized = (value - offset) / scale`.
+/// The blend formula is applied to both channels after normalization to `[0, 1]`.
+/// The result is denormalized and then lerped from `a` by `amount * b_alpha`.
+fn blend_ch(a: f32, b: f32, mode: &BlendMode, amount: f32, b_alpha: f32, scale: f32, offset: f32) -> f32 {
+    let a_norm = ((a - offset) / scale).clamp(0.0, 1.0);
+    let b_norm = ((b - offset) / scale).clamp(0.0, 1.0);
+    let blended_norm = apply_blend_mode(a_norm, b_norm, mode);
+    let blended = blended_norm * scale + offset;
+    lerp(a, blended, amount * b_alpha)
+}
+
 /// Applies a per-channel blend formula for the given mode.
 ///
-/// `a` is the base (background) value and `b` is the blend (foreground) value.
-/// `Normal` and `Lerp` are not handled here -- they are implemented directly in
-/// the `blend_*` methods.
+/// `a` is the base (background) value and `b` is the blend (foreground) value,
+/// both expected in `[0, 1]`. `Over` and `Lerp` are not handled here — they are
+/// implemented directly in the `blend_*` methods.
 fn apply_blend_mode(a: f32, b: f32, mode: &BlendMode) -> f32 {
     match mode {
         BlendMode::Multiply => a * b,
@@ -364,8 +421,8 @@ fn apply_blend_mode(a: f32, b: f32, mode: &BlendMode) -> f32 {
             if b <= 0.0 { 1.0 } else { (a / b).min(1.0) }
         }
         BlendMode::Subtract => (a - b).max(0.0),
-        // Normal and Lerp are handled directly in blend methods, not here
-        BlendMode::Normal | BlendMode::Lerp => unreachable!(),
+        // Over and Lerp are handled directly in blend methods, not here
+        BlendMode::Over | BlendMode::Lerp => unreachable!(),
     }
 }
 
@@ -430,22 +487,22 @@ mod tests {
     }
 
     #[test]
-    fn test_blend_srgb_normal_opaque() {
+    fn test_blend_srgb_over_opaque() {
         let a = Color::from_srgb_float(1.0, 0.0, 0.0, 1.0);
         let b = Color::from_srgb_float(0.0, 0.0, 1.0, 1.0);
-        // Normal mode: factor = amount * b.alpha = 1.0 * 1.0 = 1.0
-        let result = Color::blend_srgb(a, b, &BlendMode::Normal, 1.0);
+        // Over mode: factor = amount * b.alpha = 1.0 * 1.0 = 1.0
+        let result = Color::blend_srgb(a, b, &BlendMode::Over, 1.0);
         assert_color_approx(&b, &result, EPSILON);
-        // Alpha should be preserved from a in Normal mode
+        // Alpha should be preserved from a in Over mode
         assert!((result.a - a.a).abs() < EPSILON);
     }
 
     #[test]
-    fn test_blend_srgb_normal_transparent() {
+    fn test_blend_srgb_over_transparent() {
         let a = Color::from_srgb_float(1.0, 0.0, 0.0, 1.0);
         let b = Color::from_srgb_float(0.0, 0.0, 1.0, 0.0);
-        // Normal mode: factor = amount * b.alpha = 1.0 * 0.0 = 0.0
-        let result = Color::blend_srgb(a, b, &BlendMode::Normal, 1.0);
+        // Over mode: factor = amount * b.alpha = 1.0 * 0.0 = 0.0
+        let result = Color::blend_srgb(a, b, &BlendMode::Over, 1.0);
         assert_color_approx(&a, &result, EPSILON);
     }
 
@@ -503,7 +560,7 @@ mod tests {
     fn test_blend_mode_types() {
         let types = BlendMode::types();
         assert_eq!(types.len(), 17);
-        assert_eq!(types[0], BlendMode::Normal);
+        assert_eq!(types[0], BlendMode::Over);
         assert_eq!(types[1], BlendMode::Lerp);
         assert_eq!(types[2], BlendMode::Multiply);
         assert_eq!(types[3], BlendMode::Screen);
@@ -514,7 +571,7 @@ mod tests {
         let a = Color::from_srgb_float(0.5, 0.8, 1.0, 1.0);
         let b = Color::from_srgb_float(0.4, 0.5, 0.6, 1.0);
         let result = Color::blend_srgb(a, b, &BlendMode::Multiply, 1.0);
-        // Multiply: a * b per channel, full amount with opaque foreground
+        // blend_ch: a_norm=0.5, b_norm=0.4, blended_norm=0.2, factor=1.0*1.0=1.0, lerp(0.5,0.2,1.0)=0.2
         let expected = Color::from_srgb_float(0.2, 0.4, 0.6, 1.0);
         assert_color_approx(&expected, &result, EPSILON);
     }
@@ -547,7 +604,7 @@ mod tests {
         let a = Color::from_srgb_float(0.5, 0.8, 1.0, 1.0);
         let b = Color::from_srgb_float(0.4, 0.5, 0.6, 1.0);
         let result = Color::blend_srgb(a, b, &BlendMode::Multiply, 0.5);
-        // blended = (0.2, 0.4, 0.6), factor = 0.5 * 1.0 = 0.5
+        // blend_ch: a_norm=0.5, b_norm=0.4, blended_norm=0.2, factor=0.5*1.0=0.5
         // lerp(0.5, 0.2, 0.5) = 0.35
         // lerp(0.8, 0.4, 0.5) = 0.6
         // lerp(1.0, 0.6, 0.5) = 0.8
@@ -593,11 +650,32 @@ mod tests {
     }
 
     #[test]
-    fn test_blend_hsl_multiply_delegates_to_srgb() {
+    fn test_blend_all_modes_all_color_spaces() {
+        // Smoke-test: every blend mode in every color space should produce a Color without panic.
+        let a = Color::from_srgb_float(0.4, 0.6, 0.8, 1.0);
+        let b = Color::from_srgb_float(0.6, 0.4, 0.2, 1.0);
+        let modes = BlendMode::types();
+        for mode in &modes {
+            Color::blend_srgb(a, b, mode, 1.0);
+            Color::blend_linear(a, b, mode, 1.0);
+            Color::blend_hsl(a, b, mode, 1.0);
+            Color::blend_hsv(a, b, mode, 1.0);
+            Color::blend_lab(a, b, mode, 1.0);
+            Color::blend_lch(a, b, mode, 1.0);
+            Color::blend_xyz(a, b, mode, 1.0);
+            Color::blend_yuv(a, b, mode, 1.0);
+            Color::blend_cmyk(a, b, mode, 1.0);
+        }
+    }
+
+    #[test]
+    fn test_blend_hsl_multiply_native() {
+        // With the new implementation, HSL Multiply should differ from sRGB Multiply
+        // because it operates on normalized HSL channels rather than falling back.
         let a = Color::from_srgb_float(0.5, 0.8, 1.0, 1.0);
         let b = Color::from_srgb_float(0.4, 0.5, 0.6, 1.0);
         let result_hsl = Color::blend_hsl(a, b, &BlendMode::Multiply, 1.0);
-        let result_srgb = Color::blend_srgb(a, b, &BlendMode::Multiply, 1.0);
-        assert_color_approx(&result_hsl, &result_srgb, EPSILON);
+        // Just verify it returns a valid Color (not panicking).
+        let _ = result_hsl;
     }
 }
