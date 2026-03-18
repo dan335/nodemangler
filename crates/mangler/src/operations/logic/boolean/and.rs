@@ -1,3 +1,8 @@
+//! Logical AND operation.
+//!
+//! Returns `true` only when both inputs are `true`. Inputs are coerced to
+//! boolean before evaluation (non-zero values are truthy).
+
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
@@ -6,10 +11,14 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Logical AND gate node.
+///
+/// Takes two boolean-convertible inputs and outputs `a && b`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpLogicBoolAnd {}
 
 impl OpLogicBoolAnd {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "and".to_string(),
@@ -17,6 +26,7 @@ impl OpLogicBoolAnd {
         }
     }
 
+    /// Creates the default inputs: two boolean inputs `a` and `b`, both defaulting to `false`.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Bool(false), None, None),
@@ -24,12 +34,14 @@ impl OpLogicBoolAnd {
         ]
     }
 
+    /// Creates the default output: a single boolean output defaulting to `false`.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Bool(false), None)
         ]
     }
 
+    /// Converts both inputs to booleans and returns their logical conjunction.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -95,6 +107,33 @@ mod tests {
     #[tokio::test]
     async fn test_and_from_integers() {
         let mut inputs = make_inputs(Value::Integer(1), Value::Integer(0));
+        let result = OpLogicBoolAnd::run(&mut inputs).await.unwrap();
+        assert!(matches!(result.responses[0].value, Value::Bool(false)));
+    }
+
+    // Non-zero decimals are truthy (any != 0.0), matching Rust/JS truthiness rules.
+    // Note: 0.1 is truthy, but 0.1 is NOT equal to true (true == 1.0).
+    // These are different questions: truthiness vs equality.
+    #[tokio::test]
+    async fn test_and_decimal_point_one_is_truthy() {
+        // 0.1 is truthy: and(0.1, true) → true
+        let mut inputs = make_inputs(Value::Decimal(0.1), Value::Bool(true));
+        let result = OpLogicBoolAnd::run(&mut inputs).await.unwrap();
+        assert!(matches!(result.responses[0].value, Value::Bool(true)));
+    }
+
+    #[tokio::test]
+    async fn test_and_decimal_neg_point_one_is_truthy() {
+        // -0.1 is truthy: and(-0.1, true) → true
+        let mut inputs = make_inputs(Value::Decimal(-0.1), Value::Bool(true));
+        let result = OpLogicBoolAnd::run(&mut inputs).await.unwrap();
+        assert!(matches!(result.responses[0].value, Value::Bool(true)));
+    }
+
+    #[tokio::test]
+    async fn test_and_decimal_zero_is_falsy() {
+        // 0.0 is falsy: and(0.0, true) → false
+        let mut inputs = make_inputs(Value::Decimal(0.0), Value::Bool(true));
         let result = OpLogicBoolAnd::run(&mut inputs).await.unwrap();
         assert!(matches!(result.responses[0].value, Value::Bool(false)));
     }

@@ -1,3 +1,9 @@
+//! CIE XYZ color input operation.
+//!
+//! Creates a [`Color`](crate::color::Color) from X, Y, Z tristimulus values
+//! and alpha. XYZ is a device-independent color space that serves as the
+//! basis for many other color space conversions.
+
 use crate::color::Color;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -7,10 +13,12 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Operation that constructs a color from CIE XYZ tristimulus values.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpColorInputXyz {}
 
 impl OpColorInputXyz {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "xyz".to_string(),
@@ -18,6 +26,7 @@ impl OpColorInputXyz {
         }
     }
 
+    /// Creates the input definitions: X, Y, Z tristimulus values and alpha.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("x".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
@@ -27,12 +36,14 @@ impl OpColorInputXyz {
         ]
     }
 
+    /// Creates the single output definition for the constructed color.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Color(Color::default()), None)
         ]
     }
 
+    /// Executes the operation, assembling a color from CIE XYZ float channels.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

@@ -1,3 +1,8 @@
+//! Modulus (remainder) operation for the node graph.
+//!
+//! Computes `a % n` for integer and decimal types. Returns an error if `n` is zero.
+//! Uses Rust's remainder semantics (result has the sign of the dividend).
+
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse};
@@ -6,10 +11,15 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Node operation that computes the remainder of `a` divided by `n`.
+///
+/// The divisor `n` is converted to decimal for validation. Returns an error
+/// when `n` is zero. The result sign matches the dividend (Rust `%` semantics).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpNumberMathModulus {}
 
 impl OpNumberMathModulus {
+    /// Returns the node metadata (name and description).
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "modulus".to_string(),
@@ -17,6 +27,7 @@ impl OpNumberMathModulus {
         }
     }
 
+    /// Creates the default input list: value `a` (0.5) and divisor `n` (1.0).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
@@ -24,12 +35,14 @@ impl OpNumberMathModulus {
         ]
     }
 
+    /// Creates the default output list: a single decimal output.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
         ]
     }
 
+    /// Executes the modulus: computes `a % n`, returning an error if `n` is zero.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let input_errors: Vec<(usize, String)> = vec![];

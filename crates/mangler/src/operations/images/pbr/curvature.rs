@@ -1,3 +1,10 @@
+//! Curvature detection from a normal map.
+//!
+//! Computes surface curvature by measuring the divergence of the normal field.
+//! The output encodes curvature as a grayscale value where 0.5 is flat, values
+//! above 0.5 indicate convex regions (edges), and values below 0.5 indicate
+//! concave regions (grooves).
+
 use crate::get_id;
 use crate::value::ValueType;
 use image::DynamicImage;
@@ -10,10 +17,15 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Operation that detects surface curvature from a normal map.
+///
+/// Uses finite differences on the normal map's X and Y components to compute
+/// the divergence, which approximates the surface curvature.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImagePbrCurvature {}
 
 impl OpImagePbrCurvature {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "curvature".to_string(),
@@ -21,6 +33,7 @@ impl OpImagePbrCurvature {
         }
     }
 
+    /// Creates the default inputs: normal map image and intensity multiplier.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
@@ -28,12 +41,14 @@ impl OpImagePbrCurvature {
         ]
     }
 
+    /// Creates the default output: a single RGBA32F curvature map image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Computes curvature from the input normal map using divergence of the normal field.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -59,7 +74,7 @@ impl OpImagePbrCurvature {
 
         for y in 0..height {
             for x in 0..width {
-                // Read normal x,y components at current pixel and neighbors, clamping to bounds
+                // Decode normal X/Y from the [0,1] encoded normal map at neighboring pixels
                 let left_x = (x - 1).max(0);
                 let right_x = (x + 1).min(width - 1);
                 let top_y = (y - 1).max(0);

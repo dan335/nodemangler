@@ -1,3 +1,8 @@
+//! Star shape image generator.
+//!
+//! Generates an anti-aliased star polygon as a grayscale SDF image with
+//! configurable point count, inner/outer radii, and rotation.
+
 use image::{ImageBuffer, DynamicImage};
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -9,12 +14,14 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Hermite interpolation between two edges, producing a smooth transition.
 fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
     let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
 }
 
-/// Signed distance from point (px, py) to the line segment from (ax, ay) to (bx, by).
+/// Computes the unsigned distance from point `(px, py)` to the line segment
+/// from `(ax, ay)` to `(bx, by)`.
 fn dist_to_segment(px: f64, py: f64, ax: f64, ay: f64, bx: f64, by: f64) -> f64 {
     let dx = bx - ax;
     let dy = by - ay;
@@ -80,10 +87,15 @@ fn sdf_star(px: f64, py: f64, n: i32, outer: f64, inner: f64) -> f64 {
     if inside { -min_dist } else { min_dist }
 }
 
+/// Operation that generates a star shape as a grayscale SDF image.
+///
+/// The star is defined by the number of points and two radii (outer and inner),
+/// creating alternating spikes. Uses ray-casting for inside/outside determination.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageShapeStar {}
 
 impl OpImageShapeStar {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "star".to_string(),
@@ -91,6 +103,7 @@ impl OpImageShapeStar {
         }
     }
 
+    /// Creates the default inputs: width, height, points, outer_radius, inner_radius, and rotation.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
@@ -102,12 +115,14 @@ impl OpImageShapeStar {
         ]
     }
 
+    /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Generates an anti-aliased star shape image from the given inputs.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

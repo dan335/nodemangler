@@ -1,3 +1,12 @@
+//! The node graph engine: stores nodes, manages connections, executes the
+//! processing pipeline, and handles save/load to JSON.
+//!
+//! The [`Graph`] is the central data structure that owns all nodes, tracks dirty
+//! state, and orchestrates execution. When run, it performs a topological sort of
+//! dirty nodes and their downstream dependents, then executes them in order while
+//! propagating output values through connections. An input-hash cache skips nodes
+//! whose inputs have not changed since the last run.
+
 use crate::input::{Input, InputLink, InputSettings};
 use crate::node_type::NodeType;
 use crate::output::{Output, OutputLink};
@@ -16,20 +25,34 @@ use tokio::sync::mpsc::{Sender, self};
 use async_recursion::async_recursion;
 use crate::NodeChangedMessage::SubgraphLoaded;
 
-
+/// The node graph engine that owns all nodes, manages connections, and
+/// orchestrates the processing pipeline.
+///
+/// Communication with the UI happens through two channel senders:
+/// - `tx_node_changed`: notifies the UI when individual node state changes.
+/// - `tx_graph_changed`: notifies the UI when graph structure changes.
 #[derive(Debug)]
 pub struct Graph {
+    /// Unique identifier for this graph.
     pub id: String,
+    /// Human-readable name for this graph.
     pub name: String,
+    /// Channel for sending node state changes to the UI.
     pub tx_node_changed: Option<Sender<NodeChangedMessage>>,
+    /// Channel for sending graph structure changes to the UI.
     pub tx_graph_changed: Option<Sender<GraphChangedMessage>>,
-    pub nodes: HashMap<String, Node>, // node_id, node
-    pub is_dirty: bool,               // needs to run
+    /// All nodes in the graph, keyed by node ID.
+    pub nodes: HashMap<String, Node>,
+    /// Whether the graph has pending changes that require execution.
+    pub is_dirty: bool,
+    /// File path for saving this graph, if set.
     pub save_path: Option<PathBuf>,
+    /// Whether this graph is embedded inside a subgraph node (affects save behavior).
     pub is_subgraph: bool,
 }
 
 impl Graph {
+    /// Create a new empty graph with the given channel senders for UI communication.
     pub fn new(
         id: String,
         tx_node_changed: Sender<NodeChangedMessage>,
@@ -48,6 +71,10 @@ impl Graph {
         })
     }
 
+    /// Load a graph from a `.mangle` JSON file on disk.
+    ///
+    /// Deserializes the graph structure, marks all nodes as dirty so they will
+    /// run on the next execution pass, and sends `LoadedNode` messages to the UI.
     pub fn load(
         save_path: PathBuf,
         tx_node_changed: Option<Sender<NodeChangedMessage>>,
@@ -98,12 +125,17 @@ impl Graph {
         }
     }
 
+    /// Update a node's canvas position. No-op if the node does not exist.
     pub fn set_node_position(&mut self, node_id: String, position: glam::f32::Vec2) {
         if let Some(node) = self.nodes.get_mut(&node_id) {
             node.position = position;
         }
     }
 
+    /// Add a new node to the graph and notify the UI.
+    ///
+    /// For subgraph nodes, a file path input is created so the user can select
+    /// which `.mangle` file to load. Returns the node ID.
     pub async fn add_node(&mut self, node_id: String, node_type: AddNodeType, position: Vec2) -> String {
         let mut node = Node::new(node_id.clone(), node_type.clone(), position);
         let mut is_subgraph = false;
@@ -152,6 +184,8 @@ impl Graph {
         node_id
     }
 
+    /// Remove a node from the graph, cleaning up all its inbound and outbound
+    /// connections, and notify the UI.
     pub async fn remove_node(&mut self, node_id: String) {
         // get nodes that connect to this one
         let mut output_connections: Vec<(String, usize)> = Vec::new();
@@ -198,6 +232,8 @@ impl Graph {
         }
     }
 
+    /// Create a connection from an output to an input, after validating type
+    /// compatibility. No-op if either node doesn't exist or the types are incompatible.
     pub async fn add_connection(
         &mut self,
         input_node_id: String,
@@ -266,6 +302,8 @@ impl Graph {
         }
     }
 
+    /// Remove the connection feeding into a specific input, clearing both the
+    /// input side and the corresponding entry on the upstream output's connection list.
     pub async fn remove_connection(&mut self, node_id: String, input_index: usize) {
         let mut output: Option<(String, usize)> = None;
 
@@ -305,8 +343,12 @@ impl Graph {
     }
 
 
-    // when getting message that input should change
-    // not passed from other node
+    /// Set an input value directly (from user interaction, not from a connection).
+    ///
+    /// Marks the node as dirty and invalidates its cached input hash. If the input
+    /// has a subgraph link, the value is also forwarded into the child graph. If the
+    /// node is a subgraph and the value is a Path, the subgraph file is loaded and
+    /// the node's inputs/outputs are populated from the child graph's exposed I/O.
     pub fn set_input(&mut self, node_id: String, input_index: usize, value: Value) {
         if let Some(node) = self.nodes.get_mut(&node_id) {
             if let Some(input) = node.inputs.get_mut(input_index) {
@@ -413,6 +455,7 @@ impl Graph {
         }
     }
 
+    /// Set the file path where this graph will be saved.
     pub fn set_save_path(&mut self, save_path: PathBuf) {
         self.save_path = Some(save_path);
     }
@@ -563,8 +606,10 @@ impl Graph {
         }
     }
 
-    // save graph to disk
-    // unless this is a subgraph
+    /// Serialize and write this graph to its save path as JSON.
+    ///
+    /// No-op if this is a subgraph (subgraphs are saved separately) or if
+    /// no save path has been set.
     pub fn save_to_file(&self) {
         if self.is_subgraph {
             return;
@@ -646,7 +691,9 @@ impl Graph {
         levels
     }
 
-    // Perform topological sorting on the dirty nodes
+    /// Perform a depth-first topological sort on the dirty nodes, returning them
+    /// in dependency order (upstream nodes first) so that each node runs after
+    /// all its inputs are available.
     fn topological_sort(
         &self,
         nodes: &HashMap<String, Node>,
@@ -664,7 +711,8 @@ impl Graph {
         sorted_order.into_iter().collect()
     }
 
-    // Recursive function to visit a node and its dependencies
+    /// Recursive DFS visitor for topological sort. Visits downstream neighbors
+    /// first, then pushes the current node to the front of the sorted order.
     fn visit_node(
         &self,
         nodes: &HashMap<String, Node>,
@@ -687,5 +735,752 @@ impl Graph {
         }
 
         sorted_order.push_front(node_id.clone());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::sync::mpsc;
+
+    use crate::{
+        get_id, graph::Graph, operations::Operation, value::Value, AddNodeType,
+        GraphChangedMessage, NodeChangedMessage,
+    };
+
+    fn create_test_graph() -> Graph {
+        let (tx_graph_changed, _rx_graph_changed) = mpsc::channel::<GraphChangedMessage>(32);
+        let (tx_node_changed, _rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
+        Graph::new(get_id(), tx_node_changed, tx_graph_changed, false).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_graph_new() {
+        let graph = create_test_graph();
+        assert!(graph.nodes.is_empty());
+        assert!(!graph.is_dirty);
+        assert!(!graph.is_subgraph);
+    }
+
+    #[tokio::test]
+    async fn test_add_node() {
+        let mut graph = create_test_graph();
+        let node_id = graph
+            .add_node(
+                get_id(),
+                AddNodeType::Operation(Operation::OpNumberMathAdd),
+                glam::Vec2::ZERO,
+            )
+            .await;
+
+        assert!(graph.nodes.contains_key(&node_id));
+        assert!(graph.is_dirty);
+
+        let node = graph.nodes.get(&node_id).unwrap();
+        assert_eq!(node.inputs.len(), 2); // a, b
+        assert_eq!(node.outputs.len(), 1);
+        assert_eq!(node.settings.name, "add");
+    }
+
+    #[tokio::test]
+    async fn test_add_decimal_input_node() {
+        let mut graph = create_test_graph();
+        let node_id = graph
+            .add_node(
+                get_id(),
+                AddNodeType::Operation(Operation::OpNumberInputDecimal),
+                glam::Vec2::ZERO,
+            )
+            .await;
+
+        let node = graph.nodes.get(&node_id).unwrap();
+        assert_eq!(node.inputs.len(), 1);
+        assert_eq!(node.outputs.len(), 1);
+        assert_eq!(node.settings.name, "decimal");
+    }
+
+    #[tokio::test]
+    async fn test_remove_node() {
+        let mut graph = create_test_graph();
+        let node_id = graph
+            .add_node(
+                get_id(),
+                AddNodeType::Operation(Operation::OpNumberInputDecimal),
+                glam::Vec2::ZERO,
+            )
+            .await;
+
+        assert!(graph.nodes.contains_key(&node_id));
+        graph.remove_node(node_id.clone()).await;
+        assert!(!graph.nodes.contains_key(&node_id));
+    }
+
+    #[tokio::test]
+    async fn test_set_input() {
+        let mut graph = create_test_graph();
+        let node_id = graph
+            .add_node(
+                get_id(),
+                AddNodeType::Operation(Operation::OpNumberMathAdd),
+                glam::Vec2::ZERO,
+            )
+            .await;
+
+        graph.set_input(node_id.clone(), 0, Value::Decimal(42.0));
+
+        let node = graph.nodes.get(&node_id).unwrap();
+        match &node.inputs[0].value {
+            Value::Decimal(v) => assert_eq!(*v, 42.0),
+            other => panic!("Expected Decimal, got {:?}", other),
+        }
+        assert!(node.is_dirty);
+    }
+
+    #[tokio::test]
+    async fn test_add_connection() {
+        let mut graph = create_test_graph();
+
+        let decimal_node_id = graph
+            .add_node(
+                get_id(),
+                AddNodeType::Operation(Operation::OpNumberInputDecimal),
+                glam::Vec2::new(0.0, 0.0),
+            )
+            .await;
+
+        let add_node_id = graph
+            .add_node(
+                get_id(),
+                AddNodeType::Operation(Operation::OpNumberMathAdd),
+                glam::Vec2::new(200.0, 0.0),
+            )
+            .await;
+
+        // Connect decimal output 0 -> add input 0
+        graph
+            .add_connection(add_node_id.clone(), 0, decimal_node_id.clone(), 0)
+            .await;
+
+        // Verify input side
+        let add_node = graph.nodes.get(&add_node_id).unwrap();
+        assert!(add_node.inputs[0].connection.is_some());
+        let (conn_node_id, conn_output_idx) = add_node.inputs[0].connection.as_ref().unwrap();
+        assert_eq!(conn_node_id, &decimal_node_id);
+        assert_eq!(*conn_output_idx, 0);
+
+        // Verify output side
+        let decimal_node = graph.nodes.get(&decimal_node_id).unwrap();
+        assert!(decimal_node.outputs[0].connection.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_run_single_node() {
+        let mut graph = create_test_graph();
+        let node_id = graph
+            .add_node(
+                get_id(),
+                AddNodeType::Operation(Operation::OpNumberMathAdd),
+                glam::Vec2::ZERO,
+            )
+            .await;
+
+        graph.set_input(node_id.clone(), 0, Value::Decimal(5.0));
+        graph.set_input(node_id.clone(), 1, Value::Decimal(10.0));
+
+        graph.run().await;
+
+        let node = graph.nodes.get(&node_id).unwrap();
+        match &node.outputs[0].value {
+            Value::Decimal(v) => assert!((*v - 15.0).abs() < 1e-6, "Expected 15.0, got {}", v),
+            other => panic!("Expected Decimal output, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_connected_nodes() {
+        let mut graph = create_test_graph();
+
+        // Create two decimal input nodes
+        let input_a_id = graph
+            .add_node(
+                get_id(),
+                AddNodeType::Operation(Operation::OpNumberInputDecimal),
+                glam::Vec2::new(0.0, 0.0),
+            )
+            .await;
+        let input_b_id = graph
+            .add_node(
+                get_id(),
+                AddNodeType::Operation(Operation::OpNumberInputDecimal),
+                glam::Vec2::new(0.0, 100.0),
+            )
+            .await;
+
+        // Create add node
+        let add_node_id = graph
+            .add_node(
+                get_id(),
+                AddNodeType::Operation(Operation::OpNumberMathAdd),
+                glam::Vec2::new(200.0, 0.0),
+            )
+            .await;
+
+        // Set input values
+        graph.set_input(input_a_id.clone(), 0, Value::Decimal(7.0));
+        graph.set_input(input_b_id.clone(), 0, Value::Decimal(3.0));
+
+        // Connect: input_a output 0 -> add input 0
+        graph
+            .add_connection(add_node_id.clone(), 0, input_a_id.clone(), 0)
+            .await;
+        // Connect: input_b output 0 -> add input 1
+        graph
+            .add_connection(add_node_id.clone(), 1, input_b_id.clone(), 0)
+            .await;
+
+        graph.run().await;
+
+        let add_node = graph.nodes.get(&add_node_id).unwrap();
+        match &add_node.outputs[0].value {
+            Value::Decimal(v) => assert!((*v - 10.0).abs() < 1e-6, "Expected 10.0, got {}", v),
+            other => panic!("Expected Decimal output, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_set_node_position() {
+        let mut graph = create_test_graph();
+        let node_id = graph
+            .add_node(
+                get_id(),
+                AddNodeType::Operation(Operation::OpNumberInputDecimal),
+                glam::Vec2::ZERO,
+            )
+            .await;
+
+        graph.set_node_position(node_id.clone(), glam::Vec2::new(100.0, 200.0));
+
+        let node = graph.nodes.get(&node_id).unwrap();
+        assert_eq!(node.position, glam::Vec2::new(100.0, 200.0));
+    }
+
+    #[tokio::test]
+    async fn test_multiple_nodes_multiple_types() {
+        let mut graph = create_test_graph();
+
+        // Integer + Integer through add
+        let add_id = graph
+            .add_node(
+                get_id(),
+                AddNodeType::Operation(Operation::OpNumberMathAdd),
+                glam::Vec2::ZERO,
+            )
+            .await;
+
+        graph.set_input(add_id.clone(), 0, Value::Integer(100));
+        graph.set_input(add_id.clone(), 1, Value::Integer(200));
+
+        graph.run().await;
+
+        let node = graph.nodes.get(&add_id).unwrap();
+        match &node.outputs[0].value {
+            Value::Integer(v) => assert_eq!(*v, 300),
+            other => panic!("Expected Integer output, got {:?}", other),
+        }
+    }
+
+    // === new() edge cases ===
+
+    #[tokio::test]
+    async fn test_graph_new_subgraph() {
+        let (tx_graph_changed, _rx) = mpsc::channel::<GraphChangedMessage>(32);
+        let (tx_node_changed, _rx) = mpsc::channel::<NodeChangedMessage>(32);
+        let graph = Graph::new(get_id(), tx_node_changed, tx_graph_changed, true).unwrap();
+        assert!(graph.is_subgraph);
+        assert!(graph.save_path.is_none());
+        assert_eq!(graph.name, "new graph");
+    }
+
+    // === remove_connection ===
+
+    #[tokio::test]
+    async fn test_remove_connection() {
+        let mut graph = create_test_graph();
+
+        let decimal_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO)
+            .await;
+        let add_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0))
+            .await;
+
+        graph.add_connection(add_id.clone(), 0, decimal_id.clone(), 0).await;
+
+        // Verify connection exists
+        assert!(graph.nodes.get(&add_id).unwrap().inputs[0].connection.is_some());
+
+        // Remove it
+        graph.remove_connection(add_id.clone(), 0).await;
+
+        // Input side cleared
+        assert!(graph.nodes.get(&add_id).unwrap().inputs[0].connection.is_none());
+
+        // Output side cleared
+        let decimal_node = graph.nodes.get(&decimal_id).unwrap();
+        let conns = decimal_node.outputs[0].connection.as_ref();
+        assert!(conns.is_none() || conns.unwrap().is_empty());
+    }
+
+    // === remove_node with connections ===
+
+    #[tokio::test]
+    async fn test_remove_node_cleans_up_connections() {
+        let mut graph = create_test_graph();
+
+        let decimal_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO)
+            .await;
+        let add_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0))
+            .await;
+
+        graph.add_connection(add_id.clone(), 0, decimal_id.clone(), 0).await;
+
+        // Remove the decimal node (has outgoing connection to add)
+        graph.remove_node(decimal_id.clone()).await;
+
+        assert!(!graph.nodes.contains_key(&decimal_id));
+        // The add node's input connection should be cleaned up
+        let add_node = graph.nodes.get(&add_id).unwrap();
+        assert!(add_node.inputs[0].connection.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_remove_connected_downstream_node() {
+        let mut graph = create_test_graph();
+
+        let decimal_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO)
+            .await;
+        let add_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0))
+            .await;
+
+        graph.add_connection(add_id.clone(), 0, decimal_id.clone(), 0).await;
+
+        // Remove the downstream add node
+        graph.remove_node(add_id.clone()).await;
+
+        assert!(!graph.nodes.contains_key(&add_id));
+        // The decimal node's output connection should be cleaned up
+        let decimal_node = graph.nodes.get(&decimal_id).unwrap();
+        let conns = decimal_node.outputs[0].connection.as_ref();
+        assert!(conns.is_none() || conns.unwrap().is_empty());
+    }
+
+    // === add_connection edge cases ===
+
+    #[tokio::test]
+    async fn test_add_connection_nonexistent_input_node() {
+        let mut graph = create_test_graph();
+        let decimal_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO)
+            .await;
+
+        // Try to connect to a node that doesn't exist — should be a no-op
+        graph.add_connection("nonexistent".to_string(), 0, decimal_id.clone(), 0).await;
+
+        // decimal node output should have no connection
+        let decimal_node = graph.nodes.get(&decimal_id).unwrap();
+        assert!(decimal_node.outputs[0].connection.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_add_connection_nonexistent_output_node() {
+        let mut graph = create_test_graph();
+        let add_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO)
+            .await;
+
+        graph.add_connection(add_id.clone(), 0, "nonexistent".to_string(), 0).await;
+
+        let add_node = graph.nodes.get(&add_id).unwrap();
+        assert!(add_node.inputs[0].connection.is_none());
+    }
+
+    // === set_input edge cases ===
+
+    #[tokio::test]
+    async fn test_set_input_nonexistent_node() {
+        let mut graph = create_test_graph();
+        // Should be a no-op, not panic
+        graph.set_input("nonexistent".to_string(), 0, Value::Decimal(1.0));
+        assert!(graph.nodes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_set_input_out_of_bounds_index() {
+        let mut graph = create_test_graph();
+        let node_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO)
+            .await;
+
+        // Add node has 2 inputs (indices 0, 1). Index 99 should be a no-op.
+        graph.set_input(node_id.clone(), 99, Value::Decimal(1.0));
+
+        // Node should still have original values
+        let node = graph.nodes.get(&node_id).unwrap();
+        assert_eq!(node.inputs.len(), 2);
+    }
+
+    // === set_node_position edge cases ===
+
+    #[tokio::test]
+    async fn test_set_position_nonexistent_node() {
+        let mut graph = create_test_graph();
+        // Should be a no-op, not panic
+        graph.set_node_position("nonexistent".to_string(), glam::Vec2::new(100.0, 200.0));
+    }
+
+    // === set_save_path ===
+
+    #[test]
+    fn test_set_save_path() {
+        let (tx_gc, _) = mpsc::channel::<GraphChangedMessage>(32);
+        let (tx_nc, _) = mpsc::channel::<NodeChangedMessage>(32);
+        let mut graph = Graph::new(get_id(), tx_nc, tx_gc, false).unwrap();
+
+        assert!(graph.save_path.is_none());
+        graph.set_save_path(std::path::PathBuf::from("/tmp/test.mangle"));
+        assert_eq!(graph.save_path, Some(std::path::PathBuf::from("/tmp/test.mangle")));
+    }
+
+    // === run() edge cases ===
+
+    #[tokio::test]
+    async fn test_run_empty_graph() {
+        let mut graph = create_test_graph();
+        // Should return immediately, not panic
+        graph.run().await;
+        assert!(graph.nodes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_run_clean_graph_no_dirty_nodes() {
+        let mut graph = create_test_graph();
+        let node_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO)
+            .await;
+
+        graph.set_input(node_id.clone(), 0, Value::Decimal(1.0));
+        graph.set_input(node_id.clone(), 1, Value::Decimal(2.0));
+        graph.run().await;
+
+        // After run, nodes are no longer dirty. Running again should be a no-op.
+        let output_before = match &graph.nodes.get(&node_id).unwrap().outputs[0].value {
+            Value::Decimal(v) => *v,
+            _ => panic!("Expected Decimal"),
+        };
+
+        graph.run().await;
+
+        let output_after = match &graph.nodes.get(&node_id).unwrap().outputs[0].value {
+            Value::Decimal(v) => *v,
+            _ => panic!("Expected Decimal"),
+        };
+
+        assert_eq!(output_before, output_after);
+    }
+
+    #[tokio::test]
+    async fn test_run_caching_same_inputs() {
+        let mut graph = create_test_graph();
+        let node_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO)
+            .await;
+
+        graph.set_input(node_id.clone(), 0, Value::Decimal(5.0));
+        graph.set_input(node_id.clone(), 1, Value::Decimal(10.0));
+        graph.run().await;
+
+        // Set same values again — should use cache
+        graph.set_input(node_id.clone(), 0, Value::Decimal(5.0));
+        graph.set_input(node_id.clone(), 1, Value::Decimal(10.0));
+        graph.run().await;
+
+        match &graph.nodes.get(&node_id).unwrap().outputs[0].value {
+            Value::Decimal(v) => assert!((*v - 15.0).abs() < 1e-6),
+            other => panic!("Expected Decimal, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_cache_invalidation_on_changed_input() {
+        let mut graph = create_test_graph();
+        let node_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO)
+            .await;
+
+        graph.set_input(node_id.clone(), 0, Value::Decimal(5.0));
+        graph.set_input(node_id.clone(), 1, Value::Decimal(10.0));
+        graph.run().await;
+
+        // Change one input — should invalidate cache and recompute
+        graph.set_input(node_id.clone(), 1, Value::Decimal(20.0));
+        graph.run().await;
+
+        match &graph.nodes.get(&node_id).unwrap().outputs[0].value {
+            Value::Decimal(v) => assert!((*v - 25.0).abs() < 1e-6, "Expected 25.0, got {}", v),
+            other => panic!("Expected Decimal, got {:?}", other),
+        }
+    }
+
+    // === run() with chains and fan-out ===
+
+    #[tokio::test]
+    async fn test_run_three_node_chain() {
+        let mut graph = create_test_graph();
+
+        // decimal(5) → add(_, 10) → add(_, 100)
+        let input_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO)
+            .await;
+        let add1_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0))
+            .await;
+        let add2_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(400.0, 0.0))
+            .await;
+
+        graph.set_input(input_id.clone(), 0, Value::Decimal(5.0));
+        graph.set_input(add1_id.clone(), 1, Value::Decimal(10.0));
+        graph.set_input(add2_id.clone(), 1, Value::Decimal(100.0));
+
+        graph.add_connection(add1_id.clone(), 0, input_id.clone(), 0).await;
+        graph.add_connection(add2_id.clone(), 0, add1_id.clone(), 0).await;
+
+        graph.run().await;
+
+        // 5 + 10 = 15, then 15 + 100 = 115
+        match &graph.nodes.get(&add2_id).unwrap().outputs[0].value {
+            Value::Decimal(v) => assert!((*v - 115.0).abs() < 1e-6, "Expected 115.0, got {}", v),
+            other => panic!("Expected Decimal, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_fan_out() {
+        let mut graph = create_test_graph();
+
+        // decimal(10) → add1(_, 1) and add2(_, 2)
+        let input_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO)
+            .await;
+        let add1_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0))
+            .await;
+        let add2_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 100.0))
+            .await;
+
+        graph.set_input(input_id.clone(), 0, Value::Decimal(10.0));
+        graph.set_input(add1_id.clone(), 1, Value::Decimal(1.0));
+        graph.set_input(add2_id.clone(), 1, Value::Decimal(2.0));
+
+        // Same output feeds both add nodes
+        graph.add_connection(add1_id.clone(), 0, input_id.clone(), 0).await;
+        graph.add_connection(add2_id.clone(), 0, input_id.clone(), 0).await;
+
+        graph.run().await;
+
+        match &graph.nodes.get(&add1_id).unwrap().outputs[0].value {
+            Value::Decimal(v) => assert!((*v - 11.0).abs() < 1e-6, "Expected 11.0, got {}", v),
+            other => panic!("Expected Decimal, got {:?}", other),
+        }
+        match &graph.nodes.get(&add2_id).unwrap().outputs[0].value {
+            Value::Decimal(v) => assert!((*v - 12.0).abs() < 1e-6, "Expected 12.0, got {}", v),
+            other => panic!("Expected Decimal, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_value_propagation_through_connection() {
+        let mut graph = create_test_graph();
+
+        let decimal_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO)
+            .await;
+        let add_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0))
+            .await;
+
+        graph.set_input(decimal_id.clone(), 0, Value::Decimal(42.0));
+        graph.set_input(add_id.clone(), 1, Value::Decimal(0.0));
+        graph.add_connection(add_id.clone(), 0, decimal_id.clone(), 0).await;
+
+        graph.run().await;
+
+        // The add node's input 0 should have received the propagated value
+        match &graph.nodes.get(&add_id).unwrap().inputs[0].value {
+            Value::Decimal(v) => assert!((*v - 42.0).abs() < 1e-6, "Expected propagated 42.0, got {}", v),
+            other => panic!("Expected Decimal input, got {:?}", other),
+        }
+    }
+
+    // === save_to_file / load round-trip ===
+
+    #[tokio::test]
+    async fn test_save_and_load_round_trip() {
+        let mut graph = create_test_graph();
+        let graph_id = graph.id.clone();
+
+        let node_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(50.0, 75.0))
+            .await;
+        graph.set_input(node_id.clone(), 0, Value::Decimal(42.0));
+
+        let tmp_path = std::env::temp_dir().join(format!("test_graph_{}.mangle", get_id()));
+        graph.set_save_path(tmp_path.clone());
+        graph.save_to_file();
+
+        // Load it back
+        let (tx_nc, _) = mpsc::channel::<NodeChangedMessage>(32);
+        let (tx_gc, _) = mpsc::channel::<GraphChangedMessage>(32);
+        let loaded = Graph::load(tmp_path.clone(), Some(tx_nc), Some(tx_gc), false).unwrap();
+
+        assert_eq!(loaded.id, graph_id);
+        assert!(loaded.nodes.contains_key(&node_id));
+        let loaded_node = loaded.nodes.get(&node_id).unwrap();
+        assert_eq!(loaded_node.settings.name, "add");
+        assert_eq!(loaded_node.position, glam::Vec2::new(50.0, 75.0));
+        match &loaded_node.inputs[0].value {
+            Value::Decimal(v) => assert_eq!(*v, 42.0),
+            other => panic!("Expected Decimal, got {:?}", other),
+        }
+
+        // Clean up
+        let _ = std::fs::remove_file(tmp_path);
+    }
+
+    #[tokio::test]
+    async fn test_save_to_file_subgraph_is_noop() {
+        let (tx_gc, _) = mpsc::channel::<GraphChangedMessage>(32);
+        let (tx_nc, _) = mpsc::channel::<NodeChangedMessage>(32);
+        let mut graph = Graph::new(get_id(), tx_nc, tx_gc, true).unwrap();
+
+        let tmp_path = std::env::temp_dir().join(format!("test_subgraph_{}.mangle", get_id()));
+        graph.set_save_path(tmp_path.clone());
+        graph.save_to_file();
+
+        // File should NOT be created for subgraphs
+        assert!(!tmp_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_save_to_file_no_path_is_noop() {
+        let mut graph = create_test_graph();
+        assert!(graph.save_path.is_none());
+        // Should be a no-op, not panic
+        graph.save_to_file();
+    }
+
+    // === load() error cases ===
+
+    #[test]
+    fn test_load_nonexistent_file() {
+        let result = Graph::load(
+            std::path::PathBuf::from("/nonexistent/path/graph.mangle"),
+            None, None, false,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_invalid_json() {
+        let tmp_path = std::env::temp_dir().join(format!("test_bad_json_{}.mangle", get_id()));
+        std::fs::write(&tmp_path, "this is not valid json").unwrap();
+
+        let result = Graph::load(tmp_path.clone(), None, None, false);
+        assert!(result.is_err());
+
+        let _ = std::fs::remove_file(tmp_path);
+    }
+
+    // === remove_node on nonexistent node ===
+
+    #[tokio::test]
+    async fn test_remove_nonexistent_node() {
+        let mut graph = create_test_graph();
+        // Should be a no-op, not panic
+        graph.remove_node("nonexistent".to_string()).await;
+        assert!(graph.nodes.is_empty());
+    }
+
+    // === remove_connection on unconnected input ===
+
+    #[tokio::test]
+    async fn test_remove_connection_when_none_exists() {
+        let mut graph = create_test_graph();
+        let add_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO)
+            .await;
+
+        // Input 0 has no connection — should be a no-op, not panic
+        graph.remove_connection(add_id.clone(), 0).await;
+
+        let add_node = graph.nodes.get(&add_id).unwrap();
+        assert!(add_node.inputs[0].connection.is_none());
+    }
+
+    // === add multiple nodes, remove all ===
+
+    #[tokio::test]
+    async fn test_add_and_remove_multiple_nodes() {
+        let mut graph = create_test_graph();
+
+        let id1 = graph.add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO).await;
+        let id2 = graph.add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::ZERO).await;
+        let id3 = graph.add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO).await;
+
+        assert_eq!(graph.nodes.len(), 3);
+
+        graph.remove_node(id1).await;
+        graph.remove_node(id2).await;
+        graph.remove_node(id3).await;
+
+        assert_eq!(graph.nodes.len(), 0);
+    }
+
+    // === run() propagates updated upstream value downstream ===
+
+    #[tokio::test]
+    async fn test_run_upstream_change_propagates() {
+        let mut graph = create_test_graph();
+
+        let input_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO)
+            .await;
+        let add_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0))
+            .await;
+
+        graph.set_input(input_id.clone(), 0, Value::Decimal(5.0));
+        graph.set_input(add_id.clone(), 1, Value::Decimal(10.0));
+        graph.add_connection(add_id.clone(), 0, input_id.clone(), 0).await;
+
+        graph.run().await;
+
+        match &graph.nodes.get(&add_id).unwrap().outputs[0].value {
+            Value::Decimal(v) => assert!((*v - 15.0).abs() < 1e-6),
+            other => panic!("Expected Decimal, got {:?}", other),
+        }
+
+        // Change the upstream input
+        graph.set_input(input_id.clone(), 0, Value::Decimal(100.0));
+        graph.run().await;
+
+        match &graph.nodes.get(&add_id).unwrap().outputs[0].value {
+            Value::Decimal(v) => assert!((*v - 110.0).abs() < 1e-6, "Expected 110.0, got {}", v),
+            other => panic!("Expected Decimal, got {:?}", other),
+        }
     }
 }

@@ -1,3 +1,5 @@
+//! Exact resize operation that ignores aspect ratio.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -9,10 +11,15 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Resizes an image to exactly the specified width and height, ignoring aspect ratio.
+///
+/// Unlike [`OpImageTransformResize`], this always produces output with the exact
+/// requested dimensions, which may distort the image if the aspect ratio differs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageTransformResizeExact {}
 
 impl OpImageTransformResizeExact {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "resize exact".to_string(),
@@ -20,6 +27,7 @@ impl OpImageTransformResizeExact {
         }
     }
 
+    /// Creates the default inputs: source image, target width/height, and resampling filter type.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -29,6 +37,7 @@ impl OpImageTransformResizeExact {
         ]
     }
 
+    /// Creates the default outputs: resized image, and its width and height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
@@ -37,6 +46,7 @@ impl OpImageTransformResizeExact {
         ]
     }
 
+    /// Executes the exact resize operation, stretching or squashing to the target dimensions.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

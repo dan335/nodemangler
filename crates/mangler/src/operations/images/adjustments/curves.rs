@@ -1,3 +1,9 @@
+//! Tone curve adjustment operation for images.
+//!
+//! Applies a contrast-like curve centered on a configurable midpoint.
+//! Positive strength increases contrast (S-curve), negative strength
+//! reduces contrast around the midpoint.
+
 use crate::get_id;
 use crate::value::ValueType;
 use image::DynamicImage;
@@ -10,10 +16,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Tone curve adjustment that applies contrast scaling around a configurable midpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentCurves{}
 
 impl OpImageAdjustmentCurves {
+    /// Returns the node metadata (name and description) for the curves operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "curves".to_string(),
@@ -21,6 +29,7 @@ impl OpImageAdjustmentCurves {
         }
     }
 
+    /// Creates the input ports: image, strength (-1..1), and midpoint (0..1).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -29,12 +38,14 @@ impl OpImageAdjustmentCurves {
         ]
     }
 
+    /// Creates the output port: the curve-adjusted image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
+    /// Executes the curves adjustment. Applies a linear contrast curve centered on the midpoint.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -56,11 +67,13 @@ impl OpImageAdjustmentCurves {
         let mut buffer = data.to_rgba32f();
         let strength = strength as f32;
         let midpoint = midpoint as f32;
+        // Double the strength to get a more perceptually useful contrast range
         let contrast = strength * 2.0;
 
         for pixel in buffer.pixels_mut() {
             for c in 0..3 {
                 let val = pixel[c];
+                // Scale deviation from midpoint by the contrast factor
                 let adjusted = midpoint + (val - midpoint) * (1.0 + contrast);
                 pixel[c] = adjusted.clamp(0.0, 1.0);
             }

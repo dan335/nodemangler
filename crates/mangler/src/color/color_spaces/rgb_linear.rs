@@ -1,7 +1,15 @@
+//! Linear RGB color space conversions.
+//!
+//! Converts between sRGB (gamma-encoded) and linear (scene-referred) RGB
+//! using the standard sRGB transfer function (IEC 61966-2-1).
+
 use crate::color::Color;
 
 impl Color {
-    // rgba linear to srgba
+    /// Creates an sRGB [`Color`] from linear RGB channel values.
+    ///
+    /// Applies the sRGB gamma encoding curve to each color channel.
+    /// Alpha is stored as-is (it is always linear).
     pub fn from_rgb_linear(red: f32, green: f32, blue: f32, alpha: f32) -> Color {
         Color {
             r: linear_to_nonlinear_srgb(red),
@@ -11,7 +19,10 @@ impl Color {
         }
     }
 
-    // srgba to rgba linear
+    /// Converts this sRGB color to linear RGB channel values.
+    ///
+    /// Removes the sRGB gamma curve from each color channel.
+    /// Alpha is returned as-is (it is always linear).
     pub fn to_rgb_linear(&self) -> (f32, f32, f32, f32) {
         (
             nonlinear_to_linear_rgb(self.r),
@@ -22,6 +33,10 @@ impl Color {
     }
 }
 
+/// Converts a single sRGB (nonlinear / gamma-encoded) value to linear RGB.
+///
+/// Uses the standard sRGB piecewise transfer function: a linear segment
+/// below 0.04045, and a power curve above.
 #[inline]
 pub fn nonlinear_to_linear_rgb(n: f32) -> f32 {
     if n <= 0.0 {
@@ -34,6 +49,10 @@ pub fn nonlinear_to_linear_rgb(n: f32) -> f32 {
     }
 }
 
+/// Converts a single linear RGB value to sRGB (nonlinear / gamma-encoded).
+///
+/// Inverse of [`nonlinear_to_linear_rgb`]: a linear segment below 0.0031308,
+/// and a power curve above.
 #[inline]
 pub fn linear_to_nonlinear_srgb(n: f32) -> f32 {
     if n <= 0.0 {

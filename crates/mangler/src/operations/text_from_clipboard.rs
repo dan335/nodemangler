@@ -1,3 +1,9 @@
+//! Text-from-clipboard operation (currently disabled/commented out).
+//!
+//! This module was intended to read text content from the system clipboard and
+//! expose it as a string output. The implementation is commented out pending
+//! integration with the current operation framework.
+
 // use crate::input::Input;
 // use crate::node_settings::NodeSettings;
 // use crate::operation::{OperationError, OperationResponse, ConnectionSettings, UiType, OutputResponse};

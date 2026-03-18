@@ -1,3 +1,8 @@
+//! Directional blur operation for images.
+//!
+//! Blurs the image along a specified angle by averaging multiple bilinearly
+//! sampled points distributed along a line centered at each pixel.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -11,10 +16,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Directional blur operation that smears the image along a specified angle.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentDirectionalBlur {}
 
 impl OpImageAdjustmentDirectionalBlur {
+    /// Returns the node metadata (name and description) for the directional blur operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "directional blur".to_string(),
@@ -22,6 +29,7 @@ impl OpImageAdjustmentDirectionalBlur {
         }
     }
 
+    /// Creates the input ports: image, angle (degrees), sample count, and intensity (pixel spread).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
@@ -31,12 +39,15 @@ impl OpImageAdjustmentDirectionalBlur {
         ]
     }
 
+    /// Creates the output port: the directionally blurred image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Executes the directional blur. Samples are distributed symmetrically along the
+    /// angle direction using bilinear interpolation.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -75,6 +86,7 @@ impl OpImageAdjustmentDirectionalBlur {
                 let mut a_sum: f64 = 0.0;
 
                 for i in 0..samples {
+                    // Map sample index to [-1, 1] range for symmetric distribution
                     let t = if samples > 1 {
                         (i as f32 / (samples - 1) as f32) * 2.0 - 1.0
                     } else {

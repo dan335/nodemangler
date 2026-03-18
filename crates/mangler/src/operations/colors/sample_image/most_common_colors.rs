@@ -1,3 +1,9 @@
+//! Most common colors sampling operation.
+//!
+//! Analyzes an image to find the most frequently occurring colors by
+//! quantizing each pixel's HSL representation and counting occurrences.
+//! Returns the top 5 most common colors.
+
 use crate::color::Color;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -8,10 +14,12 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use std::collections::HashMap;
 
+/// Operation that extracts the top 5 most common colors from an image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpColorSampleMostCommonColors {}
 
 impl OpColorSampleMostCommonColors {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "most common colors".to_string(),
@@ -19,6 +27,7 @@ impl OpColorSampleMostCommonColors {
         }
     }
 
+    /// Creates the input definitions: an image and quantization precision for hue, saturation, and lightness.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage{data:crate::operations::default_image(), change_id:crate::get_id()}, None, None),
@@ -28,6 +37,7 @@ impl OpColorSampleMostCommonColors {
         ]
     }
 
+    /// Creates 5 color output slots, one for each of the top most common colors.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("1".to_string(), Value::Color(Color::default()), None),
@@ -38,6 +48,7 @@ impl OpColorSampleMostCommonColors {
         ]
     }
 
+    /// Executes the operation, scanning all pixels and returning the 5 most common quantized colors.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -58,23 +69,27 @@ impl OpColorSampleMostCommonColors {
         let Value::Decimal(saturation_precision) = saturation_precision_converted.unwrap() else { unreachable!() };
         let Value::Decimal(lightness_precision) = lightness_precision_converted.unwrap() else { unreachable!() };
 
-        // run node
+        // Quantize each pixel's HSL values into buckets and count occurrences.
+        // Higher precision values produce more buckets (finer color distinction).
         let mut color_counts: HashMap<[i32; 3], u32> = HashMap::new();
 
         for rgb in image::Rgb32FImage::pixels(&image.to_rgb32f()) {
             let color = Color::from_srgb_float(rgb[0], rgb[1], rgb[2], 1.0);
             let hsl = color.to_hsl();
+            // Round each channel to its quantized bucket index
             let h = ((hsl.0 / 360.0) * hue_precision).round() as i32;
             let s = (hsl.1 * saturation_precision).round() as i32;
             let l = (hsl.2 * lightness_precision).round() as i32;
             *color_counts.entry([h, s, l]).or_insert(0) += 1;
         }
 
+        // Sort buckets by pixel count (most frequent first)
         let mut sorted_colors: Vec<(&[i32; 3], &u32)> = color_counts.iter().collect();
         sorted_colors.sort_by(|a, b| b.1.cmp(a.1));
 
         let mut responses: Vec<OutputResponse> = Vec::new();
 
+        // Convert the top 5 quantized HSL buckets back to colors
         for (hsl, _count) in sorted_colors.iter().take(5) {
             let h = ((hsl[0] as f32) / hue_precision) * 360.0;
             let s = (hsl[1] as f32) / saturation_precision;
@@ -84,7 +99,7 @@ impl OpColorSampleMostCommonColors {
             });
         }
 
-        // Pad to always have 5 responses
+        // Pad with default colors if fewer than 5 distinct buckets exist
         while responses.len() < 5 {
             responses.push(OutputResponse {
                 value: Value::Color(Color::default()),

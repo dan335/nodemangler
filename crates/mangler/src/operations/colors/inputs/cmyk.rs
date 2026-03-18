@@ -1,3 +1,9 @@
+//! CMYK color input operation.
+//!
+//! Creates a [`Color`](crate::color::Color) from cyan, magenta, yellow,
+//! key (black), and alpha channel values. CMYK is a subtractive color model
+//! commonly used in print production.
+
 use crate::color::Color;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -7,10 +13,12 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Operation that constructs a color from CMYK (Cyan, Magenta, Yellow, Key) channel values.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpColorInputCmyk {}
 
 impl OpColorInputCmyk {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "cmyk".to_string(),
@@ -18,6 +26,7 @@ impl OpColorInputCmyk {
         }
     }
 
+    /// Creates the input definitions: cyan, magenta, yellow, key (0..1 each), and alpha.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("cyan".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
@@ -28,12 +37,14 @@ impl OpColorInputCmyk {
         ]
     }
 
+    /// Creates the single output definition for the constructed color.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Color(Color::default()), None)
         ]
     }
 
+    /// Executes the operation, assembling a color from CMYK float channels.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

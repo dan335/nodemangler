@@ -1,3 +1,8 @@
+//! Linear RGB color output operation.
+//!
+//! Decomposes a [`Color`](crate::color::Color) into its red, green, blue, and
+//! alpha channel values in the linear (non-gamma-encoded) RGB color space.
+
 use crate::color::Color;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
@@ -7,10 +12,12 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Operation that decomposes a color into linear RGB channel values.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpColorOutputRgbLinear {}
 
 impl OpColorOutputRgbLinear {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "to rgb linear".to_string(),
@@ -18,12 +25,14 @@ impl OpColorOutputRgbLinear {
         }
     }
 
+    /// Creates the single input definition accepting a color to decompose.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("input".to_string(), Value::Color(Color::default()), None, None),
         ]
     }
 
+    /// Creates the output definitions: red, green, blue, and alpha as decimal values.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("red".to_string(), Value::Decimal(0.5), None),
@@ -33,6 +42,7 @@ impl OpColorOutputRgbLinear {
         ]
     }
 
+    /// Executes the operation, converting the input color to linear RGB float channels.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

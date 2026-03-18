@@ -1,9 +1,20 @@
+//! Color blending operations across multiple color spaces.
+//!
+//! Each `blend_*` method converts the two input colors into the target color space,
+//! applies the requested [`BlendMode`], and converts back to sRGB. For blend modes
+//! that only make sense in sRGB (e.g. Multiply, Screen), the non-sRGB methods
+//! delegate to [`Color::blend_srgb`].
+
 use serde::{Serialize, Deserialize};
 
 use super::Color;
 
 impl Color {
 
+    /// Blends two colors in CMYK color space.
+    ///
+    /// Only `Normal` and `Lerp` modes operate natively in CMYK; all other modes
+    /// delegate to [`Self::blend_srgb`].
     pub fn blend_cmyk(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         let la = a.to_cmyk();
         let lb = b.to_cmyk();
@@ -27,6 +38,10 @@ impl Color {
         }
     }
 
+    /// Blends two colors in HSL color space.
+    ///
+    /// Only `Normal` and `Lerp` modes operate natively in HSL; all other modes
+    /// delegate to [`Self::blend_srgb`].
     pub fn blend_hsl(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         let la = a.to_hsl();
         let lb = b.to_hsl();
@@ -48,6 +63,10 @@ impl Color {
         }
     }
 
+    /// Blends two colors in HSV color space.
+    ///
+    /// Only `Normal` and `Lerp` modes operate natively in HSV; all other modes
+    /// delegate to [`Self::blend_srgb`].
     pub fn blend_hsv(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         let la = a.to_hsv();
         let lb = b.to_hsv();
@@ -69,6 +88,10 @@ impl Color {
         }
     }
 
+    /// Blends two colors in CIE Lab color space.
+    ///
+    /// Only `Normal` and `Lerp` modes operate natively in Lab; all other modes
+    /// delegate to [`Self::blend_srgb`].
     pub fn blend_lab(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         let la = a.to_lab();
         let lb = b.to_lab();
@@ -90,6 +113,10 @@ impl Color {
         }
     }
 
+    /// Blends two colors in CIE LCH color space.
+    ///
+    /// Only `Normal` and `Lerp` modes operate natively in LCH; all other modes
+    /// delegate to [`Self::blend_srgb`].
     pub fn blend_lch(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         let la = a.to_lch();
         let lb = b.to_lch();
@@ -111,7 +138,11 @@ impl Color {
         }
     }
 
-    // convert to rgb linear.  lerp.  convert back to srgb.
+    /// Blends two colors in linear RGB color space.
+    ///
+    /// Converts to linear RGB, applies the blend, then converts back to sRGB.
+    /// Only `Normal` and `Lerp` modes operate natively in linear RGB; all other
+    /// modes delegate to [`Self::blend_srgb`].
     pub fn blend_linear(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         let la = a.to_rgb_linear();
         let lb = b.to_rgb_linear();
@@ -133,6 +164,13 @@ impl Color {
         }
     }
 
+    /// Blends two colors in sRGB color space.
+    ///
+    /// This is the primary blend implementation. `Normal` mode composites `b` over
+    /// `a` weighted by `b`'s alpha and the `amount` factor. `Lerp` mode linearly
+    /// interpolates all four channels. All other modes apply the per-channel blend
+    /// formula and then lerp between `a` and the blended result using
+    /// `amount * b.a` as the factor.
     pub fn blend_srgb(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         match blend_mode {
             BlendMode::Normal => Color::from_srgb_float(
@@ -148,6 +186,8 @@ impl Color {
                 lerp(a.a, b.a, amount),
             ),
             _ => {
+                // Apply the blend formula per-channel, then lerp from the
+                // base color toward the blended result by amount * foreground alpha.
                 let blended_r = apply_blend_mode(a.r, b.r, blend_mode);
                 let blended_g = apply_blend_mode(a.g, b.g, blend_mode);
                 let blended_b = apply_blend_mode(a.b, b.b, blend_mode);
@@ -162,6 +202,10 @@ impl Color {
         }
     }
 
+    /// Blends two colors in CIE XYZ color space.
+    ///
+    /// Only `Normal` and `Lerp` modes operate natively in XYZ; all other modes
+    /// delegate to [`Self::blend_srgb`].
     pub fn blend_xyz(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         let la = a.to_xyz();
         let lb = b.to_xyz();
@@ -183,6 +227,10 @@ impl Color {
         }
     }
 
+    /// Blends two colors in YUV color space.
+    ///
+    /// Only `Normal` and `Lerp` modes operate natively in YUV; all other modes
+    /// delegate to [`Self::blend_srgb`].
     pub fn blend_yuv(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
         let la = a.to_yuv();
         let lb = b.to_yuv();
@@ -205,28 +253,51 @@ impl Color {
     }
 }
 
+/// Available blend modes for compositing two colors.
+///
+/// `Normal` composites the foreground over the background weighted by alpha.
+/// `Lerp` linearly interpolates all channels including alpha.
+/// The remaining modes implement standard Photoshop-style blend formulas.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum BlendMode {
+    /// Standard alpha compositing: foreground over background.
     Normal,
+    /// Linear interpolation of all channels (including alpha) by the amount factor.
     Lerp,
+    /// Multiply: `a * b`. Darkens the image.
     Multiply,
+    /// Screen: `1 - (1-a)(1-b)`. Lightens the image.
     Screen,
+    /// Overlay: Multiply when base is dark, Screen when base is light.
     Overlay,
+    /// Soft Light: a softer version of Overlay.
     SoftLight,
+    /// Hard Light: like Overlay but keyed on the blend layer instead of the base.
     HardLight,
+    /// Color Dodge: brightens the base to reflect the blend.
     ColorDodge,
+    /// Color Burn: darkens the base to reflect the blend.
     ColorBurn,
+    /// Darken: keeps the minimum of each channel.
     Darken,
+    /// Lighten: keeps the maximum of each channel.
     Lighten,
+    /// Difference: absolute difference of channels.
     Difference,
+    /// Exclusion: similar to Difference but lower contrast.
     Exclusion,
+    /// Linear Burn: `a + b - 1`, clamped to 0.
     LinearBurn,
+    /// Linear Dodge (Add): `a + b`, clamped to 1.
     LinearDodge,
+    /// Divide: `a / b`, clamped to 1.
     Divide,
+    /// Subtract: `a - b`, clamped to 0.
     Subtract,
 }
 
 impl BlendMode {
+    /// Returns an array of all 17 blend mode variants in display order.
     pub fn types() -> [BlendMode; 17] {
         [
             BlendMode::Normal,
@@ -250,6 +321,11 @@ impl BlendMode {
     }
 }
 
+/// Applies a per-channel blend formula for the given mode.
+///
+/// `a` is the base (background) value and `b` is the blend (foreground) value.
+/// `Normal` and `Lerp` are not handled here -- they are implemented directly in
+/// the `blend_*` methods.
 fn apply_blend_mode(a: f32, b: f32, mode: &BlendMode) -> f32 {
     match mode {
         BlendMode::Multiply => a * b,
@@ -293,6 +369,9 @@ fn apply_blend_mode(a: f32, b: f32, mode: &BlendMode) -> f32 {
     }
 }
 
+/// Linearly interpolates between `a` and `b` by factor `t`.
+///
+/// Returns `a` when `t == 0.0` and `b` when `t == 1.0`.
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + t * (b - a)
 }

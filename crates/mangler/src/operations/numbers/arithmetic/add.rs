@@ -1,3 +1,9 @@
+//! Addition operation for the node graph.
+//!
+//! Performs polymorphic addition across value types: numbers are summed,
+//! booleans act as 0/1, strings are concatenated, and colors/images have
+//! the scalar added to each channel.
+
 use crate::color::Color;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -8,10 +14,16 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Node operation that adds two values together.
+///
+/// Supports many type combinations: numeric (integer/decimal), boolean (treated
+/// as 0 or 1), string (concatenation), color (per-channel addition), and image
+/// (per-pixel scalar addition). Mixed numeric types promote to decimal.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpNumberMathAdd {}
 
 impl OpNumberMathAdd {
+    /// Returns the node metadata (name and description).
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "add".to_string(),
@@ -19,6 +31,7 @@ impl OpNumberMathAdd {
         }
     }
 
+    /// Creates the default input list: two decimal drag-value inputs (a and b).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
@@ -26,12 +39,14 @@ impl OpNumberMathAdd {
         ]
     }
 
+    /// Creates the default output list: a single decimal output.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
         ]
     }
 
+    /// Executes the addition. Dispatches on the type combination of inputs a and b.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let input_errors: Vec<(usize, String)> = vec![];

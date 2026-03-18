@@ -1,3 +1,8 @@
+//! Histogram range remapping operation for images.
+//!
+//! Finds the actual minimum and maximum luminance in the image, then linearly
+//! remaps all pixel values so the output spans a user-specified target range.
+
 use crate::get_id;
 use crate::value::ValueType;
 use image::DynamicImage;
@@ -10,10 +15,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Histogram range operation that remaps pixel values to a target luminance range.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentHistogramRange{}
 
 impl OpImageAdjustmentHistogramRange {
+    /// Returns the node metadata (name and description) for the histogram range operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "histogram range".to_string(),
@@ -21,6 +28,7 @@ impl OpImageAdjustmentHistogramRange {
         }
     }
 
+    /// Creates the input ports: image, target range min, and target range max.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -29,12 +37,15 @@ impl OpImageAdjustmentHistogramRange {
         ]
     }
 
+    /// Creates the output port: the range-remapped image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
+    /// Executes the histogram range remapping. Scans for actual min/max, then linearly
+    /// maps each channel from [actual_min, actual_max] to [range_min, range_max].
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

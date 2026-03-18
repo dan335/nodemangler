@@ -1,3 +1,8 @@
+//! Image-from-file input operation.
+//!
+//! Reads an image from a local file path and outputs the decoded image
+//! along with its width and height.
+
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -10,10 +15,15 @@ use std::sync::Arc;
 use std::time::Instant;
 use image::io::Reader as ImageReader;
 
+/// Operation that loads an image from a file on disk.
+///
+/// Accepts a file path input with an extension filter matching supported image
+/// formats, and produces the decoded image plus its dimensions as outputs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageInputFile {}
 
 impl OpImageInputFile {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "from file".to_string(),
@@ -21,6 +31,7 @@ impl OpImageInputFile {
         }
     }
 
+    /// Creates the input definitions: a single file path input with image extension filtering.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("path".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path{
@@ -33,6 +44,7 @@ impl OpImageInputFile {
         ]
     }
 
+    /// Creates the output definitions: the decoded image, its width, and its height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
@@ -41,6 +53,9 @@ impl OpImageInputFile {
         ]
     }
 
+    /// Executes the operation: reads and decodes the image file at the given path.
+    ///
+    /// Returns an error if the file cannot be opened or the image format is unsupported.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

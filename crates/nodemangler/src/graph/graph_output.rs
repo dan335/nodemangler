@@ -38,10 +38,9 @@ pub fn draw_graph_output(
             }
         } else {
             if temp.from_connection_type == ConnectionType::Output
-                || !output
-                    .value
-                    .value_type().valid_conversions()
-                    .contains(&temp.from_value_type)
+                || !temp.from_value_type
+                    .valid_conversions()
+                    .contains(&output.value.value_type())
             {
                 response.is_disabled = true;
             }

@@ -1,3 +1,9 @@
+//! Histogram scan (luminance isolation) operation for images.
+//!
+//! Isolates a narrow band of luminance values from the image, producing a
+//! grayscale mask. Uses smoothstep transitions at the edges of the band
+//! to avoid hard cutoffs.
+
 use crate::get_id;
 use crate::value::ValueType;
 use image::DynamicImage;
@@ -10,10 +16,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Histogram scan operation that isolates a luminance range into a grayscale mask.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentHistogramScan{}
 
 impl OpImageAdjustmentHistogramScan {
+    /// Returns the node metadata (name and description) for the histogram scan operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "histogram scan".to_string(),
@@ -21,6 +29,7 @@ impl OpImageAdjustmentHistogramScan {
         }
     }
 
+    /// Creates the input ports: image, center position of the luminance band, and band width (range).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -29,12 +38,15 @@ impl OpImageAdjustmentHistogramScan {
         ]
     }
 
+    /// Creates the output port: the luminance isolation mask.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
+    /// Executes the histogram scan. Computes Rec. 709 luminance, then applies smoothstep
+    /// transitions at the low and high edges of the selected band.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -87,6 +99,7 @@ impl OpImageAdjustmentHistogramScan {
     }
 }
 
+/// Hermite smoothstep interpolation between two edges, producing a smooth 0-to-1 transition.
 fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
     let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)

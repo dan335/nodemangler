@@ -1,3 +1,5 @@
+//! Directional warp operation that displaces pixels along a single angle.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -9,10 +11,17 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Displaces pixels along a fixed angle, with displacement magnitude driven by a grayscale intensity map.
+///
+/// Unlike the standard warp node which uses separate R/G channels for X/Y offsets,
+/// this operation computes luminance from the intensity map and displaces all pixels
+/// in a single user-specified direction. This is useful for effects like wind distortion
+/// or directional smearing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageTransformDirectionalWarp {}
 
 impl OpImageTransformDirectionalWarp {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "directional warp".to_string(),
@@ -20,6 +29,7 @@ impl OpImageTransformDirectionalWarp {
         }
     }
 
+    /// Creates the default inputs: source image, grayscale intensity map, angle (degrees), and intensity scalar.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
@@ -29,12 +39,14 @@ impl OpImageTransformDirectionalWarp {
         ]
     }
 
+    /// Creates the default outputs: the warped image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Executes the directional warp by displacing each pixel along the specified angle.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -56,6 +68,7 @@ impl OpImageTransformDirectionalWarp {
         let (w, h) = (src.width(), src.height());
         let mut output = image::RgbaImage::new(w, h);
 
+        // Precompute the unit direction vector from the angle
         let angle_rad = angle.to_radians();
         let dir_x = angle_rad.cos();
         let dir_y = angle_rad.sin();
@@ -67,7 +80,7 @@ impl OpImageTransformDirectionalWarp {
                 let my = y as f32 * map_img.height() as f32 / h as f32;
                 let mp = super::warp::bilinear_sample_rgba(&map_img, mx, my);
 
-                // Luminance of the map pixel (0..1), centered to -0.5..0.5
+                // Compute luminance using BT.601 coefficients, centered to -0.5..0.5
                 let lum = (mp[0] as f32 * 0.299 + mp[1] as f32 * 0.587 + mp[2] as f32 * 0.114) / 255.0 - 0.5;
                 let displacement = lum * intensity;
 

@@ -1,3 +1,9 @@
+//! Boolean input operation.
+//!
+//! Provides a simple pass-through node that accepts a boolean value (or a value
+//! convertible to boolean) and outputs it. Useful as an entry point for boolean
+//! data in the node graph.
+
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
@@ -6,10 +12,15 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// A boolean input node that passes through a boolean value.
+///
+/// Accepts any value convertible to `Bool` (e.g., integers where 0 is false,
+/// non-zero is true) and outputs the converted boolean.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpLogicInputBool {}
 
 impl OpLogicInputBool {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "bool".to_string(),
@@ -17,18 +28,21 @@ impl OpLogicInputBool {
         }
     }
 
+    /// Creates the default inputs: a single boolean input defaulting to `false`.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("input".to_string(), Value::Bool(false), None, None)
         ]
     }
 
+    /// Creates the default outputs: a single boolean output defaulting to `false`.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Bool(false), None)
         ]
     }
 
+    /// Converts the input to a boolean and passes it through as the output.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

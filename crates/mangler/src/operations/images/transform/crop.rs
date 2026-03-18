@@ -1,3 +1,5 @@
+//! Crop operation for extracting a rectangular sub-region from an image.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -9,10 +11,15 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Crops an image to a rectangular sub-region defined by position (x, y) and size (width, height).
+///
+/// Inputs are clamped to valid ranges based on the source image dimensions.
+/// Outputs the cropped image along with its actual width and height.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageTransformCrop {}
 
 impl OpImageTransformCrop {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "crop".to_string(),
@@ -20,6 +27,7 @@ impl OpImageTransformCrop {
         }
     }
 
+    /// Creates the default inputs: source image, x/y position, and width/height of the crop region.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -30,6 +38,7 @@ impl OpImageTransformCrop {
         ]
     }
 
+    /// Creates the default outputs: cropped image, and its width and height as integers.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
@@ -38,6 +47,9 @@ impl OpImageTransformCrop {
         ]
     }
 
+    /// Executes the crop operation.
+    ///
+    /// Clamps x, y, width, and height to the source image bounds before cropping.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -61,7 +73,9 @@ impl OpImageTransformCrop {
         let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
 
         // run node
+        // Try to take ownership of the image data; clone if other references exist
         let mut data_inner = Arc::try_unwrap(data).unwrap_or_else(|a| (*a).clone());
+        // Clamp crop parameters to valid image bounds
         x = x.max(0).min(data_inner.width() as i32 - 1);
         y = y.max(0).min(data_inner.height() as i32 - 1);
         width = width.max(1).min(data_inner.width() as i32);

@@ -1,3 +1,10 @@
+//! Height-based material blending.
+//!
+//! Blends two materials (color + height) using their height maps to determine
+//! which material is visible at each pixel. This produces realistic layering
+//! effects where materials accumulate in crevices or on peaks based on their
+//! relative heights.
+
 use crate::get_id;
 use crate::value::ValueType;
 use image::DynamicImage;
@@ -10,10 +17,16 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Operation that blends two materials based on their height maps.
+///
+/// Outputs both a blended color image and a blended height map. The `blend_amount`
+/// controls the overall mix, while `contrast` controls the sharpness of the
+/// transition between materials (0 = soft linear blend, 1 = hard cutoff).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImagePbrHeightBlend {}
 
 impl OpImagePbrHeightBlend {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "height blend".to_string(),
@@ -21,6 +34,8 @@ impl OpImagePbrHeightBlend {
         }
     }
 
+    /// Creates the default inputs: base color, base height, overlay color, overlay height,
+    /// blend amount, and contrast.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("base color".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
@@ -32,6 +47,7 @@ impl OpImagePbrHeightBlend {
         ]
     }
 
+    /// Creates the default outputs: a blended color image and a blended height map.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
@@ -39,6 +55,7 @@ impl OpImagePbrHeightBlend {
         ]
     }
 
+    /// Blends two materials using height-based masking and outputs both color and height.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

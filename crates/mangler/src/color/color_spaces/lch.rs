@@ -1,17 +1,33 @@
+//! CIE LCH (Lightness, Chroma, Hue) color space conversions.
+//!
+//! LCH is the cylindrical representation of CIE L*a*b*. Conversions go through
+//! Lab and XYZ as intermediate steps. This module uses D65 as the reference
+//! white point and the sRGB/Rec. 709 RGB-to-XYZ matrices.
+//!
+//! Reference: <http://www.brucelindbloom.com/>
+
 use crate::color::Color;
 
-// CIE Constants
-// http://brucelindbloom.com/index.html?LContinuity.html (16) (17)
+/// CIE threshold constant (6/29)^3 for the linear/cubic branch in Lab conversions.
 const CIE_EPSILON: f32 = 216.0 / 24389.0;
+/// CIE constant (29/3)^3 used alongside [`CIE_EPSILON`].
 const CIE_KAPPA: f32 = 24389.0 / 27.0;
-// D65 White Reference:
+
+// D65 standard illuminant white point tristimulus values.
 // https://en.wikipedia.org/wiki/Illuminant_D65#Definition
 const D65_WHITE_X: f32 = 0.95047;
 const D65_WHITE_Y: f32 = 1.0;
 const D65_WHITE_Z: f32 = 1.08883;
 
 impl Color {
-    // lcha to srgba
+    /// Creates an sRGB [`Color`] from LCH components.
+    ///
+    /// * `lightness` -- normalized `0.0..=1.0` (internally scaled to `0..100`)
+    /// * `chroma` -- normalized `0.0..=1.0` (internally scaled to `0..100`)
+    /// * `hue` -- degrees `0..360`
+    /// * `alpha` -- `0.0..=1.0`
+    ///
+    /// Conversion path: LCH -> Lab -> XYZ (D65) -> linear RGB -> sRGB.
     pub fn from_lch(lightness: f32, chroma: f32, hue: f32, alpha: f32) -> Color {
         let lightness = lightness * 100.0;
         let chroma = chroma * 100.0;
@@ -64,6 +80,12 @@ impl Color {
         Color::from_rgb_linear(red, green, blue, alpha)
     }
 
+    /// Converts this sRGB color to LCH components.
+    ///
+    /// Returns `(lightness, chroma, hue, alpha)` where lightness and chroma
+    /// are normalized to roughly `0.0..=1.5` and hue is in degrees `0..360`.
+    ///
+    /// Conversion path: sRGB -> linear RGB -> XYZ (D65) -> Lab -> LCH.
     pub fn to_lch(&self) -> (f32, f32, f32, f32) {
         let (red, green, blue, alpha) = self.to_rgb_linear();
 

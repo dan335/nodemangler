@@ -1,3 +1,10 @@
+//! Distance field computation for images.
+//!
+//! Converts a grayscale image into a signed distance field by thresholding
+//! pixels into inside/outside regions, then computing the minimum Euclidean
+//! distance to the nearest boundary pixel. Output is normalized with 0.5 at
+//! the boundary, values above 0.5 for inside regions, and below 0.5 for outside.
+
 use crate::get_id;
 use crate::value::ValueType;
 use image::DynamicImage;
@@ -10,10 +17,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Distance field operation that computes a signed distance from a binary threshold.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentDistance{}
 
 impl OpImageAdjustmentDistance {
+    /// Returns the node metadata (name and description) for the distance operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "distance".to_string(),
@@ -21,6 +30,8 @@ impl OpImageAdjustmentDistance {
         }
     }
 
+    /// Creates the input ports: image, luminance threshold for the binary mask, and spread
+    /// (maximum search radius in pixels).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -29,12 +40,15 @@ impl OpImageAdjustmentDistance {
         ]
     }
 
+    /// Creates the output port: the distance field image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
+    /// Executes the distance field computation using brute-force nearest-boundary search
+    /// within the spread radius.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -110,6 +124,7 @@ impl OpImageAdjustmentDistance {
                 let is_inside = inside[idx];
                 let normalized_dist = (distances[idx] / spread).clamp(0.0, 1.0);
 
+                // Map distance to [0, 1]: inside pixels > 0.5, outside pixels < 0.5
                 let result = if is_inside {
                     0.5 + normalized_dist / 2.0
                 } else {

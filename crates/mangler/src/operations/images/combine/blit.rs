@@ -1,3 +1,8 @@
+//! Blit (pixel-copy overlay) compositing operation.
+//!
+//! Overlays a foreground image onto a background image at a specified x/y
+//! position using alpha-aware pixel copying via `image::imageops::overlay`.
+
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -8,10 +13,16 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Operation that blits (overlays) a foreground image onto a background.
+///
+/// Unlike the blend operation, this performs a simple alpha-composited overlay
+/// without blend modes, amount controls, or color space selection. It delegates
+/// to `image::imageops::overlay` for the actual pixel compositing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageCombineBlit {}
 
 impl OpImageCombineBlit {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "blit".to_string(),
@@ -19,6 +30,7 @@ impl OpImageCombineBlit {
         }
     }
 
+    /// Creates the input definitions: background image, foreground image, and x/y position.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("background".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -28,12 +40,14 @@ impl OpImageCombineBlit {
         ]
     }
 
+    /// Creates the output definitions: the composited result image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
+    /// Executes the operation: overlays the foreground onto the background at the given position.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -54,7 +68,7 @@ impl OpImageCombineBlit {
         let Value::Integer(x) = position_x_converted.unwrap() else { unreachable!() };
         let Value::Integer(y) = position_y_converted.unwrap() else { unreachable!() };
 
-        // run node
+        // run node — try to take ownership of the background to avoid cloning if possible
         let mut background = Arc::try_unwrap(background_arc).unwrap_or_else(|a| (*a).clone());
         image::imageops::overlay(&mut background, &*foreground, x as i64, y as i64);
 

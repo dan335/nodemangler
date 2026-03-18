@@ -1,3 +1,10 @@
+//! Gradient image generation operation.
+//!
+//! Creates a vertical linear gradient image by blending two colors from top
+//! to bottom. The blending is performed in a user-selectable color space
+//! (sRGB, Linear RGB, HSL, HSV, Lab, LCH, XYZ, YUV, or CMYK) using Lerp
+//! interpolation.
+
 use image::{ImageBuffer, DynamicImage};
 use crate::color::Color;
 use crate::color::color_spaces::ColorSpace;
@@ -11,10 +18,16 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Operation that generates a vertical gradient image between two colors.
+///
+/// The gradient runs from color `a` (top) to color `b` (bottom), interpolated
+/// in the selected color space. Each row is computed once and replicated across
+/// all columns for efficiency.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageInputGradient {}
 
 impl OpImageInputGradient {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "from gradient".to_string(),
@@ -22,6 +35,7 @@ impl OpImageInputGradient {
         }
     }
 
+    /// Creates the input definitions: two colors (a and b), width, height, and color space.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Color(Color::default()), None, None),
@@ -32,6 +46,7 @@ impl OpImageInputGradient {
         ]
     }
 
+    /// Creates the output definitions: the gradient image, width, and height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
@@ -40,6 +55,10 @@ impl OpImageInputGradient {
         ]
     }
 
+    /// Executes the operation: generates a vertical gradient by blending colors row by row.
+    ///
+    /// The blend factor for each row is `y / height`, so the top row is fully color `a`
+    /// and the bottom row is fully color `b`.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -68,8 +87,10 @@ impl OpImageInputGradient {
 
         let mut image_buffer = ImageBuffer::new(width as u32, height as u32);
 
+        // Use Lerp blend mode for smooth linear interpolation between colors
         let blend_mode = crate::color::blend::BlendMode::Lerp;
 
+        // Blend per-row in the selected color space, converting each result to sRGB u8
         match color_space {
             ColorSpace::Srgb => {
                 for y in 0..height {

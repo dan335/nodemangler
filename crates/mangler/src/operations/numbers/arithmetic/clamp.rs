@@ -1,3 +1,8 @@
+//! Clamp operation for the node graph.
+//!
+//! Restricts a value to lie within a specified `[min, max]` range.
+//! The min and max bounds are converted to decimals for comparison.
+
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse};
@@ -6,10 +11,16 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Node operation that clamps a number between a minimum and maximum.
+///
+/// Accepts integer or decimal input. The `min` and `max` bounds are converted
+/// to decimal for the comparison. Integer inputs produce integer outputs
+/// (the clamped value is rounded back to i32).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpNumberMathClamp {}
 
 impl OpNumberMathClamp {
+    /// Returns the node metadata (name and description).
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "clamp".to_string(),
@@ -17,6 +28,7 @@ impl OpNumberMathClamp {
         }
     }
 
+    /// Creates the default input list: value `a`, `min` (0.0), and `max` (1.0).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
@@ -25,12 +37,14 @@ impl OpNumberMathClamp {
         ]
     }
 
+    /// Creates the default output list: a single decimal output.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
         ]
     }
 
+    /// Executes the clamp: restricts input `a` to the `[min, max]` range.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let input_errors: Vec<(usize, String)> = vec![];

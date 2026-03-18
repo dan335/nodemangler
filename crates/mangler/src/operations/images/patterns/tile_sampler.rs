@@ -1,3 +1,9 @@
+//! Tile sampler pattern image generator.
+//!
+//! Scatters instances of an input pattern image across a grid with optional
+//! randomization of scale, rotation, and position offset. Uses a linear
+//! congruential generator (LCG) for deterministic pseudo-random values.
+
 use image::{ImageBuffer, DynamicImage};
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -9,20 +15,28 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Advances the LCG state by one step using Knuth's constants.
 fn lcg(seed: u64) -> u64 {
     seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)
 }
 
+/// Returns a pseudo-random float in `[0, 1)` and the next LCG state.
 fn lcg_float(seed: u64) -> (f64, u64) {
     let next = lcg(seed);
     let val = (next >> 33) as f64 / (1u64 << 31) as f64;
     (val, next)
 }
 
+/// Operation that scatters instances of an input pattern across a grid.
+///
+/// Each grid cell can have its instance randomly offset, scaled, and rotated.
+/// Instances are composited using a max blend so overlapping regions take
+/// the brightest value.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImagePatternTileSampler {}
 
 impl OpImagePatternTileSampler {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "tile sampler".to_string(),
@@ -30,6 +44,8 @@ impl OpImagePatternTileSampler {
         }
     }
 
+    /// Creates the default inputs: pattern image, dimensions, grid counts, scale,
+    /// and randomization parameters (scale_random, rotation_random, offset_random, seed).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("pattern".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
@@ -45,12 +61,14 @@ impl OpImagePatternTileSampler {
         ]
     }
 
+    /// Creates the default output: a single RGBA image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Scatters and composites pattern instances across the output image.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -181,7 +199,7 @@ impl OpImagePatternTileSampler {
                         let src = pattern_rgba.get_pixel(u as u32, v as u32);
                         let dst = image_buffer.get_pixel(px as u32, py as u32);
 
-                        // max composite
+                        // Max composite: take the brightest channel from source or destination
                         let r = dst[0].max(src[0]);
                         let g = dst[1].max(src[1]);
                         let b = dst[2].max(src[2]);

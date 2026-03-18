@@ -1,3 +1,8 @@
+//! Image adjustment operations for pixel-level color and tone manipulation.
+//!
+//! This module contains operations that modify image appearance without changing
+//! dimensions: blur, contrast, levels, color grading, edge detection, and more.
+
 pub mod auto_levels;
 pub mod blur;
 pub mod contrast;

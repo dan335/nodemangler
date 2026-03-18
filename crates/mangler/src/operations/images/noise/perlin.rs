@@ -1,3 +1,8 @@
+//! Perlin noise image generator.
+//!
+//! Produces a grayscale image using classic Perlin gradient noise. The noise
+//! values are mapped from linear space to sRGB for perceptually correct display.
+
 use image::{ImageBuffer, DynamicImage};
 use crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb;
 use crate::get_id;
@@ -11,10 +16,12 @@ use std::sync::Arc;
 use std::time::Instant;
 use noise::{NoiseFn, Perlin};
 
+/// Operation that generates a grayscale image from classic Perlin noise.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageNoisePerlin {}
 
 impl OpImageNoisePerlin {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "perlin noise".to_string(),
@@ -22,6 +29,7 @@ impl OpImageNoisePerlin {
         }
     }
 
+    /// Creates the default inputs: seed, width, height, and scale.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
@@ -31,12 +39,17 @@ impl OpImageNoisePerlin {
         ]
     }
 
+    /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
         ]
     }
 
+    /// Generates a Perlin noise image from the given inputs.
+    ///
+    /// Each pixel is sampled in 2D noise space, normalized to `[0, 1]`, converted
+    /// from linear to sRGB, and written as an 8-bit grayscale value.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -69,10 +82,13 @@ impl OpImageNoisePerlin {
 
         for x in 0..width {
             for y in 0..height {
+                // Use the larger dimension to keep the noise aspect ratio square
                 let size = width.max(height) as f64;
                 let coords_x = (x as f64) / (size as f64) * scale as f64;
                 let coords_y = (y as f64) / (size as f64) * scale as f64;
+                // Remap noise from [-1, 1] to [0, 1]
                 let noise = perlin.get([coords_x, coords_y]) as f32 * 0.5 + 0.5;
+                // Apply sRGB gamma curve for perceptually correct display
                 let non_linear = linear_to_nonlinear_srgb(noise);
                 let g = (non_linear * 255.0) as u8;
                 image_buffer.put_pixel(x as u32, y as u32, image::Luma([g]));

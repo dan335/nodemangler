@@ -1,3 +1,9 @@
+//! Circle shape / gradient image generator.
+//!
+//! Generates a vertical color gradient between two colors, blended in a
+//! configurable color space. Despite the name "circle", this currently produces
+//! a vertical gradient strip and outputs width/height alongside the image.
+
 use std::sync::Arc;
 use image::{RgbaImage, ImageBuffer, DynamicImage};
 use crate::color::Color;
@@ -11,10 +17,15 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Operation that generates a vertical color gradient between two colors.
+///
+/// Supports blending in multiple color spaces (sRGB, Linear RGB, HSL, HSV,
+/// Lab, LCH, XYZ, YUV, CMYK) for perceptually different interpolation results.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageShapesCircle {}
 
 impl OpImageShapesCircle {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "circle".to_string(),
@@ -22,6 +33,7 @@ impl OpImageShapesCircle {
         }
     }
 
+    /// Creates the default inputs: color, background, width, height, padding, color space, and blend mode.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("color".to_string(), Value::Color(Color::default()), None, None),
@@ -34,6 +46,7 @@ impl OpImageShapesCircle {
         ]
     }
 
+    /// Creates the default outputs: the gradient image, width, and height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
@@ -42,6 +55,7 @@ impl OpImageShapesCircle {
         ]
     }
 
+    /// Generates a vertical color gradient image blended in the selected color space.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -70,6 +84,7 @@ impl OpImageShapesCircle {
 
         let blend_mode = crate::color::blend::BlendMode::Lerp;
 
+        // Blend the two colors row-by-row using the selected color space
         match color_space {
             ColorSpace::Srgb => {
                 for y in 0..height {

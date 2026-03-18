@@ -1,3 +1,9 @@
+//! Performance benchmarks for core graph operations.
+//!
+//! These tests measure execution time for common graph patterns (single node,
+//! chained nodes, fan-out) comparing cold runs, cached runs, and runs with
+//! changed inputs. Run with `cargo test -- --nocapture` to see timing output.
+
 #[cfg(test)]
 mod perf_tests {
     use std::sync::Arc;

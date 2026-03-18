@@ -1,3 +1,9 @@
+//! Automatic levels adjustment operation for images.
+//!
+//! Analyzes the image histogram to find the actual luminance range, then
+//! remaps pixel values to fill the full [0, 1] range. Configurable clip
+//! percentages allow ignoring outlier pixels at both ends.
+
 use crate::get_id;
 use crate::value::ValueType;
 use image::DynamicImage;
@@ -10,10 +16,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Automatic levels adjustment that stretches the histogram to fill the full tonal range.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentAutoLevels{}
 
 impl OpImageAdjustmentAutoLevels {
+    /// Returns the node metadata (name and description) for the auto levels operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "auto levels".to_string(),
@@ -21,6 +29,7 @@ impl OpImageAdjustmentAutoLevels {
         }
     }
 
+    /// Creates the input ports: image and clip percentages for black and white ends of the histogram.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -29,12 +38,15 @@ impl OpImageAdjustmentAutoLevels {
         ]
     }
 
+    /// Creates the output port: the auto-levels-adjusted image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
+    /// Executes the auto levels adjustment. Builds a 256-bin luminance histogram,
+    /// finds clip-adjusted black and white points, then linearly remaps all channels.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

@@ -1,3 +1,7 @@
+//! Decrement operation for the node graph.
+//!
+//! Subtracts 1 from an integer or decimal value. For strings, appends " -1".
+
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse};
@@ -6,10 +10,14 @@ use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Node operation that decrements a value by 1.
+///
+/// For integers, subtracts 1. For decimals, subtracts 1.0. For strings, appends " -1".
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpNumberMathDecrement {}
 
 impl OpNumberMathDecrement {
+    /// Returns the node metadata (name and description).
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "decrement".to_string(),
@@ -17,18 +25,21 @@ impl OpNumberMathDecrement {
         }
     }
 
+    /// Creates the default input list: a single decimal drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
         ]
     }
 
+    /// Creates the default output list: a single decimal output.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
         ]
     }
 
+    /// Executes the decrement: subtracts 1 from the input value.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let input_errors: Vec<(usize, String)> = vec![];

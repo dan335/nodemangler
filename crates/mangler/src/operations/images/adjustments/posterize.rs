@@ -1,3 +1,9 @@
+//! Posterize (color quantization) operation for images.
+//!
+//! Reduces the number of discrete color levels per channel, creating a
+//! banded or poster-like appearance. With 2 levels, the output is pure
+//! black and white.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -10,10 +16,12 @@ use std::sync::Arc;
 use std::time::Instant;
 use image::DynamicImage;
 
+/// Posterize operation that quantizes pixel values to a limited number of discrete levels.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentPosterize {}
 
 impl OpImageAdjustmentPosterize {
+    /// Returns the node metadata (name and description) for the posterize operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "posterize".to_string(),
@@ -21,6 +29,7 @@ impl OpImageAdjustmentPosterize {
         }
     }
 
+    /// Creates the input ports: image and number of quantization levels (2-256).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
@@ -28,12 +37,14 @@ impl OpImageAdjustmentPosterize {
         ]
     }
 
+    /// Creates the output port: the posterized image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Executes the posterize operation. Quantizes each channel to the specified number of levels.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -57,6 +68,7 @@ impl OpImageAdjustmentPosterize {
         for pixel in buffer.pixels_mut() {
             for c in 0..3 {
                 let val = pixel[c];
+                // Round to nearest quantization step
                 let quantized = (val * steps + 0.5).floor() / steps;
                 pixel[c] = quantized.clamp(0.0, 1.0);
             }

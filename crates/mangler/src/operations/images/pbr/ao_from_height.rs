@@ -1,3 +1,9 @@
+//! Ambient occlusion generation from a height map.
+//!
+//! Approximates ambient occlusion by sampling height differences at evenly
+//! spaced angles around each pixel. Higher neighboring surfaces contribute
+//! more occlusion, producing darker values in concavities and crevices.
+
 use crate::get_id;
 use crate::value::ValueType;
 use image::DynamicImage;
@@ -10,10 +16,16 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Operation that computes ambient occlusion from a grayscale height map.
+///
+/// For each pixel, samples are taken at evenly spaced angles at the given radius.
+/// The height difference (clamped to positive) divided by distance accumulates
+/// occlusion, which is then scaled by intensity and subtracted from 1.0.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImagePbrAoFromHeight {}
 
 impl OpImagePbrAoFromHeight {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "ao from height".to_string(),
@@ -21,6 +33,7 @@ impl OpImagePbrAoFromHeight {
         }
     }
 
+    /// Creates the default inputs: height map image, radius, intensity, and sample count.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
@@ -30,12 +43,14 @@ impl OpImagePbrAoFromHeight {
         ]
     }
 
+    /// Creates the default output: a single RGBA32F ambient occlusion image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Computes ambient occlusion from the input height map by radial sampling.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

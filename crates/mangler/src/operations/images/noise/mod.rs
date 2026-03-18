@@ -1,3 +1,10 @@
+//! Noise generation operations.
+//!
+//! This module provides a collection of procedural noise generators that produce
+//! grayscale images. Includes basic noise types (Perlin, Simplex, Value, Worley),
+//! fractal noise variants (fBm, Billow, Ridged Multifractal, Hybrid Multifractal),
+//! and geometric noise patterns (Cylinders, Checkerboard).
+
 pub mod perlin;
 pub mod worley_distance;
 pub mod worley_value;

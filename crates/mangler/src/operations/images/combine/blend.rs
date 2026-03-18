@@ -1,3 +1,9 @@
+//! Blend compositing operation.
+//!
+//! Composites a foreground image onto a background using a configurable blend
+//! mode, blend amount, alpha mask, color space, and position offset. Supports
+//! all 17 blend modes and all 9 color spaces.
+
 use crate::color::Color;
 use crate::color::color_spaces::ColorSpace;
 use crate::get_id;
@@ -10,10 +16,16 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Operation that blends a foreground image onto a background image.
+///
+/// Supports configurable blend mode (Normal, Multiply, Screen, etc.),
+/// blend amount (0.0-1.0), an optional alpha mask image, color space
+/// selection for the blending math, and x/y position offsets.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageCombineBlend {}
 
 impl OpImageCombineBlend {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "blend".to_string(),
@@ -21,6 +33,8 @@ impl OpImageCombineBlend {
         }
     }
 
+    /// Creates the input definitions: background, foreground, amount, alpha mask,
+    /// blend mode, color space, and x/y position.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("background".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -34,12 +48,18 @@ impl OpImageCombineBlend {
         ]
     }
 
+    /// Creates the output definitions: the composited result image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
+    /// Executes the operation: composites the foreground onto the background.
+    ///
+    /// Iterates over every pixel of the background. For each pixel that overlaps
+    /// with the positioned foreground, the blend is computed in the selected color
+    /// space using the chosen blend mode, modulated by the amount and alpha mask.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -78,19 +98,22 @@ impl OpImageCombineBlend {
         for (x, y, pixel) in background_image.enumerate_pixels_mut() {
             let background_color = Color::from_srgb_float(pixel[0], pixel[1], pixel[2], pixel[3]);
 
+            // Compute where this background pixel maps to in the foreground, accounting for offset
             let foreground_x = x as i32 - position_x;
             let foreground_y = y as i32 - position_y;
 
             if foreground_x >= 0 && foreground_y >= 0 {
                 if let Some(foreground_pixel) = foreground_image.get_pixel_checked(foreground_x as u32, foreground_y as u32) {
                     let mut blend_amount = amount;
-    
+
+                    // Modulate the blend amount by the alpha mask's luminance (average of RGB)
                     if let Some(alpha_pixel) = alpha_image.get_pixel_checked(x, y) {
                         blend_amount = amount * ((alpha_pixel[0] as f32 + alpha_pixel[1] as f32 + alpha_pixel[2] as f32) / (1.0 * 3.0));
                     }
     
                     let foreground_color = Color::from_srgb_float(foreground_pixel[0], foreground_pixel[1], foreground_pixel[2], foreground_pixel[3]);
     
+                    // Perform the blend in the selected color space and convert back to sRGB
                     let new_color = match color_space {
                         crate::color::color_spaces::ColorSpace::Srgb => Color::blend_srgb(background_color, foreground_color, &blend_mode, blend_amount).to_srgb_float(),
                         crate::color::color_spaces::ColorSpace::RgbLinear => Color::blend_linear(background_color, foreground_color, &blend_mode, blend_amount).to_srgb_float(),

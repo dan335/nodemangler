@@ -1,3 +1,9 @@
+//! Brick pattern image generator.
+//!
+//! Generates a tileable brick wall pattern as a grayscale image where white
+//! represents bricks and black represents mortar gaps. Supports configurable
+//! row/column count, row offset (staggering), and gap size.
+
 use image::{ImageBuffer, DynamicImage};
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -9,10 +15,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Operation that generates a brick wall pattern as a grayscale image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImagePatternBrick {}
 
 impl OpImagePatternBrick {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "brick".to_string(),
@@ -20,6 +28,7 @@ impl OpImagePatternBrick {
         }
     }
 
+    /// Creates the default inputs: width, height, columns, rows, offset, and gap_size.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
@@ -31,12 +40,14 @@ impl OpImagePatternBrick {
         ]
     }
 
+    /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Generates a brick pattern image from the given inputs.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -77,6 +88,7 @@ impl OpImagePatternBrick {
             let row = (y as f64 / cell_height).floor() as i32;
             let y_in_cell = (y as f64 % cell_height) / cell_height;
 
+            // Stagger odd rows by the offset fraction of cell width
             let row_offset = if row % 2 != 0 { offset * cell_width } else { 0.0 };
 
             for x in 0..width {

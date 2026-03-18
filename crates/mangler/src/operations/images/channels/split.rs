@@ -1,3 +1,9 @@
+//! Channel split operation.
+//!
+//! Decomposes an RGBA image into four separate grayscale images, one per
+//! channel (red, green, blue, alpha). Each output image stores the channel
+//! value replicated across R, G, and B with full opacity.
+
 use crate::get_id;
 use crate::value::ValueType;
 use image::RgbaImage;
@@ -10,10 +16,16 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Operation that splits an image into its individual R, G, B, and A channels.
+///
+/// Each output is a grayscale image where the channel value is replicated
+/// across all three RGB components (e.g., the red output has `[r, r, r, 255]`
+/// per pixel).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageChannelSplit {}
 
 impl OpImageChannelSplit {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "channel split".to_string(),
@@ -21,12 +33,14 @@ impl OpImageChannelSplit {
         }
     }
 
+    /// Creates the input definitions: a single RGBA image to split.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
         ]
     }
 
+    /// Creates the output definitions: four grayscale images (red, green, blue, alpha).
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("red".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
@@ -36,6 +50,10 @@ impl OpImageChannelSplit {
         ]
     }
 
+    /// Executes the operation: splits the input image into four channel images.
+    ///
+    /// Each channel value is replicated across RGB in the output to produce
+    /// a viewable grayscale representation of that channel.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -58,6 +76,7 @@ impl OpImageChannelSplit {
         let mut blue_buf = RgbaImage::new(width, height);
         let mut alpha_buf = RgbaImage::new(width, height);
 
+        // Write each channel value to all three RGB components of its output buffer
         for (x, y, pixel) in rgba.enumerate_pixels() {
             let [r, g, b, a] = pixel.0;
             red_buf.put_pixel(x, y, image::Rgba([r, r, r, 255]));

@@ -1,3 +1,8 @@
+//! Division operation for the node graph.
+//!
+//! Computes `a / b` for integer and decimal types. Returns an error if `b` is zero.
+//! Mixed integer/decimal types promote to decimal.
+
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse};
@@ -6,10 +11,15 @@ use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Node operation that divides `a` by `b`.
+///
+/// Returns an error when `b` is zero. Supports integer and decimal types;
+/// mixed types promote to decimal. Integer division truncates toward zero.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpNumberMathDivide {}
 
 impl OpNumberMathDivide {
+    /// Returns the node metadata (name and description).
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "divide".to_string(),
@@ -17,6 +27,7 @@ impl OpNumberMathDivide {
         }
     }
 
+    /// Creates the default input list: two decimal drag-value inputs (a and b), defaulting to 1.0.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
@@ -24,12 +35,14 @@ impl OpNumberMathDivide {
         ]
     }
 
+    /// Creates the default output list: a single decimal output.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
         ]
     }
 
+    /// Executes the division: computes `a / b`, returning an error if `b` is zero.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let input_errors: Vec<(usize, String)> = vec![];

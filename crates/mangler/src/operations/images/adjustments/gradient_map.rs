@@ -1,3 +1,9 @@
+//! Gradient map operation for images.
+//!
+//! Maps each pixel's luminance to a position on a color gradient, replacing
+//! the original color. Supports two-color or three-color gradients with a
+//! configurable midpoint position.
+
 use crate::color::Color;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -10,10 +16,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Gradient map operation that recolors an image by mapping luminance to a color gradient.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentGradientMap {}
 
 impl OpImageAdjustmentGradientMap {
+    /// Returns the node metadata (name and description) for the gradient map operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "gradient map".to_string(),
@@ -21,6 +29,8 @@ impl OpImageAdjustmentGradientMap {
         }
     }
 
+    /// Creates the input ports: image, two endpoint colors (a, b), an optional mid color (c),
+    /// a toggle for using the mid color, and a mid position slider.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
@@ -32,12 +42,15 @@ impl OpImageAdjustmentGradientMap {
         ]
     }
 
+    /// Creates the output port: the gradient-mapped image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Executes the gradient map. Computes Rec. 709 luminance per pixel and interpolates
+    /// between gradient colors based on luminance position.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -78,9 +91,11 @@ impl OpImageAdjustmentGradientMap {
             let b = pixel[2];
             let original_a = pixel[3];
 
+            // Rec. 709 luminance
             let lum = (0.2126 * r + 0.7152 * g + 0.0722 * b).clamp(0.0, 1.0);
 
             let (out_r, out_g, out_b, _out_a) = if use_mid {
+                // Three-color gradient: lerp A->C below midpoint, C->B above midpoint
                 if lum < mid_pos as f32 {
                     let t = if mid_pos > 0.0 { lum / mid_pos as f32 } else { 0.0 };
                     (
@@ -99,6 +114,7 @@ impl OpImageAdjustmentGradientMap {
                     )
                 }
             } else {
+                // Two-color gradient: simple linear interpolation A->B
                 (
                     ar + (br - ar) * lum,
                     ag + (bg - ag) * lum,

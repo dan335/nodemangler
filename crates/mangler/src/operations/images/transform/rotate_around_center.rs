@@ -1,3 +1,5 @@
+//! Arbitrary-angle rotation around the image center.
+
 use crate::color::Color;
 use crate::get_id;
 use crate::value::ValueType;
@@ -10,10 +12,15 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Rotates an image by an arbitrary angle (in degrees) around its center point.
+///
+/// Uses bicubic interpolation for smooth results. Areas outside the original
+/// image bounds are filled with the specified background color.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageTransformRotateAroundCenter {}
 
 impl OpImageTransformRotateAroundCenter {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "rotate around center".to_string(),
@@ -21,6 +28,7 @@ impl OpImageTransformRotateAroundCenter {
         }
     }
 
+    /// Creates the default inputs: source image, rotation angle in degrees, and background fill color.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -29,12 +37,14 @@ impl OpImageTransformRotateAroundCenter {
         ]
     }
 
+    /// Creates the default outputs: the rotated image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
+    /// Executes the rotation using `imageproc` bicubic interpolation.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -54,6 +64,7 @@ impl OpImageTransformRotateAroundCenter {
         let Value::Color(bg_color) = bg_color_converted.unwrap() else { unreachable!() };
 
         // run node
+        // Convert the background color to sRGB u8 for the imageproc API
         let color = bg_color.to_srgb_u8();
 
         let adjusted = imageproc::geometric_transformations::rotate_about_center(&data.to_rgba8(), degrees.to_radians(), imageproc::geometric_transformations::Interpolation::Bicubic, image::Rgba([color.0,color.1,color.2,color.3]));

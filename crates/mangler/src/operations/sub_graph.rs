@@ -1,3 +1,9 @@
+//! Subgraph operation: embeds an entire graph inside a single node.
+//!
+//! This operation loads a graph from a `.mangle` file and executes it as a
+//! nested subgraph within the parent graph. This is experimental/WIP -- the
+//! subgraph is lazily loaded on first run and executed on a dedicated thread
+//! with its own tokio runtime.
 
 use crate::graph::Graph;
 use crate::node::{Data, SubgraphData};
@@ -17,16 +23,22 @@ use tokio::{
 };
 
 
+/// Operation that wraps an entire node graph as a single node.
+///
+/// On first execution, the subgraph is loaded from the file path specified
+/// in input 0. Subsequent executions reuse the loaded graph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OperationSubgraph {}
 
 impl OperationSubgraph {
+    /// Returns the display settings for the subgraph node.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "subgraph".to_string(),
         }
     }
 
+    /// Creates the default inputs: a single file path to the `.mangle` graph file.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input {
@@ -38,16 +50,25 @@ impl OperationSubgraph {
         ]
     }
 
+    /// Creates outputs. Currently empty -- subgraph outputs are not yet wired through.
     pub fn create_outputs() -> Vec<Output> {
         vec![]
     }
 
+    /// Creates the initial data slots, including a `None` subgraph placeholder
+    /// that will be populated on first run.
     pub fn create_data() -> Vec<Data> {
         vec![
             Data::Subgraph(None)
         ]
     }
 
+    /// Executes the subgraph operation.
+    ///
+    /// On first invocation, loads the graph from the file path in input 0 and
+    /// stores it in the data slot. On subsequent calls, runs the already-loaded
+    /// graph. The subgraph execution happens on a spawned thread with its own
+    /// tokio runtime to avoid blocking the parent runtime.
     pub async fn run(inputs: &Vec<Input>, data: &mut Vec<Data>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -62,9 +83,12 @@ impl OperationSubgraph {
         // run node
 
         if let Some(mut data) = data.get_mut(0) {
+            // Temporary holder: we build the subgraph data outside the borrow,
+            // then swap it in afterwards to satisfy the borrow checker.
             let mut data_subgraph: Option<Data> = None;
 
             if let Data::Subgraph(subgraph) = data {
+                // Lazy initialization: only load the graph file on first run
                 if subgraph.is_none() {
                     let Ok(Value::String(path_string)) = inputs[0].value.try_convert_to(ValueType::String) else { return Err(OperationError { message: "Unable to get path string.".to_string() })};
                     let path = PathBuf::from(path_string);
@@ -99,6 +123,7 @@ impl OperationSubgraph {
                 }
             }
 
+            // If we just loaded a new subgraph, extract and run it
             if let Some(asdf) = data_subgraph {
                 let Data::Subgraph(subgraph_data) = asdf;
 
@@ -111,6 +136,8 @@ impl OperationSubgraph {
                     //     println!("Async function completed synchronously.");
                     // });
 
+                    // Spawn a dedicated thread with its own tokio runtime to run the
+                    // subgraph, avoiding nesting async runtimes on the parent executor.
                     thread::spawn(move || {
                         let rt = Runtime::new().unwrap();
 

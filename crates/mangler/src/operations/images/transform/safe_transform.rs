@@ -1,3 +1,5 @@
+//! Safe transform operation with wrapping edges for seamless tiling.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -9,10 +11,16 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Applies translation, rotation, and scale to an image with wrapping at edges.
+///
+/// All coordinates wrap around using modular arithmetic, so the output remains
+/// seamlessly tileable if the input is tileable. This is especially useful in
+/// texture/material workflows where seam-free transforms are required.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageTransformSafeTransform {}
 
 impl OpImageTransformSafeTransform {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "safe transform".to_string(),
@@ -20,6 +28,7 @@ impl OpImageTransformSafeTransform {
         }
     }
 
+    /// Creates the default inputs: source image, X/Y translation (normalized), rotation (degrees), and scale factor.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
@@ -30,12 +39,14 @@ impl OpImageTransformSafeTransform {
         ]
     }
 
+    /// Creates the default outputs: the transformed image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Executes the safe transform using inverse mapping with wrapping coordinates.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -58,11 +69,13 @@ impl OpImageTransformSafeTransform {
         let (w, h) = (src.width(), src.height());
         let mut output = image::RgbaImage::new(w, h);
 
+        // Precompute rotation trig values and image center
         let angle_rad = rotation.to_radians();
         let cos_a = angle_rad.cos();
         let sin_a = angle_rad.sin();
         let cx = w as f32 / 2.0;
         let cy = h as f32 / 2.0;
+        // Prevent division by zero when scale is near zero
         let safe_scale = if scale.abs() < 0.001 { 0.001 } else { scale };
 
         for y in 0..h {

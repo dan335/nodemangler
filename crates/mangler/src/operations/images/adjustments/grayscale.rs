@@ -1,3 +1,8 @@
+//! Grayscale conversion operation for images.
+//!
+//! Converts an image to grayscale using the `image` crate's built-in
+//! luminance-weighted conversion, producing equal R, G, B channels.
+
 use crate::get_id;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
@@ -8,10 +13,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Grayscale conversion operation that removes color information from an image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentGrayscale {}
 
 impl OpImageAdjustmentGrayscale {
+    /// Returns the node metadata (name and description) for the grayscale operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "grayscale".to_string(),
@@ -19,18 +26,21 @@ impl OpImageAdjustmentGrayscale {
         }
     }
 
+    /// Creates the input port: a single image to convert.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id:get_id() }, None, None),
         ]
     }
 
+    /// Creates the output port: the grayscale-converted image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id:get_id() }, None),
         ]
     }
 
+    /// Executes the grayscale conversion on the input image.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

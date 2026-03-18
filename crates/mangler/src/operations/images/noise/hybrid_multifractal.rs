@@ -1,3 +1,9 @@
+//! Hybrid multifractal noise image generator.
+//!
+//! Produces a grayscale image using hybrid multifractal noise, which creates
+//! smooth valley bottoms at all altitudes while maintaining fractal detail
+//! on ridges and peaks.
+
 use image::{ImageBuffer, DynamicImage};
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -10,10 +16,12 @@ use std::sync::Arc;
 use std::time::Instant;
 use noise::{NoiseFn, MultiFractal, Perlin, HybridMulti};
 
+/// Operation that generates a grayscale image from hybrid multifractal noise.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageNoiseHybridMultifractalNoise {}
 
 impl OpImageNoiseHybridMultifractalNoise {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "hybrid multifractal noise".to_string(),
@@ -21,6 +29,7 @@ impl OpImageNoiseHybridMultifractalNoise {
         }
     }
 
+    /// Creates the default inputs: seed, width, height, octaves, frequency, lacunarity, and persistence.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
@@ -33,12 +42,14 @@ impl OpImageNoiseHybridMultifractalNoise {
         ]
     }
 
+    /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
         ]
     }
 
+    /// Generates a hybrid multifractal noise image from the given inputs.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

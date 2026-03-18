@@ -1,10 +1,13 @@
+//! Integer input node operation.
+//!
+//! Provides a single integer value to the graph. Accepts integer or decimal inputs
+//! (decimals are truncated to integers via type conversion).
+
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
-//use crate::operations::Op;
 use crate::output::Output;
 use crate::value::{Value, ValueType};
-//use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -111,11 +114,16 @@ mod tests {
     }
 }
 
+/// Node operation that outputs an integer value.
+///
+/// Passes through a single integer input as the output. Input values of other
+/// numeric types are converted to integers (e.g., decimals are truncated).
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OpNumberInputInteger {}
 
 
 impl OpNumberInputInteger {
+    /// Returns the node metadata (name and description).
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "integer".to_string(),
@@ -123,18 +131,21 @@ impl OpNumberInputInteger {
         }
     }
 
+    /// Creates the default input list: a single integer drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("input".to_string(), Value::Integer(i32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
         ]
     }
 
+    /// Creates the default output list: a single integer output.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Integer(i32::default()), None)
         ]
     }
 
+    /// Executes the node: converts the input to an integer and passes it through.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

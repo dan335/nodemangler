@@ -1,3 +1,9 @@
+//! Hexagonal tile pattern image generator.
+//!
+//! Generates a flat-top hexagonal tile pattern as a grayscale image using
+//! axial/cube coordinate rounding to find the nearest hex center, then
+//! computing the hexagonal distance for gap detection.
+
 use image::{ImageBuffer, DynamicImage};
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -9,10 +15,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Operation that generates a hexagonal tile pattern as a grayscale image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImagePatternHexagonal {}
 
 impl OpImagePatternHexagonal {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "hexagonal".to_string(),
@@ -20,6 +28,7 @@ impl OpImagePatternHexagonal {
         }
     }
 
+    /// Creates the default inputs: width, height, scale, and gap_size.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
@@ -29,12 +38,14 @@ impl OpImagePatternHexagonal {
         ]
     }
 
+    /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Generates a hexagonal tile pattern image from the given inputs.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

@@ -1,3 +1,9 @@
+//! Serialization round-trip tests for core types.
+//!
+//! Verifies that `Value` variants, `Operation` enums, `Node`s, and
+//! `GraphSaveData` survive JSON serialization and deserialization without
+//! data loss or corruption.
+
 #[cfg(test)]
 mod serialization_tests {
     use std::collections::HashMap;

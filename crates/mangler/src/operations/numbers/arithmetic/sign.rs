@@ -1,3 +1,8 @@
+//! Sign operation for the node graph.
+//!
+//! Returns the sign of a number: -1, 0, or 1 for integers; -1.0 or 1.0 for
+//! decimals (note: `f32::signum(0.0)` returns `1.0`, not `0.0`).
+
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse};
@@ -6,10 +11,15 @@ use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Node operation that returns the sign of a number.
+///
+/// Uses `i32::signum` for integers (returns -1, 0, or 1) and `f32::signum`
+/// for decimals (returns -1.0 or 1.0; positive zero returns 1.0).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpNumberMathSign {}
 
 impl OpNumberMathSign {
+    /// Returns the node metadata (name and description).
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "sign".to_string(),
@@ -17,18 +27,21 @@ impl OpNumberMathSign {
         }
     }
 
+    /// Creates the default input list: a single decimal drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
         ]
     }
 
+    /// Creates the default output list: a single decimal output.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
         ]
     }
 
+    /// Executes the sign operation: returns the signum of the input.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let input_errors: Vec<(usize, String)> = vec![];

@@ -1,3 +1,9 @@
+//! Unsharp mask operation for images.
+//!
+//! Applies an unsharp mask filter using a Gaussian blur subtraction technique.
+//! The sigma controls the blur radius and the threshold determines which edges
+//! are enhanced (higher threshold = only stronger edges are sharpened).
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -9,10 +15,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Unsharp mask operation that enhances edges by subtracting a blurred version of the image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentUnsharpen {}
 
 impl OpImageAdjustmentUnsharpen {
+    /// Returns the node metadata (name and description) for the unsharpen operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "unsharpen".to_string(),
@@ -20,6 +28,7 @@ impl OpImageAdjustmentUnsharpen {
         }
     }
 
+    /// Creates the input ports: an image, sigma (blur radius), and threshold (edge sensitivity).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -28,12 +37,14 @@ impl OpImageAdjustmentUnsharpen {
         ]
     }
 
+    /// Creates the output port: the unsharp-masked image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
+    /// Executes the unsharp mask. Clamps sigma to non-negative before applying.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

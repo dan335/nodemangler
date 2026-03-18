@@ -1,3 +1,7 @@
+//! Minimum operation for the node graph.
+//!
+//! Returns the smaller of two numbers. Mixed integer/decimal types promote to decimal.
+
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse};
@@ -6,10 +10,14 @@ use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Node operation that returns the minimum of two numbers.
+///
+/// Supports integer and decimal types. Mixed types promote to decimal.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpNumberMathMin {}
 
 impl OpNumberMathMin {
+    /// Returns the node metadata (name and description).
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "min".to_string(),
@@ -17,6 +25,7 @@ impl OpNumberMathMin {
         }
     }
 
+    /// Creates the default input list: two decimal drag-value inputs (a and b).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
@@ -24,12 +33,14 @@ impl OpNumberMathMin {
         ]
     }
 
+    /// Creates the default output list: a single decimal output.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
         ]
     }
 
+    /// Executes the min operation: returns the smaller of `a` and `b`.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let input_errors: Vec<(usize, String)> = vec![];

@@ -1,3 +1,9 @@
+//! Random integer generation operation for the node graph.
+//!
+//! Generates a random integer in the range `[min, max)` each time the node is
+//! triggered. If `max <= min`, `max` is clamped to `min + 1` so the range is
+//! always valid.
+
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
@@ -6,10 +12,16 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Node operation that generates a random integer in `[min, max)`.
+///
+/// Takes a trigger input plus `min` and `max` integer bounds. Uses
+/// `fastrand::i32(min..max)`. When `max <= min`, `max` is clamped to
+/// `min.saturating_add(1)` to ensure a valid range.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpNumberRandomInteger {}
 
 impl OpNumberRandomInteger {
+    /// Returns the node metadata (name and description).
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "random integer".to_string(),
@@ -17,6 +29,7 @@ impl OpNumberRandomInteger {
         }
     }
 
+    /// Creates the default input list: trigger, `min` (i32::MIN), and `max` (i32::MAX).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("generate".to_string(), Value::Trigger, None, None),
@@ -25,12 +38,14 @@ impl OpNumberRandomInteger {
         ]
     }
 
+    /// Creates the default output list: a single integer output.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Integer(0), None)
         ]
     }
 
+    /// Executes the node: generates a random integer in `[min, max)`.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

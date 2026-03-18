@@ -1,3 +1,5 @@
+//! Make-tile operation that creates seamlessly tileable images via edge cross-fading.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -9,10 +11,17 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Makes an image seamlessly tileable by cross-fading overlapping border regions.
+///
+/// The blend size parameter (0.01 to 0.5) controls what fraction of the image
+/// width/height is used for the cross-fade region. Horizontal edges are blended
+/// first, then vertical edges are blended using the already horizontally-blended
+/// result to ensure proper corner handling.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageTransformMakeTile {}
 
 impl OpImageTransformMakeTile {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "make tile".to_string(),
@@ -20,6 +29,7 @@ impl OpImageTransformMakeTile {
         }
     }
 
+    /// Creates the default inputs: source image and blend size (fraction of image dimensions).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
@@ -27,12 +37,14 @@ impl OpImageTransformMakeTile {
         ]
     }
 
+    /// Creates the default outputs: the tileable image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Executes the make-tile operation by cross-fading horizontal then vertical edges.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -49,6 +61,7 @@ impl OpImageTransformMakeTile {
         let (w, h) = (src.width(), src.height());
         let mut output = src.clone();
 
+        // Compute the pixel-space blend region sizes from the normalized blend fraction
         let blend_size = blend_size.clamp(0.01, 0.5);
         let blend_w = (w as f32 * blend_size) as u32;
         let blend_h = (h as f32 * blend_size) as u32;
@@ -106,6 +119,7 @@ impl OpImageTransformMakeTile {
     }
 }
 
+/// Linearly interpolates between two RGBA pixels by factor `t` (0.0 = fully `b`, 1.0 = fully `a`).
 fn blend_pixels(a: &[u8; 4], b: &[u8; 4], t: f32) -> [u8; 4] {
     let mut result = [0u8; 4];
     for i in 0..4 {

@@ -1,3 +1,9 @@
+//! Color blend (lerp) operation.
+//!
+//! Blends two colors together by linearly interpolating between them in a
+//! user-specified color space. Different color spaces produce different
+//! perceptual blending results.
+
 use crate::color::Color;
 use crate::color::color_spaces::ColorSpace;
 use crate::input::{Input, InputSettings};
@@ -8,10 +14,12 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Operation that blends two colors via linear interpolation in a chosen color space.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpColorBlendLerp {}
 
 impl OpColorBlendLerp {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "blend".to_string(),
@@ -19,6 +27,7 @@ impl OpColorBlendLerp {
         }
     }
 
+    /// Creates the input definitions: two colors (a, b), a blend amount (0..1), and a color space.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Color(Color::default()), None, None),
@@ -28,12 +37,14 @@ impl OpColorBlendLerp {
         ]
     }
 
+    /// Creates the single output definition for the blended color result.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Color(Color::default()), None)
         ]
     }
 
+    /// Executes the blend operation by lerping between colors a and b in the chosen color space.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -54,7 +65,8 @@ impl OpColorBlendLerp {
         let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
         let Value::ColorSpace(color_space) = color_space_converted.unwrap() else { unreachable!() };  
 
-        // run node
+        // Dispatch to the appropriate blend function based on the chosen color space.
+        // Each color space produces perceptually different interpolation results.
         let color = match color_space {
             crate::color::color_spaces::ColorSpace::Srgb => Color::blend_srgb(a, b, &crate::color::blend::BlendMode::Lerp, amount),
             crate::color::color_spaces::ColorSpace::RgbLinear => Color::blend_linear(a, b, &crate::color::blend::BlendMode::Lerp, amount),

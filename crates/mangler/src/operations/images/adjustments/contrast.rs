@@ -1,3 +1,8 @@
+//! Contrast adjustment operation for images.
+//!
+//! Adjusts image contrast using the `image` crate's `adjust_contrast` method,
+//! which scales pixel deviation from the mean intensity.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -9,10 +14,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Contrast adjustment operation that scales pixel deviation from the mean.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentContrast {}
 
 impl OpImageAdjustmentContrast {
+    /// Returns the node metadata (name and description) for the contrast operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "contrast".to_string(),
@@ -20,6 +27,7 @@ impl OpImageAdjustmentContrast {
         }
     }
 
+    /// Creates the input ports: an image and an amount controlling contrast strength.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -27,12 +35,14 @@ impl OpImageAdjustmentContrast {
         ]
     }
 
+    /// Creates the output port: the contrast-adjusted image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
+    /// Executes the contrast adjustment on the input image.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

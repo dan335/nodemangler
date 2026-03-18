@@ -1,3 +1,8 @@
+//! Multiplication operation for the node graph.
+//!
+//! Computes `a * b` for integer and decimal types, with automatic type promotion
+//! when mixing integers and decimals.
+
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse};
@@ -6,10 +11,14 @@ use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Node operation that multiplies two numbers together.
+///
+/// Supports integer and decimal types. Mixed types promote to decimal.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpNumberMathMultiply {}
 
 impl OpNumberMathMultiply {
+    /// Returns the node metadata (name and description).
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "multiply".to_string(),
@@ -17,6 +26,7 @@ impl OpNumberMathMultiply {
         }
     }
 
+    /// Creates the default input list: two decimal drag-value inputs (a and b), defaulting to 1.0.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
@@ -24,12 +34,14 @@ impl OpNumberMathMultiply {
         ]
     }
 
+    /// Creates the default output list: a single decimal output.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
         ]
     }
 
+    /// Executes the multiplication: computes `a * b`.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let input_errors: Vec<(usize, String)> = vec![];

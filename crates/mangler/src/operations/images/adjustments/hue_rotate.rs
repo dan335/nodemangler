@@ -1,3 +1,8 @@
+//! Hue rotation operation for images.
+//!
+//! Rotates the hue of all pixels by a specified amount. The input amount is
+//! normalized (-1..1) and mapped to degrees (-360..360) before applying.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -9,10 +14,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Hue rotation operation that shifts pixel hue angles by a specified amount.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentHueRotate{}
 
 impl OpImageAdjustmentHueRotate {
+    /// Returns the node metadata (name and description) for the hue rotate operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "hue rotate".to_string(),
@@ -20,6 +27,7 @@ impl OpImageAdjustmentHueRotate {
         }
     }
 
+    /// Creates the input ports: an image and a normalized rotation amount (-1.0 to 1.0, mapped to -360..360 degrees).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -27,12 +35,14 @@ impl OpImageAdjustmentHueRotate {
         ]
     }
 
+    /// Creates the output port: the hue-rotated image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
+    /// Executes the hue rotation. Scales normalized amount to degrees (amount * 360).
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

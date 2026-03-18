@@ -1,3 +1,8 @@
+//! Convolution-based sharpening operation for images.
+//!
+//! Applies a 3x3 sharpening kernel where the center weight is boosted and
+//! edge weights are negative, enhancing local contrast at edges.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -10,10 +15,12 @@ use std::sync::Arc;
 use std::time::Instant;
 use image::DynamicImage;
 
+/// Convolution-based sharpening operation using a 3x3 edge-enhancement kernel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentSharpen {}
 
 impl OpImageAdjustmentSharpen {
+    /// Returns the node metadata (name and description) for the sharpen operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "sharpen".to_string(),
@@ -21,6 +28,7 @@ impl OpImageAdjustmentSharpen {
         }
     }
 
+    /// Creates the input ports: an image and an intensity controlling sharpening strength.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
@@ -28,12 +36,14 @@ impl OpImageAdjustmentSharpen {
         ]
     }
 
+    /// Creates the output port: the sharpened image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Executes the sharpening convolution. Uses edge-clamped sampling for border pixels.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

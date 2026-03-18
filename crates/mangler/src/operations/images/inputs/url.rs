@@ -1,3 +1,8 @@
+//! Image-from-URL input operation.
+//!
+//! Fetches an image from a remote URL via an async HTTP GET request and
+//! outputs the decoded image, its dimensions, and the resolved URL string.
+
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -8,10 +13,16 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Operation that downloads and decodes an image from a URL.
+///
+/// Uses `reqwest` to perform an async HTTP GET, then decodes the response
+/// bytes into a `DynamicImage`. Outputs the image, its width and height,
+/// and the URL string that was fetched.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageInputUrl {}
 
 impl OpImageInputUrl {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "from url".to_string(),
@@ -19,12 +30,14 @@ impl OpImageInputUrl {
         }
     }
 
+    /// Creates the input definitions: a single URL string with multi-line text editing.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("url".to_string(), Value::String("https://i.imgur.com/3aDSTiBl.jpg".to_string()), Some(InputSettings::MultiLineText), None),
         ]
     }
 
+    /// Creates the output definitions: the decoded image, width, height, and the fetched URL.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
@@ -34,6 +47,10 @@ impl OpImageInputUrl {
         ]
     }
 
+    /// Executes the operation: fetches the URL, downloads the image bytes, and decodes them.
+    ///
+    /// Returns an error if the HTTP request fails, the response cannot be read as bytes,
+    /// or the image format is unsupported.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

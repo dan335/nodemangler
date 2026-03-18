@@ -1,3 +1,9 @@
+//! Worley (cellular) noise distance image generator.
+//!
+//! Produces a grayscale image based on the distance to the nearest cell point
+//! in a Worley noise field. Supports multiple distance functions: Chebyshev,
+//! Euclidean, Euclidean squared, Manhattan, and Quadratic.
+
 use image::{ImageBuffer, DynamicImage};
 use noise::core::worley::distance_functions;
 use crate::get_id;
@@ -11,10 +17,15 @@ use std::sync::Arc;
 use std::time::Instant;
 use noise::{NoiseFn, Worley};
 
+/// Operation that generates a Worley noise image using distance return type.
+///
+/// The output brightness represents the distance from each pixel to the nearest
+/// Worley cell point, producing a cellular/Voronoi-like pattern.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageNoiseWorleyDistance {}
 
 impl OpImageNoiseWorleyDistance {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "worley noise distance".to_string(),
@@ -22,6 +33,7 @@ impl OpImageNoiseWorleyDistance {
         }
     }
 
+    /// Creates the default inputs: seed, width, height, distance function, and frequency.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
@@ -33,12 +45,14 @@ impl OpImageNoiseWorleyDistance {
         ]
     }
 
+    /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
         ]
     }
 
+    /// Generates a Worley distance noise image from the given inputs.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -68,6 +82,7 @@ impl OpImageNoiseWorleyDistance {
 
         let mut image_buffer = ImageBuffer::new(width as u32, height as u32);
 
+        // Map the enum variant to the corresponding noise library distance function
         let df = match distance_function {
             NoiseWorleyDistanceFunction::Chebyshev => distance_functions::chebyshev,
             NoiseWorleyDistanceFunction::Euclidean => distance_functions::euclidean,
@@ -102,15 +117,28 @@ impl OpImageNoiseWorleyDistance {
 }
 
 
+/// Available distance functions for Worley noise generation.
+///
+/// Each function measures the distance between two points differently,
+/// producing distinct cell patterns in the resulting noise image.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum NoiseWorleyDistanceFunction {
+    /// Maximum of absolute differences along each axis (L-infinity norm).
     Chebyshev,
+    /// Standard straight-line distance (L2 norm).
     Euclidean,
+    /// Squared Euclidean distance (avoids the square root for performance).
     EuclideanSquared,
+    /// Sum of absolute differences along each axis (L1 norm / taxicab distance).
     Manhattan,
+    /// Custom distance combining sum, absolute sum, and squared sum of differences.
     Quadratic,
 }
 
+/// Computes a quadratic distance metric between two points.
+///
+/// Combines the raw sum, absolute sum, and squared sum of per-axis differences
+/// to produce a non-standard distance that creates unique cell shapes.
 pub fn quadratic_distance(p1: &[f64], p2: &[f64]) -> f64 {
     let (sum, abs_sum, sq_sum) = p1.iter()
         .zip(p2.iter())
@@ -122,6 +150,7 @@ pub fn quadratic_distance(p1: &[f64], p2: &[f64]) -> f64 {
 }
 
 impl NoiseWorleyDistanceFunction {
+    /// Returns an array of all available distance function variants.
     pub fn types() -> [NoiseWorleyDistanceFunction; 5] {
         let types: [NoiseWorleyDistanceFunction; 5] = [
             NoiseWorleyDistanceFunction::Chebyshev,

@@ -1,3 +1,8 @@
+//! Logarithm operation with arbitrary base for the node graph.
+//!
+//! Computes `log_base(input)`. Returns an error if the input is not positive
+//! or if the base is not positive or equals 1.
+
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
@@ -6,10 +11,15 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Node operation that computes the logarithm of a number with a given base.
+///
+/// Both input and base must be positive, and the base must not equal 1.
+/// Uses f64 precision internally.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpNumberMathLog {}
 
 impl OpNumberMathLog {
+    /// Returns the node metadata (name and description).
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "log".to_string(),
@@ -17,6 +27,7 @@ impl OpNumberMathLog {
         }
     }
 
+    /// Creates the default input list: `input` (100.0) and `base` (10.0).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("input".to_string(), Value::Decimal(100.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
@@ -24,12 +35,14 @@ impl OpNumberMathLog {
         ]
     }
 
+    /// Creates the default output list: a single decimal output.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
         ]
     }
 
+    /// Executes the log: computes `log_base(input)`, validating both input and base.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

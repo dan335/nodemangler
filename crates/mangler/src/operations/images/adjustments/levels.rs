@@ -1,3 +1,9 @@
+//! Levels adjustment operation for images.
+//!
+//! Remaps pixel values using black point, white point, and gamma controls.
+//! Pixels below the black point are crushed to 0, above the white point to 1,
+//! and the gamma curve reshapes the midtone response.
+
 use crate::get_id;
 use crate::value::ValueType;
 use image::DynamicImage;
@@ -10,10 +16,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Levels adjustment operation with black point, white point, and gamma controls.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentLevels{}
 
 impl OpImageAdjustmentLevels {
+    /// Returns the node metadata (name and description) for the levels operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "levels".to_string(),
@@ -21,6 +29,7 @@ impl OpImageAdjustmentLevels {
         }
     }
 
+    /// Creates the input ports: image, black point, white point, and gamma.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -30,12 +39,14 @@ impl OpImageAdjustmentLevels {
         ]
     }
 
+    /// Creates the output port: the levels-adjusted image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
+    /// Executes the levels adjustment. Operates in 32-bit float space for precision.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -59,13 +70,16 @@ impl OpImageAdjustmentLevels {
         let mut buffer = data.to_rgba32f();
         let black_point = black_point as f32;
         let white_point = white_point as f32;
+        // Prevent division by zero when black and white points are equal
         let range = (white_point - black_point).max(0.001);
         let inv_gamma = (1.0 / gamma) as f32;
 
         for pixel in buffer.pixels_mut() {
             for c in 0..3 {
                 let val = pixel[c];
+                // Remap from [black_point, white_point] to [0, 1]
                 let remapped = ((val - black_point) / range).clamp(0.0, 1.0);
+                // Apply gamma correction (inv_gamma = 1/gamma)
                 let corrected = remapped.powf(inv_gamma);
                 pixel[c] = corrected;
             }

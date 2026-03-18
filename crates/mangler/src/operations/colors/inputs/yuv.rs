@@ -1,3 +1,9 @@
+//! YUV color input operation.
+//!
+//! Creates a [`Color`](crate::color::Color) from Y (luminance), U (blue
+//! chrominance), V (red chrominance), and alpha channel values. YUV separates
+//! brightness from color information, as used in video encoding standards.
+
 use crate::color::Color;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -7,10 +13,12 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Operation that constructs a color from YUV (luminance + chrominance) channel values.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpColorInputYuv {}
 
 impl OpColorInputYuv {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "yuv".to_string(),
@@ -18,6 +26,7 @@ impl OpColorInputYuv {
         }
     }
 
+    /// Creates the input definitions: Y (luminance), U (blue chrominance), V (red chrominance), and alpha.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("y (luminance)".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
@@ -27,12 +36,14 @@ impl OpColorInputYuv {
         ]
     }
 
+    /// Creates the single output definition for the constructed color.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Color(Color::default()), None)
         ]
     }
 
+    /// Executes the operation, assembling a color from YUV float channels.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

@@ -1,3 +1,8 @@
+//! Cylinders noise image generator.
+//!
+//! Produces a grayscale image of concentric cylindrical rings centered on the
+//! origin, similar to the cross-section pattern of tree rings.
+
 use image::{ImageBuffer, DynamicImage};
 use crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb;
 use crate::get_id;
@@ -11,10 +16,12 @@ use std::sync::Arc;
 use std::time::Instant;
 use noise::{NoiseFn, Cylinders};
 
+/// Operation that generates a concentric cylinder pattern as a grayscale image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageNoiseCylinders {}
 
 impl OpImageNoiseCylinders {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "cylinders noise".to_string(),
@@ -22,6 +29,7 @@ impl OpImageNoiseCylinders {
         }
     }
 
+    /// Creates the default inputs: width, height, and frequency.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
@@ -30,12 +38,14 @@ impl OpImageNoiseCylinders {
         ]
     }
 
+    /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
         ]
     }
 
+    /// Generates a cylinders noise image from the given inputs.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

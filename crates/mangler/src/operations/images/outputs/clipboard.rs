@@ -1,3 +1,8 @@
+//! Image-to-clipboard output operation.
+//!
+//! Copies an image to the system clipboard using the `arboard` crate,
+//! making it available for pasting into other applications.
+
 use crate::get_id;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
@@ -8,10 +13,16 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use arboard::{Clipboard, ImageData};
 
+/// Operation that copies an image to the system clipboard.
+///
+/// Converts the input image to RGBA8 format and writes it to the clipboard
+/// via `arboard`. This operation has no outputs since the result is a
+/// side effect (clipboard contents).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageOutputClipboard {}
 
 impl OpImageOutputClipboard {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "image to clipboard".to_string(),
@@ -19,16 +30,21 @@ impl OpImageOutputClipboard {
         }
     }
 
+    /// Creates the input definitions: a single image to copy to the clipboard.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
         ]
     }
 
+    /// Creates the output definitions: none (clipboard write is a side effect).
     pub fn create_outputs() -> Vec<Output> {
         vec![]
     }
 
+    /// Executes the operation: converts the image to RGBA8 and writes it to the clipboard.
+    ///
+    /// Returns an error if the clipboard cannot be accessed or the image cannot be written.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -42,7 +58,7 @@ impl OpImageOutputClipboard {
         // get values
         let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
 
-        // run node
+        // run node — convert to RGBA8 and prepare arboard ImageData
         let rgba8 = data.to_rgba8();
         let image_data = ImageData {
             width: data.width() as usize,

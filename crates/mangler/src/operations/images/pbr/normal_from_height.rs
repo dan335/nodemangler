@@ -1,3 +1,9 @@
+//! Normal map generation from a height map.
+//!
+//! Computes a tangent-space normal map from a grayscale height map using the
+//! Sobel operator for gradient estimation. The resulting normals are encoded
+//! in the standard `[0, 1]` range where `(0.5, 0.5, 1.0)` represents a flat surface.
+
 use crate::get_id;
 use crate::value::ValueType;
 use image::DynamicImage;
@@ -10,10 +16,16 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Operation that generates a normal map from a grayscale height map.
+///
+/// Uses a 3x3 Sobel operator to compute horizontal and vertical gradients,
+/// then derives the surface normal from those gradients scaled by the
+/// intensity parameter.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImagePbrNormalFromHeight{}
 
 impl OpImagePbrNormalFromHeight {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "normal from height".to_string(),
@@ -21,6 +33,7 @@ impl OpImagePbrNormalFromHeight {
         }
     }
 
+    /// Creates the default inputs: the height map image and intensity multiplier.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -28,12 +41,14 @@ impl OpImagePbrNormalFromHeight {
         ]
     }
 
+    /// Creates the default output: a single RGBA32F normal map image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
+    /// Generates a normal map from the input height map using the Sobel operator.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -55,6 +70,7 @@ impl OpImagePbrNormalFromHeight {
         let height = rgba.height() as i32;
         let intensity = intensity as f32;
 
+        // Compute luminance (Rec. 709) of a pixel, clamping coords to image bounds
         let luminance = |x: i32, y: i32| -> f32 {
             let cx = x.clamp(0, width - 1) as u32;
             let cy = y.clamp(0, height - 1) as u32;

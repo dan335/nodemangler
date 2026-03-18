@@ -1,3 +1,9 @@
+//! Slope blur operation for images.
+//!
+//! Blurs the image along directions derived from the gradient of a separate
+//! grayscale slope map. The gradient direction at each pixel determines the
+//! blur direction, creating an effect similar to paint being smeared downhill.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -12,10 +18,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Slope blur operation that blurs along gradient directions derived from a slope map.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentSlopeBlur {}
 
 impl OpImageAdjustmentSlopeBlur {
+    /// Returns the node metadata (name and description) for the slope blur operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "slope blur".to_string(),
@@ -23,6 +31,8 @@ impl OpImageAdjustmentSlopeBlur {
         }
     }
 
+    /// Creates the input ports: source image, slope map (grayscale gradient source),
+    /// intensity (pixel spread), and number of samples.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
@@ -32,12 +42,15 @@ impl OpImageAdjustmentSlopeBlur {
         ]
     }
 
+    /// Creates the output port: the slope-blurred image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Executes the slope blur. Computes per-pixel gradient direction from the slope map
+    /// using finite differences, then averages bilinear samples along that direction.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -92,6 +105,7 @@ impl OpImageAdjustmentSlopeBlur {
                 let grad_y = luminance_at(x, y_bottom) - luminance_at(x, y_top);
 
                 let grad_len = (grad_x * grad_x + grad_y * grad_y).sqrt();
+                // Normalize gradient to unit direction; zero gradient means no blur direction
                 let (dx, dy) = if grad_len > 1e-6 {
                     (grad_x / grad_len, grad_y / grad_len)
                 } else {

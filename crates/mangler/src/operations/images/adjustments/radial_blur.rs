@@ -1,3 +1,8 @@
+//! Radial (spin) blur operation for images.
+//!
+//! Applies a circular motion blur around the image center by sampling
+//! pixels at multiple angular offsets at the same radial distance.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -11,10 +16,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Radial blur operation that creates a circular spin blur effect around the image center.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentRadialBlur {}
 
 impl OpImageAdjustmentRadialBlur {
+    /// Returns the node metadata (name and description) for the radial blur operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "radial blur".to_string(),
@@ -22,6 +29,7 @@ impl OpImageAdjustmentRadialBlur {
         }
     }
 
+    /// Creates the input ports: image, spin angle (degrees), and number of samples.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
@@ -30,12 +38,15 @@ impl OpImageAdjustmentRadialBlur {
         ]
     }
 
+    /// Creates the output port: the radially blurred image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Executes the radial blur. For each pixel, computes the angle and distance from
+    /// the image center, then averages samples taken at angular offsets around that arc.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

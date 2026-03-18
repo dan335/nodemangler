@@ -1,3 +1,8 @@
+//! HSL color output operation.
+//!
+//! Decomposes a [`Color`](crate::color::Color) into hue, saturation, lightness,
+//! and alpha channel values.
+
 use crate::color::Color;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
@@ -7,10 +12,12 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Operation that decomposes a color into HSL (Hue, Saturation, Lightness) channel values.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpColorOutputHsl {}
 
 impl OpColorOutputHsl {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "to hsl".to_string(),
@@ -18,12 +25,14 @@ impl OpColorOutputHsl {
         }
     }
 
+    /// Creates the single input definition accepting a color to decompose.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("input".to_string(), Value::Color(Color::default()), None, None),
         ]
     }
 
+    /// Creates the output definitions: hue, saturation, lightness, and alpha as decimal values.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("hue".to_string(), Value::Decimal(0.5), None),
@@ -33,6 +42,7 @@ impl OpColorOutputHsl {
         ]
     }
 
+    /// Executes the operation, converting the input color to HSL float channels.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

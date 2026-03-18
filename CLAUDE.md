@@ -30,6 +30,7 @@ cargo run -p nodemangler  # Run the GUI app
 - BlendMode has 17 modes: Normal, Lerp, Multiply, Screen, Overlay, SoftLight, HardLight, ColorDodge, ColorBurn, Darken, Lighten, Difference, Exclusion, LinearBurn, LinearDodge, Divide, Subtract
 - Subgraph support: nodes can contain entire graphs for composition
 - Graphs serialize to JSON via `GraphSaveData`
+- **Tests belong in the source file**: place unit tests as `#[cfg(test)] mod tests` at the bottom of the file being tested, not in a separate `tests/` directory
 
 ## Key Files
 
@@ -52,7 +53,7 @@ cargo run -p nodemangler  # Run the GUI app
 3. Register it in the `operations!` macro in `crates/mangler/src/operations/mod.rs`
 4. Add it to the `operation_list()` function in the same file for it to appear in the node menu
 5. Add `pub mod` in the parent category `mod.rs`
-6. Add tests in `crates/mangler/src/tests/operations_tests.rs`
+6. Add tests as a `#[cfg(test)] mod tests` block at the bottom of the source file
 
 ## Operation Categories
 
@@ -72,4 +73,4 @@ cargo run -p nodemangler  # Run the GUI app
 
 ## Known Issues
 
-- `nodemangler` crate has a pre-existing compile error: `app.rs:58` calls `program.show()` with 4 args but signature takes 3. Use `cargo test -p mangler` to run tests without hitting this.
+None currently.

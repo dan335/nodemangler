@@ -1,3 +1,8 @@
+//! HSV color input operation.
+//!
+//! Creates a [`Color`](crate::color::Color) from hue (0..360), saturation (0..1),
+//! value/brightness (0..1), and alpha channel values.
+
 use crate::color::Color;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -7,10 +12,12 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Operation that constructs a color from HSV (Hue, Saturation, Value) channel values.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpColorInputHsva {}
 
 impl OpColorInputHsva {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "hsv".to_string(),
@@ -18,6 +25,7 @@ impl OpColorInputHsva {
         }
     }
 
+    /// Creates the input definitions: hue (0..360), saturation (0..1), value (0..1), and alpha.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("hue".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(1.0), clamp_to_range: false }), None),
@@ -27,12 +35,14 @@ impl OpColorInputHsva {
         ]
     }
 
+    /// Creates the single output definition for the constructed color.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Color(Color::default()), None)
         ]
     }
 
+    /// Executes the operation, assembling a color from HSV float channels.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

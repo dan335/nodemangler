@@ -1,3 +1,8 @@
+//! Image transform operations.
+//!
+//! This module contains operations that modify the geometry or spatial layout of images,
+//! including resizing, cropping, rotation, flipping, warping, tiling, and mirroring.
+
 pub mod resize;
 pub mod resize_exact;
 pub mod resize_fill;

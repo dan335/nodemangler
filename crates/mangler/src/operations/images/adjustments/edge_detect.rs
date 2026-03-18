@@ -1,3 +1,9 @@
+//! Edge detection operation for images using the Sobel operator.
+//!
+//! Computes horizontal and vertical gradients using 3x3 Sobel kernels on
+//! the Rec. 709 luminance of each pixel, then outputs the gradient magnitude
+//! as a grayscale image.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -10,10 +16,12 @@ use std::sync::Arc;
 use std::time::Instant;
 use image::DynamicImage;
 
+/// Edge detection operation using Sobel gradient magnitude on luminance.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentEdgeDetect {}
 
 impl OpImageAdjustmentEdgeDetect {
+    /// Returns the node metadata (name and description) for the edge detect operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "edge detect".to_string(),
@@ -21,6 +29,7 @@ impl OpImageAdjustmentEdgeDetect {
         }
     }
 
+    /// Creates the input ports: an image and an intensity multiplier for edge strength.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
@@ -28,12 +37,14 @@ impl OpImageAdjustmentEdgeDetect {
         ]
     }
 
+    /// Creates the output port: grayscale edge magnitude image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Executes edge detection using Sobel Gx and Gy kernels on Rec. 709 luminance.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -76,6 +87,7 @@ impl OpImageAdjustmentEdgeDetect {
                 let gy = -lum(x0, y0) - 2.0 * lum(x, y0) - lum(x2, y0)
                         + lum(x0, y2) + 2.0 * lum(x, y2) + lum(x2, y2);
 
+                // Combine horizontal and vertical gradients into edge magnitude
                 let magnitude = ((gx * gx + gy * gy).sqrt() * intensity).clamp(0.0, 1.0);
 
                 let alpha = buffer.get_pixel(x, y)[3];

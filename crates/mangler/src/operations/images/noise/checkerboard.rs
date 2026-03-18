@@ -1,3 +1,8 @@
+//! Checkerboard pattern image generator.
+//!
+//! Produces a grayscale checkerboard pattern using the noise library's
+//! `Checkerboard` function. The cell size controls the scale of the squares.
+
 use image::{RgbaImage, ImageBuffer, DynamicImage};
 use crate::color::Color;
 use crate::color::color_spaces::rgb_linear::{nonlinear_to_linear_rgb, linear_to_nonlinear_srgb};
@@ -11,10 +16,12 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use noise::{NoiseFn, Perlin, Seedable, Checkerboard};
 
+/// Operation that generates a checkerboard pattern as a grayscale image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageNoiseCheckerboard {}
 
 impl OpImageNoiseCheckerboard {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "checkerboard noise".to_string(),
@@ -22,6 +29,7 @@ impl OpImageNoiseCheckerboard {
         }
     }
 
+    /// Creates the default inputs: width, height, and size (number of checkerboard divisions).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
@@ -30,12 +38,14 @@ impl OpImageNoiseCheckerboard {
         ]
     }
 
+    /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
         ]
     }
 
+    /// Generates a checkerboard pattern image from the given inputs.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

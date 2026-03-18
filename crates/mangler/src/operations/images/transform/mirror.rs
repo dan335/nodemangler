@@ -1,3 +1,5 @@
+//! Mirror operation that reflects image content across configurable axes.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -9,10 +11,16 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Mirrors an image across the X axis, Y axis, or both, with configurable split offsets.
+///
+/// The offset parameters (0.0 to 1.0) control where the mirror axis sits within the image.
+/// At 0.5, the mirror axis is at the center. Pixels on one side of the axis are reflected
+/// onto the other side, creating a symmetric result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageTransformMirror {}
 
 impl OpImageTransformMirror {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "mirror".to_string(),
@@ -20,6 +28,7 @@ impl OpImageTransformMirror {
         }
     }
 
+    /// Creates the default inputs: source image, mirror X/Y toggles, and X/Y offset positions.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
@@ -30,12 +39,14 @@ impl OpImageTransformMirror {
         ]
     }
 
+    /// Creates the default outputs: the mirrored image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Executes the mirror operation by reflecting pixels across the configured axes.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -58,13 +69,14 @@ impl OpImageTransformMirror {
         let (w, h) = (src.width(), src.height());
         let mut output = image::RgbaImage::new(w, h);
 
+        // Convert normalized offsets to pixel positions for the mirror axes
         let split_x = (w as f32 * offset_x.clamp(0.0, 1.0)) as u32;
         let split_y = (h as f32 * offset_y.clamp(0.0, 1.0)) as u32;
 
         for y in 0..h {
             for x in 0..w {
                 let sx = if mirror_x && x >= split_x {
-                    // Mirror: reflect around split_x
+                    // Reflect: compute distance past the split and map back symmetrically
                     let dist = x - split_x;
                     if split_x as i32 - dist as i32 - 1 >= 0 {
                         split_x - dist - 1

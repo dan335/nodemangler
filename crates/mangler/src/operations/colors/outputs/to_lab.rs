@@ -1,3 +1,8 @@
+//! CIE L*a*b* color output operation.
+//!
+//! Decomposes a [`Color`](crate::color::Color) into lightness (L*),
+//! green-red axis (a*), blue-yellow axis (b*), and alpha channel values.
+
 use crate::color::Color;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
@@ -7,10 +12,12 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Operation that decomposes a color into CIE L*a*b* channel values.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpColorOutputLab {}
 
 impl OpColorOutputLab {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "to lab".to_string(),
@@ -18,12 +25,14 @@ impl OpColorOutputLab {
         }
     }
 
+    /// Creates the single input definition accepting a color to decompose.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("input".to_string(), Value::Color(Color::default()), None, None),
         ]
     }
 
+    /// Creates the output definitions: lightness, green-red (a*), blue-yellow (b*), and alpha.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("lightness".to_string(), Value::Decimal(0.5), None),
@@ -33,6 +42,7 @@ impl OpColorOutputLab {
         ]
     }
 
+    /// Executes the operation, converting the input color to CIE L*a*b* float channels.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

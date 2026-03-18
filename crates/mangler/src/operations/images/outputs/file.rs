@@ -1,3 +1,8 @@
+//! Image-to-file output operation.
+//!
+//! Saves an image to a file on disk, using a configurable file name, folder
+//! path, and image format (e.g., JPEG, PNG). Outputs the resulting file path.
+
 use image::ImageFormat;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -9,10 +14,16 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Instant;
 
+/// Operation that saves an image to a file on disk.
+///
+/// Accepts an image, a file name (without extension), a folder path, and an
+/// image format. The extension is derived from the chosen format. Outputs the
+/// full path of the saved file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageOutputFile {}
 
 impl OpImageOutputFile {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "image to file".to_string(),
@@ -20,6 +31,7 @@ impl OpImageOutputFile {
         }
     }
 
+    /// Creates the input definitions: image, file name, folder path, and image format.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -35,12 +47,17 @@ impl OpImageOutputFile {
         ]
     }
 
+    /// Creates the output definitions: the full file path where the image was saved.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("file path".to_string(), Value::Path(PathBuf::new()), None),
         ]
     }
 
+    /// Executes the operation: saves the image to disk at the specified location.
+    ///
+    /// Returns an error if the folder does not exist or the image cannot be encoded
+    /// in the requested format.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -61,7 +78,7 @@ impl OpImageOutputFile {
         let Value::Path(mut folder_path) = folder_converted.unwrap() else { unreachable!() };
         let Value::ImageType(image_type) = image_type_converted.unwrap() else { unreachable!() };
 
-        // run node
+        // run node — build the full output path from folder + file name + format extension
         if folder_path.exists() {
             folder_path.push(file_name);
             folder_path.set_extension(image_type.extensions_str()[0]);

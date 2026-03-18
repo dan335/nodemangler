@@ -1,3 +1,9 @@
+//! CIE L*a*b* color input operation.
+//!
+//! Creates a [`Color`](crate::color::Color) from lightness (L*, 0..100),
+//! green-red axis (a*, -128..127), blue-yellow axis (b*, -128..127), and alpha.
+//! L*a*b* is a perceptually uniform color space.
+
 use crate::color::Color;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -7,10 +13,12 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Operation that constructs a color from CIE L*a*b* channel values.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpColorInputLab {}
 
 impl OpColorInputLab {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "lab".to_string(),
@@ -18,6 +26,7 @@ impl OpColorInputLab {
         }
     }
 
+    /// Creates the input definitions: L* (0..100), a* (-128..127), b* (-128..127), and alpha.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("lightness".to_string(), Value::Decimal(50.0), Some(InputSettings::Slider { range: (0.0, 100.0), step_by: Some(1.0), clamp_to_range: false }), None),
@@ -27,12 +36,14 @@ impl OpColorInputLab {
         ]
     }
 
+    /// Creates the single output definition for the constructed color.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Color(Color::default()), None)
         ]
     }
 
+    /// Executes the operation, assembling a color from CIE L*a*b* float channels.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

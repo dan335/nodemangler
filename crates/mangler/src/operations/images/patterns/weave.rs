@@ -1,3 +1,9 @@
+//! Basket weave pattern image generator.
+//!
+//! Generates a weave pattern where horizontal and vertical strands alternate
+//! in a checkerboard fashion, separated by configurable gaps. Horizontal strands
+//! are rendered brighter (200) than vertical strands (128) to simulate depth.
+
 use image::{ImageBuffer, DynamicImage};
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -9,10 +15,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Operation that generates a basket weave pattern as a grayscale image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImagePatternWeave {}
 
 impl OpImagePatternWeave {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "weave".to_string(),
@@ -20,6 +28,7 @@ impl OpImagePatternWeave {
         }
     }
 
+    /// Creates the default inputs: width, height, count (grid divisions), and gap_size.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
@@ -29,12 +38,14 @@ impl OpImagePatternWeave {
         ]
     }
 
+    /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Generates a basket weave pattern image from the given inputs.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

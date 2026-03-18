@@ -1,3 +1,9 @@
+//! Value noise image generator.
+//!
+//! Produces a grayscale image using value noise, which assigns random values
+//! to lattice points and interpolates between them. This produces a blockier
+//! look compared to gradient-based noise like Perlin.
+
 use image::{ImageBuffer, DynamicImage};
 use crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb;
 use crate::get_id;
@@ -11,10 +17,12 @@ use std::sync::Arc;
 use std::time::Instant;
 use noise::NoiseFn;
 
+/// Operation that generates a grayscale image from value noise.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageNoiseValue {}
 
 impl OpImageNoiseValue {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "value noise".to_string(),
@@ -22,6 +30,7 @@ impl OpImageNoiseValue {
         }
     }
 
+    /// Creates the default inputs: seed, width, height, and scale.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
@@ -31,12 +40,14 @@ impl OpImageNoiseValue {
         ]
     }
 
+    /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
         ]
     }
 
+    /// Generates a value noise image from the given inputs.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

@@ -1,3 +1,5 @@
+//! Resize-to-fill operation that crops to fill exact dimensions.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -9,10 +11,16 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Resizes an image to fill the specified dimensions, cropping excess content.
+///
+/// The image is scaled to cover the entire target area while preserving aspect ratio,
+/// then center-cropped to the exact requested size. This guarantees the output
+/// matches the requested width and height without distortion.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageTransformResizeFill {}
 
 impl OpImageTransformResizeFill {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "resize fill".to_string(),
@@ -20,6 +28,7 @@ impl OpImageTransformResizeFill {
         }
     }
 
+    /// Creates the default inputs: source image, target width/height, and resampling filter type.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -29,6 +38,7 @@ impl OpImageTransformResizeFill {
         ]
     }
 
+    /// Creates the default outputs: filled image, and its width and height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
@@ -37,6 +47,7 @@ impl OpImageTransformResizeFill {
         ]
     }
 
+    /// Executes the resize-to-fill operation, scaling and center-cropping to the target size.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

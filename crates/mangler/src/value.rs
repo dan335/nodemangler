@@ -1,3 +1,13 @@
+//! The value system for the node graph engine.
+//!
+//! [`Value`] is the universal data type carried on every node input and output.
+//! It supports 14 variant types (booleans, numbers, strings, colors, images, etc.)
+//! along with type conversion, fingerprinting for cache invalidation, and thumbnail
+//! generation for UI previews.
+//!
+//! [`ValueType`] is the type-level discriminant used for connection validation and
+//! conversion tables without carrying actual data.
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -9,48 +19,78 @@ use crate::{
     thumbnail::Thumbnail,
 };
 
+/// Dimensions (width, height) used when generating thumbnail previews.
 pub const THUMBNAIL_SIZE: [u32; 2] = [150, 150];
 
+/// The universal data type carried on every node input and output.
+///
+/// Values flow through the graph along connections, are converted between
+/// compatible types automatically, and can generate thumbnails for the UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Value {
+    /// A boolean true/false value.
     Bool(bool),
+    /// A 32-bit signed integer.
     Integer(i32),
+    /// A 32-bit floating-point number.
     Decimal(f32),
+    /// A UTF-8 text string.
     String(String),
+    /// An sRGBA color with floating-point channels.
     Color(Color),
+    /// A full raster image wrapped in an `Arc` for cheap cloning.
     DynamicImage {
+        /// The image data, reference-counted for efficient sharing.
         #[serde(with = "crate::dynamic_image_serde")]
         data: Arc<DynamicImage>,
-        change_id: String, // new id each time image changes
+        /// A unique ID regenerated each time the image changes, used for cache invalidation.
+        change_id: String,
     },
+    /// A filesystem path (file or directory).
     Path(PathBuf),
+    /// An image resampling filter algorithm (e.g. Lanczos3, Nearest).
     #[serde(
         serialize_with = "serialize_filter_type",
         deserialize_with = "deserialize_filter_type"
     )]
     FilterType(FilterType),
+    /// A pixel color format (e.g. Rgba8, Rgb16).
     ColorFormat(ColorFormat),
-
+    /// An image file format (e.g. PNG, JPEG).
     #[serde(
         serialize_with = "serialize_image_format",
         deserialize_with = "deserialize_image_format"
     )]
     ImageType(image::ImageFormat),
+    /// A trigger signal that forces downstream re-evaluation without carrying data.
     Trigger,
+    /// Distance function variant for Worley noise generation.
     NoiseWorleyDistanceFunction(NoiseWorleyDistanceFunction),
+    /// A color space identifier for color space conversion operations.
     ColorSpace(crate::color::color_spaces::ColorSpace),
+    /// A blend mode for image/color compositing operations.
     BlendMode(crate::color::blend::BlendMode),
 }
 
+/// Modes for file/folder picker dialogs.
 pub enum PathType {
+    /// Pick a single file.
     PickFile,
+    /// Pick multiple files.
     PickFiles,
+    /// Pick a single folder.
     PickFolder,
+    /// Pick multiple folders.
     PickFolders,
+    /// Save to a file path.
     SaveFile,
 }
 
 impl Value {
+    /// Generate a thumbnail preview for this value, suitable for display in the UI.
+    ///
+    /// Colors produce a solid-fill image swatch. Images produce a downscaled thumbnail.
+    /// Scalar and enum types produce a text representation.
     pub fn create_thumbnail(&self) -> Option<Thumbnail> {
         match &self {
             Value::Color(color) => {
@@ -93,8 +133,8 @@ impl Value {
     /// Zero-allocation fingerprint for cache comparison.
     /// Returns a u64 hash that changes when the value changes.
     pub fn fingerprint(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
         let mut h = DefaultHasher::new();
         std::mem::discriminant(self).hash(&mut h);
         match self {
@@ -102,7 +142,12 @@ impl Value {
             Value::Integer(v) => v.hash(&mut h),
             Value::Decimal(v) => v.to_bits().hash(&mut h),
             Value::String(v) => v.hash(&mut h),
-            Value::Color(c) => { c.r.to_bits().hash(&mut h); c.g.to_bits().hash(&mut h); c.b.to_bits().hash(&mut h); c.a.to_bits().hash(&mut h); },
+            Value::Color(c) => {
+                c.r.to_bits().hash(&mut h);
+                c.g.to_bits().hash(&mut h);
+                c.b.to_bits().hash(&mut h);
+                c.a.to_bits().hash(&mut h);
+            }
             Value::DynamicImage { data: _, change_id } => change_id.hash(&mut h),
             Value::Path(p) => p.hash(&mut h),
             Value::FilterType(f) => (*f as u8).hash(&mut h),
@@ -116,6 +161,8 @@ impl Value {
         h.finish()
     }
 
+    /// Return the type-level discriminant for this value, used in connection
+    /// validation and conversion lookups.
     pub fn value_type(&self) -> ValueType {
         match self {
             Value::Bool(_) => ValueType::Bool,
@@ -138,6 +185,13 @@ impl Value {
         }
     }
 
+    /// Attempt to convert this value to the target type.
+    ///
+    /// Conversions follow the rules defined by [`ValueType::valid_conversions`].
+    /// Numeric types convert freely between each other. Scalars can convert to
+    /// colors (grayscale) and 1x1 images. String parsing is attempted for
+    /// string-to-numeric conversions. Returns a [`ConversionError`] if the
+    /// conversion is not supported or fails at runtime.
     pub fn try_convert_to(&self, other: ValueType) -> Result<Value, ConversionError> {
         match self {
             Value::Bool(a) => match other {
@@ -172,7 +226,10 @@ impl Value {
                         *pixel = image::Rgba([color_value, color_value, color_value, color_value]);
                     }
 
-                    Ok(Value::DynamicImage { data: Arc::new(DynamicImage::ImageRgba8(imgbuf)), change_id: get_id() })
+                    Ok(Value::DynamicImage {
+                        data: Arc::new(DynamicImage::ImageRgba8(imgbuf)),
+                        change_id: get_id(),
+                    })
                 }
                 _ => Err(ConversionError {
                     message: "Unable to convert bool to filter type.".to_string(),
@@ -183,8 +240,17 @@ impl Value {
                 ValueType::Integer => Ok(Value::Integer(*a)),
                 ValueType::Decimal => Ok(Value::Decimal(*a as f32)),
                 ValueType::String => Ok(Value::String(a.to_string())),
+                ValueType::Color => {
+                    let v = (*a).clamp(0, 255) as f32 / 255.0;
+                    Ok(Value::Color(Color::from_srgb_float(v, v, v, 1.0)))
+                }
+                ValueType::DynamicImage => {
+                    let v = (*a).clamp(0, 255) as u8;
+                    let imgbuf = image::RgbaImage::from_pixel(1, 1, image::Rgba([v, v, v, 255]));
+                    Ok(Value::DynamicImage { data: Arc::new(DynamicImage::ImageRgba8(imgbuf)), change_id: get_id() })
+                }
                 _ => Err(ConversionError {
-                    message: "Unable to convert bool to filter type.".to_string(),
+                    message: "Unable to convert integer to this type.".to_string(),
                 }),
             },
             Value::Decimal(a) => match other {
@@ -192,8 +258,17 @@ impl Value {
                 ValueType::Integer => Ok(Value::Integer(*a as i32)),
                 ValueType::Decimal => Ok(Value::Decimal(*a)),
                 ValueType::String => Ok(Value::String(a.to_string())),
+                ValueType::Color => {
+                    let v = a.clamp(0.0, 1.0);
+                    Ok(Value::Color(Color::from_srgb_float(v, v, v, 1.0)))
+                }
+                ValueType::DynamicImage => {
+                    let v = (a.clamp(0.0, 1.0) * 255.0) as u8;
+                    let imgbuf = image::RgbaImage::from_pixel(1, 1, image::Rgba([v, v, v, 255]));
+                    Ok(Value::DynamicImage { data: Arc::new(DynamicImage::ImageRgba8(imgbuf)), change_id: get_id() })
+                }
                 _ => Err(ConversionError {
-                    message: "Unable to convert bool to filter type.".to_string(),
+                    message: "Unable to convert decimal to this type.".to_string(),
                 }),
             },
             Value::String(a) => match other {
@@ -225,14 +300,30 @@ impl Value {
                     }
                 }
                 ValueType::String => Ok(Value::String(a.clone())),
+                ValueType::Path => Ok(Value::Path(PathBuf::from(a))),
                 _ => Err(ConversionError {
-                    message: "Unable to convert bool to filter type.".to_string(),
+                    message: "Unable to convert string to this type.".to_string(),
                 }),
             },
             Value::Color(a) => match other {
+                ValueType::Bool => Ok(Value::Bool(a.r != 0.0 || a.g != 0.0 || a.b != 0.0)),
+                ValueType::Integer => {
+                    let lum = 0.2126 * a.r + 0.7152 * a.g + 0.0722 * a.b;
+                    Ok(Value::Integer((lum.clamp(0.0, 1.0) * 255.0) as i32))
+                }
+                ValueType::Decimal => {
+                    let lum = 0.2126 * a.r + 0.7152 * a.g + 0.0722 * a.b;
+                    Ok(Value::Decimal(lum))
+                }
+                ValueType::String => Ok(Value::String(format!("rgba({}, {}, {}, {})", a.r, a.g, a.b, a.a))),
                 ValueType::Color => Ok(Value::Color(*a)),
+                ValueType::DynamicImage => {
+                    let rgba = a.to_srgb_u8();
+                    let imgbuf = image::RgbaImage::from_pixel(1, 1, image::Rgba([rgba.0, rgba.1, rgba.2, rgba.3]));
+                    Ok(Value::DynamicImage { data: Arc::new(DynamicImage::ImageRgba8(imgbuf)), change_id: get_id() })
+                }
                 _ => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
+                    message: "Unable to convert color to this type.".to_string(),
                 }),
             },
             Value::FilterType(a) => match other {
@@ -302,25 +393,42 @@ impl Value {
     }
 }
 
+/// Type-level discriminant for [`Value`], used for connection validation and
+/// conversion tables without carrying actual data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ValueType {
+    /// Boolean type.
     Bool,
+    /// 32-bit signed integer type.
     Integer,
+    /// 32-bit float type.
     Decimal,
+    /// UTF-8 string type.
     String,
+    /// sRGBA color type.
     Color,
+    /// Image resampling filter type.
     FilterType,
+    /// Pixel color format type.
     ColorFormat,
+    /// Image file format type.
     ImageType,
+    /// Trigger signal type (carries no data).
     Trigger,
+    /// Raster image type.
     DynamicImage,
+    /// Filesystem path type.
     Path,
+    /// Worley noise distance function type.
     NoiseWorleyDistanceFunction,
+    /// Color space identifier type.
     ColorSpace,
+    /// Blend mode type.
     BlendMode,
 }
 
 impl ValueType {
+    /// Return the standard set of value types available for general use.
     pub fn types() -> [ValueType; 10] {
         let types: [ValueType; 10] = [
             ValueType::Bool,
@@ -338,6 +446,7 @@ impl ValueType {
         types
     }
 
+    /// Return a human-readable name for this type, used in the UI.
     pub fn value_name(&self) -> String {
         match self {
             ValueType::Bool => "bool".to_string(),
@@ -357,7 +466,8 @@ impl ValueType {
         }
     }
 
-    // file extensions that can be opened for each type
+    /// Return the file extensions that can be opened for each value type.
+    /// Currently only `DynamicImage` has associated file extensions.
     pub fn file_extensions(value_type: &ValueType) -> Vec<String> {
         match value_type {
             ValueType::DynamicImage => {
@@ -374,6 +484,10 @@ impl ValueType {
         }
     }
 
+    /// Return the list of types that this type can be converted **to**.
+    ///
+    /// This defines the connection compatibility rules: an output of this type
+    /// can connect to any input whose type appears in the returned list.
     pub fn valid_conversions(&self) -> Vec<ValueType> {
         match self {
             ValueType::Bool => vec![
@@ -388,6 +502,8 @@ impl ValueType {
                 ValueType::Integer,
                 ValueType::Decimal,
                 ValueType::String,
+                ValueType::Color,
+                ValueType::DynamicImage,
                 ValueType::Trigger,
             ],
             ValueType::Decimal => vec![
@@ -395,10 +511,20 @@ impl ValueType {
                 ValueType::Integer,
                 ValueType::Decimal,
                 ValueType::String,
+                ValueType::Color,
+                ValueType::DynamicImage,
                 ValueType::Trigger,
             ],
-            ValueType::String => vec![ValueType::String, ValueType::Trigger],
-            ValueType::Color => vec![ValueType::Color, ValueType::Trigger],
+            ValueType::String => vec![ValueType::String, ValueType::Path, ValueType::Trigger],
+            ValueType::Color => vec![
+                ValueType::Bool,
+                ValueType::Integer,
+                ValueType::Decimal,
+                ValueType::String,
+                ValueType::Color,
+                ValueType::DynamicImage,
+                ValueType::Trigger,
+            ],
             ValueType::DynamicImage => vec![ValueType::DynamicImage, ValueType::Trigger],
             ValueType::Path => vec![ValueType::String, ValueType::Path, ValueType::Trigger],
             ValueType::FilterType => {
@@ -419,6 +545,10 @@ impl ValueType {
         }
     }
 
+    /// Return the list of types that can be converted **into** this type.
+    ///
+    /// This is the inverse of [`valid_conversions`](ValueType::valid_conversions):
+    /// it finds all types whose valid_conversions list includes `self`.
     pub fn valid_conversions_from(&self) -> Vec<ValueType> {
         let mut types: Vec<ValueType> = Vec::new();
 
@@ -434,11 +564,17 @@ impl ValueType {
     }
 }
 
+/// Error returned when a value conversion fails (unsupported or runtime parse error).
 #[derive(Debug)]
 pub struct ConversionError {
+    /// Human-readable description of what went wrong.
     pub message: String,
 }
 
+/// Pixel color format for image output encoding.
+///
+/// Maps to `image::ColorType` variants and controls the bit depth and channel
+/// layout when saving images to disk.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ColorFormat {
     Rgba32F,
@@ -454,6 +590,7 @@ pub enum ColorFormat {
 }
 
 impl ColorFormat {
+    /// Convert to the corresponding `image::ColorType` for encoding.
     pub fn format(&self) -> image::ColorType {
         match self {
             ColorFormat::Rgba32F => image::ColorType::Rgba32F,
@@ -469,6 +606,7 @@ impl ColorFormat {
         }
     }
 
+    /// Return all available color format variants.
     pub fn types() -> [ColorFormat; 10] {
         let types: [ColorFormat; 10] = [
             ColorFormat::Rgba32F,
@@ -487,7 +625,10 @@ impl ColorFormat {
     }
 }
 
-// https://docs.rs/image/latest/src/image/image.rs.html#28-73
+/// Supported image file formats for reading and writing.
+///
+/// See <https://docs.rs/image/latest/image/codecs/index.html#supported-formats>
+/// for the upstream codec support matrix.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ImageType {
     Png,
@@ -503,11 +644,12 @@ pub enum ImageType {
     Hdr, // can't write
     OpenExr,
     Farbfeld,
-    Avif,
+    // Avif, Decoding requires the avif-native feature, uses the libdav1d C library.
     Qoi,
 }
 
 impl ImageType {
+    /// Convert to the corresponding `image::ImageFormat` for encoding/decoding.
     pub fn format(&self) -> image::ImageFormat {
         match self {
             ImageType::Png => image::ImageFormat::Png,
@@ -522,13 +664,13 @@ impl ImageType {
             ImageType::Hdr => image::ImageFormat::Hdr,
             ImageType::OpenExr => image::ImageFormat::OpenExr,
             ImageType::Farbfeld => image::ImageFormat::Farbfeld,
-            ImageType::Avif => image::ImageFormat::Avif,
             ImageType::Qoi => image::ImageFormat::Qoi,
         }
     }
 
-    pub fn types() -> [ImageType; 14] {
-        let types: [ImageType; 14] = [
+    /// Return all available image type variants.
+    pub fn types() -> [ImageType; 13] {
+        let types: [ImageType; 13] = [
             ImageType::Png,
             ImageType::Jpeg,
             ImageType::Gif,
@@ -541,7 +683,6 @@ impl ImageType {
             ImageType::Hdr,
             ImageType::OpenExr,
             ImageType::Farbfeld,
-            ImageType::Avif,
             ImageType::Qoi,
         ];
 
@@ -549,9 +690,11 @@ impl ImageType {
     }
 }
 
+/// A UI button state wrapper (pressed or not).
 #[derive(Debug, Clone)]
 pub struct UiButton(pub bool);
 
+/// Custom serializer for `FilterType` since it doesn't implement `Serialize`.
 fn serialize_filter_type<S>(value: &FilterType, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
@@ -566,6 +709,7 @@ where
     serializer.serialize_str(serialized_value)
 }
 
+/// Custom deserializer for `FilterType`. Accepts legacy "guassian" typo for backwards compatibility.
 fn deserialize_filter_type<'de, D>(deserializer: D) -> Result<FilterType, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -581,6 +725,7 @@ where
     }
 }
 
+/// Custom serializer for `image::ImageFormat`, encoding as the first file extension string.
 fn serialize_image_format<S>(value: &image::ImageFormat, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
@@ -589,6 +734,7 @@ where
     serializer.serialize_str(serialized_value)
 }
 
+/// Custom deserializer for `image::ImageFormat`, looking up format by file extension string.
 fn deserialize_image_format<'de, D>(deserializer: D) -> Result<image::ImageFormat, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -612,16 +758,33 @@ mod tests {
     // Helper to match Value variants since Value doesn't impl PartialEq
     macro_rules! assert_value {
         ($val:expr, Bool($expected:expr)) => {
-            match &$val { Value::Bool(v) => assert_eq!(*v, $expected), other => panic!("Expected Bool({}), got {:?}", $expected, other) }
+            match &$val {
+                Value::Bool(v) => assert_eq!(*v, $expected),
+                other => panic!("Expected Bool({}), got {:?}", $expected, other),
+            }
         };
         ($val:expr, Integer($expected:expr)) => {
-            match &$val { Value::Integer(v) => assert_eq!(*v, $expected), other => panic!("Expected Integer({}), got {:?}", $expected, other) }
+            match &$val {
+                Value::Integer(v) => assert_eq!(*v, $expected),
+                other => panic!("Expected Integer({}), got {:?}", $expected, other),
+            }
         };
         ($val:expr, Decimal($expected:expr)) => {
-            match &$val { Value::Decimal(v) => assert!((*v - $expected).abs() < 1e-6, "Expected Decimal({}), got Decimal({})", $expected, v), other => panic!("Expected Decimal({}), got {:?}", $expected, other) }
+            match &$val {
+                Value::Decimal(v) => assert!(
+                    (*v - $expected).abs() < 1e-6,
+                    "Expected Decimal({}), got Decimal({})",
+                    $expected,
+                    v
+                ),
+                other => panic!("Expected Decimal({}), got {:?}", $expected, other),
+            }
         };
         ($val:expr, String($expected:expr)) => {
-            match &$val { Value::String(v) => assert_eq!(v, $expected), other => panic!("Expected String({}), got {:?}", $expected, other) }
+            match &$val {
+                Value::String(v) => assert_eq!(v, $expected),
+                other => panic!("Expected String({}), got {:?}", $expected, other),
+            }
         };
     }
 
@@ -643,12 +806,18 @@ mod tests {
 
     #[test]
     fn test_value_type_string() {
-        assert_eq!(Value::String("hi".to_string()).value_type(), ValueType::String);
+        assert_eq!(
+            Value::String("hi".to_string()).value_type(),
+            ValueType::String
+        );
     }
 
     #[test]
     fn test_value_type_color() {
-        assert_eq!(Value::Color(Color::default()).value_type(), ValueType::Color);
+        assert_eq!(
+            Value::Color(Color::default()).value_type(),
+            ValueType::Color
+        );
     }
 
     #[test]
@@ -664,25 +833,33 @@ mod tests {
     // try_convert_to: Bool conversions
     #[test]
     fn test_bool_true_to_integer() {
-        let result = Value::Bool(true).try_convert_to(ValueType::Integer).unwrap();
+        let result = Value::Bool(true)
+            .try_convert_to(ValueType::Integer)
+            .unwrap();
         assert_value!(result, Integer(1));
     }
 
     #[test]
     fn test_bool_false_to_integer() {
-        let result = Value::Bool(false).try_convert_to(ValueType::Integer).unwrap();
+        let result = Value::Bool(false)
+            .try_convert_to(ValueType::Integer)
+            .unwrap();
         assert_value!(result, Integer(0));
     }
 
     #[test]
     fn test_bool_true_to_decimal() {
-        let result = Value::Bool(true).try_convert_to(ValueType::Decimal).unwrap();
+        let result = Value::Bool(true)
+            .try_convert_to(ValueType::Decimal)
+            .unwrap();
         assert_value!(result, Decimal(1.0));
     }
 
     #[test]
     fn test_bool_false_to_decimal() {
-        let result = Value::Bool(false).try_convert_to(ValueType::Decimal).unwrap();
+        let result = Value::Bool(false)
+            .try_convert_to(ValueType::Decimal)
+            .unwrap();
         assert_value!(result, Decimal(0.0));
     }
 
@@ -706,7 +883,7 @@ mod tests {
                 assert_eq!(c.r, 1.0);
                 assert_eq!(c.g, 1.0);
                 assert_eq!(c.b, 1.0);
-            },
+            }
             other => panic!("Expected Color, got {:?}", other),
         }
     }
@@ -719,7 +896,7 @@ mod tests {
                 assert_eq!(c.r, 0.0);
                 assert_eq!(c.g, 0.0);
                 assert_eq!(c.b, 0.0);
-            },
+            }
             other => panic!("Expected Color, got {:?}", other),
         }
     }
@@ -729,7 +906,10 @@ mod tests {
         let result = Value::Bool(true).try_convert_to(ValueType::DynamicImage);
         assert!(result.is_ok());
         match result.unwrap() {
-            Value::DynamicImage { data: _, change_id: _ } => {},
+            Value::DynamicImage {
+                data: _,
+                change_id: _,
+            } => {}
             other => panic!("Expected DynamicImage, got {:?}", other),
         }
     }
@@ -755,32 +935,40 @@ mod tests {
 
     #[test]
     fn test_integer_to_decimal() {
-        let result = Value::Integer(42).try_convert_to(ValueType::Decimal).unwrap();
+        let result = Value::Integer(42)
+            .try_convert_to(ValueType::Decimal)
+            .unwrap();
         assert_value!(result, Decimal(42.0));
     }
 
     #[test]
     fn test_integer_to_string() {
-        let result = Value::Integer(42).try_convert_to(ValueType::String).unwrap();
+        let result = Value::Integer(42)
+            .try_convert_to(ValueType::String)
+            .unwrap();
         assert_value!(result, String("42"));
     }
 
     #[test]
     fn test_integer_to_integer_identity() {
-        let result = Value::Integer(42).try_convert_to(ValueType::Integer).unwrap();
+        let result = Value::Integer(42)
+            .try_convert_to(ValueType::Integer)
+            .unwrap();
         assert_value!(result, Integer(42));
     }
 
     #[test]
-    fn test_integer_to_color_fails() {
+    fn test_integer_to_color_succeeds() {
         let result = Value::Integer(42).try_convert_to(ValueType::Color);
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     // try_convert_to: Decimal conversions
     #[test]
     fn test_decimal_to_bool_nonzero() {
-        let result = Value::Decimal(3.14).try_convert_to(ValueType::Bool).unwrap();
+        let result = Value::Decimal(3.14)
+            .try_convert_to(ValueType::Bool)
+            .unwrap();
         assert_value!(result, Bool(true));
     }
 
@@ -792,35 +980,45 @@ mod tests {
 
     #[test]
     fn test_decimal_to_integer() {
-        let result = Value::Decimal(3.14).try_convert_to(ValueType::Integer).unwrap();
+        let result = Value::Decimal(3.14)
+            .try_convert_to(ValueType::Integer)
+            .unwrap();
         assert_value!(result, Integer(3));
     }
 
     #[test]
     fn test_decimal_to_string() {
-        let result = Value::Decimal(3.14).try_convert_to(ValueType::String).unwrap();
+        let result = Value::Decimal(3.14)
+            .try_convert_to(ValueType::String)
+            .unwrap();
         match result {
-            Value::String(_) => {},
+            Value::String(_) => {}
             other => panic!("Expected String, got {:?}", other),
         }
     }
 
     #[test]
     fn test_decimal_to_decimal_identity() {
-        let result = Value::Decimal(3.14).try_convert_to(ValueType::Decimal).unwrap();
+        let result = Value::Decimal(3.14)
+            .try_convert_to(ValueType::Decimal)
+            .unwrap();
         assert_value!(result, Decimal(3.14));
     }
 
     // try_convert_to: String conversions
     #[test]
     fn test_string_to_bool_true() {
-        let result = Value::String("true".to_string()).try_convert_to(ValueType::Bool).unwrap();
+        let result = Value::String("true".to_string())
+            .try_convert_to(ValueType::Bool)
+            .unwrap();
         assert_value!(result, Bool(true));
     }
 
     #[test]
     fn test_string_to_bool_false() {
-        let result = Value::String("false".to_string()).try_convert_to(ValueType::Bool).unwrap();
+        let result = Value::String("false".to_string())
+            .try_convert_to(ValueType::Bool)
+            .unwrap();
         assert_value!(result, Bool(false));
     }
 
@@ -832,7 +1030,9 @@ mod tests {
 
     #[test]
     fn test_string_to_integer() {
-        let result = Value::String("42".to_string()).try_convert_to(ValueType::Integer).unwrap();
+        let result = Value::String("42".to_string())
+            .try_convert_to(ValueType::Integer)
+            .unwrap();
         assert_value!(result, Integer(42));
     }
 
@@ -844,7 +1044,9 @@ mod tests {
 
     #[test]
     fn test_string_to_decimal() {
-        let result = Value::String("3.14".to_string()).try_convert_to(ValueType::Decimal).unwrap();
+        let result = Value::String("3.14".to_string())
+            .try_convert_to(ValueType::Decimal)
+            .unwrap();
         assert_value!(result, Decimal(3.14));
     }
 
@@ -856,7 +1058,9 @@ mod tests {
 
     #[test]
     fn test_string_to_string_identity() {
-        let result = Value::String("hello".to_string()).try_convert_to(ValueType::String).unwrap();
+        let result = Value::String("hello".to_string())
+            .try_convert_to(ValueType::String)
+            .unwrap();
         assert_value!(result, String("hello"));
     }
 
@@ -864,7 +1068,9 @@ mod tests {
     #[test]
     fn test_color_to_color_identity() {
         let color = Color::from_srgb_float(0.5, 0.3, 0.7, 1.0);
-        let result = Value::Color(color).try_convert_to(ValueType::Color).unwrap();
+        let result = Value::Color(color)
+            .try_convert_to(ValueType::Color)
+            .unwrap();
         match result {
             Value::Color(c) => assert_eq!(c, color),
             other => panic!("Expected Color, got {:?}", other),
@@ -872,14 +1078,16 @@ mod tests {
     }
 
     #[test]
-    fn test_color_to_integer_fails() {
+    fn test_color_to_integer_succeeds() {
         let result = Value::Color(Color::default()).try_convert_to(ValueType::Integer);
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]
     fn test_path_to_string() {
-        let result = Value::Path(PathBuf::from("/test/path")).try_convert_to(ValueType::String).unwrap();
+        let result = Value::Path(PathBuf::from("/test/path"))
+            .try_convert_to(ValueType::String)
+            .unwrap();
         match result {
             Value::String(s) => assert!(s.contains("test")),
             other => panic!("Expected String, got {:?}", other),
@@ -888,11 +1096,647 @@ mod tests {
 
     #[test]
     fn test_path_to_path_identity() {
-        let result = Value::Path(PathBuf::from("/test")).try_convert_to(ValueType::Path).unwrap();
+        let result = Value::Path(PathBuf::from("/test"))
+            .try_convert_to(ValueType::Path)
+            .unwrap();
         match result {
             Value::Path(p) => assert_eq!(p, PathBuf::from("/test")),
             other => panic!("Expected Path, got {:?}", other),
         }
+    }
+
+    // === Edge cases: Decimal → Bool (truthiness) ===
+    #[test]
+    fn test_decimal_to_bool_small_positive() {
+        // 0.1 is truthy (non-zero)
+        let result = Value::Decimal(0.1).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    #[test]
+    fn test_decimal_to_bool_small_negative() {
+        // -0.1 is truthy (non-zero)
+        let result = Value::Decimal(-0.1).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    #[test]
+    fn test_decimal_to_bool_negative() {
+        // -3.14 is truthy
+        let result = Value::Decimal(-3.14).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    #[test]
+    fn test_decimal_to_bool_one() {
+        let result = Value::Decimal(1.0).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    #[test]
+    fn test_decimal_to_bool_negative_zero() {
+        // -0.0 == 0.0 in IEEE 754, so should be falsy
+        let result = Value::Decimal(-0.0).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(false));
+    }
+
+    #[test]
+    fn test_decimal_to_bool_very_small() {
+        // f32::MIN_POSITIVE is truthy
+        let result = Value::Decimal(f32::MIN_POSITIVE).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    #[test]
+    fn test_decimal_to_bool_infinity() {
+        let result = Value::Decimal(f32::INFINITY).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    #[test]
+    fn test_decimal_to_bool_neg_infinity() {
+        let result = Value::Decimal(f32::NEG_INFINITY).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    #[test]
+    fn test_decimal_to_bool_nan() {
+        // NaN != 0.0 is true, so NaN is truthy (matches JS: Boolean(NaN) === false... wait)
+        // Actually in JS: Boolean(NaN) === false. But our code uses != 0.0, and NaN != 0.0 is true.
+        // This documents the current behavior.
+        let result = Value::Decimal(f32::NAN).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    // === Edge cases: Integer → Bool ===
+    #[test]
+    fn test_integer_to_bool_one() {
+        let result = Value::Integer(1).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    #[test]
+    fn test_integer_to_bool_negative() {
+        // -1 is truthy (non-zero)
+        let result = Value::Integer(-1).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    #[test]
+    fn test_integer_to_bool_large_negative() {
+        let result = Value::Integer(-999).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    #[test]
+    fn test_integer_to_bool_max() {
+        let result = Value::Integer(i32::MAX).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    #[test]
+    fn test_integer_to_bool_min() {
+        let result = Value::Integer(i32::MIN).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    // === Edge cases: Decimal → Integer truncation ===
+    #[test]
+    fn test_decimal_to_integer_truncates_positive() {
+        let result = Value::Decimal(3.9).try_convert_to(ValueType::Integer).unwrap();
+        assert_value!(result, Integer(3));
+    }
+
+    #[test]
+    fn test_decimal_to_integer_truncates_negative() {
+        // Rust `as i32` truncates toward zero: -3.9 → -3
+        let result = Value::Decimal(-3.9).try_convert_to(ValueType::Integer).unwrap();
+        assert_value!(result, Integer(-3));
+    }
+
+    #[test]
+    fn test_decimal_to_integer_zero() {
+        let result = Value::Decimal(0.0).try_convert_to(ValueType::Integer).unwrap();
+        assert_value!(result, Integer(0));
+    }
+
+    // === Edge cases: Integer → Decimal ===
+    #[test]
+    fn test_integer_to_decimal_negative() {
+        let result = Value::Integer(-42).try_convert_to(ValueType::Decimal).unwrap();
+        assert_value!(result, Decimal(-42.0));
+    }
+
+    #[test]
+    fn test_integer_to_decimal_zero() {
+        let result = Value::Integer(0).try_convert_to(ValueType::Decimal).unwrap();
+        assert_value!(result, Decimal(0.0));
+    }
+
+    // === Edge cases: Integer/Decimal → String ===
+    #[test]
+    fn test_integer_to_string_negative() {
+        let result = Value::Integer(-42).try_convert_to(ValueType::String).unwrap();
+        assert_value!(result, String("-42"));
+    }
+
+    #[test]
+    fn test_integer_to_string_zero() {
+        let result = Value::Integer(0).try_convert_to(ValueType::String).unwrap();
+        assert_value!(result, String("0"));
+    }
+
+    // === Edge cases: Bool → String ===
+    #[test]
+    fn test_bool_false_to_string() {
+        let result = Value::Bool(false).try_convert_to(ValueType::String).unwrap();
+        assert_value!(result, String("false"));
+    }
+
+    // === Edge cases: String → Bool rejects numeric strings ===
+    #[test]
+    fn test_string_one_to_bool_fails() {
+        // "1" is not "true", should fail
+        let result = Value::String("1".to_string()).try_convert_to(ValueType::Bool);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_string_zero_to_bool_fails() {
+        // "0" is not "false", should fail
+        let result = Value::String("0".to_string()).try_convert_to(ValueType::Bool);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_string_empty_to_bool_fails() {
+        let result = Value::String("".to_string()).try_convert_to(ValueType::Bool);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_string_to_integer_negative() {
+        let result = Value::String("-42".to_string()).try_convert_to(ValueType::Integer).unwrap();
+        assert_value!(result, Integer(-42));
+    }
+
+    #[test]
+    fn test_string_to_decimal_negative() {
+        let result = Value::String("-3.14".to_string()).try_convert_to(ValueType::Decimal).unwrap();
+        assert_value!(result, Decimal(-3.14));
+    }
+
+    #[test]
+    fn test_string_empty_to_integer_fails() {
+        let result = Value::String("".to_string()).try_convert_to(ValueType::Integer);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_string_empty_to_decimal_fails() {
+        let result = Value::String("".to_string()).try_convert_to(ValueType::Decimal);
+        assert!(result.is_err());
+    }
+
+    // === Unsupported conversions ===
+    // === Integer → Color (0..255 → grayscale) ===
+
+    #[test]
+    fn test_integer_to_color_zero_is_black() {
+        let result = Value::Integer(0).try_convert_to(ValueType::Color).unwrap();
+        match result {
+            Value::Color(c) => { assert_eq!(c.r, 0.0); assert_eq!(c.g, 0.0); assert_eq!(c.b, 0.0); assert_eq!(c.a, 1.0); }
+            other => panic!("Expected Color, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_integer_to_color_255_is_white() {
+        let result = Value::Integer(255).try_convert_to(ValueType::Color).unwrap();
+        match result {
+            Value::Color(c) => { assert_eq!(c.r, 1.0); assert_eq!(c.g, 1.0); assert_eq!(c.b, 1.0); assert_eq!(c.a, 1.0); }
+            other => panic!("Expected Color, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_integer_to_color_128_is_grey() {
+        let result = Value::Integer(128).try_convert_to(ValueType::Color).unwrap();
+        match result {
+            Value::Color(c) => {
+                let expected = 128.0 / 255.0;
+                assert!((c.r - expected).abs() < 1e-6);
+                assert!((c.g - expected).abs() < 1e-6);
+                assert!((c.b - expected).abs() < 1e-6);
+                assert_eq!(c.a, 1.0);
+            }
+            other => panic!("Expected Color, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_integer_to_color_clamps_negative() {
+        let result = Value::Integer(-50).try_convert_to(ValueType::Color).unwrap();
+        match result {
+            Value::Color(c) => { assert_eq!(c.r, 0.0); assert_eq!(c.g, 0.0); assert_eq!(c.b, 0.0); }
+            other => panic!("Expected Color, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_integer_to_color_clamps_above_255() {
+        let result = Value::Integer(999).try_convert_to(ValueType::Color).unwrap();
+        match result {
+            Value::Color(c) => { assert_eq!(c.r, 1.0); assert_eq!(c.g, 1.0); assert_eq!(c.b, 1.0); }
+            other => panic!("Expected Color, got {:?}", other),
+        }
+    }
+
+    // === Decimal → Color (0.0..1.0 → grayscale) ===
+
+    #[test]
+    fn test_decimal_to_color_zero_is_black() {
+        let result = Value::Decimal(0.0).try_convert_to(ValueType::Color).unwrap();
+        match result {
+            Value::Color(c) => { assert_eq!(c.r, 0.0); assert_eq!(c.g, 0.0); assert_eq!(c.b, 0.0); assert_eq!(c.a, 1.0); }
+            other => panic!("Expected Color, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_decimal_to_color_one_is_white() {
+        let result = Value::Decimal(1.0).try_convert_to(ValueType::Color).unwrap();
+        match result {
+            Value::Color(c) => { assert_eq!(c.r, 1.0); assert_eq!(c.g, 1.0); assert_eq!(c.b, 1.0); assert_eq!(c.a, 1.0); }
+            other => panic!("Expected Color, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_decimal_to_color_half_is_grey() {
+        let result = Value::Decimal(0.5).try_convert_to(ValueType::Color).unwrap();
+        match result {
+            Value::Color(c) => {
+                assert!((c.r - 0.5).abs() < 1e-6);
+                assert!((c.g - 0.5).abs() < 1e-6);
+                assert!((c.b - 0.5).abs() < 1e-6);
+                assert_eq!(c.a, 1.0);
+            }
+            other => panic!("Expected Color, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_decimal_to_color_clamps_negative() {
+        let result = Value::Decimal(-0.5).try_convert_to(ValueType::Color).unwrap();
+        match result {
+            Value::Color(c) => { assert_eq!(c.r, 0.0); assert_eq!(c.g, 0.0); assert_eq!(c.b, 0.0); }
+            other => panic!("Expected Color, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_decimal_to_color_clamps_above_one() {
+        let result = Value::Decimal(2.5).try_convert_to(ValueType::Color).unwrap();
+        match result {
+            Value::Color(c) => { assert_eq!(c.r, 1.0); assert_eq!(c.g, 1.0); assert_eq!(c.b, 1.0); }
+            other => panic!("Expected Color, got {:?}", other),
+        }
+    }
+
+    // === Integer → DynamicImage (1x1 grayscale) ===
+
+    #[test]
+    fn test_integer_to_dynamic_image_zero() {
+        let result = Value::Integer(0).try_convert_to(ValueType::DynamicImage).unwrap();
+        match result {
+            Value::DynamicImage { data, .. } => {
+                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0, [0, 0, 0, 255]);
+            }
+            other => panic!("Expected DynamicImage, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_integer_to_dynamic_image_255() {
+        let result = Value::Integer(255).try_convert_to(ValueType::DynamicImage).unwrap();
+        match result {
+            Value::DynamicImage { data, .. } => {
+                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0, [255, 255, 255, 255]);
+            }
+            other => panic!("Expected DynamicImage, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_integer_to_dynamic_image_clamps() {
+        let result = Value::Integer(999).try_convert_to(ValueType::DynamicImage).unwrap();
+        match result {
+            Value::DynamicImage { data, .. } => {
+                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0, [255, 255, 255, 255]);
+            }
+            other => panic!("Expected DynamicImage, got {:?}", other),
+        }
+    }
+
+    // === Decimal → DynamicImage (1x1 grayscale) ===
+
+    #[test]
+    fn test_decimal_to_dynamic_image_zero() {
+        let result = Value::Decimal(0.0).try_convert_to(ValueType::DynamicImage).unwrap();
+        match result {
+            Value::DynamicImage { data, .. } => {
+                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0, [0, 0, 0, 255]);
+            }
+            other => panic!("Expected DynamicImage, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_decimal_to_dynamic_image_one() {
+        let result = Value::Decimal(1.0).try_convert_to(ValueType::DynamicImage).unwrap();
+        match result {
+            Value::DynamicImage { data, .. } => {
+                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0, [255, 255, 255, 255]);
+            }
+            other => panic!("Expected DynamicImage, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_decimal_to_dynamic_image_half() {
+        let result = Value::Decimal(0.5).try_convert_to(ValueType::DynamicImage).unwrap();
+        match result {
+            Value::DynamicImage { data, .. } => {
+                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
+                // 0.5 * 255 = 127
+                assert_eq!(pixel.0[0], 127);
+            }
+            other => panic!("Expected DynamicImage, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_decimal_to_dynamic_image_clamps_negative() {
+        let result = Value::Decimal(-1.0).try_convert_to(ValueType::DynamicImage).unwrap();
+        match result {
+            Value::DynamicImage { data, .. } => {
+                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0, [0, 0, 0, 255]);
+            }
+            other => panic!("Expected DynamicImage, got {:?}", other),
+        }
+    }
+
+    // === Color → Bool ===
+
+    #[test]
+    fn test_color_to_bool_nonblack_is_true() {
+        let c = Color::from_srgb_float(0.5, 0.0, 0.0, 1.0);
+        let result = Value::Color(c).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    #[test]
+    fn test_color_to_bool_black_is_false() {
+        let c = Color::from_srgb_float(0.0, 0.0, 0.0, 1.0);
+        let result = Value::Color(c).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(false));
+    }
+
+    #[test]
+    fn test_color_to_bool_black_with_alpha_is_false() {
+        // Alpha doesn't affect truthiness — only RGB
+        let c = Color::from_srgb_float(0.0, 0.0, 0.0, 0.5);
+        let result = Value::Color(c).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(false));
+    }
+
+    #[test]
+    fn test_color_to_bool_white_is_true() {
+        let c = Color::from_srgb_float(1.0, 1.0, 1.0, 1.0);
+        let result = Value::Color(c).try_convert_to(ValueType::Bool).unwrap();
+        assert_value!(result, Bool(true));
+    }
+
+    // === Color → Integer (luminance 0..255) ===
+
+    #[test]
+    fn test_color_to_integer_black() {
+        let c = Color::from_srgb_float(0.0, 0.0, 0.0, 1.0);
+        let result = Value::Color(c).try_convert_to(ValueType::Integer).unwrap();
+        assert_value!(result, Integer(0));
+    }
+
+    #[test]
+    fn test_color_to_integer_white() {
+        let c = Color::from_srgb_float(1.0, 1.0, 1.0, 1.0);
+        let result = Value::Color(c).try_convert_to(ValueType::Integer).unwrap();
+        assert_value!(result, Integer(255));
+    }
+
+    #[test]
+    fn test_color_to_integer_red() {
+        // Luminance of pure red: 0.2126 * 1.0 * 255 ≈ 54
+        let c = Color::from_srgb_float(1.0, 0.0, 0.0, 1.0);
+        let result = Value::Color(c).try_convert_to(ValueType::Integer).unwrap();
+        match result {
+            Value::Integer(v) => assert_eq!(v, 54),
+            other => panic!("Expected Integer, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_color_to_integer_green() {
+        // Luminance of pure green: 0.7152 * 1.0 * 255 ≈ 182
+        let c = Color::from_srgb_float(0.0, 1.0, 0.0, 1.0);
+        let result = Value::Color(c).try_convert_to(ValueType::Integer).unwrap();
+        match result {
+            Value::Integer(v) => assert_eq!(v, 182),
+            other => panic!("Expected Integer, got {:?}", other),
+        }
+    }
+
+    // === Color → Decimal (luminance 0.0..1.0) ===
+
+    #[test]
+    fn test_color_to_decimal_black() {
+        let c = Color::from_srgb_float(0.0, 0.0, 0.0, 1.0);
+        let result = Value::Color(c).try_convert_to(ValueType::Decimal).unwrap();
+        assert_value!(result, Decimal(0.0));
+    }
+
+    #[test]
+    fn test_color_to_decimal_white() {
+        let c = Color::from_srgb_float(1.0, 1.0, 1.0, 1.0);
+        let result = Value::Color(c).try_convert_to(ValueType::Decimal).unwrap();
+        // 0.2126 + 0.7152 + 0.0722 = 1.0
+        assert_value!(result, Decimal(1.0));
+    }
+
+    #[test]
+    fn test_color_to_decimal_red() {
+        let c = Color::from_srgb_float(1.0, 0.0, 0.0, 1.0);
+        let result = Value::Color(c).try_convert_to(ValueType::Decimal).unwrap();
+        assert_value!(result, Decimal(0.2126));
+    }
+
+    // === Color → String ===
+
+    #[test]
+    fn test_color_to_string() {
+        let c = Color::from_srgb_float(0.5, 0.3, 0.7, 1.0);
+        let result = Value::Color(c).try_convert_to(ValueType::String).unwrap();
+        match result {
+            Value::String(s) => {
+                assert!(s.starts_with("rgba("));
+                assert!(s.contains("0.5"));
+                assert!(s.contains("0.3"));
+                assert!(s.contains("0.7"));
+            }
+            other => panic!("Expected String, got {:?}", other),
+        }
+    }
+
+    // === Color → DynamicImage (1x1 solid color) ===
+
+    #[test]
+    fn test_color_to_dynamic_image() {
+        let c = Color::from_srgb_float(1.0, 0.0, 0.0, 1.0);
+        let result = Value::Color(c).try_convert_to(ValueType::DynamicImage).unwrap();
+        match result {
+            Value::DynamicImage { data, .. } => {
+                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0[0], 255); // red
+                assert_eq!(pixel.0[1], 0);   // green
+                assert_eq!(pixel.0[2], 0);   // blue
+                assert_eq!(pixel.0[3], 255); // alpha
+            }
+            other => panic!("Expected DynamicImage, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_color_to_dynamic_image_black() {
+        let c = Color::from_srgb_float(0.0, 0.0, 0.0, 1.0);
+        let result = Value::Color(c).try_convert_to(ValueType::DynamicImage).unwrap();
+        match result {
+            Value::DynamicImage { data, .. } => {
+                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0, [0, 0, 0, 255]);
+            }
+            other => panic!("Expected DynamicImage, got {:?}", other),
+        }
+    }
+
+    // === String → Path ===
+
+    #[test]
+    fn test_string_to_path() {
+        let result = Value::String("/test/file.txt".to_string()).try_convert_to(ValueType::Path).unwrap();
+        match result {
+            Value::Path(p) => assert_eq!(p, PathBuf::from("/test/file.txt")),
+            other => panic!("Expected Path, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_string_to_path_empty() {
+        let result = Value::String("".to_string()).try_convert_to(ValueType::Path).unwrap();
+        match result {
+            Value::Path(p) => assert_eq!(p, PathBuf::from("")),
+            other => panic!("Expected Path, got {:?}", other),
+        }
+    }
+
+    // === Still-unsupported conversions ===
+
+    #[test]
+    fn test_string_to_color_fails() {
+        let result = Value::String("red".to_string()).try_convert_to(ValueType::Color);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_string_to_dynamic_image_fails() {
+        let result = Value::String("img".to_string()).try_convert_to(ValueType::DynamicImage);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_path_to_bool_fails() {
+        let result = Value::Path(PathBuf::from("/test")).try_convert_to(ValueType::Bool);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_path_to_integer_fails() {
+        let result = Value::Path(PathBuf::from("/test")).try_convert_to(ValueType::Integer);
+        assert!(result.is_err());
+    }
+
+    // === Bool → DynamicImage edge case: false produces black pixel ===
+    #[test]
+    fn test_bool_false_to_dynamic_image() {
+        let result = Value::Bool(false).try_convert_to(ValueType::DynamicImage).unwrap();
+        match result {
+            Value::DynamicImage { data, change_id: _ } => {
+                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0, [0, 0, 0, 0]);
+            }
+            other => panic!("Expected DynamicImage, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_bool_true_to_dynamic_image_white() {
+        let result = Value::Bool(true).try_convert_to(ValueType::DynamicImage).unwrap();
+        match result {
+            Value::DynamicImage { data, change_id: _ } => {
+                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0, [255, 255, 255, 255]);
+            }
+            other => panic!("Expected DynamicImage, got {:?}", other),
+        }
+    }
+
+    // === Fingerprint tests ===
+    #[test]
+    fn test_fingerprint_same_value() {
+        assert_eq!(Value::Integer(42).fingerprint(), Value::Integer(42).fingerprint());
+    }
+
+    #[test]
+    fn test_fingerprint_different_values() {
+        assert_ne!(Value::Integer(42).fingerprint(), Value::Integer(43).fingerprint());
+    }
+
+    #[test]
+    fn test_fingerprint_different_types_same_number() {
+        // Integer(1) and Decimal(1.0) should have different fingerprints (different discriminant)
+        assert_ne!(Value::Integer(1).fingerprint(), Value::Decimal(1.0).fingerprint());
+    }
+
+    #[test]
+    fn test_fingerprint_bool_values() {
+        assert_ne!(Value::Bool(true).fingerprint(), Value::Bool(false).fingerprint());
+    }
+
+    #[test]
+    fn test_fingerprint_strings() {
+        assert_eq!(
+            Value::String("hello".to_string()).fingerprint(),
+            Value::String("hello".to_string()).fingerprint()
+        );
+        assert_ne!(
+            Value::String("hello".to_string()).fingerprint(),
+            Value::String("world".to_string()).fingerprint()
+        );
     }
 
     // valid_conversions tests

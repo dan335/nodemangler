@@ -1,12 +1,17 @@
+//! HSL (Hue, Saturation, Lightness) color space conversions.
+//!
+//! Implements bidirectional conversion between sRGB and HSL using the algorithm
+//! described at <https://en.wikipedia.org/wiki/HSL_and_HSV>.
+
 use crate::color::Color;
 
-
-
 impl Color {
-    // hsla to srgba
-    // hue - 0 - 360
-    // saturation - 0 - 1
-    // lightness - 0 - 1
+    /// Creates an sRGB [`Color`] from HSL components.
+    ///
+    /// * `hue` -- degrees in `0..360`
+    /// * `saturation` -- `0.0..=1.0`
+    /// * `lightness` -- `0.0..=1.0`
+    /// * `alpha` -- `0.0..=1.0`
     pub fn from_hsl(hue: f32, saturation: f32, lightness: f32, alpha: f32) -> Color {
         // https://en.wikipedia.org/wiki/HSL_and_HSV#HSL_to_RGB
         let chroma = (1.0 - (2.0 * lightness - 1.0).abs()) * saturation;
@@ -25,6 +30,7 @@ impl Color {
         } else {
             (chroma, 0.0, largest_component)
         };
+        // Shift each channel by the lightness offset to produce final RGB
         let lightness_match = lightness - chroma / 2.0;
         Color {
             r: r_temp + lightness_match,
@@ -34,10 +40,10 @@ impl Color {
         }
     }
 
-    // srgba to hsla
-    // hue - 0 - 360
-    // saturation - 0 - 1
-    // lightness - 0 - 1
+    /// Converts this sRGB color to HSL components.
+    ///
+    /// Returns `(hue, saturation, lightness, alpha)` where hue is in degrees
+    /// `0..360`, and saturation/lightness are in `0.0..=1.0`.
     pub fn to_hsl(&self) -> (f32, f32, f32, f32) {
         // https://en.wikipedia.org/wiki/HSL_and_HSV#From_RGB
         let x_max = self.r.max(self.g.max(self.b));
@@ -53,6 +59,7 @@ impl Color {
         } else {
             60.0 * (4.0 + (self.r - self.g) / chroma)
         };
+        // Wrap negative hue into the 0..360 range
         let hue = if hue < 0.0 { 360.0 + hue } else { hue };
         let saturation = if lightness <= 0.0 || lightness >= 1.0 {
             0.0

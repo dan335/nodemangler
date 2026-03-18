@@ -1,3 +1,8 @@
+//! Random decimal generation operation for the node graph.
+//!
+//! Generates a uniformly distributed random decimal between `min` and `max`.
+//! Uses `fastrand` for fast, non-cryptographic randomness.
+
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
@@ -6,10 +11,15 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Node operation that generates a random decimal in the range `[min, max)`.
+///
+/// Both `min` and `max` are converted to decimal. Returns an error if `min >= max`.
+/// The random value is computed as `min + fastrand::f32() * (max - min)`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpNumberMathRand {}
 
 impl OpNumberMathRand {
+    /// Returns the node metadata (name and description).
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "random".to_string(),
@@ -17,6 +27,7 @@ impl OpNumberMathRand {
         }
     }
 
+    /// Creates the default input list: `min` (0.0) and `max` (1.0) decimal drag-value inputs.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("min".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
@@ -24,12 +35,14 @@ impl OpNumberMathRand {
         ]
     }
 
+    /// Creates the default output list: a single decimal output.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
         ]
     }
 
+    /// Executes the random generation: produces a random decimal in `[min, max)`.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

@@ -1,3 +1,8 @@
+//! Ellipse shape image generator.
+//!
+//! Generates an anti-aliased ellipse as a grayscale SDF image with configurable
+//! radii and rotation.
+
 use image::{ImageBuffer, DynamicImage};
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -9,15 +14,21 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Hermite interpolation between two edges, producing a smooth transition.
 fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
     let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
 }
 
+/// Operation that generates an ellipse shape as a grayscale SDF image.
+///
+/// The ellipse is defined by independent X and Y radii and can be rotated.
+/// Anti-aliasing is applied at the edges using a smoothstep function.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageShapeEllipse {}
 
 impl OpImageShapeEllipse {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "ellipse".to_string(),
@@ -25,6 +36,7 @@ impl OpImageShapeEllipse {
         }
     }
 
+    /// Creates the default inputs: width, height, radius_x, radius_y, and rotation.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
@@ -35,12 +47,14 @@ impl OpImageShapeEllipse {
         ]
     }
 
+    /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Generates an anti-aliased ellipse image from the given inputs.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -85,11 +99,11 @@ impl OpImageShapeEllipse {
                 let px = nx * cos_a + ny * sin_a;
                 let py = -nx * sin_a + ny * cos_a;
 
-                // ellipse SDF approximation
+                // Ellipse SDF: scale coordinates by radii, then compute circular distance
                 let ex = px / rx;
                 let ey = py / ry;
                 let dist = (ex * ex + ey * ey).sqrt() - 1.0;
-                // scale distance back to world space for proper anti-aliasing
+                // Scale distance back to world space so anti-aliasing width is consistent
                 let grad_len = ((ex / rx).powi(2) + (ey / ry).powi(2)).sqrt();
                 let world_dist = if grad_len > 0.0 { dist / grad_len } else { dist };
 

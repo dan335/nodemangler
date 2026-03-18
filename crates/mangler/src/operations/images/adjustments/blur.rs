@@ -1,3 +1,8 @@
+//! Gaussian blur operation for images.
+//!
+//! Applies a Gaussian blur with a configurable sigma (radius) parameter,
+//! using the `image` crate's built-in blur implementation.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -9,10 +14,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Gaussian blur operation that smooths an image by averaging nearby pixels.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentBlur {}
 
 impl OpImageAdjustmentBlur {
+    /// Returns the node metadata (name and description) for the blur operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "blur".to_string(),
@@ -20,6 +27,7 @@ impl OpImageAdjustmentBlur {
         }
     }
 
+    /// Creates the input ports: an image and a sigma value controlling blur radius.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -27,12 +35,14 @@ impl OpImageAdjustmentBlur {
         ]
     }
 
+    /// Creates the output port: the blurred image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
+    /// Executes the blur operation. Clamps sigma to non-negative before applying.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

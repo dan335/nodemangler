@@ -1,3 +1,8 @@
+//! Line shape image generator.
+//!
+//! Generates an anti-aliased line segment as a grayscale SDF image with
+//! configurable start/end points and thickness.
+
 use image::{ImageBuffer, DynamicImage};
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -9,15 +14,22 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Hermite interpolation between two edges, producing a smooth transition.
 fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
     let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
 }
 
+/// Operation that generates a line segment as a grayscale SDF image.
+///
+/// The line is defined by start and end points in normalized `[0, 1]` coordinates
+/// and a thickness value. Handles the degenerate case where start equals end
+/// by rendering a circle.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageShapeLine {}
 
 impl OpImageShapeLine {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "line".to_string(),
@@ -25,6 +37,7 @@ impl OpImageShapeLine {
         }
     }
 
+    /// Creates the default inputs: width, height, start_x, start_y, end_x, end_y, and thickness.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
@@ -37,12 +50,14 @@ impl OpImageShapeLine {
         ]
     }
 
+    /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Generates an anti-aliased line segment image from the given inputs.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

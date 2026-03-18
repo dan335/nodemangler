@@ -1,3 +1,8 @@
+//! Worley (cellular) noise value image generator.
+//!
+//! Similar to [`super::worley_distance`], but returns the value of the nearest
+//! cell point rather than the distance to it, producing flat-shaded Voronoi cells.
+
 use image::{ImageBuffer, DynamicImage};
 use noise::core::worley::distance_functions;
 use crate::get_id;
@@ -13,10 +18,15 @@ use noise::{NoiseFn, Worley};
 
 use super::worley_distance::NoiseWorleyDistanceFunction;
 
+/// Operation that generates a Worley noise image using value return type.
+///
+/// Each pixel is assigned the value of its nearest Worley cell point, creating
+/// distinct flat-colored regions separated by cell boundaries.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageNoiseWorleyValue {}
 
 impl OpImageNoiseWorleyValue {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "worley noise value".to_string(),
@@ -24,6 +34,7 @@ impl OpImageNoiseWorleyValue {
         }
     }
 
+    /// Creates the default inputs: seed, width, height, distance function, and frequency.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
@@ -35,12 +46,14 @@ impl OpImageNoiseWorleyValue {
         ]
     }
 
+    /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
         ]
     }
 
+    /// Generates a Worley value noise image from the given inputs.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

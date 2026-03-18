@@ -1,3 +1,10 @@
+//! Emboss effect operation for images.
+//!
+//! Creates a 3D-relief emboss effect by computing the difference between
+//! pixels sampled along a configurable angle direction. The result is
+//! centered around mid-grey (0.5), with raised/lowered areas appearing
+//! lighter/darker.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -10,10 +17,12 @@ use std::sync::Arc;
 use std::time::Instant;
 use image::DynamicImage;
 
+/// Emboss operation that creates a 3D-relief effect using directional pixel differences.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentEmboss {}
 
 impl OpImageAdjustmentEmboss {
+    /// Returns the node metadata (name and description) for the emboss operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "emboss".to_string(),
@@ -21,6 +30,7 @@ impl OpImageAdjustmentEmboss {
         }
     }
 
+    /// Creates the input ports: image, intensity, and angle (in degrees) controlling the emboss direction.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
@@ -29,12 +39,15 @@ impl OpImageAdjustmentEmboss {
         ]
     }
 
+    /// Creates the output port: the embossed image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Executes the emboss effect. Samples forward and backward along the angle direction
+    /// and outputs the scaled difference centered at 0.5.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -58,6 +71,7 @@ impl OpImageAdjustmentEmboss {
         let mut output = buffer.clone();
         let intensity = intensity as f32;
         let angle_rad = (angle as f32).to_radians();
+        // Convert angle to unit direction vector for sampling offsets
         let dx = angle_rad.cos();
         let dy = angle_rad.sin();
 

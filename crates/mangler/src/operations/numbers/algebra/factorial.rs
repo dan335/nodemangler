@@ -1,3 +1,8 @@
+//! Factorial operation for the node graph.
+//!
+//! Computes `n!` for non-negative integers. The input is clamped to `[0, 12]`
+//! because `12! = 479,001,600` is the largest factorial that fits in an `i32`.
+
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
@@ -6,10 +11,15 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Node operation that computes the factorial of an integer.
+///
+/// Input is clamped to `[0, 12]` to prevent i32 overflow. Decimal inputs are
+/// first converted (truncated) to integer via `convert_input`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpNumberMathFactorial {}
 
 impl OpNumberMathFactorial {
+    /// Returns the node metadata (name and description).
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "factorial".to_string(),
@@ -17,18 +27,21 @@ impl OpNumberMathFactorial {
         }
     }
 
+    /// Creates the default input list: a single integer input clamped to `[0, 12]`.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("input".to_string(), Value::Integer(5), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 12.0)) }), None),
         ]
     }
 
+    /// Creates the default output list: a single integer output.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Integer(0), None)
         ]
     }
 
+    /// Executes the factorial: computes `n!` with input clamped to `[0, 12]`.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

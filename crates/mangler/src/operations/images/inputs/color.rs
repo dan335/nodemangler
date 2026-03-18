@@ -1,3 +1,8 @@
+//! Solid-color image generation operation.
+//!
+//! Creates an image of a specified width and height where every pixel is
+//! filled with the same color. The color is converted to sRGB u8 for storage.
+
 use image::{ImageBuffer, DynamicImage};
 use crate::color::Color;
 use crate::get_id;
@@ -10,10 +15,16 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Operation that generates a uniform solid-color image.
+///
+/// Accepts a color, width, and height, and produces an RGBA image where
+/// every pixel is set to the given color. Also passes through the color
+/// and dimensions as separate outputs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageInputColor {}
 
 impl OpImageInputColor {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "from color".to_string(),
@@ -21,6 +32,7 @@ impl OpImageInputColor {
         }
     }
 
+    /// Creates the input definitions: color, width (1-10000), and height (1-10000).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("color".to_string(), Value::Color(Color::default()), None, None),
@@ -29,6 +41,7 @@ impl OpImageInputColor {
         ]
     }
 
+    /// Creates the output definitions: the generated image, the color, width, and height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
@@ -38,6 +51,7 @@ impl OpImageInputColor {
         ]
     }
 
+    /// Executes the operation: creates an image buffer filled with the input color.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -56,11 +70,12 @@ impl OpImageInputColor {
         let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
         let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
 
-        // run node
+        // run node — clamp dimensions to at least 1
         width = width.max(1);
         height = height.max(1);
 
         let mut image_buffer = ImageBuffer::new(width as u32, height as u32);
+        // Convert the color to 8-bit sRGB once, then fill every pixel
         let rgba = color.to_srgb_u8();
 
         for x in 0..width {

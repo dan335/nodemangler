@@ -1,3 +1,8 @@
+//! Image-from-clipboard input operation.
+//!
+//! Reads image data from the system clipboard using the `arboard` crate
+//! and outputs the image along with its dimensions.
+
 use image::{RgbaImage, ImageBuffer};
 use crate::get_id;
 use crate::input::Input;
@@ -10,10 +15,16 @@ use std::sync::Arc;
 use std::time::Instant;
 use arboard::Clipboard;
 
+/// Operation that grabs an image from the system clipboard.
+///
+/// Triggered by a `Trigger` input (button press in the UI). Reads raw RGBA
+/// pixel data from the clipboard via `arboard` and converts it into a
+/// `DynamicImage`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageInputClipboard {}
 
 impl OpImageInputClipboard {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "from clipboard".to_string(),
@@ -21,12 +32,14 @@ impl OpImageInputClipboard {
         }
     }
 
+    /// Creates the input definitions: a trigger button that initiates the clipboard read.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("copy from clipboard".to_string(), Value::Trigger, None, None),
         ]
     }
 
+    /// Creates the output definitions: the grabbed image, its width, and its height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
@@ -35,6 +48,9 @@ impl OpImageInputClipboard {
         ]
     }
 
+    /// Executes the operation: reads image data from the system clipboard.
+    ///
+    /// Returns an error if the clipboard cannot be accessed or contains no image data.
     pub async fn run(_inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         
@@ -45,6 +61,7 @@ impl OpImageInputClipboard {
 
         if let Ok(mut clipboard) = Clipboard::new() {
             if let Ok(image_bytes) = clipboard.get_image() {
+                // Convert raw clipboard bytes into an RgbaImage buffer
                 let image_option: Option<RgbaImage> = ImageBuffer::from_raw(
                     image_bytes.width.try_into().unwrap(),
                     image_bytes.height.try_into().unwrap(),

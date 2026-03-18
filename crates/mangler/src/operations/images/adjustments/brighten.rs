@@ -1,3 +1,8 @@
+//! Brightness adjustment operation for images.
+//!
+//! Adjusts image brightness by adding a fixed offset (scaled from -1..1 to -255..255)
+//! to every pixel channel using the `image` crate's `brighten` method.
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -9,10 +14,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Brightness adjustment operation that adds a constant offset to pixel values.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageAdjustmentBrighten{}
 
 impl OpImageAdjustmentBrighten {
+    /// Returns the node metadata (name and description) for the brighten operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "brighten".to_string(),
@@ -20,6 +27,7 @@ impl OpImageAdjustmentBrighten {
         }
     }
 
+    /// Creates the input ports: an image and an amount (-1.0 to 1.0) controlling brightness offset.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
@@ -27,12 +35,14 @@ impl OpImageAdjustmentBrighten {
         ]
     }
 
+    /// Creates the output port: the brightness-adjusted image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
+    /// Executes the brighten operation. Scales the normalized amount (-1..1) to pixel range (-255..255).
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

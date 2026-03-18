@@ -1,3 +1,8 @@
+//! Displacement-map-based warp operation.
+//!
+//! Also provides the [`bilinear_sample_rgba`] utility function used by other
+//! transform operations (directional warp, safe transform).
+
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -9,10 +14,17 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Displaces image pixels using a separate displacement map.
+///
+/// The red channel of the displacement map controls horizontal offset and the
+/// green channel controls vertical offset. Values of 128 (mid-gray) produce
+/// zero displacement; lower and higher values push pixels in opposite directions.
+/// The intensity parameter scales the displacement magnitude.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageTransformWarp {}
 
 impl OpImageTransformWarp {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "warp".to_string(),
@@ -20,6 +32,7 @@ impl OpImageTransformWarp {
         }
     }
 
+    /// Creates the default inputs: source image, displacement map, and intensity scalar.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
@@ -28,12 +41,14 @@ impl OpImageTransformWarp {
         ]
     }
 
+    /// Creates the default outputs: the warped image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
+    /// Executes the warp by sampling the displacement map for each output pixel.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -55,7 +70,8 @@ impl OpImageTransformWarp {
 
         for y in 0..h {
             for x in 0..w {
-                // Sample displacement map (resize-aware)
+                // Sample displacement map, mapping output coords to displacement map coords
+                // to handle mismatched dimensions between source and displacement
                 let dx = x as f32 * disp.width() as f32 / w as f32;
                 let dy = y as f32 * disp.height() as f32 / h as f32;
                 let dp = bilinear_sample_rgba(&disp, dx, dy);
@@ -81,26 +97,33 @@ impl OpImageTransformWarp {
     }
 }
 
-/// Bilinear interpolation sampling with clamped edge handling.
+/// Samples an RGBA image at a fractional coordinate using bilinear interpolation.
+///
+/// Coordinates outside the image bounds are clamped to the nearest edge pixel.
+/// Returns `[0, 0, 0, 0]` if the image has zero dimensions.
 pub fn bilinear_sample_rgba(img: &image::RgbaImage, x: f32, y: f32) -> [u8; 4] {
     let (w, h) = (img.width(), img.height());
     if w == 0 || h == 0 {
         return [0, 0, 0, 0];
     }
 
+    // Compute the four surrounding integer pixel coordinates, clamped to image bounds
     let x0 = (x.floor() as i32).clamp(0, w as i32 - 1) as u32;
     let y0 = (y.floor() as i32).clamp(0, h as i32 - 1) as u32;
     let x1 = (x0 + 1).min(w - 1);
     let y1 = (y0 + 1).min(h - 1);
 
+    // Fractional parts determine the interpolation weights
     let fx = x - x.floor();
     let fy = y - y.floor();
 
+    // Sample the four neighboring pixels
     let p00 = img.get_pixel(x0, y0).0;
     let p10 = img.get_pixel(x1, y0).0;
     let p01 = img.get_pixel(x0, y1).0;
     let p11 = img.get_pixel(x1, y1).0;
 
+    // Weighted average across all four channels (R, G, B, A)
     let mut result = [0u8; 4];
     for i in 0..4 {
         let v = p00[i] as f32 * (1.0 - fx) * (1.0 - fy)

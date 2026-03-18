@@ -1,3 +1,9 @@
+//! Ridged multifractal noise image generator.
+//!
+//! A fractal noise variant that applies an absolute-value function to each octave,
+//! producing sharp ridge-like formations. Useful for generating craggy mountainous
+//! terrain or marble-like textures.
+
 use image::{ImageBuffer, DynamicImage};
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -10,10 +16,15 @@ use std::sync::Arc;
 use std::time::Instant;
 use noise::{NoiseFn, MultiFractal, Perlin, RidgedMulti};
 
+/// Operation that generates a grayscale image from ridged multifractal noise.
+///
+/// Includes an additional `attenuation` parameter that controls how rapidly
+/// the contribution of each octave is attenuated.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageNoiseRidgedMultifractalNoise {}
 
 impl OpImageNoiseRidgedMultifractalNoise {
+    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "ridged multifractal noise".to_string(),
@@ -27,6 +38,7 @@ impl OpImageNoiseRidgedMultifractalNoise {
         }
     }
 
+    /// Creates the default inputs: seed, width, height, octaves, frequency, lacunarity, persistence, and attenuation.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
@@ -40,12 +52,14 @@ impl OpImageNoiseRidgedMultifractalNoise {
         ]
     }
 
+    /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
         ]
     }
 
+    /// Generates a ridged multifractal noise image from the given inputs.
     pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
