@@ -56,14 +56,14 @@ impl OpNumberMathGcd {
     }
 
     /// Executes the GCD computation on the two integer inputs.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         let a_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
         let b_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
 
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         let Value::Integer(a) = a_converted.unwrap() else { unreachable!() };
         let Value::Integer(b) = b_converted.unwrap() else { unreachable!() };

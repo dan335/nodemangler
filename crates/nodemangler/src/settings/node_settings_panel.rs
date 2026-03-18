@@ -3,7 +3,7 @@ use epaint::{vec2, Color32};
 use image::imageops::FilterType;
 use mangler::{
     input::{Input, InputSettings},
-    value::{ColorFormat, Value},
+    value::{ColorFormat, Value, TextHAlign, TextVAlign},
     ChangeNodeMessage, operations::images::noise::worley_distance::NoiseWorleyDistanceFunction, color::{color_spaces::ColorSpace, blend::BlendMode},
 };
 use egui_extras::{TableBuilder, Column};
@@ -194,7 +194,7 @@ fn output_value(ui: &mut egui::Ui,  value: &Value) {
         Value::Decimal(v) => {
             ui.add(Label::new(format!("{:?}", v)));
         }
-        Value::String(v) => {
+        Value::Text(v) => {
             ui.add(Label::new(v.to_string()));
         }
         Value::Color(v) => {
@@ -324,39 +324,21 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 
             }
         }
-        Value::String(a) => {
+        Value::Text(a) => {
             if input.connection.is_some() {
                 ui.label(a);
             } else {
                 let mut x = a;
                 ui.allocate_ui(egui::Vec2::new(ui.available_width() - 70.0, 16.0), |ui| {
                     let settings = input.settings.clone();
-                    if let Some(input_type) = settings {
-                        let text_edit = match input_type {
-                            InputSettings::SingleLineText => {
-                                Some(ui.text_edit_singleline(&mut x))
-                            },
-                            InputSettings::MultiLineText => {
-                                Some(ui.text_edit_multiline(&mut x))
-                            },
-                            _ => None
-                        };
-
-                        if let Some(edit) = text_edit {
-                            if edit.changed() {
-                                let value = Value::String(x);
-                                change_value(
-                                    tx_change_node,
-                                    node_id,
-                                    input_index,
-                                    input,
-                                    value,
-                                );
-                            }
-                        }
+                    let widget = match settings {
+                        Some(InputSettings::SingleLineText) => ui.text_edit_singleline(&mut x),
+                        _ => ui.text_edit_multiline(&mut x),
+                    };
+                    if widget.changed() {
+                        change_value(tx_change_node, node_id, input_index, input, Value::Text(x));
                     }
                 });
-                
             }
         }
         Value::Color(a) => {
@@ -619,6 +601,34 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         if ui.selectable_value(&mut x, blend_mode.clone(), format!("{:?}", blend_mode)).changed() {
                             let value = Value::BlendMode(blend_mode.clone());
                             change_value(tx_change_node, node_id, input_index, input, value);
+                        }
+                    }
+                });
+        }
+        Value::TextHAlign(a) => if input.connection.is_some() {
+            ui.label(format!("{:?}", a));
+        } else {
+            let mut x = a;
+            egui::ComboBox::from_label("h align")
+                .selected_text(format!("{:?}", x))
+                .show_ui(ui, |ui| {
+                    for variant in TextHAlign::types().iter() {
+                        if ui.selectable_value(&mut x, *variant, format!("{:?}", variant)).changed() {
+                            change_value(tx_change_node, node_id, input_index, input, Value::TextHAlign(*variant));
+                        }
+                    }
+                });
+        }
+        Value::TextVAlign(a) => if input.connection.is_some() {
+            ui.label(format!("{:?}", a));
+        } else {
+            let mut x = a;
+            egui::ComboBox::from_label("v align")
+                .selected_text(format!("{:?}", x))
+                .show_ui(ui, |ui| {
+                    for variant in TextVAlign::types().iter() {
+                        if ui.selectable_value(&mut x, *variant, format!("{:?}", variant)).changed() {
+                            change_value(tx_change_node, node_id, input_index, input, Value::TextVAlign(*variant));
                         }
                     }
                 });

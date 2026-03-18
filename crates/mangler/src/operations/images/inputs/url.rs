@@ -33,7 +33,7 @@ impl OpImageInputUrl {
     /// Creates the input definitions: a single URL string with multi-line text editing.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("url".to_string(), Value::String("https://i.imgur.com/3aDSTiBl.jpg".to_string()), Some(InputSettings::MultiLineText), None),
+            Input::new("url".to_string(), Value::Text("https://i.imgur.com/3aDSTiBl.jpg".to_string()), Some(InputSettings::MultiLineText), None),
         ]
     }
 
@@ -43,7 +43,7 @@ impl OpImageInputUrl {
             Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
             Output::new("width".to_string(), Value::Integer(i32::default()), None),
             Output::new("height".to_string(), Value::Integer(i32::default()), None),
-            Output::new("url".to_string(), Value::String("".to_string()), None),
+            Output::new("url".to_string(), Value::Text("".to_string()), None),
         ]
     }
 
@@ -51,19 +51,19 @@ impl OpImageInputUrl {
     ///
     /// Returns an error if the HTTP request fails, the response cannot be read as bytes,
     /// or the image format is unsupported.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let url_converted = convert_input(inputs, 0, ValueType::String, &mut input_errors);
+        let url_converted = convert_input(inputs, 0, ValueType::Text, &mut input_errors);
 
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Value::String(url) = url_converted.unwrap() else { unreachable!() };
+        let Value::Text(url) = url_converted.unwrap() else { unreachable!() };
 
         // run node
         if let Ok(image_response) =  reqwest::get(url.clone()).await {
@@ -78,17 +78,17 @@ impl OpImageInputUrl {
                             OutputResponse { value: Value::DynamicImage { data: Arc::new(image), change_id: get_id() } },
                             OutputResponse { value: Value::Integer(width) },
                             OutputResponse { value: Value::Integer(height) },
-                            OutputResponse { value: Value::String(url) },
+                            OutputResponse { value: Value::Text(url) },
                         ],
                     })
                 } else {
-                    return Err(OperationError{ input_errors, node_error: Some("Format not supported.".to_string())  });
+                    Err(OperationError{ input_errors, node_error: Some("Format not supported.".to_string())  })
                 }
             } else {
-                return Err(OperationError{ input_errors, node_error: Some("Could not parse into bytes.".to_string())  });
+                Err(OperationError{ input_errors, node_error: Some("Could not parse into bytes.".to_string())  })
             }
         } else {
-            return Err(OperationError{ input_errors, node_error: Some("Error getting url.".to_string())  });
+            Err(OperationError{ input_errors, node_error: Some("Error getting url.".to_string())  })
         }
 
         
@@ -119,7 +119,7 @@ mod tests {
     async fn test_url_input_invalid_url_returns_error() {
         use crate::input::Input;
         let mut inputs = vec![
-            Input::new("url".to_string(), Value::String("not_a_valid_url".to_string()), None, None),
+            Input::new("url".to_string(), Value::Text("not_a_valid_url".to_string()), None, None),
         ];
         let result = OpImageInputUrl::run(&mut inputs).await;
         assert!(result.is_err(), "invalid url should return error");

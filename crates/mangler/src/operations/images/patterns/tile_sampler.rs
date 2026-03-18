@@ -69,7 +69,7 @@ impl OpImagePatternTileSampler {
     }
 
     /// Scatters and composites pattern instances across the output image.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -86,7 +86,7 @@ impl OpImagePatternTileSampler {
         let seed_converted = convert_input(inputs, 9, ValueType::Integer, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage { data: pattern, change_id: _ } = pattern_converted.unwrap() else { unreachable!() };

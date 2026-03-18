@@ -52,7 +52,7 @@ fn sdf_star(px: f64, py: f64, n: i32, outer: f64, inner: f64) -> f64 {
     let mut prev_vy;
     {
         let a = angle_step * (total_verts - 1) as f64 - std::f64::consts::FRAC_PI_2;
-        let r = if (total_verts - 1) % 2 == 0 { outer } else { inner };
+        let r = if (total_verts - 1).is_multiple_of(2) { outer } else { inner };
         prev_vx = r * a.cos();
         prev_vy = r * a.sin();
     }
@@ -123,7 +123,7 @@ impl OpImageShapeStar {
     }
 
     /// Generates an anti-aliased star shape image from the given inputs.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -136,7 +136,7 @@ impl OpImageShapeStar {
         let rotation_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };

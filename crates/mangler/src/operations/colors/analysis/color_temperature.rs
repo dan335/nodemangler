@@ -47,7 +47,7 @@ impl OpColorAnalysisColorTemperature {
     /// 1. Convert to XYZ and compute CIE chromaticity (cx, cy).
     /// 2. Apply McCamy's formula to get correlated color temperature in Kelvin.
     /// 3. Clamp to 1000–20000 K and normalize to a 0 (cool) – 1 (warm) value.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -55,7 +55,7 @@ impl OpColorAnalysisColorTemperature {
         let color_converted = convert_input(inputs, 0, ValueType::Color, &mut input_errors);
 
         // Return early on conversion errors.
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // Unwrap the converted value.
         let Value::Color(color) = color_converted.unwrap() else { unreachable!() };

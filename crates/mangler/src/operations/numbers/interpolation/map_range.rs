@@ -51,7 +51,7 @@ impl OpNumberMathMapRange {
     ///
     /// Remaps `input` from `[in_min, in_max]` to `[out_min, out_max]`.
     /// Returns an error if `in_min == in_max` (zero-width input range).
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -63,7 +63,7 @@ impl OpNumberMathMapRange {
         let out_max_val = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::Decimal(input) = input_val.unwrap() else { unreachable!() };
@@ -85,7 +85,7 @@ impl OpNumberMathMapRange {
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
-                value: value,
+                value,
             }],
         })
     }

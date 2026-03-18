@@ -60,7 +60,7 @@ impl OpImageCombineBlend {
     /// Iterates over every pixel of the background. For each pixel that overlaps
     /// with the positioned foreground, the blend is computed in the selected color
     /// space using the chosen blend mode, modulated by the amount and alpha mask.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -76,7 +76,7 @@ impl OpImageCombineBlend {
 
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage{data:background, change_id:_} = background_converted.unwrap() else { unreachable!() };
@@ -108,7 +108,7 @@ impl OpImageCombineBlend {
 
                     // Modulate the blend amount by the alpha mask's luminance (average of RGB)
                     if let Some(alpha_pixel) = alpha_image.get_pixel_checked(x, y) {
-                        blend_amount = amount * ((alpha_pixel[0] as f32 + alpha_pixel[1] as f32 + alpha_pixel[2] as f32) / (1.0 * 3.0));
+                        blend_amount = amount * ((alpha_pixel[0] + alpha_pixel[1] + alpha_pixel[2]) / (1.0 * 3.0));
                     }
     
                     let foreground_color = Color::from_srgb_float(foreground_pixel[0], foreground_pixel[1], foreground_pixel[2], foreground_pixel[3]);

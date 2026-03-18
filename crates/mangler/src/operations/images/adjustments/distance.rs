@@ -49,7 +49,7 @@ impl OpImageAdjustmentDistance {
 
     /// Executes the distance field computation using brute-force nearest-boundary search
     /// within the spread radius.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -59,7 +59,7 @@ impl OpImageAdjustmentDistance {
         let spread_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
@@ -68,8 +68,8 @@ impl OpImageAdjustmentDistance {
 
         // run node
         let buffer = data.to_rgba32f();
-        let threshold = threshold as f32;
-        let spread = (spread as f32).max(1.0);
+        let threshold = threshold;
+        let spread = spread.max(1.0);
         let width = buffer.width() as i32;
         let height = buffer.height() as i32;
         let spread_i = spread.ceil() as i32;

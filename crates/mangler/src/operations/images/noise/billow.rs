@@ -37,7 +37,7 @@ impl OpImageNoiseBillow {
             Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
             Input::new("octaves".to_string(), Value::Integer(6), Some(InputSettings::Slider { range: (0.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None),
             Input::new("frequency".to_string(), Value::Decimal(5.0), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
-            Input::new("lacunarity".to_string(), Value::Decimal(2.0943951023931953), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
+            Input::new("lacunarity".to_string(), Value::Decimal(2.094_395_2), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
             Input::new("persitence".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
         ]
     }
@@ -50,7 +50,7 @@ impl OpImageNoiseBillow {
     }
 
     /// Generates a billow noise image from the given inputs.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -65,7 +65,7 @@ impl OpImageNoiseBillow {
 
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
@@ -89,8 +89,8 @@ impl OpImageNoiseBillow {
         for x in 0..width {
             for y in 0..height {
                 let size = width.max(height) as f64;
-                let coords_x = (x as f64) / (size as f64);
-                let coords_y = (y as f64) / (size as f64);
+                let coords_x = (x as f64) / size;
+                let coords_y = (y as f64) / size;
                 let noise = basicmulti.get([coords_x, coords_y]) as f32 * 0.5 + 0.5;
                 let non_linear = crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb(noise);
                 let g = (non_linear * 255.0) as u8;

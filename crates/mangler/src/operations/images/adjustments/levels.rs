@@ -47,7 +47,7 @@ impl OpImageAdjustmentLevels {
     }
 
     /// Executes the levels adjustment. Operates in 32-bit float space for precision.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -58,7 +58,7 @@ impl OpImageAdjustmentLevels {
         let gamma_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
@@ -68,11 +68,11 @@ impl OpImageAdjustmentLevels {
 
         // run node
         let mut buffer = data.to_rgba32f();
-        let black_point = black_point as f32;
-        let white_point = white_point as f32;
+        let black_point = black_point;
+        let white_point = white_point;
         // Prevent division by zero when black and white points are equal
         let range = (white_point - black_point).max(0.001);
-        let inv_gamma = (1.0 / gamma) as f32;
+        let inv_gamma = 1.0 / gamma;
 
         for pixel in buffer.pixels_mut() {
             for c in 0..3 {

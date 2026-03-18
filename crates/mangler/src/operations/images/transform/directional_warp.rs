@@ -47,7 +47,7 @@ impl OpImageTransformDirectionalWarp {
     }
 
     /// Executes the directional warp by displacing each pixel along the specified angle.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -56,7 +56,7 @@ impl OpImageTransformDirectionalWarp {
         let angle_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
         let intensity_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
 
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         let Value::DynamicImage { data: src_data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::DynamicImage { data: map_data, change_id: _ } = map_converted.unwrap() else { unreachable!() };

@@ -31,7 +31,7 @@ impl OpNumberMathFrac {
     /// Creates the default input list: a single decimal input defaulting to 3.14.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(3.14), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(std::f32::consts::PI), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
         ]
     }
 
@@ -43,13 +43,13 @@ impl OpNumberMathFrac {
     }
 
     /// Executes the frac operation: returns the fractional part of the input.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         let input_converted = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
 
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         let Value::Decimal(val) = input_converted.unwrap() else { unreachable!() };
 
@@ -80,7 +80,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_frac_basic() {
-        let mut inputs = vec![Input::new("input".to_string(), Value::Decimal(3.14), None, None)];
+        let mut inputs = vec![Input::new("input".to_string(), Value::Decimal(std::f32::consts::PI), None, None)];
         let result = OpNumberMathFrac::run(&mut inputs).await.unwrap();
         match &result.responses[0].value {
             Value::Decimal(v) => assert!((*v - 0.14).abs() < 0.01),

@@ -14,3 +14,5 @@ pub mod clipboard;
 pub mod color;
 /// Generates a vertical gradient image by blending two colors in a chosen color space.
 pub mod gradient;
+/// Renders a text string to a grayscale image using an embedded font.
+pub mod text;

@@ -48,7 +48,7 @@ impl OpImageAdjustmentDirectionalBlur {
 
     /// Executes the directional blur. Samples are distributed symmetrically along the
     /// angle direction using bilinear interpolation.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -59,7 +59,7 @@ impl OpImageAdjustmentDirectionalBlur {
         let intensity_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
@@ -69,8 +69,8 @@ impl OpImageAdjustmentDirectionalBlur {
 
         // run node
         let samples = samples.max(1) as u32;
-        let intensity = intensity.max(0.0) as f32;
-        let angle_rad = (angle as f32).to_radians();
+        let intensity = intensity.max(0.0);
+        let angle_rad = angle.to_radians();
         let dx = angle_rad.cos();
         let dy = angle_rad.sin();
 

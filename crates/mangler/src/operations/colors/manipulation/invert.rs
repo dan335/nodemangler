@@ -4,7 +4,7 @@
 //! of the red, green, and blue components. Optionally inverts the alpha channel too.
 
 use crate::color::Color;
-use crate::input::{Input, InputSettings};
+use crate::input::Input;
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
 use crate::output::Output;
@@ -42,7 +42,7 @@ impl OpColorManipulationInvert {
     }
 
     /// Executes the invert operation, flipping each RGB channel and optionally the alpha.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -51,7 +51,7 @@ impl OpColorManipulationInvert {
         let invert_alpha_converted = convert_input(inputs, 1, ValueType::Bool, &mut input_errors);
 
         // Return early on conversion errors
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // Unwrap values
         let Value::Color(color) = color_converted.unwrap() else { unreachable!() };

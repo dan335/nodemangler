@@ -47,7 +47,7 @@ impl OpImageNoiseOpenSimplex {
     }
 
     /// Generates an OpenSimplex noise image from the given inputs.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -59,7 +59,7 @@ impl OpImageNoiseOpenSimplex {
 
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
@@ -80,8 +80,8 @@ impl OpImageNoiseOpenSimplex {
         for x in 0..width {
             for y in 0..height {
                 let size = width.max(height) as f64;
-                let coords_x = (x as f64) / (size as f64) * scale as f64;
-                let coords_y = (y as f64) / (size as f64) * scale as f64;
+                let coords_x = (x as f64) / size * scale as f64;
+                let coords_y = (y as f64) / size * scale as f64;
                 let noise = perlin.get([coords_x, coords_y]) as f32 * 0.5 + 0.5;
                 let non_linear = linear_to_nonlinear_srgb(noise);
                 let g = (non_linear * 255.0) as u8;

@@ -48,7 +48,7 @@ impl OpNumberMathSmoothstep {
     ///
     /// Computes `t = clamp((input - edge0) / (edge1 - edge0), 0, 1)` then
     /// returns `t * t * (3 - 2t)`. Returns an error if `edge0 == edge1`.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -58,7 +58,7 @@ impl OpNumberMathSmoothstep {
         let edge1_val = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::Decimal(input) = input_val.unwrap() else { unreachable!() };
@@ -79,7 +79,7 @@ impl OpNumberMathSmoothstep {
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
-                value: value,
+                value,
             }],
         })
     }

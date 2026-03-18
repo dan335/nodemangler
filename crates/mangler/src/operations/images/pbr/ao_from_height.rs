@@ -51,7 +51,7 @@ impl OpImagePbrAoFromHeight {
     }
 
     /// Computes ambient occlusion from the input height map by radial sampling.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -62,7 +62,7 @@ impl OpImagePbrAoFromHeight {
         let samples_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
@@ -75,7 +75,7 @@ impl OpImagePbrAoFromHeight {
         let width = buffer.width() as usize;
         let height = buffer.height() as usize;
         let radius = (radius as i64).clamp(1, 64) as usize;
-        let intensity = intensity as f32;
+        let intensity = intensity;
         let samples = (samples as i64).clamp(4, 64) as usize;
 
         // Extract luminance (Rec. 709) as height values

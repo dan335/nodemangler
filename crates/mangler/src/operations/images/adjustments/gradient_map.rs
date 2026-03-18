@@ -51,7 +51,7 @@ impl OpImageAdjustmentGradientMap {
 
     /// Executes the gradient map. Computes Rec. 709 luminance per pixel and interpolates
     /// between gradient colors based on luminance position.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -65,7 +65,7 @@ impl OpImageAdjustmentGradientMap {
 
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
@@ -96,8 +96,8 @@ impl OpImageAdjustmentGradientMap {
 
             let (out_r, out_g, out_b, _out_a) = if use_mid {
                 // Three-color gradient: lerp A->C below midpoint, C->B above midpoint
-                if lum < mid_pos as f32 {
-                    let t = if mid_pos > 0.0 { lum / mid_pos as f32 } else { 0.0 };
+                if lum < mid_pos {
+                    let t = if mid_pos > 0.0 { lum / mid_pos } else { 0.0 };
                     (
                         ar + (cr - ar) * t,
                         ag + (cg - ag) * t,
@@ -105,7 +105,7 @@ impl OpImageAdjustmentGradientMap {
                         aa + (ca - aa) * t,
                     )
                 } else {
-                    let t = if mid_pos < 1.0 { (lum - mid_pos as f32) / (1.0 - mid_pos as f32) } else { 1.0 };
+                    let t = if mid_pos < 1.0 { (lum - mid_pos) / (1.0 - mid_pos) } else { 1.0 };
                     (
                         cr + (br - cr) * t,
                         cg + (bg - cg) * t,

@@ -56,7 +56,7 @@ impl OpColorAnalysisHarmonyScore {
     /// 1. Computes the minimum angular hue distance (0–180°) between the two colors.
     /// 2. Evaluates Gaussian peaks at each known harmonious angle.
     /// 3. Returns the maximum Gaussian value (not the sum) clamped to 0–1.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -65,7 +65,7 @@ impl OpColorAnalysisHarmonyScore {
         let b_converted = convert_input(inputs, 1, ValueType::Color, &mut input_errors);
 
         // Return early on conversion errors.
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // Unwrap the converted values.
         let Value::Color(a) = a_converted.unwrap() else { unreachable!() };

@@ -43,7 +43,7 @@ impl OpNumberMathDivide {
     }
 
     /// Executes the division: computes `a / b`, returning an error if `b` is zero.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let input_errors: Vec<(usize, String)> = vec![];
 
@@ -51,7 +51,7 @@ impl OpNumberMathDivide {
         // gather errors
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         // run node
@@ -85,7 +85,7 @@ impl OpNumberMathDivide {
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
-                value: value,
+                value,
             }],
         })
     }

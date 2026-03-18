@@ -54,7 +54,7 @@ impl OpImageChannelSplit {
     ///
     /// Each channel value is replicated across RGB in the output to produce
     /// a viewable grayscale representation of that channel.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -62,7 +62,7 @@ impl OpImageChannelSplit {
         let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };

@@ -45,7 +45,7 @@ impl OpImageOutputClipboard {
     /// Executes the operation: converts the image to RGBA8 and writes it to the clipboard.
     ///
     /// Returns an error if the clipboard cannot be accessed or the image cannot be written.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -53,7 +53,7 @@ impl OpImageOutputClipboard {
         let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
@@ -67,7 +67,7 @@ impl OpImageOutputClipboard {
         };
         
         if let Ok(mut clipboard) = Clipboard::new() {
-            if let Ok(_) = clipboard.set_image(image_data) {
+            if clipboard.set_image(image_data).is_ok() {
                 Ok(OperationResponse {
                     time: Instant::now().duration_since(start_time),
                     responses: vec![],

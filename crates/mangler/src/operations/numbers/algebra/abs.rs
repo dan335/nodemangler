@@ -40,7 +40,7 @@ impl OpNumberMathAbs {
     }
 
     /// Executes the absolute value operation on the input.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let input_errors: Vec<(usize, String)> = vec![];
 
@@ -48,16 +48,16 @@ impl OpNumberMathAbs {
         // gather errors
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         // run node
 
         let value = match &inputs[0].value {
 
-            Value::Integer(a) => Value::Integer(a.clone().abs()),
+            Value::Integer(a) => Value::Integer((*a).abs()),
 
-            Value::Decimal(a) => Value::Decimal(a.clone().abs()),
+            Value::Decimal(a) => Value::Decimal((*a).abs()),
 
             _ => {return Err(OperationError {
                 input_errors: vec![], node_error: Some("Error converting.".to_string()),
@@ -67,7 +67,7 @@ impl OpNumberMathAbs {
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
-                value: value,
+                value,
             }],
         })
     }

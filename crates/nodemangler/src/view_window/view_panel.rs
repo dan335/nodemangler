@@ -98,7 +98,7 @@ impl ViewPanel {
                 mangler::value::Value::Bool(value) => TextViewer::show(ui, value.to_string()),
                 mangler::value::Value::Integer(value) => TextViewer::show(ui, value.to_string()),
                 mangler::value::Value::Decimal(value) => TextViewer::show(ui, format!("{:?}", value)),
-                mangler::value::Value::String(value) => TextViewer::show(ui, value.to_string()),
+                mangler::value::Value::Text(value) => TextViewer::show(ui, value.to_string()),
                 mangler::value::Value::Color(value) => ColorViewer::show(ui, *value),
                 mangler::value::Value::DynamicImage { data, change_id } => self.image_viewer.show(ui, graph_node.id.clone(), output_index, change_id.clone(), data, cursor_position, theme),
                 mangler::value::Value::Path(path) => TextViewer::show(ui, path.to_str().unwrap_or("none").to_string()),
@@ -109,6 +109,8 @@ impl ViewPanel {
                 mangler::value::Value::NoiseWorleyDistanceFunction(value) => TextViewer::show(ui, format!("{:?}", value)),
                 mangler::value::Value::ColorSpace(value) => TextViewer::show(ui, format!("{:?}", value)),
                 mangler::value::Value::BlendMode(value) => TextViewer::show(ui, format!("{:?}", value)),
+                mangler::value::Value::TextHAlign(value) => TextViewer::show(ui, format!("{:?}", value)),
+                mangler::value::Value::TextVAlign(value) => TextViewer::show(ui, format!("{:?}", value)),
             }
         }
     }

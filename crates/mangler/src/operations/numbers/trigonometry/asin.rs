@@ -40,18 +40,18 @@ impl OpNumberTrigAsin {
     }
 
     /// Executes the arcsine operation. Returns an error if input is outside [-1, 1].
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         let input_converted = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
 
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         let Value::Decimal(input) = input_converted.unwrap() else { unreachable!() };
 
         // Validate input range for arcsine.
-        if input < -1.0 || input > 1.0 {
+        if !(-1.0..=1.0).contains(&input) {
             return Err(OperationError {
                 input_errors: vec![],
                 node_error: Some(format!("asin input must be in [-1, 1], got {}", input)),

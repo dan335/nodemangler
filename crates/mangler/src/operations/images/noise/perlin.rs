@@ -50,7 +50,7 @@ impl OpImageNoisePerlin {
     ///
     /// Each pixel is sampled in 2D noise space, normalized to `[0, 1]`, converted
     /// from linear to sRGB, and written as an 8-bit grayscale value.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -62,7 +62,7 @@ impl OpImageNoisePerlin {
 
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
@@ -84,8 +84,8 @@ impl OpImageNoisePerlin {
             for y in 0..height {
                 // Use the larger dimension to keep the noise aspect ratio square
                 let size = width.max(height) as f64;
-                let coords_x = (x as f64) / (size as f64) * scale as f64;
-                let coords_y = (y as f64) / (size as f64) * scale as f64;
+                let coords_x = (x as f64) / size * scale as f64;
+                let coords_y = (y as f64) / size * scale as f64;
                 // Remap noise from [-1, 1] to [0, 1]
                 let noise = perlin.get([coords_x, coords_y]) as f32 * 0.5 + 0.5;
                 // Apply sRGB gamma curve for perceptually correct display

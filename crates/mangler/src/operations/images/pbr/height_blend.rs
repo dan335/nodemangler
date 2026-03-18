@@ -56,7 +56,7 @@ impl OpImagePbrHeightBlend {
     }
 
     /// Blends two materials using height-based masking and outputs both color and height.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -69,7 +69,7 @@ impl OpImagePbrHeightBlend {
         let contrast_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage { data: base_color_data, change_id: _ } = base_color_converted.unwrap() else { unreachable!() };
@@ -86,8 +86,8 @@ impl OpImagePbrHeightBlend {
         let overlay_height_buf = overlay_height_data.to_rgba32f();
         let width = base_color_buf.width();
         let height = base_color_buf.height();
-        let blend_amount = blend_amount as f32;
-        let contrast = contrast as f32;
+        let blend_amount = blend_amount;
+        let contrast = contrast;
 
         let mut color_output = image::ImageBuffer::new(width, height);
         let mut height_output = image::ImageBuffer::new(width, height);

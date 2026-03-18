@@ -56,13 +56,13 @@ impl OpLogicFlowSelect {
     ///
     /// Only the condition input is coerced (to boolean). The selected branch
     /// value is cloned and output as-is, preserving its original type.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         let condition_converted = convert_input(inputs, 0, ValueType::Bool, &mut input_errors);
 
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         let Value::Bool(condition) = condition_converted.unwrap() else { unreachable!() };
 
@@ -125,16 +125,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_select_strings() {
+    async fn test_select_text() {
         let mut inputs = make_inputs(
             Value::Bool(false),
-            Value::String("yes".to_string()),
-            Value::String("no".to_string()),
+            Value::Text("yes".to_string()),
+            Value::Text("no".to_string()),
         );
         let result = OpLogicFlowSelect::run(&mut inputs).await.unwrap();
         match &result.responses[0].value {
-            Value::String(v) => assert_eq!(v, "no"),
-            other => panic!("Expected String(\"no\"), got {:?}", other),
+            Value::Text(v) => assert_eq!(v, "no"),
+            other => panic!("Expected Text(\"no\"), got {:?}", other),
         }
     }
 

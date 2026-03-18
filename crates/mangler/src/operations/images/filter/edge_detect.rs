@@ -45,7 +45,7 @@ impl OpImageAdjustmentEdgeDetect {
     }
 
     /// Executes edge detection using Sobel Gx and Gy kernels on Rec. 709 luminance.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -54,7 +54,7 @@ impl OpImageAdjustmentEdgeDetect {
         let intensity_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
@@ -64,7 +64,7 @@ impl OpImageAdjustmentEdgeDetect {
         let buffer = data.to_rgba32f();
         let (width, height) = (buffer.width(), buffer.height());
         let mut output = buffer.clone();
-        let intensity = intensity as f32;
+        let intensity = intensity;
 
         for y in 0..height {
             for x in 0..width {

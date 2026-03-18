@@ -47,7 +47,7 @@ impl OpImageAdjustmentRadialBlur {
 
     /// Executes the radial blur. For each pixel, computes the angle and distance from
     /// the image center, then averages samples taken at angular offsets around that arc.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -57,7 +57,7 @@ impl OpImageAdjustmentRadialBlur {
         let samples_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
@@ -66,7 +66,7 @@ impl OpImageAdjustmentRadialBlur {
 
         // run node
         let samples = samples.max(1) as u32;
-        let angle_rad = (angle as f32).to_radians();
+        let angle_rad = angle.to_radians();
 
         let rgba = data.to_rgba8();
         let (width, height) = rgba.dimensions();

@@ -46,7 +46,7 @@ impl OpImageAdjustmentHistogramRange {
 
     /// Executes the histogram range remapping. Scans for actual min/max, then linearly
     /// maps each channel from [actual_min, actual_max] to [range_min, range_max].
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -56,7 +56,7 @@ impl OpImageAdjustmentHistogramRange {
         let range_max_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
@@ -65,8 +65,8 @@ impl OpImageAdjustmentHistogramRange {
 
         // run node
         let mut buffer = data.to_rgba32f();
-        let range_min = range_min as f32;
-        let range_max = range_max as f32;
+        let range_min = range_min;
+        let range_max = range_max;
 
         // find actual min/max luminance
         let mut actual_min: f32 = f32::MAX;

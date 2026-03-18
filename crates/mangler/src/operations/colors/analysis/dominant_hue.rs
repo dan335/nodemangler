@@ -49,7 +49,7 @@ impl OpColorAnalysisDominantHue {
     ///
     /// Computes HSV saturation × HSV value for each color and returns the
     /// color and 1-based index of the maximum. Ties are broken by lowest index.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -61,7 +61,7 @@ impl OpColorAnalysisDominantHue {
         let c5 = convert_input(inputs, 4, ValueType::Color, &mut input_errors);
 
         // Return early on conversion errors.
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // Unwrap all five colors.
         let Value::Color(color1) = c1.unwrap() else { unreachable!() };

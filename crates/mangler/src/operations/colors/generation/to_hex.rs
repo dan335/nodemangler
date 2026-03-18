@@ -37,7 +37,7 @@ impl OpColorGenerationToHex {
     /// Creates the single output definition for the resulting hex string.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("hex".to_string(), Value::String("#000000".to_string()), None)
+            Output::new("hex".to_string(), Value::Text("#000000".to_string()), None)
         ]
     }
 
@@ -45,7 +45,7 @@ impl OpColorGenerationToHex {
     ///
     /// Each channel is multiplied by 255 and rounded to the nearest integer.
     /// Produces `#RRGGBB` when `include alpha` is false, or `#RRGGBBAA` when true.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -54,7 +54,7 @@ impl OpColorGenerationToHex {
         let include_alpha_converted = convert_input(inputs, 1, ValueType::Bool, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::Color(color) = color_converted.unwrap() else { unreachable!() };
@@ -76,7 +76,7 @@ impl OpColorGenerationToHex {
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
-                value: Value::String(hex),
+                value: Value::Text(hex),
             }],
         })
     }
@@ -101,8 +101,8 @@ mod tests {
         let mut inputs = to_hex_inputs(Color::from_srgb_float(1.0, 1.0, 1.0, 1.0), false);
         let result = OpColorGenerationToHex::run(&mut inputs).await.unwrap();
         match &result.responses[0].value {
-            Value::String(s) => assert_eq!(s, "#FFFFFF"),
-            other => panic!("Expected String, got {:?}", other),
+            Value::Text(s) => assert_eq!(s, "#FFFFFF"),
+            other => panic!("Expected Text, got {:?}", other),
         }
     }
 
@@ -111,8 +111,8 @@ mod tests {
         let mut inputs = to_hex_inputs(Color::from_srgb_float(0.0, 0.0, 0.0, 1.0), false);
         let result = OpColorGenerationToHex::run(&mut inputs).await.unwrap();
         match &result.responses[0].value {
-            Value::String(s) => assert_eq!(s, "#000000"),
-            other => panic!("Expected String, got {:?}", other),
+            Value::Text(s) => assert_eq!(s, "#000000"),
+            other => panic!("Expected Text, got {:?}", other),
         }
     }
 
@@ -121,8 +121,8 @@ mod tests {
         let mut inputs = to_hex_inputs(Color::from_srgb_float(1.0, 0.0, 0.0, 1.0), true);
         let result = OpColorGenerationToHex::run(&mut inputs).await.unwrap();
         match &result.responses[0].value {
-            Value::String(s) => assert_eq!(s, "#FF0000FF"),
-            other => panic!("Expected String, got {:?}", other),
+            Value::Text(s) => assert_eq!(s, "#FF0000FF"),
+            other => panic!("Expected Text, got {:?}", other),
         }
     }
 

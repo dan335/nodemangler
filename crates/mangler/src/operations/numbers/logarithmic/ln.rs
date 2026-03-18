@@ -29,7 +29,7 @@ impl OpNumberMathLn {
     /// Creates the default input list: a single decimal input defaulting to e (2.718).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(2.718), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(std::f32::consts::E), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
         ]
     }
 
@@ -41,13 +41,13 @@ impl OpNumberMathLn {
     }
 
     /// Executes the natural log: computes `ln(input)`, erroring if input <= 0.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         let input_converted = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
 
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         let Value::Decimal(input) = input_converted.unwrap() else { unreachable!() };
 

@@ -224,7 +224,7 @@ impl Node {
                         if let Some(tx) = &tx_node_changed {
                             let message = NodeChangedMessage::InputErrorChanged {
                                 node_id: self.id.clone(),
-                                input_index: input_index,
+                                input_index,
                                 is_error: false,
                                 message: None,
                             };
@@ -311,7 +311,7 @@ impl Node {
                                 if let Some(tx) = tx_node_changed.clone() {
                                     let message = NodeChangedMessage::InputErrorChanged {
                                         node_id: self.id.clone(),
-                                        input_index: input_index.clone(),
+                                        input_index: *input_index,
                                         is_error: true,
                                         message: Some(error_message.clone()),
                                     };
@@ -377,89 +377,84 @@ impl Node {
                 graph: subgraph_option,
                 rx_node_changed,
             } => {
-                match subgraph_option {
-                    Some(subgraph) => {
-                        // pass node's input to subgraph's input before running
-                        for (_input_index, input) in self.inputs.iter().enumerate() {
-                            if let Value::Path(_) = input.value {
-                                // nothing
-                            } else {
-                                if let Some(link) = &input.link {
-                                    if let Some(subgraph_node) =
-                                        subgraph.nodes.get_mut(&link.node_id)
-                                    {
-                                        if let Some(i) = subgraph_node
-                                            .inputs
-                                            .iter_mut()
-                                            .position(|i| i.id == link.input_id)
-                                        {
-                                            subgraph_node.set_input_value(i, input.value.clone());
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // run subgraph
-                        subgraph.run().await;
-
-                        // receive messages about which nodes changed in subgraph
-                        // if one changed that is exposed then pass it's output to this node's output
-                        if let Some(rx) = rx_node_changed {
-                            // receive messages
-                            while let Ok(node_changed_message) = rx.try_recv() {
-                                match node_changed_message {
-                                    NodeChangedMessage::OutputChanged {
-                                        node_id: subgraph_node_id,
-                                        output_index: subgraph_output_index,
-                                        value: subgraph_value,
-                                        thumbnail: _subgraph_thumbnail,
-                                    } => {
-                                        // find output that is linked to subgraph output that changed
-                                        for (_output_index, output) in
-                                            self.outputs.iter_mut().enumerate()
-                                        {
-                                            if let Some(link) = &mut output.link {
-                                                if link.node_id == subgraph_node_id
-                                                    && link.output_index == subgraph_output_index
-                                                {
-                                                    // set output value to subgraph's new value
-                                                    output.value = subgraph_value.clone();
-                                                }
-                                            }
-                                        }
-
-                                        //self.time = Some(subgraph_time);
-                                    }
-                                    // don't care about other messages
-                                    _ => {}
-                                }
-                            }
-                        }
-
-                        // let ui know that outputs changed
-                        if let Some(tx) = tx_node_changed {
-                            for (output_index, output) in self.outputs.iter().enumerate() {
-                                let message = NodeChangedMessage::OutputChanged {
-                                    node_id: self.id.clone(),
-                                    output_index,
-                                    value: output.value.clone(),
-                                    thumbnail: output.value.create_thumbnail(),
-                                };
-
-                                match tx.try_send(message) {
-                                    Ok(_) => {}
-                                    Err(err) => {
-                                        println!(
-                                            "Error sending NodeChangedMessage::OutputChanged: {:?}",
-                                            err
-                                        );
-                                    }
+                if let Some(subgraph) = subgraph_option {
+                    // pass node's input to subgraph's input before running
+                    for input in self.inputs.iter() {
+                        if let Value::Path(_) = input.value {
+                            // nothing
+                        } else if let Some(link) = &input.link {
+                            if let Some(subgraph_node) =
+                                subgraph.nodes.get_mut(&link.node_id)
+                            {
+                                if let Some(i) = subgraph_node
+                                    .inputs
+                                    .iter_mut()
+                                    .position(|i| i.id == link.input_id)
+                                {
+                                    subgraph_node.set_input_value(i, input.value.clone());
                                 }
                             }
                         }
                     }
-                    None => {}
+
+                    // run subgraph
+                    subgraph.run().await;
+
+                    // receive messages about which nodes changed in subgraph
+                    // if one changed that is exposed then pass it's output to this node's output
+                    if let Some(rx) = rx_node_changed {
+                        // receive messages
+                        while let Ok(node_changed_message) = rx.try_recv() {
+                            match node_changed_message {
+                                NodeChangedMessage::OutputChanged {
+                                    node_id: subgraph_node_id,
+                                    output_index: subgraph_output_index,
+                                    value: subgraph_value,
+                                    thumbnail: _subgraph_thumbnail,
+                                } => {
+                                    // find output that is linked to subgraph output that changed
+                                    for output in
+                                        self.outputs.iter_mut()
+                                    {
+                                        if let Some(link) = &mut output.link {
+                                            if link.node_id == subgraph_node_id
+                                                && link.output_index == subgraph_output_index
+                                            {
+                                                // set output value to subgraph's new value
+                                                output.value = subgraph_value.clone();
+                                            }
+                                        }
+                                    }
+
+                                    //self.time = Some(subgraph_time);
+                                }
+                                // don't care about other messages
+                                _ => {}
+                            }
+                        }
+                    }
+
+                    // let ui know that outputs changed
+                    if let Some(tx) = tx_node_changed {
+                        for (output_index, output) in self.outputs.iter().enumerate() {
+                            let message = NodeChangedMessage::OutputChanged {
+                                node_id: self.id.clone(),
+                                output_index,
+                                value: output.value.clone(),
+                                thumbnail: output.value.create_thumbnail(),
+                            };
+
+                            match tx.try_send(message) {
+                                Ok(_) => {}
+                                Err(err) => {
+                                    println!(
+                                        "Error sending NodeChangedMessage::OutputChanged: {:?}",
+                                        err
+                                    );
+                                }
+                            }
+                        }
+                    }
                 }
             }
         };

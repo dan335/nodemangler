@@ -115,13 +115,22 @@ impl Graph {
                 }
                 Err(error) => Err(NewGraphError(format!(
                     "Error loading graph. Error: {}",
-                    error.to_string()
+                    error
                 ))),
             },
             Err(error) => Err(NewGraphError(format!(
                 "Error loading graph. Error: {}",
-                error.to_string()
+                error
             ))),
+        }
+    }
+
+    /// Serialize this graph into a [`GraphSaveData`] snapshot for saving to JSON.
+    pub fn to_save_data(&self) -> GraphSaveData {
+        GraphSaveData {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            nodes: self.nodes.clone(),
         }
     }
 
@@ -140,23 +149,20 @@ impl Graph {
         let mut node = Node::new(node_id.clone(), node_type.clone(), position);
         let mut is_subgraph = false;
 
-        match node_type {
-            AddNodeType::Subgraph => {
-                node.inputs.clear();
-                node.outputs.clear();
+        if let AddNodeType::Subgraph = node_type {
+            node.inputs.clear();
+            node.outputs.clear();
 
-                let input_settings = Some(InputSettings::Path {
-                    extension_filter: vec!["mangle".to_string()],
-                    set_directory: None,
-                    set_file_name: None,
-                    set_title: Some("open subgraph".to_string()),
-                    file_dialog_type: crate::input::FileDialogType::PickFile,
-                });
+            let input_settings = Some(InputSettings::Path {
+                extension_filter: vec!["mangle".to_string()],
+                set_directory: None,
+                set_file_name: None,
+                set_title: Some("open subgraph".to_string()),
+                file_dialog_type: crate::input::FileDialogType::PickFile,
+            });
 
-                node.inputs.push(Input::new("file path".to_string(), Value::Path(PathBuf::new()), input_settings, None));
-                is_subgraph = true;
-            },
-            _ => {}
+            node.inputs.push(Input::new("file path".to_string(), Value::Path(PathBuf::new()), input_settings, None));
+            is_subgraph = true;
         }
 
         if let Some(tx) = &self.tx_graph_changed {
@@ -249,11 +255,10 @@ impl Graph {
             // check if valid connection
             if let Some(from_output) = self.nodes.get(&output_node_id) {
                 if let Some(to_input) = self.nodes.get(&input_node_id) {
-                    if from_output.outputs.len() >= output_connection_index && to_input.inputs.len() >= input_connection_index {
-                        if from_output.outputs[output_connection_index].is_valid_connection(&to_input.inputs[input_connection_index]) {
+                    if from_output.outputs.len() >= output_connection_index && to_input.inputs.len() >= input_connection_index
+                        && from_output.outputs[output_connection_index].is_valid_connection(&to_input.inputs[input_connection_index]) {
                             is_valid = true;
                         }
-                    }
                 }
             }
 
@@ -382,7 +387,7 @@ impl Graph {
         {
             let is_any_type_input = self.nodes.get(&node_id)
                 .and_then(|n| n.inputs.get(input_index))
-                .map_or(false, |i| i.accepts_any_type);
+                .is_some_and(|i| i.accepts_any_type);
 
             if is_any_type_input {
                 // look up the actual source output type for each still-connected accepts_any_type input
@@ -500,7 +505,7 @@ impl Graph {
                             for (subgraph_node_id, subgraph_node) in subgraph.nodes.iter() {
                                 // create inputs for node
                                 // from subgraph's exposed inputs
-                                for (_input_index, subgraph_input) in subgraph_node.inputs.iter().enumerate() {
+                                for subgraph_input in subgraph_node.inputs.iter() {
                                     if subgraph_input.is_exposed {
                                         let input_settings = Some(InputSettings::Path {
                                             extension_filter: vec!["mangle".to_string()],
@@ -758,7 +763,7 @@ impl Graph {
 
         for node_id in dirty_nodes {
             in_degree.entry(node_id.clone()).or_insert(0);
-            adjacency.entry(node_id.clone()).or_insert_with(Vec::new);
+            adjacency.entry(node_id.clone()).or_default();
         }
 
         for node_id in dirty_nodes {

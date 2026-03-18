@@ -43,7 +43,7 @@ impl OpNumberMathModulus {
     }
 
     /// Executes the modulus: computes `a % n`, returning an error if `n` is zero.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let input_errors: Vec<(usize, String)> = vec![];
 
@@ -51,7 +51,7 @@ impl OpNumberMathModulus {
         // gather errors
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         // run node
@@ -67,7 +67,7 @@ impl OpNumberMathModulus {
         let value = match &inputs[0].value {
             Value::Integer(a) => Value::Integer(*a % n as i32),
 
-            Value::Decimal(a) => Value::Decimal(*a % n as f32),
+            Value::Decimal(a) => Value::Decimal(*a % n),
 
             _ => {return Err(OperationError {
                 input_errors: vec![], node_error: Some("Error converting.".to_string()),
@@ -77,7 +77,7 @@ impl OpNumberMathModulus {
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
-                value: value,
+                value,
             }],
         })
     }

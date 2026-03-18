@@ -36,7 +36,7 @@ impl OpNumberInputPi {
     }
 
     /// Executes the node: returns pi.
-    pub async fn run(_inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(_inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
 
         Ok(OperationResponse {

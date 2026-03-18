@@ -144,7 +144,7 @@ impl OpNumberInputDecimal {
     }
 
     /// Executes the node: converts the input to a decimal and passes it through.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -153,7 +153,7 @@ impl OpNumberInputDecimal {
 
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::Decimal(input) = input_converted.unwrap() else { unreachable!() };

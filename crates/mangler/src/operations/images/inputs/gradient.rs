@@ -59,7 +59,7 @@ impl OpImageInputGradient {
     ///
     /// The blend factor for each row is `y / height`, so the top row is fully color `a`
     /// and the bottom row is fully color `b`.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -72,7 +72,7 @@ impl OpImageInputGradient {
 
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::Color(a) = a_converted.unwrap() else { unreachable!() };
@@ -174,8 +174,8 @@ impl OpImageInputGradient {
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
-                OutputResponse { value: Value::Integer(width as i32) },
-                OutputResponse { value: Value::Integer(height as i32) },
+                OutputResponse { value: Value::Integer(width) },
+                OutputResponse { value: Value::Integer(height) },
             ],
         })
     }

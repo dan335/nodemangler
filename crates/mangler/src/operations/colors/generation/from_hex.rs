@@ -28,7 +28,7 @@ impl OpColorGenerationFromHex {
     /// Creates the input definitions: a single hex string input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("hex".to_string(), Value::String("#FFFFFF".to_string()), Some(InputSettings::SingleLineText), None),
+            Input::new("hex".to_string(), Value::Text("#FFFFFF".to_string()), Some(InputSettings::SingleLineText), None),
         ]
     }
 
@@ -44,18 +44,18 @@ impl OpColorGenerationFromHex {
     /// Accepts `#RRGGBB` (alpha defaults to 255) and `#RRGGBBAA` formats.
     /// Strips a leading `#` if present. Returns an error if the string cannot
     /// be parsed as valid hex.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let hex_converted = convert_input(inputs, 0, ValueType::String, &mut input_errors);
+        let hex_converted = convert_input(inputs, 0, ValueType::Text, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Value::String(hex_str) = hex_converted.unwrap() else { unreachable!() };
+        let Value::Text(hex_str) = hex_converted.unwrap() else { unreachable!() };
 
         // Strip leading '#' if present
         let hex_clean = if hex_str.starts_with('#') {
@@ -135,7 +135,7 @@ mod tests {
 
     fn hex_inputs(hex: &str) -> Vec<Input> {
         vec![
-            Input::new("hex".to_string(), Value::String(hex.to_string()), None, None),
+            Input::new("hex".to_string(), Value::Text(hex.to_string()), None, None),
         ]
     }
 

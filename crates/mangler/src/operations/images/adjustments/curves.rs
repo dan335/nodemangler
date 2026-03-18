@@ -46,7 +46,7 @@ impl OpImageAdjustmentCurves {
     }
 
     /// Executes the curves adjustment. Applies a linear contrast curve centered on the midpoint.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -56,7 +56,7 @@ impl OpImageAdjustmentCurves {
         let midpoint_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
@@ -65,8 +65,8 @@ impl OpImageAdjustmentCurves {
 
         // run node
         let mut buffer = data.to_rgba32f();
-        let strength = strength as f32;
-        let midpoint = midpoint as f32;
+        let strength = strength;
+        let midpoint = midpoint;
         // Double the strength to get a more perceptually useful contrast range
         let contrast = strength * 2.0;
 

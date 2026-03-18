@@ -169,10 +169,10 @@ mod tests {
     }
 
     #[test]
-    fn test_valid_connection_bool_to_string() {
+    fn test_valid_connection_bool_to_text() {
         let input = Input::new("a".to_string(), Value::Bool(false), None, None);
-        let output = Output::new("out".to_string(), Value::String("hi".to_string()), None);
-        // Bool valid_conversions includes String
+        let output = Output::new("out".to_string(), Value::Text("hi".to_string()), None);
+        // Bool valid_conversions includes Text
         assert!(input.is_valid_connection(&output));
     }
 
@@ -195,21 +195,19 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_connection_string_to_decimal() {
-        // String input expects String output; Decimal can convert to String but String cannot receive Decimal
-        let input = Input::new("a".to_string(), Value::String("".to_string()), None, None);
+    fn test_invalid_connection_text_to_decimal() {
+        // Text input expects Text output; Decimal can convert to Text but Text cannot receive Decimal
+        let input = Input::new("a".to_string(), Value::Text("".to_string()), None, None);
         let output = Output::new("out".to_string(), Value::Decimal(1.0), None);
-        // String valid_conversions: [String, Trigger] — Decimal is not in that list
+        // Text valid_conversions: [Text, Trigger] — Decimal is not in that list
         assert!(!input.is_valid_connection(&output));
     }
 
     #[test]
-    fn test_valid_connection_path_to_string() {
-        // Path input can accept String (String is in Path's valid_conversions_from... wait)
-        // Actually: input is Path, output is String. We check input's valid_conversions contains output's type.
-        // Path valid_conversions: [String, Path, Trigger]. Output is String. String is in the list → valid.
+    fn test_valid_connection_path_to_text() {
+        // Path input can accept Text (Text is in Path's valid_conversions).
         let input = Input::new("a".to_string(), Value::Path(PathBuf::new()), None, None);
-        let output = Output::new("out".to_string(), Value::String("test".to_string()), None);
+        let output = Output::new("out".to_string(), Value::Text("test".to_string()), None);
         assert!(input.is_valid_connection(&output));
     }
 
@@ -223,8 +221,8 @@ mod tests {
 
     #[test]
     fn test_accepts_any_type_allows_incompatible_connection() {
-        // Normally a String input can't accept a DynamicImage output
-        let mut input = Input::new("x".to_string(), Value::String(String::new()), None, None);
+        // Normally a Text input can't accept a DynamicImage output
+        let mut input = Input::new("x".to_string(), Value::Text(String::new()), None, None);
         let output = Output::new("out".to_string(), Value::DynamicImage {
             data: std::sync::Arc::new(image::DynamicImage::ImageRgba8(image::RgbaImage::new(1, 1))),
             change_id: crate::get_id(),

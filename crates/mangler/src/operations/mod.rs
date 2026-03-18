@@ -135,7 +135,7 @@ impl OperationListItem {
 
     /// Recursively sorts all categories and operations alphabetically by name.
     pub fn sort_alphabetically(items: &mut Vec<OperationListItem>) {
-        items.sort_by(|a, b| a.sort_name().cmp(&b.sort_name()));
+        items.sort_by_key(|a| a.sort_name());
         for item in items.iter_mut() {
             if let OperationListItem::Category { operation_list_items, .. } = item {
                 Self::sort_alphabetically(operation_list_items);
@@ -190,7 +190,7 @@ macro_rules! operations {
                 }
             }
 
-            pub async fn run(&self, inputs: &mut Vec<Input>) -> Result<crate::operations::OperationResponse, crate::operations::OperationError> {
+            pub async fn run(&self, inputs: &mut [Input]) -> Result<$crate::operations::OperationResponse, $crate::operations::OperationError> {
                 match self {
                     $(Operation::$variant => <$inner>::run(inputs).await,)*
                 }
@@ -328,6 +328,7 @@ operations! {
     OpImageInputColor(crate::operations::images::inputs::color::OpImageInputColor),
     OpImageInputFile(crate::operations::images::inputs::file::OpImageInputFile),
     OpImageInputGradient(crate::operations::images::inputs::gradient::OpImageInputGradient),
+    OpImageInputText(crate::operations::images::inputs::text::OpImageInputText),
 
     OpImageOutputClipboard(crate::operations::images::outputs::clipboard::OpImageOutputClipboard),
     OpImageOutputFile(crate::operations::images::outputs::file::OpImageOutputFile),
@@ -437,6 +438,14 @@ operations! {
     OpLogicBoolNor(crate::operations::logic::boolean::nor::OpLogicBoolNor),
 
     OpLogicFlowSelect(crate::operations::logic::flow::select::OpLogicFlowSelect),
+
+    // text
+    OpTextInput(crate::operations::text::inputs::text_input::OpTextInput),
+    OpTextAppend(crate::operations::text::manipulation::append::OpTextAppend),
+    OpTextLength(crate::operations::text::manipulation::length::OpTextLength),
+    OpTextToUppercase(crate::operations::text::manipulation::to_uppercase::OpTextToUppercase),
+    OpTextToLowercase(crate::operations::text::manipulation::to_lowercase::OpTextToLowercase),
+    OpTextToString(crate::operations::text::manipulation::to_string::OpTextToString),
 
     // bitwise
     OpNumberBitwiseAnd(crate::operations::numbers::bitwise::bit_and::OpNumberBitwiseAnd),
@@ -602,6 +611,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageInputClipboard },
                 OperationListItem::Operation { operation: Operation::OpImageInputColor },
                 OperationListItem::Operation { operation: Operation::OpImageInputGradient },
+                OperationListItem::Operation { operation: Operation::OpImageInputText },
             ]},
             OperationListItem::Category { name: "output".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageOutputFile },
@@ -720,6 +730,17 @@ pub fn operation_list() -> Vec<OperationListItem> {
             ]},
             OperationListItem::Category { name: "flow".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpLogicFlowSelect },
+            ]},
+        ]},
+        OperationListItem::Category { name: "text".to_string(), operation_list_items: vec![
+            OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpTextInput },
+            ]},
+            OperationListItem::Category { name: "manipulation".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpTextAppend },
+                OperationListItem::Operation { operation: Operation::OpTextLength },
+                OperationListItem::Operation { operation: Operation::OpTextToUppercase },
+                OperationListItem::Operation { operation: Operation::OpTextToLowercase },
             ]},
         ]},
         //OperationListItem::Subgraph,

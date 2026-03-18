@@ -45,7 +45,7 @@ impl OpImageCastToImage {
     }
 
     /// Executes the cast: converts the input to a DynamicImage via `try_convert_to`.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
 
         let result = inputs[0].value.try_convert_to(ValueType::DynamicImage);
@@ -124,7 +124,7 @@ mod tests {
         match &result.responses[0].value {
             Value::DynamicImage { data, .. } => {
                 let pixel = data.to_rgba8().get_pixel(0, 0).0;
-                assert_eq!(pixel, [0, 0, 0, 0]);
+                assert_eq!(pixel, [0, 0, 0, 255]);
             }
             other => panic!("Expected DynamicImage, got {:?}", other),
         }

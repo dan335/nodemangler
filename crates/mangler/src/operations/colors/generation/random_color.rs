@@ -48,7 +48,7 @@ impl OpColorGenerationRandomColor {
     ///
     /// Hue is fully random in `[0, 360)`. Saturation and lightness are sampled uniformly
     /// within the provided min/max bounds. If max < min, the range collapses to min.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -59,7 +59,7 @@ impl OpColorGenerationRandomColor {
         let max_lightness_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::Decimal(min_saturation) = min_saturation_converted.unwrap() else { unreachable!() };

@@ -35,7 +35,7 @@ impl OpImageOutputFile {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("file name".to_string(), Value::String("image01".to_string()), Some(InputSettings::SingleLineText), None),
+            Input::new("file name".to_string(), Value::Text("image01".to_string()), Some(InputSettings::SingleLineText), None),
             Input::new("folder".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path {
                 extension_filter: vec![],
                 set_directory: None,
@@ -58,23 +58,23 @@ impl OpImageOutputFile {
     ///
     /// Returns an error if the folder does not exist or the image cannot be encoded
     /// in the requested format.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
         let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
-        let file_name_converted = convert_input(inputs, 1, ValueType::String, &mut input_errors);
+        let file_name_converted = convert_input(inputs, 1, ValueType::Text, &mut input_errors);
         let folder_converted = convert_input(inputs, 2, ValueType::Path, &mut input_errors);
         let image_type_converted = convert_input(inputs, 3, ValueType::ImageType, &mut input_errors);
 
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::String(file_name) = file_name_converted.unwrap() else { unreachable!() };
+        let Value::Text(file_name) = file_name_converted.unwrap() else { unreachable!() };
         let Value::Path(mut folder_path) = folder_converted.unwrap() else { unreachable!() };
         let Value::ImageType(image_type) = image_type_converted.unwrap() else { unreachable!() };
 
@@ -131,7 +131,7 @@ mod tests {
         let img = Arc::new(DynamicImage::ImageRgba8(imgbuf));
         let mut inputs = vec![
             Input::new("image".to_string(), Value::DynamicImage { data: img, change_id: get_id() }, None, None),
-            Input::new("file name".to_string(), Value::String("test_output".to_string()), None, None),
+            Input::new("file name".to_string(), Value::Text("test_output".to_string()), None, None),
             Input::new("folder".to_string(), Value::Path(std::path::PathBuf::from("/this/path/does/not/exist/at/all")), None, None),
             Input::new("image format".to_string(), Value::ImageType(image::ImageFormat::Png), None, None),
         ];

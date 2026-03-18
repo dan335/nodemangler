@@ -40,7 +40,7 @@ impl OpNumberMathDecrement {
     }
 
     /// Executes the decrement: subtracts 1 from the input value.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let input_errors: Vec<(usize, String)> = vec![];
 
@@ -48,7 +48,7 @@ impl OpNumberMathDecrement {
         // gather errors
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         // run node
@@ -58,7 +58,7 @@ impl OpNumberMathDecrement {
 
             Value::Decimal(a) => Value::Decimal(*a - 1.0),
 
-            Value::String(a) => Value::String(format!("{} {}", *a, -1)),
+            Value::Text(a) => Value::Text(format!("{} {}", *a, -1)),
 
             _ => {return Err(OperationError {
                 input_errors: vec![], node_error: Some("Error converting.".to_string()),
@@ -68,7 +68,7 @@ impl OpNumberMathDecrement {
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
-                value: value,
+                value,
             }],
         })
     }
@@ -139,12 +139,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_decrement_string() {
-        let mut inputs = vec![Input::new("a".to_string(), Value::String("hello".to_string()), None, None)];
+    async fn test_decrement_text() {
+        let mut inputs = vec![Input::new("a".to_string(), Value::Text("hello".to_string()), None, None)];
         let result = OpNumberMathDecrement::run(&mut inputs).await.unwrap();
         match &result.responses[0].value {
-            Value::String(s) => assert_eq!(s, "hello -1"),
-            other => panic!("Expected String, got {:?}", other),
+            Value::Text(s) => assert_eq!(s, "hello -1"),
+            other => panic!("Expected Text, got {:?}", other),
         }
     }
 

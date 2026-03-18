@@ -47,7 +47,7 @@ impl OpImageTransformMirror {
     }
 
     /// Executes the mirror operation by reflecting pixels across the configured axes.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -57,7 +57,7 @@ impl OpImageTransformMirror {
         let offset_x_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
         let offset_y_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
 
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         let Value::DynamicImage { data: src_data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Bool(mirror_x) = mirror_x_converted.unwrap() else { unreachable!() };
@@ -78,7 +78,7 @@ impl OpImageTransformMirror {
                 let sx = if mirror_x && x >= split_x {
                     // Reflect: compute distance past the split and map back symmetrically
                     let dist = x - split_x;
-                    if split_x as i32 - dist as i32 - 1 >= 0 {
+                    if split_x as i32 - dist as i32 > 0 {
                         split_x - dist - 1
                     } else {
                         0
@@ -89,7 +89,7 @@ impl OpImageTransformMirror {
 
                 let sy = if mirror_y && y >= split_y {
                     let dist = y - split_y;
-                    if split_y as i32 - dist as i32 - 1 >= 0 {
+                    if split_y as i32 - dist as i32 > 0 {
                         split_y - dist - 1
                     } else {
                         0

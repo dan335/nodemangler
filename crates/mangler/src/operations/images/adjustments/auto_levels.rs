@@ -47,7 +47,7 @@ impl OpImageAdjustmentAutoLevels {
 
     /// Executes the auto levels adjustment. Builds a 256-bin luminance histogram,
     /// finds clip-adjusted black and white points, then linearly remaps all channels.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -57,7 +57,7 @@ impl OpImageAdjustmentAutoLevels {
         let clip_white_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
@@ -66,8 +66,8 @@ impl OpImageAdjustmentAutoLevels {
 
         // run node
         let mut buffer = data.to_rgba32f();
-        let clip_black = clip_black as f32;
-        let clip_white = clip_white as f32;
+        let clip_black = clip_black;
+        let clip_white = clip_white;
 
         // build 256-bin histogram of luminance values
         let mut histogram = [0u32; 256];

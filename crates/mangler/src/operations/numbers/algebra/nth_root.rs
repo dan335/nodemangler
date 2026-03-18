@@ -43,7 +43,7 @@ impl OpNumberMathNthRt {
     }
 
     /// Executes the nth root: computes `a^(1/n)` with negative inputs clamped to 0.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let input_errors: Vec<(usize, String)> = vec![];
 
@@ -51,7 +51,7 @@ impl OpNumberMathNthRt {
         // gather errors
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         // run node
@@ -66,7 +66,7 @@ impl OpNumberMathNthRt {
 
         let num = match &inputs[0].value {
             Value::Integer(a) => Some(*a as f32),
-            Value::Decimal(a) => Some(a.clone()),
+            Value::Decimal(a) => Some(*a),
             _ => None,
         };
 
@@ -82,10 +82,10 @@ impl OpNumberMathNthRt {
                 }],
             })
         } else {
-            return Err(OperationError {
+            Err(OperationError {
                 input_errors: vec![(0, "Unable to convert to a number.".to_string())],
                 node_error: None,
-            });
+            })
         }
 
         

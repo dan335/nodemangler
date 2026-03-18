@@ -46,11 +46,11 @@ impl OpLogicCompareNotEqual {
     ///
     /// String inputs are compared directly. All other types are converted to
     /// decimals first, allowing cross-type comparisons.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
 
-        // String != String: direct comparison without numeric coercion
-        if let (Value::String(a), Value::String(b)) = (&inputs[0].value, &inputs[1].value) {
+        // Text != Text: direct comparison without numeric coercion
+        if let (Value::Text(a), Value::Text(b)) = (&inputs[0].value, &inputs[1].value) {
             return Ok(OperationResponse {
                 time: Instant::now().duration_since(start_time),
                 responses: vec![OutputResponse { value: Value::Bool(*a != *b) }],

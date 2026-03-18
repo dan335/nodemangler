@@ -48,7 +48,7 @@ impl OpImageAdjustmentEmboss {
 
     /// Executes the emboss effect. Samples forward and backward along the angle direction
     /// and outputs the scaled difference centered at 0.5.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -58,7 +58,7 @@ impl OpImageAdjustmentEmboss {
         let angle_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
@@ -69,8 +69,8 @@ impl OpImageAdjustmentEmboss {
         let buffer = data.to_rgba32f();
         let (width, height) = (buffer.width(), buffer.height());
         let mut output = buffer.clone();
-        let intensity = intensity as f32;
-        let angle_rad = (angle as f32).to_radians();
+        let intensity = intensity;
+        let angle_rad = angle.to_radians();
         // Convert angle to unit direction vector for sampling offsets
         let dx = angle_rad.cos();
         let dy = angle_rad.sin();

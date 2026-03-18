@@ -47,7 +47,7 @@ impl OpColorAnalysisMixRatio {
     /// For each RGB channel where `|target - source| > 1e-6`, computes
     /// `t = (mixed - source) / (target - source)`. The final ratio is the
     /// average of all non-degenerate channel results, clamped to 0–1.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -57,7 +57,7 @@ impl OpColorAnalysisMixRatio {
         let mix_converted = convert_input(inputs, 2, ValueType::Color, &mut input_errors);
 
         // Return early on conversion errors.
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // Unwrap the converted values.
         let Value::Color(source) = src_converted.unwrap() else { unreachable!() };

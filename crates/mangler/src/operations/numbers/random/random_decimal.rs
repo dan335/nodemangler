@@ -41,7 +41,7 @@ impl OpNumberRandomDecimal {
     }
 
     /// Executes the node: generates and outputs a random decimal in `[0.0, 1.0)`.
-    pub async fn run(_inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(_inputs: &[Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let input_errors: Vec<(usize, String)> = vec![];
 
@@ -49,7 +49,7 @@ impl OpNumberRandomDecimal {
         // gather errors
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         // run node

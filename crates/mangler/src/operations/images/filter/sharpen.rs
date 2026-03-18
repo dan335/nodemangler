@@ -44,7 +44,7 @@ impl OpImageAdjustmentSharpen {
     }
 
     /// Executes the sharpening convolution. Uses edge-clamped sampling for border pixels.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -53,7 +53,7 @@ impl OpImageAdjustmentSharpen {
         let intensity_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
@@ -63,7 +63,7 @@ impl OpImageAdjustmentSharpen {
         let buffer = data.to_rgba32f();
         let (width, height) = (buffer.width(), buffer.height());
         let mut output = buffer.clone();
-        let intensity = intensity as f32;
+        let intensity = intensity;
 
         // Sharpen kernel: center = 1 + 4*intensity, edges = -intensity, corners = 0
         let center = 1.0 + 4.0 * intensity;

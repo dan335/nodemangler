@@ -51,7 +51,7 @@ impl OpImageInputClipboard {
     /// Executes the operation: reads image data from the system clipboard.
     ///
     /// Returns an error if the clipboard cannot be accessed or contains no image data.
-    pub async fn run(_inputs: &Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(_inputs: &[Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         
         // run node
@@ -80,7 +80,7 @@ impl OpImageInputClipboard {
             Ok(OperationResponse {
                 time: Instant::now().duration_since(start_time),
                 responses: vec![
-                    OutputResponse { value: value },
+                    OutputResponse { value },
                     OutputResponse { value: Value::Integer(width as i32) },
                     OutputResponse { value: Value::Integer(height as i32) },
                 ],

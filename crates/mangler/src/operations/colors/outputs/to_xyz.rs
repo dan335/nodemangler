@@ -43,7 +43,7 @@ impl OpColorOutputXyz {
     }
 
     /// Executes the operation, converting the input color to CIE XYZ float channels.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -52,7 +52,7 @@ impl OpColorOutputXyz {
 
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::Color(color) = color_converted.unwrap() else { unreachable!() };

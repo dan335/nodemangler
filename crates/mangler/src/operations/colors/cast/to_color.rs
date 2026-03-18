@@ -45,7 +45,7 @@ impl OpColorCastToColor {
     }
 
     /// Executes the cast: converts the input to a Color via `try_convert_to`.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
 
         let result = inputs[0].value.try_convert_to(ValueType::Color);

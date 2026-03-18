@@ -118,13 +118,24 @@ mod serialization_tests {
     }
 
     #[test]
-    fn test_value_string_serialization() {
-        let val = Value::String("hello world".to_string());
+    fn test_value_text_serialization() {
+        let val = Value::Text("hello world".to_string());
         let json = serde_json::to_string(&val).unwrap();
         let loaded: Value = serde_json::from_str(&json).unwrap();
         match loaded {
-            Value::String(v) => assert_eq!(v, "hello world"),
-            other => panic!("Expected String, got {:?}", other),
+            Value::Text(v) => assert_eq!(v, "hello world"),
+            other => panic!("Expected Text, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_value_string_alias_deserializes_as_text() {
+        // Old saved graphs use "String" variant — ensure backward compatibility via serde alias
+        let old_json = r#"{"String":"hello world"}"#;
+        let loaded: Value = serde_json::from_str(old_json).unwrap();
+        match loaded {
+            Value::Text(v) => assert_eq!(v, "hello world"),
+            other => panic!("Expected Text via String alias, got {:?}", other),
         }
     }
 

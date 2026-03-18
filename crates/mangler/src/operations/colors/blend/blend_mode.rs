@@ -48,7 +48,7 @@ impl OpColorBlendMode {
 
     /// Executes the blend operation by applying the chosen blend mode between colors a and b
     /// in the chosen color space.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -60,7 +60,7 @@ impl OpColorBlendMode {
         let color_space_converted = convert_input(inputs, 4, ValueType::ColorSpace, &mut input_errors);
 
         // Return early if any input failed to convert.
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // Unwrap the converted values.
         let Value::Color(a) = a_converted.unwrap() else { unreachable!() };

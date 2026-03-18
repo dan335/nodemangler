@@ -10,7 +10,7 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -47,7 +47,7 @@ impl OpNumberMathAdd {
     }
 
     /// Executes the addition. Dispatches on the type combination of inputs a and b.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let input_errors: Vec<(usize, String)> = vec![];
 
@@ -55,7 +55,7 @@ impl OpNumberMathAdd {
         // gather errors
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         // run node
@@ -89,8 +89,8 @@ impl OpNumberMathAdd {
 
                         Value::DynamicImage { data: image_b.clone(), change_id: get_id() }
                     },
-                    Value::String(b) => {
-                        Value::String(format!("{}{}", a.to_string(), b))
+                    Value::Text(b) => {
+                        Value::Text(format!("{}{}", a, b))
                     },
                     Value::Color(b) => {
                         let rgba = b.to_srgb_float();
@@ -130,8 +130,8 @@ impl OpNumberMathAdd {
 
                         Value::DynamicImage { data: image_b.clone(), change_id: get_id() }
                     },
-                    Value::String(b) => {
-                        Value::String(format!("{}{}", a.to_string(), b))
+                    Value::Text(b) => {
+                        Value::Text(format!("{}{}", a, b))
                     },
                     Value::Color(b) => {
                         let rgba = b.to_srgb_float();
@@ -167,8 +167,8 @@ impl OpNumberMathAdd {
 
                         Value::DynamicImage { data: image_b.clone(), change_id: get_id() }
                     },
-                    Value::String(b) => {
-                        Value::String(format!("{}{}", a.to_string(), b))
+                    Value::Text(b) => {
+                        Value::Text(format!("{}{}", a, b))
                     },
                     Value::Color(b) => {
                         let rgba = b.to_srgb_float();
@@ -211,12 +211,12 @@ impl OpNumberMathAdd {
                     }); }
                 }
             },
-            Value::String(_a) => {
+            Value::Text(_a) => {
                 match &inputs[1].value {
                     Value::Bool(_b) => todo!(),
                     Value::Integer(_b) => todo!(),
                     Value::Decimal(_b) => todo!(),
-                    Value::String(_b) => todo!(),
+                    Value::Text(_b) => todo!(),
                     Value::Color(_b) => todo!(),
                     Value::Path(_b) => todo!(),
                     _ => {return Err(OperationError {
@@ -232,7 +232,7 @@ impl OpNumberMathAdd {
                     Value::Bool(_b) => todo!(),
                     Value::Integer(_b) => todo!(),
                     Value::Decimal(_b) => todo!(),
-                    Value::String(_b) => todo!(),
+                    Value::Text(_b) => todo!(),
                     Value::Path(_b) => todo!(),
                     _ => {return Err(OperationError {
                         input_errors: vec![
@@ -253,7 +253,7 @@ impl OpNumberMathAdd {
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
-                value: value,
+                value,
             }],
         })
     }
@@ -273,8 +273,8 @@ mod tests {
         ($val:expr, Bool($expected:expr)) => {
             match &$val { Value::Bool(v) => assert_eq!(*v, $expected), other => panic!("Expected Bool({}), got {:?}", $expected, other) }
         };
-        ($val:expr, String($expected:expr)) => {
-            match &$val { Value::String(v) => assert_eq!(v, $expected), other => panic!("Expected String, got {:?}", other) }
+        ($val:expr, Text($expected:expr)) => {
+            match &$val { Value::Text(v) => assert_eq!(v, $expected), other => panic!("Expected Text, got {:?}", other) }
         };
     }
 
@@ -406,23 +406,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_add_string_concat() {
+    async fn test_add_text_concat() {
         let mut inputs = make_inputs(
             Value::Bool(true),
-            Value::String("hello".to_string()),
+            Value::Text("hello".to_string()),
         );
         let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
-        assert_value!(result.responses[0].value, String("truehello"));
+        assert_value!(result.responses[0].value, Text("truehello"));
     }
 
     #[tokio::test]
-    async fn test_add_integer_string_concat() {
+    async fn test_add_integer_text_concat() {
         let mut inputs = make_inputs(
             Value::Integer(42),
-            Value::String("hello".to_string()),
+            Value::Text("hello".to_string()),
         );
         let result = OpNumberMathAdd::run(&mut inputs).await.unwrap();
-        assert_value!(result.responses[0].value, String("42hello"));
+        assert_value!(result.responses[0].value, Text("42hello"));
     }
 
     #[tokio::test]

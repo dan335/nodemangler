@@ -4,7 +4,7 @@
 //! pair at 150° and 210° hue offsets from the input color.
 
 use crate::color::Color;
-use crate::input::{Input, InputSettings};
+use crate::input::Input;
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
 use crate::output::Output;
@@ -48,7 +48,7 @@ impl OpColorHarmonyComplementary {
     }
 
     /// Executes the complementary harmony, producing colors at 180°, 150°, and 210° offsets.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -56,7 +56,7 @@ impl OpColorHarmonyComplementary {
         let color_converted = convert_input(inputs, 0, ValueType::Color, &mut input_errors);
 
         // Return early on conversion errors
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // Unwrap value
         let Value::Color(color) = color_converted.unwrap() else { unreachable!() };

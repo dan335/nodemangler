@@ -43,7 +43,7 @@ impl OperationSubgraph {
         vec![
             Input {
                 name: "file path".to_string(),
-                value: Value::String("C:\\temp\\New_Graph.mangle".to_string()),
+                value: Value::Text("C:\\temp\\New_Graph.mangle".to_string()),
                 connection: None,
                 valid_types: vec![],
             }
@@ -90,7 +90,7 @@ impl OperationSubgraph {
             if let Data::Subgraph(subgraph) = data {
                 // Lazy initialization: only load the graph file on first run
                 if subgraph.is_none() {
-                    let Ok(Value::String(path_string)) = inputs[0].value.try_convert_to(ValueType::String) else { return Err(OperationError { message: "Unable to get path string.".to_string() })};
+                    let Ok(Value::Text(path_string)) = inputs[0].value.try_convert_to(ValueType::Text) else { return Err(OperationError { message: "Unable to get path string.".to_string() })};
                     let path = PathBuf::from(path_string);
 
                     let graph_result = Graph::load(

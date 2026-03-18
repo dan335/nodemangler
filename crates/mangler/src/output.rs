@@ -143,18 +143,18 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_connection_string_output_to_bool_input() {
-        let output = Output::new("out".to_string(), Value::String("hi".to_string()), None);
+    fn test_invalid_connection_text_output_to_bool_input() {
+        let output = Output::new("out".to_string(), Value::Text("hi".to_string()), None);
         let input = Input::new("in".to_string(), Value::Bool(false), None, None);
-        // String valid_conversions: [String, Trigger] — Bool not in list
+        // Text valid_conversions: [Text, Trigger] — Bool not in list
         assert!(!output.is_valid_connection(&input));
     }
 
     #[test]
-    fn test_valid_connection_decimal_output_to_string_input() {
+    fn test_valid_connection_decimal_output_to_text_input() {
         let output = Output::new("out".to_string(), Value::Decimal(1.0), None);
-        let input = Input::new("in".to_string(), Value::String("".to_string()), None, None);
-        // Decimal valid_conversions: [Bool, Integer, Decimal, String, Trigger] — String is in list
+        let input = Input::new("in".to_string(), Value::Text("".to_string()), None, None);
+        // Decimal valid_conversions: [Bool, Integer, Decimal, Text, Trigger] — Text is in list
         assert!(output.is_valid_connection(&input));
     }
 

@@ -153,7 +153,7 @@ impl<'de> Visitor<'de> for DynamicImageVisitor {
 /// Reinterprets a byte slice as a vec of `u16` values using native endianness.
 /// Returns `None` if the byte count is odd (not a valid u16 sequence).
 fn view_as_u16(data: &[u8]) -> Option<Vec<u16>> {
-    if data.len() % 2 != 0 {
+    if !data.len().is_multiple_of(2) {
         return None;
     }
     Some(
@@ -166,7 +166,7 @@ fn view_as_u16(data: &[u8]) -> Option<Vec<u16>> {
 /// Reinterprets a byte slice as a vec of `f32` values using native endianness.
 /// Returns `None` if the byte count is not a multiple of 4.
 fn view_as_f32(data: &[u8]) -> Option<Vec<f32>> {
-    if data.len() % 4 != 0 {
+    if !data.len().is_multiple_of(4) {
         return None;
     }
     Some(

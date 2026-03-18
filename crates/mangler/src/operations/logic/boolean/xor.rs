@@ -42,14 +42,14 @@ impl OpLogicBoolXor {
     }
 
     /// Converts both inputs to booleans and returns their exclusive disjunction.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         let a_converted = convert_input(inputs, 0, ValueType::Bool, &mut input_errors);
         let b_converted = convert_input(inputs, 1, ValueType::Bool, &mut input_errors);
 
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         let Value::Bool(a) = a_converted.unwrap() else { unreachable!() };
         let Value::Bool(b) = b_converted.unwrap() else { unreachable!() };

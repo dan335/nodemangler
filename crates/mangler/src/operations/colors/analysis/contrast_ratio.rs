@@ -44,7 +44,7 @@ impl OpColorAnalysisContrastRatio {
     }
 
     /// Executes the WCAG contrast ratio computation between two colors.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -53,7 +53,7 @@ impl OpColorAnalysisContrastRatio {
         let b_converted = convert_input(inputs, 1, ValueType::Color, &mut input_errors);
 
         // Return early if any input failed conversion.
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // Unwrap the converted values.
         let Value::Color(a) = a_converted.unwrap() else { unreachable!() };

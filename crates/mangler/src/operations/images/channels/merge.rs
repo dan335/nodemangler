@@ -56,7 +56,7 @@ impl OpImageChannelMerge {
     ///
     /// Uses the red channel's dimensions for the output. Channels smaller than the
     /// output default to 0 (or 255 for alpha) at out-of-bounds coordinates.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -67,7 +67,7 @@ impl OpImageChannelMerge {
         let alpha_converted = convert_input(inputs, 3, ValueType::DynamicImage, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage{data:red_data, change_id:_} = red_converted.unwrap() else { unreachable!() };

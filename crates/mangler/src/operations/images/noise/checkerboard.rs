@@ -46,7 +46,7 @@ impl OpImageNoiseCheckerboard {
     }
 
     /// Generates a checkerboard pattern image from the given inputs.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 

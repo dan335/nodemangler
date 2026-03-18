@@ -56,7 +56,7 @@ impl OpColorHarmonyMonochromatic {
     }
 
     /// Executes the monochromatic harmony, producing five shades evenly spread from min to max lightness.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -66,7 +66,7 @@ impl OpColorHarmonyMonochromatic {
         let lmax_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
 
         // Return early on conversion errors.
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // Unwrap the converted values.
         let Value::Color(color) = color_converted.unwrap() else { unreachable!() };

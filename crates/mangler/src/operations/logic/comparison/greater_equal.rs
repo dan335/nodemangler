@@ -42,7 +42,7 @@ impl OpLogicCompareGreaterEqual {
     }
 
     /// Converts both inputs to decimals and returns `true` if `a >= b`.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 

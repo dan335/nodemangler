@@ -67,7 +67,9 @@
       "Bash(mv crates/mangler/src/operations/numbers/algebra/ceil.rs crates/mangler/src/operations/numbers/arithmetic/)",
       "Bash(mv crates/mangler/src/operations/numbers/algebra/floor.rs crates/mangler/src/operations/numbers/arithmetic/)",
       "Bash(mv crates/mangler/src/operations/numbers/algebra/trunc.rs crates/mangler/src/operations/numbers/arithmetic/)",
-      "Bash(mv crates/mangler/src/operations/numbers/algebra/frac.rs crates/mangler/src/operations/numbers/arithmetic/)"
+      "Bash(mv crates/mangler/src/operations/numbers/algebra/frac.rs crates/mangler/src/operations/numbers/arithmetic/)",
+      "Bash(mkdir -p D:/rust/nodemangler/crates/mangler/assets)",
+      "Bash(cp D:/rust/nodemangler/crates/nodemangler/assets/Manrope-Regular.ttf D:/rust/nodemangler/crates/mangler/assets/Manrope-Regular.ttf)"
     ]
   }
 }

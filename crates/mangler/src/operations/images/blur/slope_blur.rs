@@ -51,7 +51,7 @@ impl OpImageAdjustmentSlopeBlur {
 
     /// Executes the slope blur. Computes per-pixel gradient direction from the slope map
     /// using finite differences, then averages bilinear samples along that direction.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -62,7 +62,7 @@ impl OpImageAdjustmentSlopeBlur {
         let samples_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
@@ -72,7 +72,7 @@ impl OpImageAdjustmentSlopeBlur {
 
         // run node
         let samples = samples.max(1) as u32;
-        let intensity = intensity.max(0.0) as f32;
+        let intensity = intensity.max(0.0);
 
         let rgba = data.to_rgba8();
         let (width, height) = rgba.dimensions();

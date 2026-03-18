@@ -47,7 +47,7 @@ impl OpImageAdjustmentHistogramScan {
 
     /// Executes the histogram scan. Computes Rec. 709 luminance, then applies smoothstep
     /// transitions at the low and high edges of the selected band.
-    pub async fn run(inputs: &mut Vec<Input>) -> Result<OperationResponse, OperationError> {
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
@@ -57,7 +57,7 @@ impl OpImageAdjustmentHistogramScan {
         let range_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
         let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
@@ -66,8 +66,8 @@ impl OpImageAdjustmentHistogramScan {
 
         // run node
         let mut buffer = data.to_rgba32f();
-        let position = position as f32;
-        let range = range as f32;
+        let position = position;
+        let range = range;
         let low = position - range;
         let high = position + range;
 
