@@ -65,6 +65,10 @@ cargo run -p nodemangler  # Run the GUI app
 - `operations/images/adjustments/` — blur, contrast, grayscale, invert, brighten, hue_rotate, unsharpen, levels, curves, gradient_map
 - `operations/images/channels/` — split, merge, shuffle
 - `operations/images/noise/` — 14 noise generators
+- `operations/logic/inputs/` — bool
+- `operations/logic/comparison/` — equal, not_equal, less_than, less_equal, greater_than, greater_equal
+- `operations/logic/boolean/` — and, or, not, xor, nand, nor
+- `operations/logic/flow/` — select (mux: picks between two values based on a bool condition)
 
 ## Known Issues
 

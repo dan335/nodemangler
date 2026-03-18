@@ -11,6 +11,7 @@ use crate::output::Output;
 pub mod numbers;
 pub mod images;
 pub mod colors;
+pub mod logic;
 
 #[derive(Debug, Clone)]
 pub struct ConnectionSettings {
@@ -284,6 +285,25 @@ operations! {
     OpImagePbrAoFromHeight(crate::operations::images::pbr::ao_from_height::OpImagePbrAoFromHeight),
     OpImagePbrCurvature(crate::operations::images::pbr::curvature::OpImagePbrCurvature),
     OpImagePbrHeightBlend(crate::operations::images::pbr::height_blend::OpImagePbrHeightBlend),
+
+    // logic
+    OpLogicInputBool(crate::operations::logic::inputs::bool_input::OpLogicInputBool),
+
+    OpLogicCompareEqual(crate::operations::logic::comparison::equal::OpLogicCompareEqual),
+    OpLogicCompareNotEqual(crate::operations::logic::comparison::not_equal::OpLogicCompareNotEqual),
+    OpLogicCompareLessThan(crate::operations::logic::comparison::less_than::OpLogicCompareLessThan),
+    OpLogicCompareLessEqual(crate::operations::logic::comparison::less_equal::OpLogicCompareLessEqual),
+    OpLogicCompareGreaterThan(crate::operations::logic::comparison::greater_than::OpLogicCompareGreaterThan),
+    OpLogicCompareGreaterEqual(crate::operations::logic::comparison::greater_equal::OpLogicCompareGreaterEqual),
+
+    OpLogicBoolAnd(crate::operations::logic::boolean::and::OpLogicBoolAnd),
+    OpLogicBoolOr(crate::operations::logic::boolean::or::OpLogicBoolOr),
+    OpLogicBoolNot(crate::operations::logic::boolean::not::OpLogicBoolNot),
+    OpLogicBoolXor(crate::operations::logic::boolean::xor::OpLogicBoolXor),
+    OpLogicBoolNand(crate::operations::logic::boolean::nand::OpLogicBoolNand),
+    OpLogicBoolNor(crate::operations::logic::boolean::nor::OpLogicBoolNor),
+
+    OpLogicFlowSelect(crate::operations::logic::flow::select::OpLogicFlowSelect),
 }
 
 pub fn operation_list() -> Vec<OperationListItem> {
@@ -461,7 +481,31 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageNoiseRidgedMultifractalNoise },
                 OperationListItem::Operation { operation: Operation::OpImageNoiseValue },
             ]},
-        ]}, 
+        ]},
+        OperationListItem::Category { name: "logic".to_string(), operation_list_items: vec![
+            OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpLogicInputBool },
+            ]},
+            OperationListItem::Category { name: "comparison".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpLogicCompareEqual },
+                OperationListItem::Operation { operation: Operation::OpLogicCompareNotEqual },
+                OperationListItem::Operation { operation: Operation::OpLogicCompareLessThan },
+                OperationListItem::Operation { operation: Operation::OpLogicCompareLessEqual },
+                OperationListItem::Operation { operation: Operation::OpLogicCompareGreaterThan },
+                OperationListItem::Operation { operation: Operation::OpLogicCompareGreaterEqual },
+            ]},
+            OperationListItem::Category { name: "boolean".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpLogicBoolAnd },
+                OperationListItem::Operation { operation: Operation::OpLogicBoolOr },
+                OperationListItem::Operation { operation: Operation::OpLogicBoolNot },
+                OperationListItem::Operation { operation: Operation::OpLogicBoolXor },
+                OperationListItem::Operation { operation: Operation::OpLogicBoolNand },
+                OperationListItem::Operation { operation: Operation::OpLogicBoolNor },
+            ]},
+            OperationListItem::Category { name: "flow".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpLogicFlowSelect },
+            ]},
+        ]},
         //OperationListItem::Subgraph,
     ]
 }
