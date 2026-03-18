@@ -12,3 +12,5 @@ pub mod outputs;
 pub mod blend;
 /// Operations for analyzing and sampling colors from images.
 pub mod sample_image;
+/// Cast operations for converting values to colors.
+pub mod cast;

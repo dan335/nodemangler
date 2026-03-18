@@ -15,14 +15,16 @@ use std::time::Duration;
 use crate::{node_settings::NodeSettings, operations};
 use crate::output::Output;
 
-/// Numeric operations (inputs, arithmetic, algebra, random, cast, logarithmic).
+/// Numeric operations (inputs, arithmetic, interpolation, algebra, random, cast, logarithmic).
 pub mod numbers;
-/// Image operations (inputs, outputs, transforms, adjustments, noise, etc.).
+/// Image operations (inputs, outputs, transforms, adjustments, blur, filter, noise, etc.).
 pub mod images;
-/// Color operations (inputs, outputs, blending, sampling).
+/// Color operations (inputs, outputs, blending, analysis).
 pub mod colors;
 /// Logic operations (boolean, comparison, flow control).
 pub mod logic;
+/// Text operations (clipboard).
+pub mod text;
 
 /// Describes a single input or output connection slot on a node.
 ///
@@ -121,6 +123,27 @@ pub enum OperationListItem {
     Subgraph
 }
 
+impl OperationListItem {
+    /// Returns the display name for sorting: category name or operation settings name.
+    fn sort_name(&self) -> String {
+        match self {
+            OperationListItem::Category { name, .. } => name.clone(),
+            OperationListItem::Operation { operation } => operation.settings().name,
+            OperationListItem::Subgraph => "subgraph".to_string(),
+        }
+    }
+
+    /// Recursively sorts all categories and operations alphabetically by name.
+    pub fn sort_alphabetically(items: &mut Vec<OperationListItem>) {
+        items.sort_by(|a, b| a.sort_name().cmp(&b.sort_name()));
+        for item in items.iter_mut() {
+            if let OperationListItem::Category { operation_list_items, .. } = item {
+                Self::sort_alphabetically(operation_list_items);
+            }
+        }
+    }
+}
+
 /// Creates a 1x1 opaque white RGBA image wrapped in an `Arc`.
 ///
 /// Used as the default placeholder image for image-typed inputs.
@@ -180,6 +203,9 @@ operations! {
     // numbers
     OpNumberInputInteger(crate::operations::numbers::inputs::integer::OpNumberInputInteger),
     OpNumberInputDecimal(crate::operations::numbers::inputs::decimal::OpNumberInputDecimal),
+    OpNumberInputPi(crate::operations::numbers::inputs::pi::OpNumberInputPi),
+    OpNumberInputTau(crate::operations::numbers::inputs::tau::OpNumberInputTau),
+    OpNumberInputE(crate::operations::numbers::inputs::e::OpNumberInputE),
 
     OpNumberMathAdd(crate::operations::numbers::arithmetic::add::OpNumberMathAdd),
     OpNumberMathSubtract(crate::operations::numbers::arithmetic::subtract::OpNumberMathSubtract),
@@ -193,7 +219,31 @@ operations! {
     OpNumberMathModulus(crate::operations::numbers::arithmetic::modulus::OpNumberMathModulus),
     OpNumberMathRound(crate::operations::numbers::arithmetic::round::OpNumberMathRound),
     OpNumberMathSign(crate::operations::numbers::arithmetic::sign::OpNumberMathSign),
-    OpNumberMathRand(crate::operations::numbers::arithmetic::rand::OpNumberMathRand),
+    OpNumberMathNegate(crate::operations::numbers::arithmetic::negate::OpNumberMathNegate),
+    OpNumberMathReciprocal(crate::operations::numbers::arithmetic::reciprocal::OpNumberMathReciprocal),
+    OpNumberMathAverage(crate::operations::numbers::arithmetic::average::OpNumberMathAverage),
+    OpNumberMathCeil(crate::operations::numbers::arithmetic::ceil::OpNumberMathCeil),
+    OpNumberMathFloor(crate::operations::numbers::arithmetic::floor::OpNumberMathFloor),
+    OpNumberMathTrunc(crate::operations::numbers::arithmetic::trunc::OpNumberMathTrunc),
+    OpNumberMathFrac(crate::operations::numbers::arithmetic::frac::OpNumberMathFrac),
+
+    // interpolation
+    OpNumberMathStep(crate::operations::numbers::interpolation::step::OpNumberMathStep),
+    OpNumberMathSmoothstep(crate::operations::numbers::interpolation::smoothstep::OpNumberMathSmoothstep),
+    OpNumberMathLerp(crate::operations::numbers::interpolation::lerp::OpNumberMathLerp),
+    OpNumberMathMapRange(crate::operations::numbers::interpolation::map_range::OpNumberMathMapRange),
+
+    // trigonometry
+    OpNumberTrigSin(crate::operations::numbers::trigonometry::sin::OpNumberTrigSin),
+    OpNumberTrigCos(crate::operations::numbers::trigonometry::cos::OpNumberTrigCos),
+    OpNumberTrigTan(crate::operations::numbers::trigonometry::tan::OpNumberTrigTan),
+    OpNumberTrigAsin(crate::operations::numbers::trigonometry::asin::OpNumberTrigAsin),
+    OpNumberTrigAcos(crate::operations::numbers::trigonometry::acos::OpNumberTrigAcos),
+    OpNumberTrigAtan(crate::operations::numbers::trigonometry::atan::OpNumberTrigAtan),
+    OpNumberTrigAtan2(crate::operations::numbers::trigonometry::atan2::OpNumberTrigAtan2),
+    OpNumberTrigSinh(crate::operations::numbers::trigonometry::sinh::OpNumberTrigSinh),
+    OpNumberTrigCosh(crate::operations::numbers::trigonometry::cosh::OpNumberTrigCosh),
+    OpNumberTrigTanh(crate::operations::numbers::trigonometry::tanh::OpNumberTrigTanh),
 
     // random
     OpNumberRandomDecimal(crate::operations::numbers::random::random_decimal::OpNumberRandomDecimal),
@@ -208,8 +258,6 @@ operations! {
     OpNumberMathFactorial(crate::operations::numbers::algebra::factorial::OpNumberMathFactorial),
     OpNumberMathGcd(crate::operations::numbers::algebra::gcd::OpNumberMathGcd),
     OpNumberMathLcm(crate::operations::numbers::algebra::lcm::OpNumberMathLcm),
-    OpNumberMathFrac(crate::operations::numbers::algebra::frac::OpNumberMathFrac),
-    OpNumberMathTrunc(crate::operations::numbers::algebra::trunc::OpNumberMathTrunc),
 
     // cast
     OpNumberCastToDecimal(crate::operations::numbers::cast::to_decimal::OpNumberCastToDecimal),
@@ -219,6 +267,8 @@ operations! {
     OpNumberMathLog(crate::operations::numbers::logarithmic::log::OpNumberMathLog),
     OpNumberMathLn(crate::operations::numbers::logarithmic::ln::OpNumberMathLn),
     OpNumberMathExp(crate::operations::numbers::logarithmic::exp::OpNumberMathExp),
+    OpNumberMathLog2(crate::operations::numbers::logarithmic::log2::OpNumberMathLog2),
+    OpNumberMathLog10(crate::operations::numbers::logarithmic::log10::OpNumberMathLog10),
 
     // colors
     OpColorInputCmyk(crate::operations::colors::inputs::cmyk::OpColorInputCmyk),
@@ -244,6 +294,8 @@ operations! {
     OpColorBlendLerp(crate::operations::colors::blend::lerp::OpColorBlendLerp),
 
     OpColorSampleMostCommonColors(crate::operations::colors::sample_image::most_common_colors::OpColorSampleMostCommonColors),
+
+    OpColorCastToColor(crate::operations::colors::cast::to_color::OpColorCastToColor),
 
     // image
     OpImageInputUrl(crate::operations::images::inputs::url::OpImageInputUrl),
@@ -275,25 +327,27 @@ operations! {
     OpImageTransformMakeTile(crate::operations::images::transform::make_tile::OpImageTransformMakeTile),
     OpImageTransformMirror(crate::operations::images::transform::mirror::OpImageTransformMirror),
 
-    OpImageAdjustmentBlur(crate::operations::images::adjustments::blur::OpImageAdjustmentBlur),
+    // blur
+    OpImageAdjustmentBlur(crate::operations::images::blur::blur::OpImageAdjustmentBlur),
     OpImageAdjustmentContrast(crate::operations::images::adjustments::contrast::OpImageAdjustmentContrast),
     OpImageAdjustmentGrayscale(crate::operations::images::adjustments::grayscale::OpImageAdjustmentGrayscale),
     OpImageAdjustmentInvert(crate::operations::images::adjustments::invert::OpImageAdjustmentInvert),
     OpImageAdjustmentBrighten(crate::operations::images::adjustments::brighten::OpImageAdjustmentBrighten),
     OpImageAdjustmentHueRotate(crate::operations::images::adjustments::hue_rotate::OpImageAdjustmentHueRotate),
-    OpImageAdjustmentUnsharpen(crate::operations::images::adjustments::unsharpen::OpImageAdjustmentUnsharpen),
+    OpImageAdjustmentUnsharpen(crate::operations::images::filter::unsharpen::OpImageAdjustmentUnsharpen),
     OpImageAdjustmentLevels(crate::operations::images::adjustments::levels::OpImageAdjustmentLevels),
     OpImageAdjustmentCurves(crate::operations::images::adjustments::curves::OpImageAdjustmentCurves),
     OpImageAdjustmentGradientMap(crate::operations::images::adjustments::gradient_map::OpImageAdjustmentGradientMap),
 
-    // phase 4 - advanced filters
-    OpImageAdjustmentDirectionalBlur(crate::operations::images::adjustments::directional_blur::OpImageAdjustmentDirectionalBlur),
-    OpImageAdjustmentRadialBlur(crate::operations::images::adjustments::radial_blur::OpImageAdjustmentRadialBlur),
-    OpImageAdjustmentSlopeBlur(crate::operations::images::adjustments::slope_blur::OpImageAdjustmentSlopeBlur),
-    OpImageAdjustmentNonUniformBlur(crate::operations::images::adjustments::non_uniform_blur::OpImageAdjustmentNonUniformBlur),
-    OpImageAdjustmentEdgeDetect(crate::operations::images::adjustments::edge_detect::OpImageAdjustmentEdgeDetect),
-    OpImageAdjustmentEmboss(crate::operations::images::adjustments::emboss::OpImageAdjustmentEmboss),
-    OpImageAdjustmentSharpen(crate::operations::images::adjustments::sharpen::OpImageAdjustmentSharpen),
+    OpImageAdjustmentDirectionalBlur(crate::operations::images::blur::directional_blur::OpImageAdjustmentDirectionalBlur),
+    OpImageAdjustmentRadialBlur(crate::operations::images::blur::radial_blur::OpImageAdjustmentRadialBlur),
+    OpImageAdjustmentSlopeBlur(crate::operations::images::blur::slope_blur::OpImageAdjustmentSlopeBlur),
+    OpImageAdjustmentNonUniformBlur(crate::operations::images::blur::non_uniform_blur::OpImageAdjustmentNonUniformBlur),
+
+    // filter
+    OpImageAdjustmentEdgeDetect(crate::operations::images::filter::edge_detect::OpImageAdjustmentEdgeDetect),
+    OpImageAdjustmentEmboss(crate::operations::images::filter::emboss::OpImageAdjustmentEmboss),
+    OpImageAdjustmentSharpen(crate::operations::images::filter::sharpen::OpImageAdjustmentSharpen),
     OpImageAdjustmentPosterize(crate::operations::images::adjustments::posterize::OpImageAdjustmentPosterize),
     OpImageAdjustmentHistogramScan(crate::operations::images::adjustments::histogram_scan::OpImageAdjustmentHistogramScan),
     OpImageAdjustmentHistogramRange(crate::operations::images::adjustments::histogram_range::OpImageAdjustmentHistogramRange),
@@ -307,7 +361,7 @@ operations! {
     OpImageNoisePerlin(crate::operations::images::noise::perlin::OpImageNoisePerlin),
     OpImageNoiseWorleyDistance(crate::operations::images::noise::worley_distance::OpImageNoiseWorleyDistance),
     OpImageNoiseWorleyValue(crate::operations::images::noise::worley_value::OpImageNoiseWorleyValue),
-    OpImageNoiseHeterogenousMultifractalNoise(crate::operations::images::noise::heterogenous_multifractal::OpImageNoiseHeterogenousMultifractalNoise),
+    OpImageNoiseHeterogenousMultifractalNoise(crate::operations::images::noise::basic_multifractal::OpImageNoiseHeterogenousMultifractalNoise),
     OpImageNoiseBillow(crate::operations::images::noise::billow::OpImageNoiseBillow),
     OpImageNoiseCylinders(crate::operations::images::noise::cylinders::OpImageNoiseCylinders),
     OpImageNoiseFbm(crate::operations::images::noise::fbm::OpImageNoiseFbm),
@@ -338,6 +392,8 @@ operations! {
     OpImagePbrCurvature(crate::operations::images::pbr::curvature::OpImagePbrCurvature),
     OpImagePbrHeightBlend(crate::operations::images::pbr::height_blend::OpImagePbrHeightBlend),
 
+    OpImageCastToImage(crate::operations::images::cast::to_image::OpImageCastToImage),
+
     // logic
     OpLogicInputBool(crate::operations::logic::inputs::bool_input::OpLogicInputBool),
 
@@ -356,6 +412,14 @@ operations! {
     OpLogicBoolNor(crate::operations::logic::boolean::nor::OpLogicBoolNor),
 
     OpLogicFlowSelect(crate::operations::logic::flow::select::OpLogicFlowSelect),
+
+    // bitwise
+    OpNumberBitwiseAnd(crate::operations::numbers::bitwise::bit_and::OpNumberBitwiseAnd),
+    OpNumberBitwiseOr(crate::operations::numbers::bitwise::bit_or::OpNumberBitwiseOr),
+    OpNumberBitwiseXor(crate::operations::numbers::bitwise::bit_xor::OpNumberBitwiseXor),
+    OpNumberBitwiseNot(crate::operations::numbers::bitwise::bit_not::OpNumberBitwiseNot),
+    OpNumberBitwiseShiftLeft(crate::operations::numbers::bitwise::bit_shift_left::OpNumberBitwiseShiftLeft),
+    OpNumberBitwiseShiftRight(crate::operations::numbers::bitwise::bit_shift_right::OpNumberBitwiseShiftRight),
 }
 
 /// Returns the full hierarchical menu of available operations.
@@ -364,11 +428,14 @@ operations! {
 /// organized into top-level categories (numbers, colors, images, logic)
 /// with nested subcategories.
 pub fn operation_list() -> Vec<OperationListItem> {
-    vec![
+    let mut list = vec![
         OperationListItem::Category { name: "numbers".to_string(), operation_list_items: vec![
             OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpNumberInputDecimal },
                 OperationListItem::Operation { operation: Operation::OpNumberInputInteger },
+                OperationListItem::Operation { operation: Operation::OpNumberInputPi },
+                OperationListItem::Operation { operation: Operation::OpNumberInputTau },
+                OperationListItem::Operation { operation: Operation::OpNumberInputE },
             ]},
             OperationListItem::Category { name: "arithmetic".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpNumberMathAdd },
@@ -383,7 +450,31 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpNumberMathModulus },
                 OperationListItem::Operation { operation: Operation::OpNumberMathRound },
                 OperationListItem::Operation { operation: Operation::OpNumberMathSign },
-                OperationListItem::Operation { operation: Operation::OpNumberMathRand },
+                OperationListItem::Operation { operation: Operation::OpNumberMathNegate },
+                OperationListItem::Operation { operation: Operation::OpNumberMathReciprocal },
+                OperationListItem::Operation { operation: Operation::OpNumberMathAverage },
+                OperationListItem::Operation { operation: Operation::OpNumberMathCeil },
+                OperationListItem::Operation { operation: Operation::OpNumberMathFloor },
+                OperationListItem::Operation { operation: Operation::OpNumberMathTrunc },
+                OperationListItem::Operation { operation: Operation::OpNumberMathFrac },
+            ]},
+            OperationListItem::Category { name: "interpolation".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpNumberMathLerp },
+                OperationListItem::Operation { operation: Operation::OpNumberMathSmoothstep },
+                OperationListItem::Operation { operation: Operation::OpNumberMathStep },
+                OperationListItem::Operation { operation: Operation::OpNumberMathMapRange },
+            ]},
+            OperationListItem::Category { name: "trigonometry".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpNumberTrigSin },
+                OperationListItem::Operation { operation: Operation::OpNumberTrigCos },
+                OperationListItem::Operation { operation: Operation::OpNumberTrigTan },
+                OperationListItem::Operation { operation: Operation::OpNumberTrigAsin },
+                OperationListItem::Operation { operation: Operation::OpNumberTrigAcos },
+                OperationListItem::Operation { operation: Operation::OpNumberTrigAtan },
+                OperationListItem::Operation { operation: Operation::OpNumberTrigAtan2 },
+                OperationListItem::Operation { operation: Operation::OpNumberTrigSinh },
+                OperationListItem::Operation { operation: Operation::OpNumberTrigCosh },
+                OperationListItem::Operation { operation: Operation::OpNumberTrigTanh },
             ]},
             OperationListItem::Category { name: "algebraic".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpNumberMathAbs },
@@ -394,8 +485,6 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpNumberMathFactorial },
                 OperationListItem::Operation { operation: Operation::OpNumberMathGcd },
                 OperationListItem::Operation { operation: Operation::OpNumberMathLcm },
-                OperationListItem::Operation { operation: Operation::OpNumberMathFrac },
-                OperationListItem::Operation { operation: Operation::OpNumberMathTrunc },
             ]},
             OperationListItem::Category { name: "cast".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpNumberCastToDecimal },
@@ -405,10 +494,20 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpNumberMathLog },
                 OperationListItem::Operation { operation: Operation::OpNumberMathLn },
                 OperationListItem::Operation { operation: Operation::OpNumberMathExp },
+                OperationListItem::Operation { operation: Operation::OpNumberMathLog2 },
+                OperationListItem::Operation { operation: Operation::OpNumberMathLog10 },
             ]},
             OperationListItem::Category { name: "random".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpNumberRandomDecimal },
                 OperationListItem::Operation { operation: Operation::OpNumberRandomInteger },
+            ]},
+            OperationListItem::Category { name: "bitwise".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpNumberBitwiseAnd },
+                OperationListItem::Operation { operation: Operation::OpNumberBitwiseOr },
+                OperationListItem::Operation { operation: Operation::OpNumberBitwiseXor },
+                OperationListItem::Operation { operation: Operation::OpNumberBitwiseNot },
+                OperationListItem::Operation { operation: Operation::OpNumberBitwiseShiftLeft },
+                OperationListItem::Operation { operation: Operation::OpNumberBitwiseShiftRight },
             ]},
         ]},
         OperationListItem::Category { name: "colors".to_string(), operation_list_items: vec![
@@ -437,8 +536,11 @@ pub fn operation_list() -> Vec<OperationListItem> {
             OperationListItem::Category { name: "blend".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpColorBlendLerp },
             ]},
-            OperationListItem::Category { name: "sample image".to_string(), operation_list_items: vec![
+            OperationListItem::Category { name: "analysis".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpColorSampleMostCommonColors },
+            ]},
+            OperationListItem::Category { name: "cast".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpColorCastToColor },
             ]},
         ]},
         OperationListItem::Category { name: "images".to_string(), operation_list_items: vec![
@@ -475,28 +577,32 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageTransformMirror },
             ]},
             OperationListItem::Category { name: "adjustments".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::OpImageAdjustmentBlur },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentContrast },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentGrayscale },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentInvert },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentBrighten },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentHueRotate },
-                OperationListItem::Operation { operation: Operation::OpImageAdjustmentUnsharpen },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentLevels },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentAutoLevels },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentCurves },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentGradientMap },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentPosterize },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentHistogramScan },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentHistogramRange },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentDistance },
+            ]},
+            OperationListItem::Category { name: "blur".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentBlur },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentDirectionalBlur },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentRadialBlur },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentSlopeBlur },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentNonUniformBlur },
+            ]},
+            OperationListItem::Category { name: "filter".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentEdgeDetect },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentEmboss },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentSharpen },
-                OperationListItem::Operation { operation: Operation::OpImageAdjustmentPosterize },
-                OperationListItem::Operation { operation: Operation::OpImageAdjustmentHistogramScan },
-                OperationListItem::Operation { operation: Operation::OpImageAdjustmentHistogramRange },
-                OperationListItem::Operation { operation: Operation::OpImageAdjustmentAutoLevels },
-                OperationListItem::Operation { operation: Operation::OpImageAdjustmentDistance },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentUnsharpen },
             ]},
             OperationListItem::Category { name: "channels".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageChannelSplit },
@@ -516,7 +622,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImagePatternWeave },
                 OperationListItem::Operation { operation: Operation::OpImagePatternTileSampler },
             ]},
-            OperationListItem::Category { name: "pbr".to_string(), operation_list_items: vec![
+            OperationListItem::Category { name: "PBR".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImagePbrNormalFromHeight },
                 OperationListItem::Operation { operation: Operation::OpImagePbrAoFromHeight },
                 OperationListItem::Operation { operation: Operation::OpImagePbrCurvature },
@@ -537,6 +643,9 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageNoiseHybridMultifractalNoise },
                 OperationListItem::Operation { operation: Operation::OpImageNoiseRidgedMultifractalNoise },
                 OperationListItem::Operation { operation: Operation::OpImageNoiseValue },
+            ]},
+            OperationListItem::Category { name: "cast".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpImageCastToImage },
             ]},
         ]},
         OperationListItem::Category { name: "logic".to_string(), operation_list_items: vec![
@@ -564,7 +673,9 @@ pub fn operation_list() -> Vec<OperationListItem> {
             ]},
         ]},
         //OperationListItem::Subgraph,
-    ]
+    ];
+    OperationListItem::sort_alphabetically(&mut list);
+    list
 }
 
 

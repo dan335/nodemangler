@@ -279,10 +279,44 @@ impl Graph {
                     to.cached_input_hash = None;
                 }
 
+                // adapt accepts_any_type inputs/outputs to match the connected type
+                let source_type = self.nodes.get(&output_node_id)
+                    .map(|n| n.outputs[output_connection_index].value.value_type());
+                if let Some(source_type) = source_type {
+                    if let Some(node) = self.nodes.get_mut(&input_node_id) {
+                        if node.inputs[input_connection_index].accepts_any_type {
+                            let default_val = source_type.default_value();
+                            // update all accepts_any_type inputs and all outputs to match
+                            for input in node.inputs.iter_mut() {
+                                if input.accepts_any_type {
+                                    input.value = default_val.clone();
+                                    input.default_value = default_val.clone();
+                                }
+                            }
+                            for output in node.outputs.iter_mut() {
+                                output.value = default_val.clone();
+                                output.default_value = default_val.clone();
+                            }
+                            // notify UI of the type changes
+                            if let Some(tx) = &self.tx_node_changed {
+                                for (i, input) in node.inputs.iter().enumerate() {
+                                    if input.accepts_any_type {
+                                        let _ = tx.try_send(NodeChangedMessage::InputChanged {
+                                            node_id: input_node_id.clone(),
+                                            input_index: i,
+                                            value: input.value.clone(),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // mark graph as dirty
                 self.is_dirty = true;
 
-                // send message ot ui
+                // send message to ui
                 if let Some(tx) = &self.tx_graph_changed {
                     let message = GraphChangedMessage::AddedConnection {
                         input_node_id,
@@ -321,6 +355,65 @@ impl Graph {
                 if let Some(c) = node.outputs.get_mut(output_index) {
                     if let Some(d) = c.connection.as_mut() {
                         d.retain(|item| *item != (node_id.clone(), input_index));
+                    }
+                }
+            }
+        }
+
+        // re-adapt accepts_any_type inputs/outputs after disconnection
+        {
+            let is_any_type_input = self.nodes.get(&node_id)
+                .and_then(|n| n.inputs.get(input_index))
+                .map_or(false, |i| i.accepts_any_type);
+
+            if is_any_type_input {
+                // look up the actual source output type for each still-connected accepts_any_type input
+                let remaining_source_type = self.nodes.get(&node_id)
+                    .and_then(|node| {
+                        node.inputs.iter()
+                            .filter(|i| i.accepts_any_type && i.connection.is_some())
+                            .filter_map(|i| i.connection.as_ref())
+                            .next()
+                            .cloned()
+                    })
+                    .and_then(|(src_node_id, src_output_index)| {
+                        self.nodes.get(&src_node_id)
+                            .and_then(|n| n.outputs.get(src_output_index))
+                            .map(|o| o.value.value_type())
+                    });
+
+                // adapt to remaining connection's source type, or reset to Decimal
+                let new_val = match remaining_source_type {
+                    Some(vt) => vt.default_value(),
+                    None => Value::Decimal(0.0),
+                };
+
+                if let Some(node) = self.nodes.get_mut(&node_id) {
+                    for input in node.inputs.iter_mut() {
+                        if input.accepts_any_type && input.connection.is_none() {
+                            input.value = new_val.clone();
+                            input.default_value = new_val.clone();
+                        }
+                    }
+                    for output in node.outputs.iter_mut() {
+                        output.value = new_val.clone();
+                        output.default_value = new_val.clone();
+                    }
+
+                    // mark dirty so the node re-runs and updates its output/thumbnail
+                    node.is_dirty = true;
+
+                    // notify UI of the type changes
+                    if let Some(tx) = &self.tx_node_changed {
+                        for (i, input) in node.inputs.iter().enumerate() {
+                            if input.accepts_any_type && input.connection.is_none() {
+                                let _ = tx.try_send(NodeChangedMessage::InputChanged {
+                                    node_id: node_id.clone(),
+                                    input_index: i,
+                                    value: input.value.clone(),
+                                });
+                            }
+                        }
                     }
                 }
             }
@@ -1448,6 +1541,166 @@ mod tests {
         graph.remove_node(id3).await;
 
         assert_eq!(graph.nodes.len(), 0);
+    }
+
+    // === run() propagates updated upstream value downstream ===
+
+    // === accepts_any_type adaptation on connect/disconnect ===
+
+    #[tokio::test]
+    async fn test_connect_adapts_select_inputs_and_output_to_source_type() {
+        // When an Integer output is connected to a select node's "if true" input,
+        // both accepts_any_type inputs and the output should adapt to Integer.
+        let mut graph = create_test_graph();
+
+        let int_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::ZERO)
+            .await;
+        let select_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicFlowSelect), glam::Vec2::new(200.0, 0.0))
+            .await;
+
+        // Before connection: select inputs default to Decimal
+        let select_node = graph.nodes.get(&select_id).unwrap();
+        assert!(matches!(select_node.inputs[1].value, Value::Decimal(_)), "if_true should start as Decimal");
+        assert!(matches!(select_node.inputs[2].value, Value::Decimal(_)), "if_false should start as Decimal");
+        assert!(matches!(select_node.outputs[0].value, Value::Decimal(_)), "output should start as Decimal");
+
+        // Connect integer output -> select "if true" (index 1)
+        graph.add_connection(select_id.clone(), 1, int_id.clone(), 0).await;
+
+        // After connection: all accepts_any_type inputs and outputs should be Integer
+        let select_node = graph.nodes.get(&select_id).unwrap();
+        assert!(matches!(select_node.inputs[1].value, Value::Integer(_)), "if_true should adapt to Integer");
+        assert!(matches!(select_node.inputs[2].value, Value::Integer(_)), "if_false should adapt to Integer");
+        assert!(matches!(select_node.outputs[0].value, Value::Integer(_)), "output should adapt to Integer");
+
+        // condition input (index 0) should remain Bool — it is not accepts_any_type
+        assert!(matches!(select_node.inputs[0].value, Value::Bool(_)), "condition should stay Bool");
+    }
+
+    #[tokio::test]
+    async fn test_disconnect_only_connection_reverts_to_decimal() {
+        // When the only connection to a select node is removed, the accepts_any_type
+        // inputs and outputs should revert to their default Decimal type.
+        let mut graph = create_test_graph();
+
+        let int_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::ZERO)
+            .await;
+        let select_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicFlowSelect), glam::Vec2::new(200.0, 0.0))
+            .await;
+
+        // Connect and then disconnect
+        graph.add_connection(select_id.clone(), 1, int_id.clone(), 0).await;
+        graph.remove_connection(select_id.clone(), 1).await;
+
+        // Should revert to Decimal
+        let select_node = graph.nodes.get(&select_id).unwrap();
+        assert!(matches!(select_node.inputs[1].value, Value::Decimal(_)), "if_true should revert to Decimal");
+        assert!(matches!(select_node.inputs[2].value, Value::Decimal(_)), "if_false should revert to Decimal");
+        assert!(matches!(select_node.outputs[0].value, Value::Decimal(_)), "output should revert to Decimal");
+    }
+
+    #[tokio::test]
+    async fn test_disconnect_one_of_two_keeps_remaining_type() {
+        // When two connections exist and one is removed, the types should stay
+        // adapted to the remaining connection's source type.
+        let mut graph = create_test_graph();
+
+        let int1_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::ZERO)
+            .await;
+        let int2_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::new(0.0, 100.0))
+            .await;
+        let select_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicFlowSelect), glam::Vec2::new(200.0, 0.0))
+            .await;
+
+        // Connect both branch inputs to integer sources
+        graph.add_connection(select_id.clone(), 1, int1_id.clone(), 0).await;
+        graph.add_connection(select_id.clone(), 2, int2_id.clone(), 0).await;
+
+        // Remove the "if true" connection (index 1)
+        graph.remove_connection(select_id.clone(), 1).await;
+
+        // "if false" still connected to Integer, so types should remain Integer
+        let select_node = graph.nodes.get(&select_id).unwrap();
+        assert!(matches!(select_node.inputs[2].value, Value::Integer(_)), "if_false should stay Integer (still connected)");
+        assert!(matches!(select_node.outputs[0].value, Value::Integer(_)), "output should stay Integer");
+        // The disconnected input should also match the remaining type
+        assert!(matches!(select_node.inputs[1].value, Value::Integer(_)), "if_true should match remaining Integer type");
+    }
+
+    #[tokio::test]
+    async fn test_connect_to_condition_does_not_adapt_types() {
+        // Connecting to the condition input (index 0) should NOT trigger type
+        // adaptation since condition is not accepts_any_type.
+        let mut graph = create_test_graph();
+
+        let bool_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicInputBool), glam::Vec2::ZERO)
+            .await;
+        let select_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicFlowSelect), glam::Vec2::new(200.0, 0.0))
+            .await;
+
+        graph.add_connection(select_id.clone(), 0, bool_id.clone(), 0).await;
+
+        // Branch inputs and output should remain Decimal (unchanged)
+        let select_node = graph.nodes.get(&select_id).unwrap();
+        assert!(matches!(select_node.inputs[1].value, Value::Decimal(_)), "if_true should stay Decimal");
+        assert!(matches!(select_node.inputs[2].value, Value::Decimal(_)), "if_false should stay Decimal");
+        assert!(matches!(select_node.outputs[0].value, Value::Decimal(_)), "output should stay Decimal");
+    }
+
+    #[tokio::test]
+    async fn test_select_run_after_type_adaptation() {
+        // End-to-end: connect integer sources, run the graph, verify the select
+        // node correctly forwards the chosen integer value.
+        let mut graph = create_test_graph();
+
+        let bool_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicInputBool), glam::Vec2::ZERO)
+            .await;
+        let int_true_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::new(0.0, 100.0))
+            .await;
+        let int_false_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::new(0.0, 200.0))
+            .await;
+        let select_id = graph
+            .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicFlowSelect), glam::Vec2::new(200.0, 0.0))
+            .await;
+
+        // Set source values
+        graph.set_input(bool_id.clone(), 0, Value::Bool(true));
+        graph.set_input(int_true_id.clone(), 0, Value::Integer(42));
+        graph.set_input(int_false_id.clone(), 0, Value::Integer(99));
+
+        // Wire up: condition, if_true, if_false
+        graph.add_connection(select_id.clone(), 0, bool_id.clone(), 0).await;
+        graph.add_connection(select_id.clone(), 1, int_true_id.clone(), 0).await;
+        graph.add_connection(select_id.clone(), 2, int_false_id.clone(), 0).await;
+
+        graph.run().await;
+
+        // condition is true, so output should be 42
+        match &graph.nodes.get(&select_id).unwrap().outputs[0].value {
+            Value::Integer(v) => assert_eq!(*v, 42, "Expected 42, got {}", v),
+            other => panic!("Expected Integer output, got {:?}", other),
+        }
+
+        // Flip condition to false and re-run
+        graph.set_input(bool_id.clone(), 0, Value::Bool(false));
+        graph.run().await;
+
+        match &graph.nodes.get(&select_id).unwrap().outputs[0].value {
+            Value::Integer(v) => assert_eq!(*v, 99, "Expected 99, got {}", v),
+            other => panic!("Expected Integer output, got {:?}", other),
+        }
     }
 
     // === run() propagates updated upstream value downstream ===

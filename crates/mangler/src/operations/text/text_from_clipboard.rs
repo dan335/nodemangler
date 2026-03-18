@@ -31,16 +31,16 @@
 
 // pub async fn text_from_clipboard(_inputs: &[Input]) -> Result<OperationResponse, OperationError> {
 //     let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
-
-        // convert inputs
-        // gather errors
-
-        // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        // run node
+//         let mut input_errors: Vec<(usize, String)> = vec![];
+//
+//         // convert inputs
+//         // gather errors
+//
+//         // return if error
+//         if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+//
+//         // get values
+//         // run node
 
 //     if let Ok(mut clipboard) = Clipboard::new() {
 //         if let Ok(text) = clipboard.get_text() {

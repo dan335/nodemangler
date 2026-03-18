@@ -166,6 +166,7 @@ impl GraphNode {
                     from_connection_index: index,
                     from_connection_type: ConnectionType::Input,
                     from_value_type: input.value.value_type(),
+                    from_accepts_any_type: input.accepts_any_type,
                 });
             }
 
@@ -213,6 +214,7 @@ impl GraphNode {
                     from_connection_index: index,
                     from_connection_type: ConnectionType::Output,
                     from_value_type: output.value.value_type(),
+                    from_accepts_any_type: false,
                 });
             }
 

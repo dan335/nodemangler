@@ -8,7 +8,7 @@
 pub mod perlin;
 pub mod worley_distance;
 pub mod worley_value;
-pub mod heterogenous_multifractal;
+pub mod basic_multifractal;
 pub mod billow;
 //pub mod checkerboard;
 pub mod cylinders;

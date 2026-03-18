@@ -34,6 +34,10 @@ pub struct Input {
     pub error_message: Option<String>,
     /// Whether this input is exposed to the parent graph (for subgraph composition).
     pub is_exposed: bool,
+    /// Whether this input accepts any value type (bypasses type compatibility checks).
+    /// Used by pass-through nodes like select that forward values without conversion.
+    #[serde(default)]
+    pub accepts_any_type: bool,
     // Link to a subgraph's internal input so that data flows from
     // the parent node's input into the child graph's input node.
     #[serde(skip)]
@@ -61,6 +65,7 @@ impl Input {
             is_error: false,
             error_message: None,
             is_exposed: false,
+            accepts_any_type: false,
             link,
         }
     }
@@ -69,7 +74,7 @@ impl Input {
     /// compatibility. Returns `true` if the output's value type is in this
     /// input's list of valid conversions.
     pub fn is_valid_connection(&self, output: &Output) -> bool {
-        self.value.value_type().valid_conversions().contains(&output.value.value_type())
+        self.accepts_any_type || self.value.value_type().valid_conversions().contains(&output.value.value_type())
     }
 }
 
@@ -205,6 +210,29 @@ mod tests {
         // Path valid_conversions: [String, Path, Trigger]. Output is String. String is in the list → valid.
         let input = Input::new("a".to_string(), Value::Path(PathBuf::new()), None, None);
         let output = Output::new("out".to_string(), Value::String("test".to_string()), None);
+        assert!(input.is_valid_connection(&output));
+    }
+
+    // === accepts_any_type ===
+
+    #[test]
+    fn test_accepts_any_type_default_false() {
+        let input = Input::new("x".to_string(), Value::Decimal(0.0), None, None);
+        assert!(!input.accepts_any_type);
+    }
+
+    #[test]
+    fn test_accepts_any_type_allows_incompatible_connection() {
+        // Normally a String input can't accept a DynamicImage output
+        let mut input = Input::new("x".to_string(), Value::String(String::new()), None, None);
+        let output = Output::new("out".to_string(), Value::DynamicImage {
+            data: std::sync::Arc::new(image::DynamicImage::ImageRgba8(image::RgbaImage::new(1, 1))),
+            change_id: crate::get_id(),
+        }, None);
+        assert!(!input.is_valid_connection(&output));
+
+        // With accepts_any_type, it should be allowed
+        input.accepts_any_type = true;
         assert!(input.is_valid_connection(&output));
     }
 }

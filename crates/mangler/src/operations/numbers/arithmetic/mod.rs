@@ -27,5 +27,17 @@ pub mod modulus;
 pub mod round;
 /// Returns the sign (-1, 0, or 1) of a number.
 pub mod sign;
-/// Generates a random decimal within a range (legacy; see `random` module).
-pub mod rand;
+/// Negates a number (flips sign).
+pub mod negate;
+/// Computes 1/x (reciprocal).
+pub mod reciprocal;
+/// Computes the average (mean) of two numbers.
+pub mod average;
+/// Ceiling: rounds up to the nearest integer.
+pub mod ceil;
+/// Floor: rounds down to the nearest integer.
+pub mod floor;
+/// Truncation: removes the fractional part of a decimal (`trunc()`).
+pub mod trunc;
+/// Fractional part of a decimal (`fract()`).
+pub mod frac;

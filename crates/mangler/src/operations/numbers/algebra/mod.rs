@@ -1,7 +1,7 @@
 //! Algebraic operations for the node graph.
 //!
 //! Provides mathematical functions including roots, powers, factorials,
-//! number theory (GCD/LCM), and numeric decomposition (frac/trunc).
+//! and number theory (GCD/LCM).
 
 /// Absolute value of a number.
 pub mod abs;
@@ -19,7 +19,3 @@ pub mod factorial;
 pub mod gcd;
 /// Least common multiple of two integers.
 pub mod lcm;
-/// Fractional part of a decimal (`fract()`).
-pub mod frac;
-/// Truncation: removes the fractional part of a decimal (`trunc()`).
-pub mod trunc;

@@ -46,7 +46,28 @@
       "Read(//d/rust/nodemangler/**)",
       "Bash(done)",
       "Bash(py append_tests4.py)",
-      "Bash(py fix_tests.py)"
+      "Bash(py fix_tests.py)",
+      "Bash(for file:*)",
+      "Bash(do if:*)",
+      "Bash(! grep:*)",
+      "Bash(then echo:*)",
+      "Bash(while read:*)",
+      "Bash(mkdir -p D:/rust/nodemangler/crates/mangler/src/operations/images/cast)",
+      "Bash(mkdir -p D:/rust/nodemangler/crates/mangler/src/operations/colors/cast)",
+      "Bash(/tmp/ops_map.txt:*)",
+      "Read(//tmp/**)",
+      "Bash(mkdir -p crates/mangler/src/operations/numbers/interpolation)",
+      "Bash(mkdir -p crates/mangler/src/operations/images/blur)",
+      "Bash(mkdir -p crates/mangler/src/operations/images/filter)",
+      "Bash(mkdir -p crates/mangler/src/operations/text)",
+      "Bash(mv crates/mangler/src/operations/numbers/arithmetic/lerp.rs crates/mangler/src/operations/numbers/interpolation/)",
+      "Bash(mv crates/mangler/src/operations/numbers/arithmetic/smoothstep.rs crates/mangler/src/operations/numbers/interpolation/)",
+      "Bash(mv crates/mangler/src/operations/numbers/arithmetic/step.rs crates/mangler/src/operations/numbers/interpolation/)",
+      "Bash(mv crates/mangler/src/operations/numbers/arithmetic/map_range.rs crates/mangler/src/operations/numbers/interpolation/)",
+      "Bash(mv crates/mangler/src/operations/numbers/algebra/ceil.rs crates/mangler/src/operations/numbers/arithmetic/)",
+      "Bash(mv crates/mangler/src/operations/numbers/algebra/floor.rs crates/mangler/src/operations/numbers/arithmetic/)",
+      "Bash(mv crates/mangler/src/operations/numbers/algebra/trunc.rs crates/mangler/src/operations/numbers/arithmetic/)",
+      "Bash(mv crates/mangler/src/operations/numbers/algebra/frac.rs crates/mangler/src/operations/numbers/arithmetic/)"
     ]
   }
 }

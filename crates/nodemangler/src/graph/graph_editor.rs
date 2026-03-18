@@ -508,6 +508,8 @@ pub struct TempConnection {
     pub from_connection_index: usize,
     pub from_connection_type: ConnectionType,
     pub from_value_type: ValueType,
+    /// Whether the source input accepts any type (for pass-through nodes like select).
+    pub from_accepts_any_type: bool,
 }
 
 pub struct GraphEditorResponse {

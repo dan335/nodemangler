@@ -2,7 +2,8 @@
 //!
 //! This module organizes all image-related operations into subcategories:
 //! inputs (loading/creating images), outputs (saving/exporting), transform
-//! (geometric modifications), adjustments (color/tone corrections), noise
+//! (geometric modifications), adjustments (color/tone corrections), blur
+//! (various blur algorithms), filter (convolution-based filters), noise
 //! (procedural noise generators), combine (compositing), channels (RGBA
 //! manipulation), shapes (vector shape generation), patterns (procedural
 //! patterns), and PBR (physically-based rendering maps).
@@ -13,8 +14,12 @@ pub mod inputs;
 pub mod outputs;
 /// Geometric transform operations: crop, resize, flip, rotate, warp, etc.
 pub mod transform;
-/// Image adjustment operations: blur, contrast, levels, curves, etc.
+/// Image adjustment operations: contrast, levels, curves, etc.
 pub mod adjustments;
+/// Blur operations: Gaussian, directional, radial, slope, non-uniform.
+pub mod blur;
+/// Filter operations: edge detect, emboss, sharpen, unsharpen.
+pub mod filter;
 /// Procedural noise generation operations.
 pub mod noise;
 /// Image compositing operations: blit and blend.
@@ -27,3 +32,5 @@ pub mod shapes;
 pub mod patterns;
 /// Physically-based rendering map operations.
 pub mod pbr;
+/// Cast operations for converting values to images.
+pub mod cast;

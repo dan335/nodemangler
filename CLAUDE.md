@@ -57,19 +57,25 @@ cargo run -p nodemangler  # Run the GUI app
 
 ## Operation Categories
 
-- `operations/numbers/` — inputs, arithmetic, algebra, random
-- `operations/colors/` — inputs, outputs, blend, sample_image
+- `operations/numbers/` — inputs, arithmetic, interpolation, algebra, trigonometry, random, cast, logarithmic, bitwise
+- `operations/colors/` — inputs, outputs, blend, analysis (sample_image), cast
 - `operations/images/inputs/` — file, url, clipboard, color, gradient
 - `operations/images/outputs/` — file, clipboard
 - `operations/images/combine/` — blit, blend
 - `operations/images/transform/` — crop, resize, flip, rotate, warp, directional_warp, safe_transform, make_tile, mirror
-- `operations/images/adjustments/` — blur, contrast, grayscale, invert, brighten, hue_rotate, unsharpen, levels, curves, gradient_map
+- `operations/images/adjustments/` — contrast, grayscale, invert, brighten, hue_rotate, posterize, levels, auto_levels, curves, gradient_map, histogram_scan, histogram_range, distance
+- `operations/images/blur/` — blur, directional_blur, radial_blur, slope_blur, non_uniform_blur
+- `operations/images/filter/` — edge_detect, emboss, sharpen, unsharpen
 - `operations/images/channels/` — split, merge, shuffle
+- `operations/images/shapes/` — rectangle, ellipse, polygon, star, line
+- `operations/images/patterns/` — brick, hexagonal, weave, tile_sampler
+- `operations/images/pbr/` — normal_from_height, ao_from_height, curvature, height_blend
 - `operations/images/noise/` — 14 noise generators
 - `operations/logic/inputs/` — bool
 - `operations/logic/comparison/` — equal, not_equal, less_than, less_equal, greater_than, greater_equal
 - `operations/logic/boolean/` — and, or, not, xor, nand, nor
 - `operations/logic/flow/` — select (mux: picks between two values based on a bool condition)
+- `operations/text/` — text_from_clipboard (disabled/WIP)
 
 ## Known Issues
 

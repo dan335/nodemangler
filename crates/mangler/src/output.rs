@@ -58,7 +58,7 @@ impl Output {
     /// type compatibility. Returns `true` if the input's value type is in this
     /// output's list of valid conversions.
     pub fn is_valid_connection(&self, input: &Input) -> bool {
-        self.value.value_type().valid_conversions().contains(&input.value.value_type())
+        input.accepts_any_type || self.value.value_type().valid_conversions().contains(&input.value.value_type())
     }
 }
 

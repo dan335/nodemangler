@@ -11,7 +11,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use image::{imageops::FilterType, DynamicImage, RgbaImage};
+use image::{imageops::FilterType, DynamicImage, GrayImage, RgbaImage};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -219,15 +219,10 @@ impl Value {
                     }
                 }
                 ValueType::DynamicImage => {
-                    let mut imgbuf = image::RgbaImage::new(1, 1);
-                    let color_value: u8 = if *a { 255 } else { 0 };
-
-                    for (_x, _y, pixel) in imgbuf.enumerate_pixels_mut() {
-                        *pixel = image::Rgba([color_value, color_value, color_value, color_value]);
-                    }
-
+                    let v: u8 = if *a { 255 } else { 0 };
+                    let imgbuf = GrayImage::from_pixel(1, 1, image::Luma([v]));
                     Ok(Value::DynamicImage {
-                        data: Arc::new(DynamicImage::ImageRgba8(imgbuf)),
+                        data: Arc::new(DynamicImage::ImageLuma8(imgbuf)),
                         change_id: get_id(),
                     })
                 }
@@ -246,8 +241,8 @@ impl Value {
                 }
                 ValueType::DynamicImage => {
                     let v = (*a).clamp(0, 255) as u8;
-                    let imgbuf = image::RgbaImage::from_pixel(1, 1, image::Rgba([v, v, v, 255]));
-                    Ok(Value::DynamicImage { data: Arc::new(DynamicImage::ImageRgba8(imgbuf)), change_id: get_id() })
+                    let imgbuf = GrayImage::from_pixel(1, 1, image::Luma([v]));
+                    Ok(Value::DynamicImage { data: Arc::new(DynamicImage::ImageLuma8(imgbuf)), change_id: get_id() })
                 }
                 _ => Err(ConversionError {
                     message: "Unable to convert integer to this type.".to_string(),
@@ -264,8 +259,8 @@ impl Value {
                 }
                 ValueType::DynamicImage => {
                     let v = (a.clamp(0.0, 1.0) * 255.0) as u8;
-                    let imgbuf = image::RgbaImage::from_pixel(1, 1, image::Rgba([v, v, v, 255]));
-                    Ok(Value::DynamicImage { data: Arc::new(DynamicImage::ImageRgba8(imgbuf)), change_id: get_id() })
+                    let imgbuf = GrayImage::from_pixel(1, 1, image::Luma([v]));
+                    Ok(Value::DynamicImage { data: Arc::new(DynamicImage::ImageLuma8(imgbuf)), change_id: get_id() })
                 }
                 _ => Err(ConversionError {
                     message: "Unable to convert decimal to this type.".to_string(),
@@ -446,6 +441,31 @@ impl ValueType {
         types
     }
 
+    /// Return a default `Value` for this type, used when adapting pass-through inputs.
+    pub fn default_value(&self) -> Value {
+        match self {
+            ValueType::Bool => Value::Bool(false),
+            ValueType::Integer => Value::Integer(0),
+            ValueType::Decimal => Value::Decimal(0.0),
+            ValueType::String => Value::String(String::new()),
+            ValueType::Color => Value::Color(Color::default()),
+            ValueType::FilterType => Value::FilterType(FilterType::Nearest),
+            ValueType::ColorFormat => Value::ColorFormat(crate::value::ColorFormat::Rgba32F),
+            ValueType::ImageType => Value::ImageType(image::ImageFormat::Png),
+            ValueType::Trigger => Value::Trigger,
+            ValueType::DynamicImage => Value::DynamicImage {
+                data: Arc::new(DynamicImage::ImageRgba8(RgbaImage::new(1, 1))),
+                change_id: get_id(),
+            },
+            ValueType::Path => Value::Path(PathBuf::new()),
+            ValueType::NoiseWorleyDistanceFunction => {
+                Value::NoiseWorleyDistanceFunction(NoiseWorleyDistanceFunction::Euclidean)
+            }
+            ValueType::ColorSpace => Value::ColorSpace(crate::color::color_spaces::ColorSpace::Srgb),
+            ValueType::BlendMode => Value::BlendMode(crate::color::blend::BlendMode::Normal),
+        }
+    }
+
     /// Return a human-readable name for this type, used in the UI.
     pub fn value_name(&self) -> String {
         match self {
@@ -495,6 +515,8 @@ impl ValueType {
                 ValueType::Integer,
                 ValueType::Decimal,
                 ValueType::String,
+                ValueType::Color,
+                ValueType::DynamicImage,
                 ValueType::Trigger,
             ],
             ValueType::Integer => vec![
@@ -1404,15 +1426,15 @@ mod tests {
         }
     }
 
-    // === Integer → DynamicImage (1x1 grayscale) ===
+    // === Integer → DynamicImage (1x1 R8 grayscale) ===
 
     #[test]
     fn test_integer_to_dynamic_image_zero() {
         let result = Value::Integer(0).try_convert_to(ValueType::DynamicImage).unwrap();
         match result {
             Value::DynamicImage { data, .. } => {
-                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
-                assert_eq!(pixel.0, [0, 0, 0, 255]);
+                let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0, [0]);
             }
             other => panic!("Expected DynamicImage, got {:?}", other),
         }
@@ -1423,8 +1445,8 @@ mod tests {
         let result = Value::Integer(255).try_convert_to(ValueType::DynamicImage).unwrap();
         match result {
             Value::DynamicImage { data, .. } => {
-                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
-                assert_eq!(pixel.0, [255, 255, 255, 255]);
+                let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0, [255]);
             }
             other => panic!("Expected DynamicImage, got {:?}", other),
         }
@@ -1435,22 +1457,22 @@ mod tests {
         let result = Value::Integer(999).try_convert_to(ValueType::DynamicImage).unwrap();
         match result {
             Value::DynamicImage { data, .. } => {
-                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
-                assert_eq!(pixel.0, [255, 255, 255, 255]);
+                let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0, [255]);
             }
             other => panic!("Expected DynamicImage, got {:?}", other),
         }
     }
 
-    // === Decimal → DynamicImage (1x1 grayscale) ===
+    // === Decimal → DynamicImage (1x1 R8 grayscale) ===
 
     #[test]
     fn test_decimal_to_dynamic_image_zero() {
         let result = Value::Decimal(0.0).try_convert_to(ValueType::DynamicImage).unwrap();
         match result {
             Value::DynamicImage { data, .. } => {
-                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
-                assert_eq!(pixel.0, [0, 0, 0, 255]);
+                let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0, [0]);
             }
             other => panic!("Expected DynamicImage, got {:?}", other),
         }
@@ -1461,8 +1483,8 @@ mod tests {
         let result = Value::Decimal(1.0).try_convert_to(ValueType::DynamicImage).unwrap();
         match result {
             Value::DynamicImage { data, .. } => {
-                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
-                assert_eq!(pixel.0, [255, 255, 255, 255]);
+                let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0, [255]);
             }
             other => panic!("Expected DynamicImage, got {:?}", other),
         }
@@ -1473,9 +1495,9 @@ mod tests {
         let result = Value::Decimal(0.5).try_convert_to(ValueType::DynamicImage).unwrap();
         match result {
             Value::DynamicImage { data, .. } => {
-                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
+                let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
                 // 0.5 * 255 = 127
-                assert_eq!(pixel.0[0], 127);
+                assert_eq!(pixel.0, [127]);
             }
             other => panic!("Expected DynamicImage, got {:?}", other),
         }
@@ -1486,8 +1508,8 @@ mod tests {
         let result = Value::Decimal(-1.0).try_convert_to(ValueType::DynamicImage).unwrap();
         match result {
             Value::DynamicImage { data, .. } => {
-                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
-                assert_eq!(pixel.0, [0, 0, 0, 255]);
+                let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0, [0]);
             }
             other => panic!("Expected DynamicImage, got {:?}", other),
         }
@@ -1686,8 +1708,8 @@ mod tests {
         let result = Value::Bool(false).try_convert_to(ValueType::DynamicImage).unwrap();
         match result {
             Value::DynamicImage { data, change_id: _ } => {
-                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
-                assert_eq!(pixel.0, [0, 0, 0, 0]);
+                let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0, [0]);
             }
             other => panic!("Expected DynamicImage, got {:?}", other),
         }
@@ -1698,8 +1720,8 @@ mod tests {
         let result = Value::Bool(true).try_convert_to(ValueType::DynamicImage).unwrap();
         match result {
             Value::DynamicImage { data, change_id: _ } => {
-                let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
-                assert_eq!(pixel.0, [255, 255, 255, 255]);
+                let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
+                assert_eq!(pixel.0, [255]);
             }
             other => panic!("Expected DynamicImage, got {:?}", other),
         }
@@ -1765,6 +1787,31 @@ mod tests {
         assert!(conversions.contains(&ValueType::Integer));
         assert!(conversions.contains(&ValueType::Decimal));
         assert!(conversions.contains(&ValueType::String));
+    }
+
+    #[test]
+    fn test_default_value_matches_type() {
+        // Every ValueType's default_value() should produce a Value of that same type.
+        let all_types = [
+            ValueType::Bool,
+            ValueType::Integer,
+            ValueType::Decimal,
+            ValueType::String,
+            ValueType::Color,
+            ValueType::FilterType,
+            ValueType::ColorFormat,
+            ValueType::ImageType,
+            ValueType::Trigger,
+            ValueType::DynamicImage,
+            ValueType::Path,
+            ValueType::NoiseWorleyDistanceFunction,
+            ValueType::ColorSpace,
+            ValueType::BlendMode,
+        ];
+        for vt in &all_types {
+            let val = vt.default_value();
+            assert_eq!(val.value_type(), *vt, "default_value() type mismatch for {:?}", vt);
+        }
     }
 
     #[test]

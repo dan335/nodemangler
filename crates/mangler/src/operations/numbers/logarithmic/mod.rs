@@ -6,3 +6,7 @@ pub mod log;
 pub mod ln;
 /// Exponential function (e^x).
 pub mod exp;
+/// Base-2 logarithm.
+pub mod log2;
+/// Base-10 logarithm.
+pub mod log10;
