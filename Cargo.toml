@@ -2,7 +2,9 @@
 resolver = "2"
 
 members = [
-    "crates/*",
+    "crates/mangler_core",
+    "crates/mangler_tui",
+    "crates/mangler_gui",
 ]
 
 # Enable a small amount of optimization in debug mode

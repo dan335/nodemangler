@@ -2,20 +2,13 @@
 
 ## Context
 
-NodeMangler has a solid async graph engine, 14 noise generators, 9 color spaces, and subgraph support. Phases 1-4 added blend modes, channel ops, distortion/tiling, shapes/patterns, and advanced filters. Phase 5 partially complete (3 of 5 PBR nodes). This plan covers remaining work.
+NodeMangler has a solid async graph engine, 14 noise generators, 9 color spaces, and subgraph support. Phases 1-4 added blend modes, channel ops, distortion/tiling, shapes/patterns, and advanced filters. Phases 5-7 mostly complete (PBR pipeline, logic nodes, text rendering). This plan covers remaining work.
 
 ---
 
 ## Phase 5: PBR / Material Pipeline (IN PROGRESS)
 
-**Status:** 4 of 5 nodes implemented (normal_from_height, ao_from_height, curvature, height_blend).
-
-### 5D. Height Blend ✅
-- **File:** `crates/mangler/src/operations/images/pbr/height_blend.rs`
-- Blends two materials using their height maps; overlay shows through where its height exceeds the base
-- Inputs: base color, base height, overlay color, overlay height, blend amount (0-1), contrast (0-1)
-- Outputs: blended color image + blended height image
-- 8 tests passing
+**Status:** 4 of 5 nodes implemented (normal_from_height, ao_from_height, curvature, height_blend). Remaining:
 
 ### 5E. PBR Material Export
 - **New file:** `crates/mangler/src/operations/images/outputs/pbr_export.rs`
@@ -24,72 +17,15 @@ NodeMangler has a solid async graph engine, 14 noise generators, 9 color spaces,
 
 ---
 
-## Phase 6: Logic Nodes
+## Phase 6: Logic Nodes ✅ COMPLETE
 
-**Why:** Adds conditional/branching logic to the graph, enabling dynamic workflows where node behavior changes based on input values.
-
-### 6A. Switch Node
-- **New file:** `crates/mangler/src/operations/logic/switch.rs`
-- Select between N inputs based on an integer index
-- Inputs: index (integer), input_0 through input_N (any Value type)
-- Output: the Value at the selected index (clamped to valid range)
-- Implementation: accept `Value` type inputs so it works with images, colors, numbers, etc. Use `convert_input()` to get the index, then pass through the selected input unchanged.
-
-### 6B. If/Else Node
-- **New file:** `crates/mangler/src/operations/logic/if_else.rs`
-- Conditional routing: if condition is true, output input A; otherwise output input B
-- Inputs: condition (bool), if_true (any Value), if_false (any Value)
-- Output: the selected Value
-- Implementation: similar to switch but with a boolean selector. The condition input uses `ValueType::Bool`. Both branches are evaluated (since the graph is dataflow, not control flow), but only one is forwarded.
-
-### 6C. Compare Node
-- **New file:** `crates/mangler/src/operations/logic/compare.rs`
-- Comparison operators returning a boolean
-- Inputs: A (decimal), B (decimal), operator (enum: Equal, NotEqual, LessThan, LessEqual, GreaterThan, GreaterEqual)
-- Output: Bool result
-- Implementation: add a new `CompareOp` enum to `value.rs` (similar to how `BlendMode` works). The `run()` function converts both inputs to decimal, applies the selected comparison, outputs a `Value::Bool`.
-
-### 6D. Boolean Logic Nodes
-- **New files** in `crates/mangler/src/operations/logic/`:
-  - `and.rs` — logical AND of two bool inputs
-  - `or.rs` — logical OR of two bool inputs
-  - `not.rs` — logical NOT of a single bool input
-- Simple pass-through operations on `Value::Bool`
-
-### Registration
-- Create `crates/mangler/src/operations/logic/mod.rs` with `pub mod` for each node
-- Add all logic nodes to the `operations!` macro in `crates/mangler/src/operations/mod.rs`
-- Add a new "logic" category in `operation_list()` with subcategories for conditional and boolean ops
+14 logic operations implemented across 4 subcategories: input (bool), comparison (equal, not_equal, less_than, less_equal, greater_than, greater_equal), boolean (and, or, not, xor, nand, nor), flow (select). All tests passing.
 
 ---
 
-## Phase 7: Text Rendering
+## Phase 7: Text Rendering ✅ COMPLETE
 
-**Why:** Text-to-image is essential for labels, watermarks, and texture stamping. Enables generating text masks that feed into blend/composite workflows.
-
-### 7A. Text Node
-- **New file:** `crates/mangler/src/operations/images/inputs/text.rs`
-- Render a text string to a grayscale image (white text on black background)
-- Inputs:
-  - text (String) — the text to render
-  - font_size (Decimal, default 64.0) — size in pixels
-  - image_width (Integer, default 512) — output image width
-  - image_height (Integer, default 512) — output image height
-  - x_position (Decimal, 0-1, default 0.5) — horizontal position (normalized)
-  - y_position (Decimal, 0-1, default 0.5) — vertical position (normalized)
-- Output: grayscale DynamicImage
-
-### Implementation Details
-- **Crate dependency:** Add `ab_glyph` to `crates/mangler/Cargo.toml` — it's a pure-Rust font rasterizer with no system dependencies
-- **Font handling:** Embed a default font (e.g., `DejaVuSans.ttf` or `Roboto-Regular.ttf`) using `include_bytes!()` so the node works without external font files
-- **Rendering pipeline:**
-  1. Load font with `ab_glyph::FontArc::try_from_slice()`
-  2. Scale glyphs to requested `font_size` using `font.as_scaled(font_size)`
-  3. Layout glyphs: iterate chars, accumulate `h_advance` for x positions, use `height()` for line height
-  4. Rasterize: for each glyph, call `font.outline_glyph()` then `draw()` to get per-pixel coverage values
-  5. Write coverage values (0.0-1.0) into a `GrayImage`, then convert to `DynamicImage`
-- **Positioning:** The x/y position inputs define where the text center lands on the image (0.5, 0.5 = centered). Calculate text bounding box first, then offset all glyphs so the bbox center aligns with the target position.
-- Register under the "images > inputs" category in `operation_list()`
+Text node implemented in `crates/mangler/src/operations/images/inputs/text.rs`. Uses embedded Manrope-Regular font via `ab_glyph`. Inputs: text, font_size, image_width, image_height, x_position, y_position. 7 tests passing.
 
 ---
 
@@ -148,7 +84,7 @@ After each phase:
 
 | Phase | New Nodes | Complexity | Status |
 |-------|-----------|------------|--------|
-| 5     | 2 remaining | High     | In Progress |
-| 6     | ~7        | Medium     | |
-| 7     | 1         | Medium     | |
+| 5     | 1 remaining | High     | In Progress |
+| 6     | 14        | Medium     | ✅ Complete |
+| 7     | 1         | Medium     | ✅ Complete |
 | 8     | ~3+       | High       | |

@@ -3,7 +3,7 @@ use eframe::{
     egui,
     epaint::{Pos2, Rect, Shape},
 };
-use mangler::input::Input;
+use mangler_core::input::Input;
 
 use super::{graph_editor::TempConnection, graph_node::ConnectionType};
 

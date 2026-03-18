@@ -9,7 +9,7 @@ use eframe::{
 };
 use egui::epaint::CubicBezierShape;
 use egui::Pos2;
-use mangler::{input::Input, node_settings::NodeSettings, output::Output, value::ValueType};
+use mangler_core::{input::Input, node_settings::NodeSettings, output::Output, value::ValueType};
 use std::{collections::HashMap, time::Instant};
 
 const ZOOM_MULTIPLIER: f32 = 0.001;

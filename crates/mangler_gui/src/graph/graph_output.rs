@@ -6,7 +6,7 @@ use eframe::{
 use epaint::CornerRadius;
 
 use super::{graph_editor::TempConnection, graph_node::ConnectionType};
-use mangler::output::Output;
+use mangler_core::output::Output;
 
 pub fn draw_graph_output(
     node_id: &String,

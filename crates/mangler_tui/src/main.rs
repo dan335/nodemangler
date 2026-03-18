@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use mangler::{
+use mangler_core::{
     graph::Graph, get_id, AddNodeType, GraphSaveData,
     operations::{operation_list, Operation, OperationListItem},
     value::Value,
@@ -266,14 +266,14 @@ fn cmd_info(path: PathBuf) -> Result<(), String> {
 
         // Operation type
         let type_label = match &node.node_type {
-            mangler::node_type::NodeType::Operation { operation } => {
+            mangler_core::node_type::NodeType::Operation { operation } => {
                 // Get the variant name via serde
                 serde_json::to_string(operation)
                     .unwrap_or_else(|_| format!("{:?}", operation))
                     .trim_matches('"')
                     .to_string()
             }
-            mangler::node_type::NodeType::Subgraph { path, .. } => {
+            mangler_core::node_type::NodeType::Subgraph { path, .. } => {
                 format!("subgraph({})", path.display())
             }
         };

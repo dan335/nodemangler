@@ -1,7 +1,7 @@
 use eframe::egui::{self, Label, Layout, RichText};
 use epaint::{vec2, Color32};
 use image::imageops::FilterType;
-use mangler::{
+use mangler_core::{
     input::{Input, InputSettings},
     value::{ColorFormat, Value, TextHAlign, TextVAlign},
     ChangeNodeMessage, operations::images::noise::worley_distance::NoiseWorleyDistanceFunction, color::{color_spaces::ColorSpace, blend::BlendMode},
@@ -350,7 +350,7 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 let rgba = a.to_srgb_u8();
                 let mut x = [rgba.0, rgba.1, rgba.2, rgba.3];
                 if ui.color_edit_button_srgba_unmultiplied(&mut x).changed() {
-                    let value = Value::Color(mangler::color::Color::from_srgb_u8(x[0], x[1], x[2], x[3]));
+                    let value = Value::Color(mangler_core::color::Color::from_srgb_u8(x[0], x[1], x[2], x[3]));
                     change_value(
                         tx_change_node,
                         node_id,
@@ -524,9 +524,9 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         let file_dialog = rfd::FileDialog::new().add_filter(&title, &extensions);
 
                         if let Some(save_path) = match file_dialog_type {
-                            mangler::input::FileDialogType::PickFile => file_dialog.pick_file(),
-                            mangler::input::FileDialogType::PickFolder => file_dialog.pick_folder(),
-                            mangler::input::FileDialogType::SaveFile => file_dialog.save_file(),
+                            mangler_core::input::FileDialogType::PickFile => file_dialog.pick_file(),
+                            mangler_core::input::FileDialogType::PickFolder => file_dialog.pick_folder(),
+                            mangler_core::input::FileDialogType::SaveFile => file_dialog.save_file(),
                         } {
                             let value = Value::Path(save_path);
                             change_value(
@@ -549,7 +549,7 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 egui::ComboBox::from_label("image format")
                     .selected_text(format!("{:?}", x))
                     .show_ui(ui, |ui| {
-                        for image_type in mangler::value::ImageType::types().iter() {
+                        for image_type in mangler_core::value::ImageType::types().iter() {
                             if ui.selectable_value(&mut x, image_type.format(), image_type.format().extensions_str()[0].to_string()).changed() {
                                 let value = Value::ImageType(image_type.format());
                                 change_value(tx_change_node, node_id, input_index, input, value);

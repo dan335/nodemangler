@@ -13,7 +13,7 @@ impl MenuPanel {
         let mut items: Vec<MenuItem> = Vec::new();
         let level = 0;
 
-        for op in mangler::operations::operation_list().iter() {
+        for op in mangler_core::operations::operation_list().iter() {
             let item = MenuItem::new(op.clone(), level);
             items.push(item);
         }

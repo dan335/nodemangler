@@ -1,6 +1,6 @@
 use eframe::egui;
 use epaint::{Color32, ColorImage, CornerRadius, Pos2, Rect};
-use mangler::{
+use mangler_core::{
     get_id,
     node_type::NodeType,
     value::{Value, ValueType},
@@ -27,7 +27,7 @@ use crate::{
 };
 
 pub struct Program {
-    pub app: mangler::app::App,
+    pub app: mangler_core::app::App,
     tx_change_graph: mpsc::Sender<ChangeGraphMessage>,
     tx_change_node: mpsc::Sender<ChangeNodeMessage>,
     rx_node_changed: mpsc::Receiver<NodeChangedMessage>,
@@ -49,7 +49,7 @@ impl Program {
         let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(256);
         let (tx_graph_changed, rx_graph_changed) = mpsc::channel::<GraphChangedMessage>(256);
 
-        let app_result = mangler::app::App::new(
+        let app_result = mangler_core::app::App::new(
             id,
             save_file,
             rx_change_graph,
@@ -248,7 +248,7 @@ impl Program {
                             if output_index == 0 {
                                 node.thumbnail = match thumbnail {
                                     Some(thumb) => match thumb {
-                                        mangler::thumbnail::Thumbnail::Image(thumbnail) => {
+                                        mangler_core::thumbnail::Thumbnail::Image(thumbnail) => {
                                             match value {
                                                 Value::Color(_) => {
                                                     let pixels = thumbnail.as_flat_samples();
@@ -313,7 +313,7 @@ impl Program {
                                                 _ => None,
                                             }
                                         }
-                                        mangler::thumbnail::Thumbnail::Text(v) => {
+                                        mangler_core::thumbnail::Thumbnail::Text(v) => {
                                             Some(GraphNodeThumbnail::Text(v))
                                         }
                                     },
@@ -407,7 +407,7 @@ impl Program {
                                                 let x = app_rect.center().x + fastrand::f32() * random_size - random_size * 0.5;
                                                 let y = app_rect.center().y + fastrand::f32() * random_size - random_size * 0.5;
                                                 let pos = view_to_graph_space_pos2(self.graph_editor.zoom, Pos2::new(x, y)) - self.graph_editor.position.to_vec2();
-                                                if let Ok(node_id) = self.add_node(AddNodeType::Operation(mangler::operations::Operation::OpImageInputFile), pos) {
+                                                if let Ok(node_id) = self.add_node(AddNodeType::Operation(mangler_core::operations::Operation::OpImageInputFile), pos) {
 
                                                     let message = ChangeNodeMessage::SetInput { node_id, input_index: 0, value: Value::Path(path.clone()) };
 

@@ -95,22 +95,22 @@ impl ViewPanel {
     fn show_content(&mut self, ui: &mut egui::Ui, graph_node: &GraphNode, output_index: usize, cursor_position: Pos2, theme: &Theme) {
         if let Some(output) = graph_node.outputs.get(output_index) {
             match &output.value {
-                mangler::value::Value::Bool(value) => TextViewer::show(ui, value.to_string()),
-                mangler::value::Value::Integer(value) => TextViewer::show(ui, value.to_string()),
-                mangler::value::Value::Decimal(value) => TextViewer::show(ui, format!("{:?}", value)),
-                mangler::value::Value::Text(value) => TextViewer::show(ui, value.to_string()),
-                mangler::value::Value::Color(value) => ColorViewer::show(ui, *value),
-                mangler::value::Value::DynamicImage { data, change_id } => self.image_viewer.show(ui, graph_node.id.clone(), output_index, change_id.clone(), data, cursor_position, theme),
-                mangler::value::Value::Path(path) => TextViewer::show(ui, path.to_str().unwrap_or("none").to_string()),
-                mangler::value::Value::FilterType(value) => TextViewer::show(ui, format!("{:?}", value)),
-                mangler::value::Value::ColorFormat(value) => TextViewer::show(ui, format!("{:?}", value)),
-                mangler::value::Value::ImageType(value) => TextViewer::show(ui, format!("{:?}", value)),
-                mangler::value::Value::Trigger => TextViewer::show(ui, "trigger".to_string()),
-                mangler::value::Value::NoiseWorleyDistanceFunction(value) => TextViewer::show(ui, format!("{:?}", value)),
-                mangler::value::Value::ColorSpace(value) => TextViewer::show(ui, format!("{:?}", value)),
-                mangler::value::Value::BlendMode(value) => TextViewer::show(ui, format!("{:?}", value)),
-                mangler::value::Value::TextHAlign(value) => TextViewer::show(ui, format!("{:?}", value)),
-                mangler::value::Value::TextVAlign(value) => TextViewer::show(ui, format!("{:?}", value)),
+                mangler_core::value::Value::Bool(value) => TextViewer::show(ui, value.to_string()),
+                mangler_core::value::Value::Integer(value) => TextViewer::show(ui, value.to_string()),
+                mangler_core::value::Value::Decimal(value) => TextViewer::show(ui, format!("{:?}", value)),
+                mangler_core::value::Value::Text(value) => TextViewer::show(ui, value.to_string()),
+                mangler_core::value::Value::Color(value) => ColorViewer::show(ui, *value),
+                mangler_core::value::Value::DynamicImage { data, change_id } => self.image_viewer.show(ui, graph_node.id.clone(), output_index, change_id.clone(), data, cursor_position, theme),
+                mangler_core::value::Value::Path(path) => TextViewer::show(ui, path.to_str().unwrap_or("none").to_string()),
+                mangler_core::value::Value::FilterType(value) => TextViewer::show(ui, format!("{:?}", value)),
+                mangler_core::value::Value::ColorFormat(value) => TextViewer::show(ui, format!("{:?}", value)),
+                mangler_core::value::Value::ImageType(value) => TextViewer::show(ui, format!("{:?}", value)),
+                mangler_core::value::Value::Trigger => TextViewer::show(ui, "trigger".to_string()),
+                mangler_core::value::Value::NoiseWorleyDistanceFunction(value) => TextViewer::show(ui, format!("{:?}", value)),
+                mangler_core::value::Value::ColorSpace(value) => TextViewer::show(ui, format!("{:?}", value)),
+                mangler_core::value::Value::BlendMode(value) => TextViewer::show(ui, format!("{:?}", value)),
+                mangler_core::value::Value::TextHAlign(value) => TextViewer::show(ui, format!("{:?}", value)),
+                mangler_core::value::Value::TextVAlign(value) => TextViewer::show(ui, format!("{:?}", value)),
             }
         }
     }

@@ -1,7 +1,7 @@
 use eframe::egui;
 use epaint::Vec2;
-use mangler::operations::Operation;
-use mangler::operations::OperationListItem;
+use mangler_core::operations::Operation;
+use mangler_core::operations::OperationListItem;
 
 use crate::themes::theme::Theme;
 

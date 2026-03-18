@@ -36,7 +36,7 @@ cargo test
 
 ## How It Works
 
-1. **Values** flow between nodes. The type system includes: Bool, Integer, Decimal, String, Color, Image, Path, FilterType, ColorFormat, ImageType, ColorSpace, BlendMode, and more. Values auto-convert where possible (e.g. Integer to Decimal, Bool to Color).
+1. **Values** flow between nodes. The type system includes: Bool, Integer, Decimal, String, Color, Image, Path, FilterType, ColorFormat, ImageType, ColorSpace, BlendMode, NoiseWorleyDistanceFunction, and Trigger. Values auto-convert where possible (e.g. Integer to Decimal, Bool to Color).
 
 2. **Nodes** are created from operations. Each operation defines its inputs, outputs, and processing logic. Operations are registered via the `operations!` macro which generates the `Operation` enum and dispatch code.
 
@@ -47,23 +47,42 @@ cargo test
 ## Available Operations
 
 ### Numbers
-- Input: Integer, Decimal
-- Arithmetic: Add
-- Random: Random Integer, Random Decimal
+- **Input:** Integer, Decimal
+- **Arithmetic:** Add, Subtract, Multiply, Divide, Modulo, Power, Abs, Negate
+- **Interpolation:** Lerp, Smoothstep, Clamp, Remap
+- **Algebra:** Floor, Ceil, Round, Fract, Sign, Min, Max
+- **Trigonometry:** Sin, Cos, Tan, Asin, Acos, Atan, Atan2
+- **Logarithmic:** Log, Log2, Log10, Exp
+- **Random:** Random Integer, Random Decimal
+- **Cast:** To Integer, To Decimal, To Bool, To String
+- **Bitwise:** And, Or, Xor, Not, Left Shift, Right Shift
 
 ### Colors
-- Input from 9 color spaces: sRGB, Linear RGB, HSL, HSV, Lab, LCH, CMYK, XYZ, YUV
-- Output/decompose to any of those same 9 color spaces
-- Blend: Lerp
-- Sample: Most Common Colors from an image
+- **Input:** from 9 color spaces — sRGB, Linear RGB, HSL, HSV, Lab, LCH, CMYK, XYZ, YUV
+- **Output:** decompose to any of those same 9 color spaces
+- **Blend:** 17 blend modes (Normal, Lerp, Multiply, Screen, Overlay, SoftLight, HardLight, ColorDodge, ColorBurn, Darken, Lighten, Difference, Exclusion, LinearBurn, LinearDodge, Divide, Subtract)
+- **Analysis:** Sample Most Common Colors from an image
+- **Cast:** Color from/to other value types
 
 ### Images
-- Input: File, URL, Clipboard, Solid Color, Gradient
-- Output: File, Clipboard
-- Combine: Blit, Blend
-- Transform: Crop, Resize, Resize Exact, Resize Fill, Flip H/V, Rotate 90/180/270, Rotate Around Center
-- Adjustments: Blur, Contrast, Grayscale, Invert, Brighten, Hue Rotate, Unsharpen
-- Noise: Perlin, Simplex, OpenSimplex, SuperSimplex, Perlin Surflet, Worley (Distance/Value), Billow, Cylinders, FBM, Heterogenous Multifractal, Hybrid Multifractal, Ridged Multifractal, Value
+- **Input:** File, URL, Clipboard, Solid Color, Gradient, Text
+- **Output:** File, Clipboard
+- **Combine:** Blit, Blend (17 blend modes)
+- **Transform:** Crop, Resize, Flip H/V, Rotate 90/180/270, Rotate Around Center, Warp, Directional Warp, Safe Transform, Make Tile, Mirror
+- **Adjustments:** Contrast, Grayscale, Invert, Brighten, Hue Rotate, Posterize, Levels, Auto Levels, Curves, Gradient Map, Histogram Scan, Histogram Range, Distance
+- **Blur:** Gaussian Blur, Directional Blur, Radial Blur, Slope Blur, Non-Uniform Blur
+- **Filter:** Edge Detect, Emboss, Sharpen, Unsharpen
+- **Channels:** Split, Merge, Shuffle
+- **Shapes:** Rectangle, Ellipse, Polygon, Star, Line
+- **Patterns:** Brick, Hexagonal, Weave, Tile Sampler
+- **PBR:** Normal from Height, AO from Height, Curvature, Height Blend
+- **Noise:** Perlin, Simplex, OpenSimplex, SuperSimplex, Perlin Surflet, Worley (Distance/Value), Billow, Cylinders, FBM, Heterogeneous Multifractal, Hybrid Multifractal, Ridged Multifractal, Value
+
+### Logic
+- **Input:** Bool
+- **Comparison:** Equal, Not Equal, Less Than, Less Equal, Greater Than, Greater Equal
+- **Boolean:** And, Or, Not, Xor, Nand, Nor
+- **Flow:** Select (mux — picks between two values based on a bool condition)
 
 ## Subgraphs
 

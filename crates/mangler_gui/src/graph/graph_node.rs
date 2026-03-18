@@ -6,9 +6,9 @@ use crate::themes::theme::Theme;
 use crate::{graph_to_view_space_pos2, view_to_graph_space_pos2, graph_to_view_space, NODE_SIZE};
 use eframe::egui;
 use egui::{Pos2, Rect, Vec2};
-use mangler::input::Input;
-use mangler::node_settings::NodeSettings;
-use mangler::output::Output;
+use mangler_core::input::Input;
+use mangler_core::node_settings::NodeSettings;
+use mangler_core::output::Output;
 use std::fmt::Debug;
 use std::time::Duration;
 

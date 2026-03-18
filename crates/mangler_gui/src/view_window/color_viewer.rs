@@ -1,6 +1,6 @@
 use eframe::egui::{self, RichText};
 use epaint::Color32;
-use mangler::color::Color;
+use mangler_core::color::Color;
 
 pub struct ColorViewer {
 
