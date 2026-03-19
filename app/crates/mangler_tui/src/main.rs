@@ -3,16 +3,23 @@
 //! Allows AI agents and terminal users to create, inspect, and execute node
 //! graphs from the command line. Each command loads a graph JSON file, performs
 //! one operation, saves it back, and prints a result.
+//!
+//! The `repl` subcommand enters an interactive loop with the graph loaded in
+//! memory. Supports `--json` mode for LLM/scripted consumers (newline-delimited
+//! JSON, no ANSI codes, no prompt) and `--no-save` per-command to batch
+//! mutations before an explicit `save`.
 
 use std::collections::HashMap;
+use std::io::{BufRead, Write as IoWrite};
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use mangler_core::{
     graph::Graph, get_id, AddNodeType, GraphSaveData,
     operations::{operation_list, Operation, OperationListItem},
-    value::Value,
+    value::{Value, ValueType},
 };
+use serde::Serialize;
 
 // ── CLI definition ───────────────────────────────────────────────────────────
 
@@ -27,7 +34,7 @@ struct Cli {
 enum Commands {
     /// Create a new empty graph JSON file
     New {
-        /// Path to write the graph file (e.g. graph.json)
+        /// Path to write the graph file (e.g. graph.mangle.json)
         path: PathBuf,
     },
 
@@ -35,13 +42,29 @@ enum Commands {
     Info {
         /// Path to the graph JSON file
         path: PathBuf,
+        /// Show only a single node by ID
+        #[arg(long)]
+        node: Option<String>,
+        /// Compact output: omit descriptions and default values
+        #[arg(long)]
+        compact: bool,
     },
 
     /// List all available operation types
     ListOps {
-        /// Filter by category prefix (e.g. numbers, images/transform, colors)
+        /// Filter by category prefix (e.g. numbers, images/transform, colors).
+        /// Shows categories with counts if no ops match.
         #[arg(long)]
         group: Option<String>,
+        /// Case-insensitive substring search across path, variant, and description
+        #[arg(long)]
+        search: Option<String>,
+    },
+
+    /// List enum value types and their valid variants
+    ListTypes {
+        /// Type name to show variants for (e.g. BlendMode). Omit to list all types.
+        type_name: Option<String>,
     },
 
     /// Add a node to a graph
@@ -98,7 +121,7 @@ enum Commands {
         node: String,
         /// Zero-based input index
         #[arg(long)]
-        index: usize,
+        input: usize,
         /// JSON-encoded Value, e.g. `{"Decimal":3.14}` or `{"Bool":true}`
         #[arg(long)]
         value: String,
@@ -109,6 +132,209 @@ enum Commands {
         /// Path to the graph JSON file
         path: PathBuf,
     },
+
+    /// Enter interactive REPL mode with a graph loaded in memory
+    Repl {
+        /// Path to the graph JSON file
+        path: PathBuf,
+        /// Output JSON lines instead of human-readable text (no ANSI, no prompt)
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+// ── REPL command definition ──────────────────────────────────────────────────
+
+/// Parser for REPL input lines. Uses `no_binary_name` so clap does not expect
+/// argv[0] to be the program name.
+#[derive(Parser, Debug)]
+#[command(name = "", no_binary_name = true, disable_help_flag = true, disable_help_subcommand = true)]
+struct ReplCli {
+    #[command(subcommand)]
+    command: ReplCommand,
+}
+
+/// Commands available inside the REPL. Mirrors the top-level `Commands` but
+/// omits `New`/`Repl` and drops the `path` argument (graph is already loaded).
+/// Mutation commands accept `--no-save` to suppress auto-save.
+#[derive(Subcommand, Debug)]
+enum ReplCommand {
+    /// Print all nodes, inputs, outputs, and connections
+    Info {
+        /// Show only a single node by ID
+        #[arg(long)]
+        node: Option<String>,
+        /// Compact output: omit descriptions and default values
+        #[arg(long)]
+        compact: bool,
+    },
+
+    /// List all available operation types
+    ListOps {
+        /// Filter by category prefix
+        #[arg(long)]
+        group: Option<String>,
+        /// Case-insensitive substring search
+        #[arg(long)]
+        search: Option<String>,
+    },
+
+    /// List enum value types and their valid variants
+    ListTypes {
+        /// Type name to show variants for
+        type_name: Option<String>,
+    },
+
+    /// Add a node to the graph
+    AddNode {
+        /// Operation type path or variant name
+        #[arg(long = "type", id = "op_type")]
+        op_type: String,
+        /// Node ID to assign (auto-generated if omitted)
+        #[arg(long)]
+        id: Option<String>,
+        /// Skip auto-save after this mutation
+        #[arg(long)]
+        no_save: bool,
+    },
+
+    /// Remove a node and all its connections
+    RemoveNode {
+        /// ID of the node to remove
+        #[arg(long)]
+        id: String,
+        /// Skip auto-save after this mutation
+        #[arg(long)]
+        no_save: bool,
+    },
+
+    /// Connect an output slot to an input slot
+    Connect {
+        /// Source: <node-id>:<output-index>
+        #[arg(long)]
+        from: String,
+        /// Destination: <node-id>:<input-index>
+        #[arg(long)]
+        to: String,
+        /// Skip auto-save after this mutation
+        #[arg(long)]
+        no_save: bool,
+    },
+
+    /// Remove the connection feeding into a specific input
+    Disconnect {
+        /// ID of the node whose input should be disconnected
+        #[arg(long)]
+        node: String,
+        /// Zero-based input index to disconnect
+        #[arg(long)]
+        input: usize,
+        /// Skip auto-save after this mutation
+        #[arg(long)]
+        no_save: bool,
+    },
+
+    /// Set a literal value on a node input
+    SetInput {
+        /// ID of the target node
+        #[arg(long)]
+        node: String,
+        /// Zero-based input index
+        #[arg(long)]
+        input: usize,
+        /// JSON-encoded Value
+        #[arg(long)]
+        value: String,
+        /// Skip auto-save after this mutation
+        #[arg(long)]
+        no_save: bool,
+    },
+
+    /// Execute the graph and print all node output values
+    Run {
+        /// Skip auto-save after execution
+        #[arg(long)]
+        no_save: bool,
+    },
+
+    /// Explicitly save the graph to disk
+    Save,
+
+    /// Exit the REPL
+    Exit,
+
+    /// Exit the REPL (alias for exit)
+    Quit,
+
+    /// Print available REPL commands
+    Help,
+}
+
+// ── REPL response types ──────────────────────────────────────────────────────
+
+/// Structured response from a REPL command, serializable to JSON for `--json` mode.
+#[derive(Debug, Clone, Serialize)]
+struct ReplResponse {
+    /// `"ok"` or `"error"`.
+    status: String,
+    /// Response payload (present on success).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<serde_json::Value>,
+    /// Error message (present on failure).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+impl ReplResponse {
+    /// Create a successful response with a data payload.
+    fn ok(data: serde_json::Value) -> Self {
+        Self { status: "ok".to_string(), data: Some(data), error: None }
+    }
+
+    /// Create a successful response with a simple message.
+    fn ok_message(msg: impl Into<String>) -> Self {
+        Self::ok(serde_json::json!({ "message": msg.into() }))
+    }
+
+    /// Create an error response.
+    fn error(msg: impl Into<String>) -> Self {
+        Self { status: "error".to_string(), data: None, error: Some(msg.into()) }
+    }
+}
+
+/// Output mode for the REPL.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum OutputMode {
+    /// Human-readable text with prompt.
+    Human,
+    /// Newline-delimited JSON, no ANSI codes or prompt.
+    Json,
+}
+
+/// Write a REPL response to the given writer in the appropriate format.
+fn emit(mode: OutputMode, response: &ReplResponse, writer: &mut dyn IoWrite) {
+    match mode {
+        OutputMode::Json => {
+            let json = serde_json::to_string(response).unwrap_or_else(|_| {
+                r#"{"status":"error","error":"failed to serialize response"}"#.to_string()
+            });
+            let _ = writeln!(writer, "{json}");
+        }
+        OutputMode::Human => {
+            if response.status == "ok" {
+                if let Some(data) = &response.data {
+                    if let Some(msg) = data.get("message").and_then(|v| v.as_str()) {
+                        let _ = writeln!(writer, "{msg}");
+                    } else {
+                        let _ = writeln!(writer, "{}", serde_json::to_string_pretty(data).unwrap_or_default());
+                    }
+                }
+            } else if let Some(err) = &response.error {
+                let _ = writeln!(writer, "error: {err}");
+            }
+        }
+    }
+    let _ = writer.flush();
 }
 
 // ── Entry point ──────────────────────────────────────────────────────────────
@@ -119,14 +345,16 @@ async fn main() {
 
     let result = match cli.command {
         Commands::New { path } => cmd_new(path),
-        Commands::Info { path } => cmd_info(path),
-        Commands::ListOps { group } => cmd_list_ops(group),
+        Commands::Info { path, node, compact } => cmd_info(path, node, compact),
+        Commands::ListOps { group, search } => cmd_list_ops(group, search),
+        Commands::ListTypes { type_name } => cmd_list_types(type_name),
         Commands::AddNode { path, op_type, id } => cmd_add_node(path, op_type, id).await,
         Commands::RemoveNode { path, id } => cmd_remove_node(path, id).await,
         Commands::Connect { path, from, to } => cmd_connect(path, from, to).await,
         Commands::Disconnect { path, node, input } => cmd_disconnect(path, node, input).await,
-        Commands::SetInput { path, node, index, value } => cmd_set_input(path, node, index, value),
+        Commands::SetInput { path, node, input, value } => cmd_set_input(path, node, input, value),
         Commands::Run { path } => cmd_run(path).await,
+        Commands::Repl { path, json } => cmd_repl(path, json).await,
     };
 
     if let Err(e) = result {
@@ -220,6 +448,60 @@ fn parse_slot(s: &str) -> Result<(String, usize), String> {
     Ok((node_id, index))
 }
 
+// ── Enum type helpers ─────────────────────────────────────────────────────
+
+/// All enum-like value types that users can set via the CLI.
+const ENUM_TYPE_NAMES: &[&str] = &[
+    "BlendMode", "ColorSpace", "FilterType", "ImageType",
+    "ColorFormat", "NoiseWorleyDistanceFunction", "TextHAlign", "TextVAlign",
+];
+
+/// Return the valid variant names for an enum-like value type, or None if unknown.
+fn enum_variants(type_name: &str) -> Option<Vec<&'static str>> {
+    match type_name {
+        "BlendMode" => Some(vec![
+            "Over", "Lerp", "Multiply", "Screen", "Overlay", "SoftLight", "HardLight",
+            "ColorDodge", "ColorBurn", "Darken", "Lighten", "Difference", "Exclusion",
+            "LinearBurn", "LinearDodge", "Divide", "Subtract",
+        ]),
+        "ColorSpace" => Some(vec![
+            "Srgb", "RgbLinear", "Hsl", "Hsv", "Lch", "Xyz", "Lab", "Yuv", "Cmyk",
+        ]),
+        "FilterType" => Some(vec![
+            "catmullrom", "gaussian", "lanczos3", "nearest", "triangle",
+        ]),
+        "ImageType" => Some(vec![
+            "Png", "Jpeg", "Gif", "WebP", "Pnm", "Tiff", "Tga",
+            "Bmp", "Ico", "Hdr", "OpenExr", "Farbfeld", "Qoi",
+        ]),
+        "ColorFormat" => Some(vec![
+            "Rgba32F", "Rgb32F", "Rgba16", "Rgb16", "GrayA16", "Gray16",
+            "Rgba8", "Rgb8", "GrayA8", "Gray8",
+        ]),
+        "NoiseWorleyDistanceFunction" => Some(vec![
+            "Chebyshev", "Euclidean", "EuclideanSquared", "Manhattan", "Quadratic",
+        ]),
+        "TextHAlign" => Some(vec!["Left", "Center", "Right"]),
+        "TextVAlign" => Some(vec!["Top", "Middle", "Bottom"]),
+        _ => None,
+    }
+}
+
+/// Return the enum type name for a ValueType, if it's an enum type.
+fn value_type_enum_name(vt: &ValueType) -> Option<&'static str> {
+    match vt {
+        ValueType::BlendMode => Some("BlendMode"),
+        ValueType::ColorSpace => Some("ColorSpace"),
+        ValueType::FilterType => Some("FilterType"),
+        ValueType::ImageType => Some("ImageType"),
+        ValueType::ColorFormat => Some("ColorFormat"),
+        ValueType::NoiseWorleyDistanceFunction => Some("NoiseWorleyDistanceFunction"),
+        ValueType::TextHAlign => Some("TextHAlign"),
+        ValueType::TextVAlign => Some("TextVAlign"),
+        _ => None,
+    }
+}
+
 // ── Value display ─────────────────────────────────────────────────────────────
 
 /// Return a concise human-readable representation of a `Value`.
@@ -230,7 +512,547 @@ fn display_value(value: &Value) -> String {
     }
 }
 
-// ── Commands ──────────────────────────────────────────────────────────────────
+// ── Inner (do_*) functions ───────────────────────────────────────────────────
+//
+// These operate on an in-memory `&mut Graph` and return structured results.
+// Both the top-level `cmd_*` functions and the REPL dispatcher call these.
+
+/// Build a structured info response for a graph.
+/// If `filter_node` is Some, only include that node. If `compact`, omit descriptions and defaults.
+fn do_info(graph: &Graph, filter_node: Option<&str>, compact: bool) -> Result<ReplResponse, String> {
+    let mut nodes = serde_json::Map::new();
+    let mut node_ids: Vec<&String> = graph.nodes.keys().collect();
+    node_ids.sort();
+
+    // If filtering by node, validate it exists.
+    if let Some(nid) = filter_node {
+        if !graph.nodes.contains_key(nid) {
+            return Err(format!("node '{nid}' not found"));
+        }
+    }
+
+    for node_id in &node_ids {
+        if let Some(nid) = filter_node {
+            if *node_id != nid { continue; }
+        }
+        let node = &graph.nodes[*node_id];
+
+        // Operation type label.
+        let type_label = match &node.node_type {
+            mangler_core::node_type::NodeType::Operation { operation } => {
+                serde_json::to_string(operation)
+                    .unwrap_or_else(|_| format!("{:?}", operation))
+                    .trim_matches('"')
+                    .to_string()
+            }
+            mangler_core::node_type::NodeType::Subgraph { path, .. } => {
+                format!("subgraph({})", path.display())
+            }
+        };
+
+        // Inputs.
+        let inputs: Vec<serde_json::Value> = node.inputs.iter().enumerate().map(|(i, input)| {
+            let mut m = serde_json::Map::new();
+            m.insert("index".to_string(), serde_json::json!(i));
+            m.insert("name".to_string(), serde_json::json!(input.name));
+            let vt = input.value.value_type();
+            m.insert("type".to_string(), serde_json::json!(format!("{:?}", vt)));
+            m.insert("value".to_string(), serde_json::json!(display_value(&input.value)));
+            if !compact {
+                m.insert("default_value".to_string(), serde_json::json!(display_value(&input.default_value)));
+                if let Some(enum_name) = value_type_enum_name(&vt) {
+                    if let Some(variants) = enum_variants(enum_name) {
+                        m.insert("enum_values".to_string(), serde_json::json!(variants));
+                    }
+                }
+            }
+            if let Some((src_node, src_idx)) = &input.connection {
+                m.insert("connection".to_string(), serde_json::json!(format!("{}:{}", src_node, src_idx)));
+            }
+            serde_json::Value::Object(m)
+        }).collect();
+
+        // Outputs.
+        let outputs: Vec<serde_json::Value> = node.outputs.iter().enumerate().map(|(i, output)| {
+            let mut m = serde_json::Map::new();
+            m.insert("index".to_string(), serde_json::json!(i));
+            m.insert("name".to_string(), serde_json::json!(output.name));
+            m.insert("type".to_string(), serde_json::json!(format!("{:?}", output.value.value_type())));
+            m.insert("value".to_string(), serde_json::json!(display_value(&output.value)));
+            if let Some(conns) = &output.connection {
+                let cs: Vec<String> = conns.iter().map(|(n, idx)| format!("{}:{}", n, idx)).collect();
+                m.insert("connections".to_string(), serde_json::json!(cs));
+            }
+            serde_json::Value::Object(m)
+        }).collect();
+
+        let mut node_map = serde_json::Map::new();
+        node_map.insert("name".to_string(), serde_json::json!(node.settings.name));
+        if !compact {
+            node_map.insert("description".to_string(), serde_json::json!(node.settings.description));
+        }
+        node_map.insert("type".to_string(), serde_json::json!(type_label));
+        node_map.insert("inputs".to_string(), serde_json::json!(inputs));
+        node_map.insert("outputs".to_string(), serde_json::json!(outputs));
+        if node.is_error {
+            node_map.insert("error".to_string(), serde_json::json!(node.error_message));
+        }
+        nodes.insert(node_id.to_string(), serde_json::Value::Object(node_map));
+    }
+
+    Ok(ReplResponse::ok(serde_json::json!({
+        "name": graph.name,
+        "id": graph.id,
+        "node_count": graph.nodes.len(),
+        "nodes": nodes,
+    })))
+}
+
+/// Format graph info as human-readable text.
+/// If `filter_node` is Some, only show that node. If `compact`, omit descriptions and defaults.
+fn format_info_human(graph: &Graph, filter_node: Option<&str>, compact: bool) -> Result<String, String> {
+    // Validate filter node exists.
+    if let Some(nid) = filter_node {
+        if !graph.nodes.contains_key(nid) {
+            return Err(format!("node '{nid}' not found"));
+        }
+    }
+
+    let mut out = String::new();
+    out.push_str(&format!("graph: {} ({})\n", graph.name, graph.id));
+    out.push_str(&format!("nodes: {}\n", graph.nodes.len()));
+
+    let mut node_ids: Vec<&String> = graph.nodes.keys().collect();
+    node_ids.sort();
+
+    for node_id in node_ids {
+        if let Some(nid) = filter_node {
+            if node_id != nid { continue; }
+        }
+        let node = &graph.nodes[node_id];
+
+        let type_label = match &node.node_type {
+            mangler_core::node_type::NodeType::Operation { operation } => {
+                serde_json::to_string(operation)
+                    .unwrap_or_else(|_| format!("{:?}", operation))
+                    .trim_matches('"')
+                    .to_string()
+            }
+            mangler_core::node_type::NodeType::Subgraph { path, .. } => {
+                format!("subgraph({})", path.display())
+            }
+        };
+
+        out.push_str(&format!("\n  [{}] {} ({})\n", node_id, node.settings.name, type_label));
+
+        // Show description unless compact.
+        if !compact && !node.settings.description.is_empty() {
+            out.push_str(&format!("    \"{}\"\n", node.settings.description));
+        }
+
+        // Show error state if present.
+        if node.is_error {
+            if let Some(msg) = &node.error_message {
+                out.push_str(&format!("    ERROR: {}\n", msg));
+            }
+        }
+
+        for (i, input) in node.inputs.iter().enumerate() {
+            let vt = input.value.value_type();
+            let conn = if let Some((src_node, src_idx)) = &input.connection {
+                format!(" <- {}:{}", src_node, src_idx)
+            } else {
+                String::new()
+            };
+
+            // Build type annotation with enum variants if applicable.
+            let type_str = if !compact {
+                if let Some(enum_name) = value_type_enum_name(&vt) {
+                    if let Some(variants) = enum_variants(enum_name) {
+                        format!("{}: {}", enum_name, variants.join("|"))
+                    } else {
+                        format!("{:?}", vt)
+                    }
+                } else {
+                    format!("{:?}", vt)
+                }
+            } else {
+                format!("{:?}", vt)
+            };
+
+            // Show default value if different from current and not compact.
+            let default_str = if !compact {
+                let cur = display_value(&input.value);
+                let def = display_value(&input.default_value);
+                if cur != def {
+                    format!(" (default: {})", def)
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            out.push_str(&format!(
+                "    in[{}] {} ({}) = {}{}{}\n",
+                i, input.name, type_str, display_value(&input.value), default_str, conn
+            ));
+        }
+
+        for (i, output) in node.outputs.iter().enumerate() {
+            let conn = if let Some(conns) = &output.connection {
+                let s: Vec<String> = conns.iter().map(|(n, idx)| format!("{}:{}", n, idx)).collect();
+                format!(" -> {}", s.join(", "))
+            } else {
+                String::new()
+            };
+            out.push_str(&format!(
+                "    out[{}] {} ({:?}) = {}{}\n",
+                i, output.name, output.value.value_type(), display_value(&output.value), conn
+            ));
+        }
+    }
+    Ok(out)
+}
+
+/// Collect top-level categories with counts from the flattened ops list.
+fn collect_categories(all_ops: &[(String, Operation)]) -> Vec<(String, usize)> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for (path, _) in all_ops {
+        let cat = path.split('/').next().unwrap_or(path).to_string();
+        *counts.entry(cat).or_insert(0) += 1;
+    }
+    let mut cats: Vec<(String, usize)> = counts.into_iter().collect();
+    cats.sort_by(|a, b| a.0.cmp(&b.0));
+    cats
+}
+
+/// Build the list-ops response data. Supports `--group` with category fallback and `--search`.
+fn do_list_ops(group: Option<&str>, search: Option<&str>) -> ReplResponse {
+    let all_ops = flatten_ops(&operation_list(), "");
+    let group_filter = group.unwrap_or("").to_lowercase();
+    let search_filter = search.unwrap_or("").to_lowercase();
+
+    let mut ops = Vec::new();
+    for (path, op) in &all_ops {
+        // Group filter.
+        if !group_filter.is_empty() && !path.to_lowercase().starts_with(&group_filter) {
+            continue;
+        }
+
+        let variant = serde_json::to_string(op)
+            .unwrap_or_default()
+            .trim_matches('"')
+            .to_string();
+
+        let description = &op.settings().description;
+
+        // Search filter: match against path, variant, or description.
+        if !search_filter.is_empty() {
+            let haystack = format!("{} {} {}", path, variant, description).to_lowercase();
+            if !haystack.contains(&search_filter) {
+                continue;
+            }
+        }
+
+        let inputs = op.create_inputs();
+        let outputs = op.create_outputs();
+
+        let in_str: Vec<String> = inputs.iter()
+            .map(|i| format!("{}({:?})", i.name, i.value.value_type()))
+            .collect();
+        let out_str: Vec<String> = outputs.iter()
+            .map(|o| format!("{}({:?})", o.name, o.value.value_type()))
+            .collect();
+
+        ops.push(serde_json::json!({
+            "path": path,
+            "variant": variant,
+            "description": description,
+            "inputs": in_str,
+            "outputs": out_str,
+        }));
+    }
+
+    // If group was specified but no ops matched, show categories as fallback.
+    if ops.is_empty() && !group_filter.is_empty() && search_filter.is_empty() {
+        let cats = collect_categories(&all_ops);
+        return ReplResponse::ok(serde_json::json!({
+            "operations": [],
+            "categories": cats.iter().map(|(name, count)| serde_json::json!({"name": name, "count": count})).collect::<Vec<_>>(),
+        }));
+    }
+
+    ReplResponse::ok(serde_json::json!({ "operations": ops }))
+}
+
+/// Format list-ops as human-readable text. Supports `--group` with category fallback and `--search`.
+fn format_list_ops_human(group: Option<&str>, search: Option<&str>) -> String {
+    let all_ops = flatten_ops(&operation_list(), "");
+    let group_filter = group.unwrap_or("").to_lowercase();
+    let search_filter = search.unwrap_or("").to_lowercase();
+    let mut out = String::new();
+    let mut count = 0;
+
+    for (path, op) in &all_ops {
+        if !group_filter.is_empty() && !path.to_lowercase().starts_with(&group_filter) {
+            continue;
+        }
+
+        let variant = serde_json::to_string(op)
+            .unwrap_or_default()
+            .trim_matches('"')
+            .to_string();
+
+        let description = &op.settings().description;
+
+        if !search_filter.is_empty() {
+            let haystack = format!("{} {} {}", path, variant, description).to_lowercase();
+            if !haystack.contains(&search_filter) {
+                continue;
+            }
+        }
+
+        let inputs = op.create_inputs();
+        let outputs = op.create_outputs();
+
+        let in_str: Vec<String> = inputs.iter()
+            .map(|i| format!("{}({:?})", i.name, i.value.value_type()))
+            .collect();
+        let out_str: Vec<String> = outputs.iter()
+            .map(|o| format!("{}({:?})", o.name, o.value.value_type()))
+            .collect();
+
+        out.push_str(&format!(
+            "{:<45} ({})  in: [{}]  out: [{}]\n",
+            path, variant, in_str.join(", "), out_str.join(", ")
+        ));
+        count += 1;
+    }
+
+    // If group was specified but no ops matched, show categories as fallback.
+    if count == 0 && !group_filter.is_empty() && search_filter.is_empty() {
+        let cats = collect_categories(&all_ops);
+        out.push_str("No operations match that group. Available categories:\n");
+        for (name, cnt) in &cats {
+            out.push_str(&format!("  {} ({})\n", name, cnt));
+        }
+    }
+
+    out
+}
+
+/// Build the list-types response.
+fn do_list_types(type_name: Option<&str>) -> ReplResponse {
+    match type_name {
+        None => {
+            // List all enum type names.
+            ReplResponse::ok(serde_json::json!({ "types": ENUM_TYPE_NAMES }))
+        }
+        Some(name) => {
+            // Case-insensitive lookup.
+            let matched = ENUM_TYPE_NAMES.iter().find(|t| t.eq_ignore_ascii_case(name));
+            match matched {
+                Some(canonical) => {
+                    let variants = enum_variants(canonical).unwrap_or_default();
+                    ReplResponse::ok(serde_json::json!({
+                        "type": canonical,
+                        "variants": variants,
+                    }))
+                }
+                None => {
+                    ReplResponse::error(format!(
+                        "unknown type '{}'. Available types: {}",
+                        name,
+                        ENUM_TYPE_NAMES.join(", ")
+                    ))
+                }
+            }
+        }
+    }
+}
+
+/// Format list-types as human-readable text.
+fn format_list_types_human(type_name: Option<&str>) -> String {
+    match type_name {
+        None => {
+            format!("{}\n", ENUM_TYPE_NAMES.join(", "))
+        }
+        Some(name) => {
+            let matched = ENUM_TYPE_NAMES.iter().find(|t| t.eq_ignore_ascii_case(name));
+            match matched {
+                Some(canonical) => {
+                    let variants = enum_variants(canonical).unwrap_or_default();
+                    format!("{}\n", variants.join(", "))
+                }
+                None => {
+                    format!(
+                        "unknown type '{}'. Available types: {}\n",
+                        name,
+                        ENUM_TYPE_NAMES.join(", ")
+                    )
+                }
+            }
+        }
+    }
+}
+
+/// Add a node to an in-memory graph. Returns the node ID.
+async fn do_add_node(graph: &mut Graph, op_type: &str, id: Option<String>) -> Result<String, String> {
+    let operation = resolve_op(op_type)?;
+    let node_id = id.unwrap_or_else(get_id);
+    graph.add_node(node_id.clone(), AddNodeType::Operation(operation), glam::Vec2::ZERO).await;
+    Ok(node_id)
+}
+
+/// Remove a node from an in-memory graph. Returns the removed node ID.
+async fn do_remove_node(graph: &mut Graph, id: &str) -> Result<String, String> {
+    if !graph.nodes.contains_key(id) {
+        return Err(format!("node '{id}' not found"));
+    }
+    graph.remove_node(id.to_string()).await;
+    Ok(id.to_string())
+}
+
+/// Connect two nodes in an in-memory graph. Returns a description string.
+/// Validates that both nodes and slot indices exist before connecting (9E).
+async fn do_connect(graph: &mut Graph, from: &str, to: &str) -> Result<String, String> {
+    let (output_node_id, output_index) = parse_slot(from)?;
+    let (input_node_id, input_index) = parse_slot(to)?;
+
+    // Validate source node and output index.
+    let src_node = graph.nodes.get(&output_node_id)
+        .ok_or_else(|| format!("source node '{}' not found", output_node_id))?;
+    if output_index >= src_node.outputs.len() {
+        return Err(format!(
+            "output index {} out of range on node '{}' (has {} outputs)",
+            output_index, output_node_id, src_node.outputs.len()
+        ));
+    }
+
+    // Validate destination node and input index.
+    let dst_node = graph.nodes.get(&input_node_id)
+        .ok_or_else(|| format!("destination node '{}' not found", input_node_id))?;
+    if input_index >= dst_node.inputs.len() {
+        return Err(format!(
+            "input index {} out of range on node '{}' (has {} inputs)",
+            input_index, input_node_id, dst_node.inputs.len()
+        ));
+    }
+
+    graph.add_connection(input_node_id, input_index, output_node_id, output_index).await;
+    Ok(format!("connected {from} -> {to}"))
+}
+
+/// Disconnect a node input in an in-memory graph. Returns a description string.
+async fn do_disconnect(graph: &mut Graph, node: &str, input: usize) -> Result<String, String> {
+    if !graph.nodes.contains_key(node) {
+        return Err(format!("node '{node}' not found"));
+    }
+    graph.remove_connection(node.to_string(), input).await;
+    Ok(format!("disconnected {node}:{input}"))
+}
+
+/// Set an input value on a node in an in-memory graph. Returns a description string.
+/// Validates node exists, index is in bounds, and provides helpful error messages for
+/// enum types when JSON parse fails (9E).
+fn do_set_input(graph: &mut Graph, node: &str, index: usize, value: &str) -> Result<String, String> {
+    // Validate node exists.
+    let n = graph.nodes.get(node)
+        .ok_or_else(|| format!("node '{node}' not found"))?;
+
+    // Validate input index is in bounds.
+    if index >= n.inputs.len() {
+        return Err(format!(
+            "input index {} out of range on node '{}' (has {} inputs)",
+            index, node, n.inputs.len()
+        ));
+    }
+
+    // Parse value JSON, with enhanced error message for enum types.
+    let parsed: Value = serde_json::from_str(value).map_err(|e| {
+        let input = &n.inputs[index];
+        let vt = input.value.value_type();
+        if let Some(enum_name) = value_type_enum_name(&vt) {
+            if let Some(variants) = enum_variants(enum_name) {
+                return format!(
+                    "input '{}' (index {}) on node '{}' expects {} -- valid values: {}. JSON error: {}",
+                    input.name, index, node, enum_name, variants.join(", "), e
+                );
+            }
+        }
+        format!(
+            "invalid value JSON for input '{}' (index {}) on node '{}' (expects {:?}): {}",
+            input.name, index, node, vt, e
+        )
+    })?;
+
+    graph.set_input(node.to_string(), index, parsed);
+    Ok(format!("set {node}:{index} = {value}"))
+}
+
+/// Run the graph and return output values. Reports node errors (9E).
+async fn do_run(graph: &mut Graph) -> ReplResponse {
+    graph.run().await;
+
+    let mut node_ids: Vec<&String> = graph.nodes.keys().collect();
+    node_ids.sort();
+
+    let mut outputs = Vec::new();
+    let mut errors = Vec::new();
+    for node_id in &node_ids {
+        let node = &graph.nodes[*node_id];
+        if node.is_error {
+            errors.push(serde_json::json!({
+                "node": node_id,
+                "error": node.error_message.as_deref().unwrap_or("unknown error"),
+            }));
+        }
+        for (i, output) in node.outputs.iter().enumerate() {
+            outputs.push(serde_json::json!({
+                "node": node_id,
+                "index": i,
+                "type": format!("{:?}", output.value.value_type()),
+                "value": display_value(&output.value),
+            }));
+        }
+    }
+
+    let mut data = serde_json::json!({ "outputs": outputs });
+    if !errors.is_empty() {
+        data["errors"] = serde_json::json!(errors);
+    }
+    ReplResponse::ok(data)
+}
+
+/// Format run results as human-readable text. Reports node errors (9E).
+fn format_run_human(graph: &Graph) -> String {
+    let mut node_ids: Vec<&String> = graph.nodes.keys().collect();
+    node_ids.sort();
+    let mut out = String::new();
+
+    // Report errors first.
+    for node_id in &node_ids {
+        let node = &graph.nodes[*node_id];
+        if node.is_error {
+            let msg = node.error_message.as_deref().unwrap_or("unknown error");
+            out.push_str(&format!("[{}] ERROR: {}\n", node_id, msg));
+        }
+    }
+
+    for node_id in &node_ids {
+        let node = &graph.nodes[*node_id];
+        for (i, output) in node.outputs.iter().enumerate() {
+            out.push_str(&format!(
+                "[{}] out[{}] ({:?}) = {}\n",
+                node_id, i, output.value.value_type(), display_value(&output.value)
+            ));
+        }
+    }
+    out
+}
+
+// ── Top-level commands ───────────────────────────────────────────────────────
 
 /// `mangle new <path>` — create an empty graph file.
 fn cmd_new(path: PathBuf) -> Result<(), String> {
@@ -252,119 +1074,30 @@ fn cmd_new(path: PathBuf) -> Result<(), String> {
     Ok(())
 }
 
-/// `mangle info <path>` — print graph structure.
-fn cmd_info(path: PathBuf) -> Result<(), String> {
+/// `mangle info <path> [--node <id>] [--compact]` — print graph structure.
+fn cmd_info(path: PathBuf, node: Option<String>, compact: bool) -> Result<(), String> {
     let graph = load_graph(&path)?;
-    println!("graph: {} ({})", graph.name, graph.id);
-    println!("nodes: {}", graph.nodes.len());
-
-    let mut node_ids: Vec<&String> = graph.nodes.keys().collect();
-    node_ids.sort();
-
-    for node_id in node_ids {
-        let node = &graph.nodes[node_id];
-
-        // Operation type
-        let type_label = match &node.node_type {
-            mangler_core::node_type::NodeType::Operation { operation } => {
-                // Get the variant name via serde
-                serde_json::to_string(operation)
-                    .unwrap_or_else(|_| format!("{:?}", operation))
-                    .trim_matches('"')
-                    .to_string()
-            }
-            mangler_core::node_type::NodeType::Subgraph { path, .. } => {
-                format!("subgraph({})", path.display())
-            }
-        };
-
-        println!("\n  [{}] {} ({})", node_id, node.settings.name, type_label);
-
-        // Inputs
-        for (i, input) in node.inputs.iter().enumerate() {
-            let conn = if let Some((src_node, src_idx)) = &input.connection {
-                format!(" ← {}:{}", src_node, src_idx)
-            } else {
-                String::new()
-            };
-            println!(
-                "    in[{}] {} ({:?}) = {}{}",
-                i,
-                input.name,
-                input.value.value_type(),
-                display_value(&input.value),
-                conn
-            );
-        }
-
-        // Outputs
-        for (i, output) in node.outputs.iter().enumerate() {
-            let conn = if let Some(conns) = &output.connection {
-                let s: Vec<String> = conns.iter().map(|(n, idx)| format!("{}:{}", n, idx)).collect();
-                format!(" → {}", s.join(", "))
-            } else {
-                String::new()
-            };
-            println!(
-                "    out[{}] {} ({:?}) = {}{}",
-                i,
-                output.name,
-                output.value.value_type(),
-                display_value(&output.value),
-                conn
-            );
-        }
-    }
+    let text = format_info_human(&graph, node.as_deref(), compact)?;
+    print!("{}", text);
     Ok(())
 }
 
-/// `mangle list-ops [--group <prefix>]` — list available operations.
-fn cmd_list_ops(group: Option<String>) -> Result<(), String> {
-    let all_ops = flatten_ops(&operation_list(), "");
-    let filter = group.as_deref().unwrap_or("").to_lowercase();
+/// `mangle list-ops [--group <prefix>] [--search <term>]` — list available operations.
+fn cmd_list_ops(group: Option<String>, search: Option<String>) -> Result<(), String> {
+    print!("{}", format_list_ops_human(group.as_deref(), search.as_deref()));
+    Ok(())
+}
 
-    for (path, op) in &all_ops {
-        if !filter.is_empty() && !path.to_lowercase().starts_with(&filter) {
-            continue;
-        }
-
-        // Get the serde variant name (e.g. "OpNumberMathAdd").
-        let variant = serde_json::to_string(op)
-            .unwrap_or_default()
-            .trim_matches('"')
-            .to_string();
-
-        let inputs = op.create_inputs();
-        let outputs = op.create_outputs();
-
-        let in_str: Vec<String> = inputs
-            .iter()
-            .map(|i| format!("{}({:?})", i.name, i.value.value_type()))
-            .collect();
-        let out_str: Vec<String> = outputs
-            .iter()
-            .map(|o| format!("{}({:?})", o.name, o.value.value_type()))
-            .collect();
-
-        println!(
-            "{:<45} ({})  in: [{}]  out: [{}]",
-            path,
-            variant,
-            in_str.join(", "),
-            out_str.join(", ")
-        );
-    }
+/// `mangle list-types [<type_name>]` — list enum types or their variants.
+fn cmd_list_types(type_name: Option<String>) -> Result<(), String> {
+    print!("{}", format_list_types_human(type_name.as_deref()));
     Ok(())
 }
 
 /// `mangle add-node <path> --type <type> [--id <id>]` — add a node to the graph.
 async fn cmd_add_node(path: PathBuf, op_type: String, id: Option<String>) -> Result<(), String> {
-    let operation = resolve_op(&op_type)?;
     let mut graph = load_graph(&path)?;
-    let node_id = id.unwrap_or_else(get_id);
-    graph
-        .add_node(node_id.clone(), AddNodeType::Operation(operation), glam::Vec2::ZERO)
-        .await;
+    let node_id = do_add_node(&mut graph, &op_type, id).await?;
     save_graph(&graph, &path)?;
     println!("{node_id}");
     Ok(())
@@ -373,694 +1106,296 @@ async fn cmd_add_node(path: PathBuf, op_type: String, id: Option<String>) -> Res
 /// `mangle remove-node <path> --id <id>` — remove a node and its connections.
 async fn cmd_remove_node(path: PathBuf, id: String) -> Result<(), String> {
     let mut graph = load_graph(&path)?;
-    if !graph.nodes.contains_key(&id) {
-        return Err(format!("node '{id}' not found"));
-    }
-    graph.remove_node(id.clone()).await;
+    let removed = do_remove_node(&mut graph, &id).await?;
     save_graph(&graph, &path)?;
-    println!("removed {id}");
+    println!("removed {removed}");
     Ok(())
 }
 
 /// `mangle connect <path> --from <node:out> --to <node:in>` — connect two nodes.
 async fn cmd_connect(path: PathBuf, from: String, to: String) -> Result<(), String> {
-    let (output_node_id, output_index) = parse_slot(&from)?;
-    let (input_node_id, input_index) = parse_slot(&to)?;
     let mut graph = load_graph(&path)?;
-    graph
-        .add_connection(input_node_id, input_index, output_node_id, output_index)
-        .await;
+    let msg = do_connect(&mut graph, &from, &to).await?;
     save_graph(&graph, &path)?;
-    println!("connected {from} → {to}");
+    println!("{msg}");
     Ok(())
 }
 
 /// `mangle disconnect <path> --node <id> --input <n>` — remove a connection.
 async fn cmd_disconnect(path: PathBuf, node: String, input: usize) -> Result<(), String> {
     let mut graph = load_graph(&path)?;
-    if !graph.nodes.contains_key(&node) {
-        return Err(format!("node '{node}' not found"));
-    }
-    graph.remove_connection(node.clone(), input).await;
+    let msg = do_disconnect(&mut graph, &node, input).await?;
     save_graph(&graph, &path)?;
-    println!("disconnected {node}:{input}");
+    println!("{msg}");
     Ok(())
 }
 
-/// `mangle set-input <path> --node <id> --index <n> --value <json>` — set an input value.
-fn cmd_set_input(path: PathBuf, node: String, index: usize, value: String) -> Result<(), String> {
-    let parsed: Value = serde_json::from_str(&value).map_err(|e| {
-        format!("invalid value JSON: {e}. Expected e.g. {{\"Decimal\":3.14}} or {{\"Bool\":true}}")
-    })?;
+/// `mangle set-input <path> --node <id> --input <n> --value <json>` — set an input value.
+fn cmd_set_input(path: PathBuf, node: String, input: usize, value: String) -> Result<(), String> {
     let mut graph = load_graph(&path)?;
-    if !graph.nodes.contains_key(&node) {
-        return Err(format!("node '{node}' not found"));
-    }
-    graph.set_input(node.clone(), index, parsed);
+    let msg = do_set_input(&mut graph, &node, input, &value)?;
     save_graph(&graph, &path)?;
-    println!("set {node}:{index} = {value}");
+    println!("{msg}");
     Ok(())
 }
 
 /// `mangle run <path>` — execute the graph and print all output values.
 async fn cmd_run(path: PathBuf) -> Result<(), String> {
     let mut graph = load_graph(&path)?;
-    graph.run().await;
+    do_run(&mut graph).await;
     save_graph(&graph, &path)?;
+    print!("{}", format_run_human(&graph));
+    Ok(())
+}
 
-    let mut node_ids: Vec<&String> = graph.nodes.keys().collect();
-    node_ids.sort();
+// ── REPL ─────────────────────────────────────────────────────────────────────
 
-    for node_id in node_ids {
-        let node = &graph.nodes[node_id];
-        for (i, output) in node.outputs.iter().enumerate() {
-            println!(
-                "[{}] out[{}] ({:?}) = {}",
-                node_id,
-                i,
-                output.value.value_type(),
-                display_value(&output.value)
-            );
+/// `mangle repl <path> [--json]` — enter interactive REPL mode.
+async fn cmd_repl(path: PathBuf, json_mode: bool) -> Result<(), String> {
+    let mut graph = load_graph(&path)?;
+    let mode = if json_mode { OutputMode::Json } else { OutputMode::Human };
+    let mut stdout = std::io::stdout();
+
+    // Emit initial greeting.
+    let greeting = ReplResponse::ok_message(format!("loaded graph with {} nodes", graph.nodes.len()));
+    emit(mode, &greeting, &mut stdout);
+
+    if json_mode {
+        // Plain stdin loop — no rustyline, no ANSI, no prompt.
+        let stdin = std::io::stdin();
+        let reader = std::io::BufReader::new(stdin.lock());
+        for line in reader.lines() {
+            let line = match line {
+                Ok(l) => l,
+                Err(_) => break,
+            };
+            if line.trim().is_empty() { continue; }
+            let should_exit = process_repl_line(&mut graph, &path, &line, mode, &mut stdout).await;
+            if should_exit { break; }
+        }
+    } else {
+        // Interactive mode with rustyline.
+        let mut rl = rustyline::DefaultEditor::new().map_err(|e| e.to_string())?;
+        loop {
+            match rl.readline("mangler> ") {
+                Ok(line) => {
+                    if line.trim().is_empty() { continue; }
+                    let _ = rl.add_history_entry(&line);
+                    let should_exit = process_repl_line(&mut graph, &path, &line, mode, &mut stdout).await;
+                    if should_exit { break; }
+                }
+                Err(rustyline::error::ReadlineError::Interrupted) => {
+                    writeln!(stdout, "(type 'exit' or 'quit' to leave)").unwrap_or(());
+                }
+                Err(rustyline::error::ReadlineError::Eof) => break,
+                Err(e) => {
+                    emit(mode, &ReplResponse::error(e.to_string()), &mut stdout);
+                    break;
+                }
+            }
         }
     }
     Ok(())
 }
 
+/// Parse and execute one REPL line. Returns `true` if the REPL should exit.
+async fn process_repl_line(
+    graph: &mut Graph,
+    path: &PathBuf,
+    line: &str,
+    mode: OutputMode,
+    writer: &mut dyn IoWrite,
+) -> bool {
+    // Split the input line into shell words (handles quoted strings).
+    let words = match shell_words::split(line) {
+        Ok(w) => w,
+        Err(e) => {
+            emit(mode, &ReplResponse::error(format!("parse error: {e}")), writer);
+            return false;
+        }
+    };
+
+    if words.is_empty() {
+        return false;
+    }
+
+    // Parse with clap.
+    let parsed = match ReplCli::try_parse_from(&words) {
+        Ok(cli) => cli,
+        Err(e) => {
+            // Render the clap error without ANSI codes for consistency.
+            let msg = e.render().to_string();
+            emit(mode, &ReplResponse::error(msg), writer);
+            return false;
+        }
+    };
+
+    match parsed.command {
+        ReplCommand::Exit | ReplCommand::Quit => {
+            emit(mode, &ReplResponse::ok_message("goodbye"), writer);
+            return true;
+        }
+
+        ReplCommand::Help => {
+            let help = concat!(
+                "Available commands:\n",
+                "  info [--node <id>] [--compact]          Print graph structure\n",
+                "  list-ops [--group <prefix>] [--search <term>]\n",
+                "  list-types [<type_name>]                List enum types/variants\n",
+                "  add-node --type <type> [--id <id>] [--no-save]\n",
+                "  remove-node --id <id> [--no-save]\n",
+                "  connect --from <node:out> --to <node:in> [--no-save]\n",
+                "  disconnect --node <id> --input <n> [--no-save]\n",
+                "  set-input --node <id> --input <n> --value <json> [--no-save]\n",
+                "  run [--no-save]\n",
+                "  save                                    Save graph to disk\n",
+                "  exit / quit                             Leave the REPL\n",
+                "  help                                    Show this help\n",
+            );
+            emit(mode, &ReplResponse::ok_message(help.trim_end()), writer);
+        }
+
+        ReplCommand::Save => {
+            match save_graph(graph, path) {
+                Ok(()) => emit(mode, &ReplResponse::ok_message(format!("saved {}", path.display())), writer),
+                Err(e) => emit(mode, &ReplResponse::error(e), writer),
+            }
+        }
+
+        ReplCommand::Info { node, compact } => {
+            if mode == OutputMode::Json {
+                match do_info(graph, node.as_deref(), compact) {
+                    Ok(resp) => emit(mode, &resp, writer),
+                    Err(e) => emit(mode, &ReplResponse::error(e), writer),
+                }
+            } else {
+                match format_info_human(graph, node.as_deref(), compact) {
+                    Ok(text) => { let _ = write!(writer, "{text}"); let _ = writer.flush(); }
+                    Err(e) => emit(mode, &ReplResponse::error(e), writer),
+                }
+            }
+        }
+
+        ReplCommand::ListOps { group, search } => {
+            if mode == OutputMode::Json {
+                let resp = do_list_ops(group.as_deref(), search.as_deref());
+                emit(mode, &resp, writer);
+            } else {
+                let text = format_list_ops_human(group.as_deref(), search.as_deref());
+                let _ = write!(writer, "{text}");
+                let _ = writer.flush();
+            }
+        }
+
+        ReplCommand::ListTypes { type_name } => {
+            if mode == OutputMode::Json {
+                let resp = do_list_types(type_name.as_deref());
+                emit(mode, &resp, writer);
+            } else {
+                let text = format_list_types_human(type_name.as_deref());
+                let _ = write!(writer, "{text}");
+                let _ = writer.flush();
+            }
+        }
+
+        ReplCommand::AddNode { op_type, id, no_save } => {
+            match do_add_node(graph, &op_type, id).await {
+                Ok(node_id) => {
+                    if !no_save {
+                        if let Err(e) = save_graph(graph, path) {
+                            emit(mode, &ReplResponse::error(e), writer);
+                            return false;
+                        }
+                    }
+                    emit(mode, &ReplResponse::ok(serde_json::json!({ "message": &node_id, "node_id": &node_id })), writer);
+                }
+                Err(e) => emit(mode, &ReplResponse::error(e), writer),
+            }
+        }
+
+        ReplCommand::RemoveNode { id, no_save } => {
+            match do_remove_node(graph, &id).await {
+                Ok(removed) => {
+                    if !no_save {
+                        if let Err(e) = save_graph(graph, path) {
+                            emit(mode, &ReplResponse::error(e), writer);
+                            return false;
+                        }
+                    }
+                    emit(mode, &ReplResponse::ok_message(format!("removed {removed}")), writer);
+                }
+                Err(e) => emit(mode, &ReplResponse::error(e), writer),
+            }
+        }
+
+        ReplCommand::Connect { from, to, no_save } => {
+            match do_connect(graph, &from, &to).await {
+                Ok(msg) => {
+                    if !no_save {
+                        if let Err(e) = save_graph(graph, path) {
+                            emit(mode, &ReplResponse::error(e), writer);
+                            return false;
+                        }
+                    }
+                    emit(mode, &ReplResponse::ok_message(msg), writer);
+                }
+                Err(e) => emit(mode, &ReplResponse::error(e), writer),
+            }
+        }
+
+        ReplCommand::Disconnect { node, input, no_save } => {
+            match do_disconnect(graph, &node, input).await {
+                Ok(msg) => {
+                    if !no_save {
+                        if let Err(e) = save_graph(graph, path) {
+                            emit(mode, &ReplResponse::error(e), writer);
+                            return false;
+                        }
+                    }
+                    emit(mode, &ReplResponse::ok_message(msg), writer);
+                }
+                Err(e) => emit(mode, &ReplResponse::error(e), writer),
+            }
+        }
+
+        ReplCommand::SetInput { node, input, value, no_save } => {
+            match do_set_input(graph, &node, input, &value) {
+                Ok(msg) => {
+                    if !no_save {
+                        if let Err(e) = save_graph(graph, path) {
+                            emit(mode, &ReplResponse::error(e), writer);
+                            return false;
+                        }
+                    }
+                    emit(mode, &ReplResponse::ok_message(msg), writer);
+                }
+                Err(e) => emit(mode, &ReplResponse::error(e), writer),
+            }
+        }
+
+        ReplCommand::Run { no_save } => {
+            let resp = do_run(graph).await;
+            if !no_save {
+                if let Err(e) = save_graph(graph, path) {
+                    emit(mode, &ReplResponse::error(e), writer);
+                    return false;
+                }
+            }
+            if mode == OutputMode::Json {
+                emit(mode, &resp, writer);
+            } else {
+                let text = format_run_human(graph);
+                let _ = write!(writer, "{text}");
+                let _ = writer.flush();
+            }
+        }
+    }
+
+    false
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    // ── parse_slot ────────────────────────────────────────────────────────────
-
-    #[test]
-    fn parse_slot_valid() {
-        let (node, idx) = parse_slot("abc:2").unwrap();
-        assert_eq!(node, "abc");
-        assert_eq!(idx, 2);
-    }
-
-    #[test]
-    fn parse_slot_zero_index() {
-        let (node, idx) = parse_slot("mynode:0").unwrap();
-        assert_eq!(node, "mynode");
-        assert_eq!(idx, 0);
-    }
-
-    /// Node IDs containing colons are supported — we split on the *last* colon.
-    #[test]
-    fn parse_slot_node_id_with_colon() {
-        let (node, idx) = parse_slot("a:b:3").unwrap();
-        assert_eq!(node, "a:b");
-        assert_eq!(idx, 3);
-    }
-
-    #[test]
-    fn parse_slot_missing_colon_returns_err() {
-        assert!(parse_slot("nocolon").is_err());
-    }
-
-    #[test]
-    fn parse_slot_non_numeric_index_returns_err() {
-        assert!(parse_slot("node:abc").is_err());
-    }
-
-    #[test]
-    fn parse_slot_empty_string_returns_err() {
-        assert!(parse_slot("").is_err());
-    }
-
-    // ── flatten_ops ───────────────────────────────────────────────────────────
-
-    #[test]
-    fn flatten_ops_returns_non_empty() {
-        let all = flatten_ops(&operation_list(), "");
-        assert!(!all.is_empty());
-    }
-
-    #[test]
-    fn flatten_ops_paths_contain_slash() {
-        // Every path is category/…/name so must have at least one `/`.
-        for (path, _) in flatten_ops(&operation_list(), "") {
-            assert!(path.contains('/'), "expected '/' in path: {path}");
-        }
-    }
-
-    #[test]
-    fn flatten_ops_prefix_prepended() {
-        // Paths in the "numbers" top-level category should start with "numbers/".
-        let all = flatten_ops(&operation_list(), "");
-        let numbers: Vec<_> = all.iter().filter(|(p, _)| p.starts_with("numbers/")).collect();
-        assert!(!numbers.is_empty(), "expected at least one numbers/* operation");
-    }
-
-    #[test]
-    fn flatten_ops_custom_prefix() {
-        // When a non-empty prefix is supplied it appears at the start of every path.
-        let all = flatten_ops(&operation_list(), "root");
-        for (path, _) in &all {
-            assert!(path.starts_with("root/"), "expected 'root/' prefix in: {path}");
-        }
-    }
-
-    #[test]
-    fn flatten_ops_no_duplicates() {
-        let all = flatten_ops(&operation_list(), "");
-        let mut seen = std::collections::HashSet::new();
-        for (path, _) in &all {
-            assert!(seen.insert(path.clone()), "duplicate path: {path}");
-        }
-    }
-
-    // ── resolve_op ────────────────────────────────────────────────────────────
-
-    #[test]
-    fn resolve_op_by_short_path() {
-        assert!(resolve_op("numbers/arithmetic/add").is_ok());
-    }
-
-    #[test]
-    fn resolve_op_case_insensitive() {
-        assert!(resolve_op("Numbers/Arithmetic/Add").is_ok());
-    }
-
-    #[test]
-    fn resolve_op_by_variant_name() {
-        // Full serde variant name should also be accepted.
-        assert!(resolve_op("OpNumberMathAdd").is_ok());
-    }
-
-    #[test]
-    fn resolve_op_short_and_variant_yield_same_operation() {
-        let by_path = resolve_op("numbers/arithmetic/add").unwrap();
-        let by_name = resolve_op("OpNumberMathAdd").unwrap();
-        // Compare via their serde representations.
-        assert_eq!(
-            serde_json::to_string(&by_path).unwrap(),
-            serde_json::to_string(&by_name).unwrap(),
-        );
-    }
-
-    #[test]
-    fn resolve_op_unknown_returns_err() {
-        assert!(resolve_op("not/a/real/op").is_err());
-    }
-
-    #[test]
-    fn resolve_op_empty_string_returns_err() {
-        assert!(resolve_op("").is_err());
-    }
-
-    // ── display_value ─────────────────────────────────────────────────────────
-
-    #[test]
-    fn display_value_bool_true() {
-        assert!(display_value(&Value::Bool(true)).contains("true"));
-    }
-
-    #[test]
-    fn display_value_bool_false() {
-        assert!(display_value(&Value::Bool(false)).contains("false"));
-    }
-
-    #[test]
-    fn display_value_integer() {
-        let s = display_value(&Value::Integer(42));
-        assert!(s.contains("42"), "unexpected: {s}");
-    }
-
-    #[test]
-    fn display_value_decimal() {
-        let s = display_value(&Value::Decimal(1.5));
-        assert!(s.contains("1.5") || s.contains("Decimal"), "unexpected: {s}");
-    }
-
-    #[test]
-    fn display_value_text() {
-        let s = display_value(&Value::Text("hello".to_string()));
-        assert!(s.contains("hello"), "unexpected: {s}");
-    }
-
-    // ── cmd_new ───────────────────────────────────────────────────────────────
-
-    #[test]
-    fn cmd_new_creates_valid_graph_file() {
-        let path = std::env::temp_dir()
-            .join(format!("mangle_test_new_{}.json", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-
-        assert!(cmd_new(path.clone()).is_ok());
-        assert!(path.exists());
-
-        let contents = std::fs::read_to_string(&path).unwrap();
-        assert!(contents.contains("\"nodes\""), "missing 'nodes' key");
-        assert!(contents.contains("\"name\""), "missing 'name' key");
-
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn cmd_new_uses_stem_as_graph_name() {
-        let path = std::env::temp_dir()
-            .join(format!("mangle_test_stem_{}.json", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-
-        cmd_new(path.clone()).unwrap();
-        let contents = std::fs::read_to_string(&path).unwrap();
-        // The graph name should be derived from the file stem, e.g. "mangle_test_stem_<pid>".
-        let stem = path.file_stem().unwrap().to_str().unwrap();
-        assert!(contents.contains(stem), "expected stem '{stem}' in: {contents}");
-
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn cmd_new_fails_if_file_already_exists() {
-        let path = std::env::temp_dir()
-            .join(format!("mangle_test_exists_{}.json", std::process::id()));
-        std::fs::write(&path, "{}").unwrap();
-
-        let result = cmd_new(path.clone());
-        assert!(result.is_err());
-
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn cmd_new_fails_in_nonexistent_directory() {
-        let path = std::env::temp_dir()
-            .join("mangle_no_such_dir_xyz")
-            .join("graph.json");
-        assert!(cmd_new(path).is_err());
-    }
-
-    // ── parse_slot: further edge cases ───────────────────────────────────────
-
-    /// A leading colon is valid syntax: empty node ID with an explicit index.
-    #[test]
-    fn parse_slot_leading_colon_empty_node_id() {
-        let (node, idx) = parse_slot(":0").unwrap();
-        assert_eq!(node, "");
-        assert_eq!(idx, 0);
-    }
-
-    /// Trailing colon leaves an empty index string — not a valid usize.
-    #[test]
-    fn parse_slot_trailing_colon_returns_err() {
-        assert!(parse_slot("node:").is_err());
-    }
-
-    /// usize cannot represent a negative value.
-    #[test]
-    fn parse_slot_negative_index_returns_err() {
-        assert!(parse_slot("node:-1").is_err());
-    }
-
-    /// A number too large to fit in usize must be rejected.
-    #[test]
-    fn parse_slot_overflow_index_returns_err() {
-        assert!(parse_slot("node:99999999999999999999").is_err());
-    }
-
-    /// A bare `:` splits into node="" and index="" — the empty index fails to parse.
-    #[test]
-    fn parse_slot_only_colon_returns_err() {
-        assert!(parse_slot(":").is_err());
-    }
-
-    // ── flatten_ops: further edge cases ──────────────────────────────────────
-
-    /// An empty input slice produces an empty output.
-    #[test]
-    fn flatten_ops_empty_slice() {
-        assert!(flatten_ops(&[], "").is_empty());
-    }
-
-    /// `Subgraph` items are silently skipped and never appear in the output.
-    #[test]
-    fn flatten_ops_subgraph_items_are_skipped() {
-        let items = vec![
-            OperationListItem::Subgraph,
-            OperationListItem::Subgraph,
-        ];
-        assert!(flatten_ops(&items, "").is_empty());
-    }
-
-    /// A category containing no operations (or only sub-categories that are
-    /// themselves empty) contributes nothing to the flat list.
-    #[test]
-    fn flatten_ops_empty_category_contributes_nothing() {
-        let items = vec![OperationListItem::Category {
-            name: "empty".to_string(),
-            operation_list_items: vec![],
-        }];
-        assert!(flatten_ops(&items, "").is_empty());
-    }
-
-    /// A deeply nested category still produces the correct slash-joined path.
-    #[test]
-    fn flatten_ops_deep_nesting_builds_correct_path() {
-        let items = vec![OperationListItem::Category {
-            name: "a".to_string(),
-            operation_list_items: vec![OperationListItem::Category {
-                name: "b".to_string(),
-                operation_list_items: vec![OperationListItem::Operation {
-                    operation: Operation::OpNumberMathAdd,
-                }],
-            }],
-        }];
-        let flat = flatten_ops(&items, "");
-        assert_eq!(flat.len(), 1);
-        // The add operation's settings().name is "add".
-        assert_eq!(flat[0].0, "a/b/add");
-    }
-
-    // ── resolve_op: further edge cases ───────────────────────────────────────
-
-    /// Leading whitespace is not trimmed — the lookup must fail.
-    #[test]
-    fn resolve_op_leading_whitespace_returns_err() {
-        assert!(resolve_op(" numbers/arithmetic/add").is_err());
-    }
-
-    /// Trailing whitespace is not trimmed — the lookup must fail.
-    #[test]
-    fn resolve_op_trailing_whitespace_returns_err() {
-        assert!(resolve_op("numbers/arithmetic/add ").is_err());
-    }
-
-    /// A category path without a terminal operation name is not an operation.
-    #[test]
-    fn resolve_op_category_path_only_returns_err() {
-        assert!(resolve_op("numbers/arithmetic").is_err());
-        assert!(resolve_op("numbers").is_err());
-    }
-
-    /// Operations from non-numbers categories are also resolvable.
-    #[test]
-    fn resolve_op_other_categories_resolve() {
-        assert!(resolve_op("logic/comparison/equal").is_ok());
-        assert!(resolve_op("colors/blend/blend").is_ok());
-    }
-
-    /// Short path and full variant name resolve to the same operation.
-    #[test]
-    fn resolve_op_short_path_and_variant_are_equivalent() {
-        let by_path = resolve_op("numbers/arithmetic/add").unwrap();
-        let by_name = resolve_op("OpNumberMathAdd").unwrap();
-        assert_eq!(
-            serde_json::to_string(&by_path).unwrap(),
-            serde_json::to_string(&by_name).unwrap(),
-        );
-    }
-
-    // ── display_value: further edge cases ────────────────────────────────────
-
-    #[test]
-    fn display_value_trigger() {
-        let s = display_value(&Value::Trigger);
-        assert!(s.contains("Trigger"), "unexpected: {s}");
-    }
-
-    #[test]
-    fn display_value_empty_text() {
-        let s = display_value(&Value::Text(String::new()));
-        // Serializes as {"Text":""} — just verify it doesn't panic and includes Text.
-        assert!(s.contains("Text") || s.contains("\"\""), "unexpected: {s}");
-    }
-
-    #[test]
-    fn display_value_path() {
-        let s = display_value(&Value::Path(PathBuf::from("/some/file.png")));
-        assert!(s.contains("file.png") || s.contains("Path"), "unexpected: {s}");
-    }
-
-    #[test]
-    fn display_value_integer_min() {
-        let s = display_value(&Value::Integer(i32::MIN));
-        assert!(s.contains("-2147483648"), "unexpected: {s}");
-    }
-
-    #[test]
-    fn display_value_integer_max() {
-        let s = display_value(&Value::Integer(i32::MAX));
-        assert!(s.contains("2147483647"), "unexpected: {s}");
-    }
-
-    #[test]
-    fn display_value_negative_integer() {
-        let s = display_value(&Value::Integer(-99));
-        assert!(s.contains("-99"), "unexpected: {s}");
-    }
-
-    #[test]
-    fn display_value_zero_decimal() {
-        let s = display_value(&Value::Decimal(0.0));
-        assert!(s.contains("0") && s.contains("Decimal"), "unexpected: {s}");
-    }
-
-    // ── load_graph: edge cases ────────────────────────────────────────────────
-
-    /// A path that does not exist must return an Err.
-    #[test]
-    fn load_graph_missing_file_returns_err() {
-        let path = PathBuf::from("/nonexistent/path/does/not/exist_mangle.json");
-        assert!(load_graph(&path).is_err());
-    }
-
-    /// A file containing arbitrary non-JSON text must return an Err.
-    #[test]
-    fn load_graph_invalid_json_returns_err() {
-        let path = std::env::temp_dir()
-            .join(format!("mangle_test_badjson_{}.json", std::process::id()));
-        std::fs::write(&path, "this is not json at all").unwrap();
-        let result = load_graph(&path);
-        let _ = std::fs::remove_file(&path);
-        assert!(result.is_err());
-    }
-
-    /// An empty JSON object is missing required fields and must fail deserialization.
-    #[test]
-    fn load_graph_empty_object_returns_err() {
-        let path = std::env::temp_dir()
-            .join(format!("mangle_test_emptyobj_{}.json", std::process::id()));
-        std::fs::write(&path, "{}").unwrap();
-        let result = load_graph(&path);
-        let _ = std::fs::remove_file(&path);
-        assert!(result.is_err());
-    }
-
-    /// A graph created by `cmd_new` must load successfully with an empty node map.
-    #[test]
-    fn load_graph_freshly_created_graph_is_empty() {
-        let path = std::env::temp_dir()
-            .join(format!("mangle_test_fresh_{}.json", std::process::id()));
-        cmd_new(path.clone()).unwrap();
-        let graph = load_graph(&path).unwrap();
-        let _ = std::fs::remove_file(&path);
-        assert!(graph.nodes.is_empty());
-    }
-
-    // ── save_graph / load_graph round-trip ───────────────────────────────────
-
-    /// Name and ID survive a save/load cycle unchanged.
-    #[test]
-    fn save_load_round_trip_preserves_name_and_id() {
-        let path = std::env::temp_dir()
-            .join(format!("mangle_test_roundtrip_{}.json", std::process::id()));
-        cmd_new(path.clone()).unwrap();
-
-        let graph = load_graph(&path).unwrap();
-        let original_id = graph.id.clone();
-        let original_name = graph.name.clone();
-
-        save_graph(&graph, &path).unwrap();
-        let reloaded = load_graph(&path).unwrap();
-        let _ = std::fs::remove_file(&path);
-
-        assert_eq!(reloaded.id, original_id);
-        assert_eq!(reloaded.name, original_name);
-    }
-
-    // ── cmd_set_input: edge cases ─────────────────────────────────────────────
-
-    /// Passing something that is not valid JSON must fail immediately, before any
-    /// graph I/O occurs.
-    #[test]
-    fn cmd_set_input_invalid_json_returns_err() {
-        let path = std::env::temp_dir()
-            .join(format!("mangle_test_setinput_badjson_{}.json", std::process::id()));
-        cmd_new(path.clone()).unwrap();
-        let result = cmd_set_input(path.clone(), "any".to_string(), 0, "not json".to_string());
-        let _ = std::fs::remove_file(&path);
-        assert!(result.is_err());
-    }
-
-    /// Referencing a node ID that is not in the graph must return an Err.
-    #[test]
-    fn cmd_set_input_unknown_node_returns_err() {
-        let path = std::env::temp_dir()
-            .join(format!("mangle_test_setinput_nonode_{}.json", std::process::id()));
-        cmd_new(path.clone()).unwrap();
-        let result = cmd_set_input(
-            path.clone(),
-            "ghost-node".to_string(),
-            0,
-            r#"{"Integer":42}"#.to_string(),
-        );
-        let _ = std::fs::remove_file(&path);
-        assert!(result.is_err());
-    }
-
-    // ── async integration tests ───────────────────────────────────────────────
-
-    /// Adding a node writes it to the file; loading the file back confirms it exists.
-    #[tokio::test]
-    async fn cmd_add_node_persists_to_file() {
-        let path = std::env::temp_dir()
-            .join(format!("mangle_test_addnode_{}.json", std::process::id()));
-        cmd_new(path.clone()).unwrap();
-
-        let node_id = format!("test-node-{}", std::process::id());
-        cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()))
-            .await
-            .unwrap();
-
-        let graph = load_graph(&path).unwrap();
-        let _ = std::fs::remove_file(&path);
-        assert!(graph.nodes.contains_key(&node_id));
-    }
-
-    /// Removing a node that was previously added must leave the graph empty again.
-    #[tokio::test]
-    async fn cmd_add_then_remove_node_leaves_graph_empty() {
-        let path = std::env::temp_dir()
-            .join(format!("mangle_test_addremove_{}.json", std::process::id()));
-        cmd_new(path.clone()).unwrap();
-
-        let node_id = format!("addremove-{}", std::process::id());
-        cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()))
-            .await
-            .unwrap();
-        cmd_remove_node(path.clone(), node_id.clone()).await.unwrap();
-
-        let graph = load_graph(&path).unwrap();
-        let _ = std::fs::remove_file(&path);
-        assert!(!graph.nodes.contains_key(&node_id));
-    }
-
-    /// Trying to remove a node that does not exist must return an Err.
-    #[tokio::test]
-    async fn cmd_remove_node_unknown_returns_err() {
-        let path = std::env::temp_dir()
-            .join(format!("mangle_test_removemissing_{}.json", std::process::id()));
-        cmd_new(path.clone()).unwrap();
-        let result = cmd_remove_node(path.clone(), "ghost".to_string()).await;
-        let _ = std::fs::remove_file(&path);
-        assert!(result.is_err());
-    }
-
-    /// Setting a valid input on a real node must succeed and persist.
-    #[tokio::test]
-    async fn cmd_set_input_on_real_node_succeeds() {
-        let path = std::env::temp_dir()
-            .join(format!("mangle_test_setinput_valid_{}.json", std::process::id()));
-        cmd_new(path.clone()).unwrap();
-
-        let node_id = format!("add-node-{}", std::process::id());
-        cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()))
-            .await
-            .unwrap();
-
-        // The add node's first input is Decimal; set it to 7.0.
-        let result = cmd_set_input(
-            path.clone(),
-            node_id.clone(),
-            0,
-            r#"{"Decimal":7.0}"#.to_string(),
-        );
-        assert!(result.is_ok());
-
-        // Reload and verify the value was actually saved.
-        let graph = load_graph(&path).unwrap();
-        let _ = std::fs::remove_file(&path);
-        let stored = &graph.nodes[&node_id].inputs[0].value;
-        assert!(
-            matches!(stored, Value::Decimal(v) if (*v - 7.0).abs() < 1e-6),
-            "unexpected stored value: {:?}",
-            stored
-        );
-    }
-
-    /// Connecting two nodes must store the connection on the consumer's input.
-    #[tokio::test]
-    async fn cmd_connect_stores_connection_on_consumer() {
-        let path = std::env::temp_dir()
-            .join(format!("mangle_test_connect_{}.json", std::process::id()));
-        cmd_new(path.clone()).unwrap();
-
-        cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some("producer".to_string()))
-            .await.unwrap();
-        cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some("consumer".to_string()))
-            .await.unwrap();
-
-        cmd_connect(path.clone(), "producer:0".to_string(), "consumer:0".to_string())
-            .await.unwrap();
-
-        let graph = load_graph(&path).unwrap();
-        let _ = std::fs::remove_file(&path);
-        assert_eq!(
-            graph.nodes["consumer"].inputs[0].connection,
-            Some(("producer".to_string(), 0))
-        );
-    }
-
-    /// Disconnecting removes the connection stored on the consumer input.
-    #[tokio::test]
-    async fn cmd_disconnect_removes_connection() {
-        let path = std::env::temp_dir()
-            .join(format!("mangle_test_disconnect_{}.json", std::process::id()));
-        cmd_new(path.clone()).unwrap();
-
-        cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some("src".to_string()))
-            .await.unwrap();
-        cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some("dst".to_string()))
-            .await.unwrap();
-        cmd_connect(path.clone(), "src:0".to_string(), "dst:0".to_string())
-            .await.unwrap();
-        cmd_disconnect(path.clone(), "dst".to_string(), 0).await.unwrap();
-
-        let graph = load_graph(&path).unwrap();
-        let _ = std::fs::remove_file(&path);
-        assert_eq!(graph.nodes["dst"].inputs[0].connection, None);
-    }
-
-    /// Disconnecting an input on a node that does not exist must return an Err.
-    #[tokio::test]
-    async fn cmd_disconnect_unknown_node_returns_err() {
-        let path = std::env::temp_dir()
-            .join(format!("mangle_test_disc_nonode_{}.json", std::process::id()));
-        cmd_new(path.clone()).unwrap();
-        let result = cmd_disconnect(path.clone(), "ghost".to_string(), 0).await;
-        let _ = std::fs::remove_file(&path);
-        assert!(result.is_err());
-    }
-
-    /// Adding the same explicit node ID twice is idempotent in terms of count
-    /// (the graph should contain exactly the nodes that were successfully added).
-    #[tokio::test]
-    async fn cmd_add_node_auto_id_is_unique_across_calls() {
-        let path = std::env::temp_dir()
-            .join(format!("mangle_test_autoid_{}.json", std::process::id()));
-        cmd_new(path.clone()).unwrap();
-
-        // Add two nodes without specifying IDs — both must be retained.
-        cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), None).await.unwrap();
-        cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), None).await.unwrap();
-
-        let graph = load_graph(&path).unwrap();
-        let _ = std::fs::remove_file(&path);
-        assert_eq!(graph.nodes.len(), 2, "expected exactly 2 distinct nodes");
-    }
-}
+#[path = "main_tests.rs"]
+mod tests;

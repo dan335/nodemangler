@@ -1,6 +1,6 @@
 //! Subgraph operation: embeds an entire graph inside a single node.
 //!
-//! This operation loads a graph from a `.mangle` file and executes it as a
+//! This operation loads a graph from a `.mangle.json` file and executes it as a
 //! nested subgraph within the parent graph. This is experimental/WIP -- the
 //! subgraph is lazily loaded on first run and executed on a dedicated thread
 //! with its own tokio runtime.
@@ -38,12 +38,12 @@ impl OperationSubgraph {
         }
     }
 
-    /// Creates the default inputs: a single file path to the `.mangle` graph file.
+    /// Creates the default inputs: a single file path to the `.mangle.json` graph file.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input {
                 name: "file path".to_string(),
-                value: Value::Text("C:\\temp\\New_Graph.mangle".to_string()),
+                value: Value::Text("C:\\temp\\New_Graph.mangle.json".to_string()),
                 connection: None,
                 valid_types: vec![],
             }

@@ -10,7 +10,7 @@ use crate::{operations::Operation, graph::Graph, NodeChangedMessage};
 ///
 /// Every node in the graph is either a self-contained [`Operation`] that runs
 /// directly, or a [`Subgraph`](NodeType::Subgraph) that loads and executes an
-/// entire child graph from a `.mangle` file on disk.
+/// entire child graph from a `.mangle.json` file on disk.
 #[derive(Serialize, Deserialize, Debug)]
 pub enum NodeType {
     /// A concrete operation node that performs a single computation.
@@ -20,7 +20,7 @@ pub enum NodeType {
     },
     /// A subgraph node that embeds an entire child graph for composition.
     Subgraph {
-        /// Path to the `.mangle` file containing the subgraph definition.
+        /// Path to the `.mangle.json` file containing the subgraph definition.
         path: PathBuf,
         /// The loaded child graph instance (not serialized).
         #[serde(skip)]

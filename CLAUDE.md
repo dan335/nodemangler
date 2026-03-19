@@ -38,7 +38,13 @@ cargo run -p mangler_tui  # Run the CLI tool
 - BlendMode has 17 modes: Normal, Lerp, Multiply, Screen, Overlay, SoftLight, HardLight, ColorDodge, ColorBurn, Darken, Lighten, Difference, Exclusion, LinearBurn, LinearDodge, Divide, Subtract
 - Subgraph support: nodes can contain entire graphs for composition
 - Graphs serialize to JSON via `GraphSaveData`
-- **Tests belong in the source file**: place unit tests as `#[cfg(test)] mod tests` at the bottom of the file being tested, not in a separate `tests/` directory
+- **Tests go in a separate `_tests.rs` file**: for a file `foo.rs`, place tests in `foo_tests.rs` in the same directory. Link them from the source file using:
+  ```rust
+  #[cfg(test)]
+  #[path = "foo_tests.rs"]
+  mod tests;
+  ```
+  This keeps source files short for LLM context while preserving access to private functions.
 
 ## Key Files
 
@@ -61,7 +67,7 @@ cargo run -p mangler_tui  # Run the CLI tool
 3. Register it in the `operations!` macro in `app/crates/mangler_core/src/operations/mod.rs`
 4. Add it to the `operation_list()` function in the same file for it to appear in the node menu
 5. Add `pub mod` in the parent category `mod.rs`
-6. Add tests as a `#[cfg(test)] mod tests` block at the bottom of the source file
+6. Add tests in a separate `{operation_name}_tests.rs` file, linked via `#[cfg(test)] #[path = "..."] mod tests;`
 
 ## Operation Categories
 
