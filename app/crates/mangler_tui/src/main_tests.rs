@@ -20,11 +20,6 @@ fn create_temp_graph(label: &str) -> PathBuf {
     path
 }
 
-/// Collect writer output as a String.
-fn output_to_string(buf: &Vec<u8>) -> String {
-    String::from_utf8_lossy(buf).to_string()
-}
-
 // ── parse_slot ────────────────────────────────────────────────────────────
 
 #[test]
@@ -537,480 +532,6 @@ async fn cmd_add_node_auto_id_is_unique_across_calls() {
     assert_eq!(graph.nodes.len(), 2, "expected exactly 2 distinct nodes");
 }
 
-// ── ReplResponse serialization ──────────────────────────────────────────
-
-#[test]
-fn repl_response_ok_serialization() {
-    let resp = ReplResponse::ok(serde_json::json!({"node_id": "a1"}));
-    let json = serde_json::to_string(&resp).unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-    assert_eq!(parsed["status"], "ok");
-    assert_eq!(parsed["data"]["node_id"], "a1");
-    assert!(parsed.get("error").is_none());
-}
-
-#[test]
-fn repl_response_ok_message_serialization() {
-    let resp = ReplResponse::ok_message("hello world");
-    let json = serde_json::to_string(&resp).unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-    assert_eq!(parsed["status"], "ok");
-    assert_eq!(parsed["data"]["message"], "hello world");
-}
-
-#[test]
-fn repl_response_error_serialization() {
-    let resp = ReplResponse::error("something broke");
-    let json = serde_json::to_string(&resp).unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-    assert_eq!(parsed["status"], "error");
-    assert_eq!(parsed["error"], "something broke");
-    assert!(parsed.get("data").is_none());
-}
-
-// ── emit ────────────────────────────────────────────────────────────────
-
-#[test]
-fn emit_json_mode_produces_valid_json_line() {
-    let resp = ReplResponse::ok_message("test");
-    let mut buf: Vec<u8> = Vec::new();
-    emit(OutputMode::Json, &resp, &mut buf);
-    let out = output_to_string(&buf);
-    assert_eq!(out.lines().count(), 1);
-    let parsed: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
-    assert_eq!(parsed["status"], "ok");
-}
-
-#[test]
-fn emit_human_mode_prints_message_text() {
-    let resp = ReplResponse::ok_message("hello human");
-    let mut buf: Vec<u8> = Vec::new();
-    emit(OutputMode::Human, &resp, &mut buf);
-    let out = output_to_string(&buf);
-    assert!(out.contains("hello human"));
-    assert!(!out.contains("\"status\""));
-}
-
-#[test]
-fn emit_human_mode_prints_error_prefix() {
-    let resp = ReplResponse::error("bad input");
-    let mut buf: Vec<u8> = Vec::new();
-    emit(OutputMode::Human, &resp, &mut buf);
-    let out = output_to_string(&buf);
-    assert!(out.contains("error: bad input"));
-}
-
-#[test]
-fn emit_json_mode_error_is_valid_json() {
-    let resp = ReplResponse::error("oops");
-    let mut buf: Vec<u8> = Vec::new();
-    emit(OutputMode::Json, &resp, &mut buf);
-    let out = output_to_string(&buf);
-    let parsed: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
-    assert_eq!(parsed["status"], "error");
-    assert_eq!(parsed["error"], "oops");
-}
-
-// ── ReplCli parsing ─────────────────────────────────────────────────────
-
-#[test]
-fn repl_parse_exit() { assert!(matches!(ReplCli::try_parse_from(["exit"]).unwrap().command, ReplCommand::Exit)); }
-#[test]
-fn repl_parse_quit() { assert!(matches!(ReplCli::try_parse_from(["quit"]).unwrap().command, ReplCommand::Quit)); }
-#[test]
-fn repl_parse_save() { assert!(matches!(ReplCli::try_parse_from(["save"]).unwrap().command, ReplCommand::Save)); }
-#[test]
-fn repl_parse_help() { assert!(matches!(ReplCli::try_parse_from(["help"]).unwrap().command, ReplCommand::Help)); }
-#[test]
-fn repl_parse_info() { assert!(matches!(ReplCli::try_parse_from(["info"]).unwrap().command, ReplCommand::Info { .. })); }
-
-#[test]
-fn repl_parse_add_node_without_no_save() {
-    let cli = ReplCli::try_parse_from(["add-node", "--type", "numbers/arithmetic/add"]).unwrap();
-    match cli.command {
-        ReplCommand::AddNode { op_type, id, no_save } => { assert_eq!(op_type, "numbers/arithmetic/add"); assert!(id.is_none()); assert!(!no_save); }
-        _ => panic!("expected AddNode"),
-    }
-}
-
-#[test]
-fn repl_parse_add_node_with_no_save() {
-    let cli = ReplCli::try_parse_from(["add-node", "--type", "foo", "--id", "bar", "--no-save"]).unwrap();
-    match cli.command {
-        ReplCommand::AddNode { op_type, id, no_save } => { assert_eq!(op_type, "foo"); assert_eq!(id, Some("bar".to_string())); assert!(no_save); }
-        _ => panic!("expected AddNode"),
-    }
-}
-
-#[test]
-fn repl_parse_set_input() {
-    let cli = ReplCli::try_parse_from(["set-input", "--node", "a1", "--input", "0", "--value", r#"{"Decimal":3.14}"#]).unwrap();
-    match cli.command {
-        ReplCommand::SetInput { node, input, value, no_save } => { assert_eq!(node, "a1"); assert_eq!(input, 0); assert!(value.contains("Decimal")); assert!(!no_save); }
-        _ => panic!("expected SetInput"),
-    }
-}
-
-#[test]
-fn repl_parse_run_no_save() {
-    match ReplCli::try_parse_from(["run", "--no-save"]).unwrap().command {
-        ReplCommand::Run { no_save } => assert!(no_save),
-        _ => panic!("expected Run"),
-    }
-}
-
-#[test]
-fn repl_parse_connect() {
-    match ReplCli::try_parse_from(["connect", "--from", "a:0", "--to", "b:1"]).unwrap().command {
-        ReplCommand::Connect { from, to, no_save } => { assert_eq!(from, "a:0"); assert_eq!(to, "b:1"); assert!(!no_save); }
-        _ => panic!("expected Connect"),
-    }
-}
-
-#[test]
-fn repl_parse_disconnect_no_save() {
-    match ReplCli::try_parse_from(["disconnect", "--node", "x", "--input", "2", "--no-save"]).unwrap().command {
-        ReplCommand::Disconnect { node, input, no_save } => { assert_eq!(node, "x"); assert_eq!(input, 2); assert!(no_save); }
-        _ => panic!("expected Disconnect"),
-    }
-}
-
-#[test]
-fn repl_parse_remove_node() {
-    match ReplCli::try_parse_from(["remove-node", "--id", "foo"]).unwrap().command {
-        ReplCommand::RemoveNode { id, no_save } => { assert_eq!(id, "foo"); assert!(!no_save); }
-        _ => panic!("expected RemoveNode"),
-    }
-}
-
-#[test]
-fn repl_parse_show_ops_with_group() {
-    match ReplCli::try_parse_from(["show-ops", "--group", "images"]).unwrap().command {
-        ReplCommand::ShowOps { group, .. } => { assert_eq!(group, Some("images".to_string())); }
-        _ => panic!("expected ListOps"),
-    }
-}
-
-#[test]
-fn repl_parse_unknown_command_returns_err() { assert!(ReplCli::try_parse_from(["not-a-command"]).is_err()); }
-
-#[test]
-fn repl_parse_empty_returns_err() { assert!(ReplCli::try_parse_from(Vec::<String>::new()).is_err()); }
-
-// ── shell_words splitting ───────────────────────────────────────────────
-
-#[test]
-fn shell_words_split_quoted_json() {
-    let words = shell_words::split(r#"set-input --node a1 --input 0 --value '{"Decimal":3.14}'"#).unwrap();
-    assert_eq!(words.len(), 7);
-    assert_eq!(words[6], r#"{"Decimal":3.14}"#);
-}
-
-#[test]
-fn shell_words_split_double_quoted() {
-    let words = shell_words::split(r#"set-input --node a1 --input 0 --value "{\"Decimal\":3.14}""#).unwrap();
-    assert_eq!(words.len(), 7);
-}
-
-#[test]
-fn shell_words_split_unclosed_quote_returns_err() {
-    assert!(shell_words::split("add-node --type 'unclosed").is_err());
-}
-
-// ── process_repl_line integration tests ─────────────────────────────────
-
-#[tokio::test]
-async fn repl_line_exit_returns_true() {
-    let path = create_temp_graph("repl_exit");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    assert!(process_repl_line(&mut graph, &path, "exit", OutputMode::Json, &mut buf).await);
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_quit_returns_true() {
-    let path = create_temp_graph("repl_quit");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    assert!(process_repl_line(&mut graph, &path, "quit", OutputMode::Json, &mut buf).await);
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_add_node_modifies_graph() {
-    let path = create_temp_graph("repl_addnode");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    let exit = process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id test1 --no-save", OutputMode::Json, &mut buf).await;
-    assert!(!exit);
-    assert!(graph.nodes.contains_key("test1"));
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_add_node_json_output() {
-    let path = create_temp_graph("repl_addnode_json");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id abc --no-save", OutputMode::Json, &mut buf).await;
-    let out = output_to_string(&buf);
-    let parsed: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
-    assert_eq!(parsed["status"], "ok");
-    assert_eq!(parsed["data"]["node_id"], "abc");
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_remove_node_modifies_graph() {
-    let path = create_temp_graph("repl_rmnode");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id rm1 --no-save", OutputMode::Json, &mut buf).await;
-    assert!(graph.nodes.contains_key("rm1"));
-    buf.clear();
-    process_repl_line(&mut graph, &path, "remove-node --id rm1 --no-save", OutputMode::Json, &mut buf).await;
-    assert!(!graph.nodes.contains_key("rm1"));
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_remove_nonexistent_node_errors() {
-    let path = create_temp_graph("repl_rmghost");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "remove-node --id ghost --no-save", OutputMode::Json, &mut buf).await;
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    assert_eq!(parsed["status"], "error");
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_set_input_modifies_value() {
-    let path = create_temp_graph("repl_setinput");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id si1 --no-save", OutputMode::Json, &mut buf).await;
-    buf.clear();
-    process_repl_line(&mut graph, &path, r#"set-input --node si1 --input 0 --value '{"Decimal":42.0}' --no-save"#, OutputMode::Json, &mut buf).await;
-    let stored = &graph.nodes["si1"].inputs[0].value;
-    assert!(matches!(stored, Value::Decimal(v) if (*v - 42.0).abs() < 1e-6), "unexpected: {:?}", stored);
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_connect_creates_connection() {
-    let path = create_temp_graph("repl_connect");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id p1 --no-save", OutputMode::Json, &mut buf).await;
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id c1 --no-save", OutputMode::Json, &mut buf).await;
-    buf.clear();
-    process_repl_line(&mut graph, &path, "connect --from p1:0 --to c1:0 --no-save", OutputMode::Json, &mut buf).await;
-    assert_eq!(graph.nodes["c1"].inputs[0].connection, Some(("p1".to_string(), 0)));
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_disconnect_removes_connection() {
-    let path = create_temp_graph("repl_disc");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id d1 --no-save", OutputMode::Json, &mut buf).await;
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id d2 --no-save", OutputMode::Json, &mut buf).await;
-    process_repl_line(&mut graph, &path, "connect --from d1:0 --to d2:0 --no-save", OutputMode::Json, &mut buf).await;
-    buf.clear();
-    process_repl_line(&mut graph, &path, "disconnect --node d2 --input 0 --no-save", OutputMode::Json, &mut buf).await;
-    assert_eq!(graph.nodes["d2"].inputs[0].connection, None);
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_info_json_has_node_count() {
-    let path = create_temp_graph("repl_info_json");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id n1 --no-save", OutputMode::Json, &mut buf).await;
-    buf.clear();
-    process_repl_line(&mut graph, &path, "info", OutputMode::Json, &mut buf).await;
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    assert_eq!(parsed["status"], "ok");
-    assert_eq!(parsed["data"]["node_count"], 1);
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_info_human_contains_node_id() {
-    let path = create_temp_graph("repl_info_human");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id vis1 --no-save", OutputMode::Human, &mut buf).await;
-    buf.clear();
-    process_repl_line(&mut graph, &path, "info", OutputMode::Human, &mut buf).await;
-    let out = output_to_string(&buf);
-    assert!(out.contains("vis1"));
-    assert!(out.contains("nodes: 1"));
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_run_json_returns_outputs() {
-    let path = create_temp_graph("repl_run_json");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id r1 --no-save", OutputMode::Json, &mut buf).await;
-    buf.clear();
-    process_repl_line(&mut graph, &path, "run --no-save", OutputMode::Json, &mut buf).await;
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    assert_eq!(parsed["status"], "ok");
-    assert!(parsed["data"]["outputs"].is_array());
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_run_human_contains_output() {
-    let path = create_temp_graph("repl_run_human");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id rh1 --no-save", OutputMode::Human, &mut buf).await;
-    buf.clear();
-    process_repl_line(&mut graph, &path, "run --no-save", OutputMode::Human, &mut buf).await;
-    let out = output_to_string(&buf);
-    assert!(out.contains("[rh1]"));
-    assert!(out.contains("out[0]"));
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_help_emits_help() {
-    let path = create_temp_graph("repl_help");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    let exit = process_repl_line(&mut graph, &path, "help", OutputMode::Human, &mut buf).await;
-    assert!(!exit);
-    let out = output_to_string(&buf);
-    assert!(out.contains("Available commands"));
-    assert!(out.contains("add-node"));
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_invalid_command_emits_error() {
-    let path = create_temp_graph("repl_invalid");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    let exit = process_repl_line(&mut graph, &path, "not-a-command", OutputMode::Json, &mut buf).await;
-    assert!(!exit);
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    assert_eq!(parsed["status"], "error");
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_empty_words_no_panic() {
-    let path = create_temp_graph("repl_emptywords");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    let exit = process_repl_line(&mut graph, &path, "", OutputMode::Json, &mut buf).await;
-    assert!(!exit);
-    let _ = std::fs::remove_file(&path);
-}
-
-// ── --no-save behavior ──────────────────────────────────────────────────
-
-#[tokio::test]
-async fn repl_no_save_does_not_write_to_disk() {
-    let path = create_temp_graph("repl_nosave");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    let before = std::fs::read_to_string(&path).unwrap();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id ns1 --no-save", OutputMode::Json, &mut buf).await;
-    assert!(graph.nodes.contains_key("ns1"));
-    let after = std::fs::read_to_string(&path).unwrap();
-    assert_eq!(before, after, "file should not have been modified with --no-save");
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_default_save_writes_to_disk() {
-    let path = create_temp_graph("repl_autosave");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    let before = std::fs::read_to_string(&path).unwrap();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id as1", OutputMode::Json, &mut buf).await;
-    let after = std::fs::read_to_string(&path).unwrap();
-    assert_ne!(before, after, "file should have been updated without --no-save");
-    assert!(after.contains("as1"));
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_save_command_writes_pending_changes() {
-    let path = create_temp_graph("repl_save_cmd");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id sv1 --no-save", OutputMode::Json, &mut buf).await;
-    let mid = std::fs::read_to_string(&path).unwrap();
-    assert!(!mid.contains("sv1"));
-    buf.clear();
-    process_repl_line(&mut graph, &path, "save", OutputMode::Json, &mut buf).await;
-    let after = std::fs::read_to_string(&path).unwrap();
-    assert!(after.contains("sv1"));
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    assert_eq!(parsed["status"], "ok");
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_batch_no_save_then_save_persists_all() {
-    let path = create_temp_graph("repl_batch");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id b1 --no-save", OutputMode::Json, &mut buf).await;
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id b2 --no-save", OutputMode::Json, &mut buf).await;
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id b3 --no-save", OutputMode::Json, &mut buf).await;
-    let mid = std::fs::read_to_string(&path).unwrap();
-    assert!(!mid.contains("b1"));
-    process_repl_line(&mut graph, &path, "save", OutputMode::Json, &mut buf).await;
-    let after = std::fs::read_to_string(&path).unwrap();
-    assert!(after.contains("b1") && after.contains("b2") && after.contains("b3"));
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_show_ops_json() {
-    let path = create_temp_graph("repl_showops");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "show-ops --group numbers/arithmetic", OutputMode::Json, &mut buf).await;
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    assert_eq!(parsed["status"], "ok");
-    assert!(!parsed["data"]["operations"].as_array().unwrap().is_empty());
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_show_ops_human() {
-    let path = create_temp_graph("repl_showops_h");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "show-ops --group numbers/arithmetic", OutputMode::Human, &mut buf).await;
-    assert!(output_to_string(&buf).contains("numbers/arithmetic/add"));
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_unclosed_quote_emits_error() {
-    let path = create_temp_graph("repl_unclosed");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    let exit = process_repl_line(&mut graph, &path, "add-node --type 'unclosed", OutputMode::Json, &mut buf).await;
-    assert!(!exit);
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    assert_eq!(parsed["status"], "error");
-    let _ = std::fs::remove_file(&path);
-}
-
 // ── do_* function unit tests ────────────────────────────────────────────
 
 #[tokio::test]
@@ -1061,61 +582,7 @@ async fn do_connect_bad_slot_returns_err() {
     let _ = std::fs::remove_file(&path);
 }
 
-#[test]
-fn do_info_empty_graph() {
-    let path = create_temp_graph("do_info_empty");
-    let graph = load_graph(&path).unwrap();
-    let resp = do_info(&graph, None, false).unwrap();
-    let _ = std::fs::remove_file(&path);
-    assert_eq!(resp.status, "ok");
-    assert_eq!(resp.data.as_ref().unwrap()["node_count"], 0);
-}
-
-#[test]
-fn do_show_ops_no_filter() {
-    let resp = do_show_ops(None, None);
-    assert_eq!(resp.status, "ok");
-    assert!(!resp.data.as_ref().unwrap()["operations"].as_array().unwrap().is_empty());
-}
-
-#[test]
-fn do_show_ops_nonmatching_group() {
-    let resp = do_show_ops(Some("zzz_nonexistent"), None);
-    assert_eq!(resp.status, "ok");
-    assert!(resp.data.as_ref().unwrap()["operations"].as_array().unwrap().is_empty());
-    assert!(!resp.data.as_ref().unwrap()["categories"].as_array().unwrap().is_empty());
-}
-
-// ── 9A: show-ops --search and --group category fallback ─────────────
-
-#[test]
-fn show_ops_search_by_path() {
-    let resp = do_show_ops(None, Some("add"));
-    let ops = resp.data.as_ref().unwrap()["operations"].as_array().unwrap();
-    assert!(!ops.is_empty());
-    for op in ops {
-        let path = op["path"].as_str().unwrap().to_lowercase();
-        let variant = op["variant"].as_str().unwrap().to_lowercase();
-        let desc = op["description"].as_str().unwrap().to_lowercase();
-        assert!(path.contains("add") || variant.contains("add") || desc.contains("add"), "expected 'add' in: {}", op);
-    }
-}
-
-#[test]
-fn show_ops_search_case_insensitive() {
-    let lower = do_show_ops(None, Some("add"));
-    let upper = do_show_ops(None, Some("ADD"));
-    assert_eq!(
-        lower.data.as_ref().unwrap()["operations"].as_array().unwrap().len(),
-        upper.data.as_ref().unwrap()["operations"].as_array().unwrap().len()
-    );
-}
-
-#[test]
-fn show_ops_search_no_match() {
-    let resp = do_show_ops(None, Some("zzzzznonexistent"));
-    assert!(resp.data.as_ref().unwrap()["operations"].as_array().unwrap().is_empty());
-}
+// ── show-ops ────────────────────────────────────────────────────────
 
 #[test]
 fn show_ops_group_fallback_shows_categories() {
@@ -1127,76 +594,17 @@ fn show_ops_group_fallback_shows_categories() {
 
 #[test]
 fn show_ops_group_valid_prefix() {
-    let resp = do_show_ops(Some("numbers/arithmetic"), None);
-    let ops = resp.data.as_ref().unwrap()["operations"].as_array().unwrap();
-    assert!(!ops.is_empty());
-    for op in ops { assert!(op["path"].as_str().unwrap().starts_with("numbers/arithmetic")); }
+    let text = format_show_ops_human(Some("numbers/arithmetic"), None);
+    assert!(text.contains("numbers/arithmetic/add"));
 }
 
 #[test]
-fn show_ops_group_and_search_combined() {
-    let resp = do_show_ops(Some("numbers"), Some("add"));
-    let ops = resp.data.as_ref().unwrap()["operations"].as_array().unwrap();
-    assert!(!ops.is_empty());
-    for op in ops { assert!(op["path"].as_str().unwrap().starts_with("numbers")); }
+fn show_ops_search() {
+    let text = format_show_ops_human(None, Some("blur"));
+    assert!(text.contains("blur"));
 }
 
-#[tokio::test]
-async fn repl_line_show_ops_search() {
-    let path = create_temp_graph("repl_search");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "show-ops --search blur", OutputMode::Json, &mut buf).await;
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    assert_eq!(parsed["status"], "ok");
-    assert!(!parsed["data"]["operations"].as_array().unwrap().is_empty());
-    let _ = std::fs::remove_file(&path);
-}
-
-// ── 9B: show-types ──────────────────────────────────────────────────
-
-#[test]
-fn show_types_all() {
-    let resp = do_show_types(None);
-    assert_eq!(resp.status, "ok");
-    let types = resp.data.as_ref().unwrap()["types"].as_array().unwrap();
-    assert!(types.len() >= 8);
-    let names: Vec<&str> = types.iter().map(|v| v.as_str().unwrap()).collect();
-    assert!(names.contains(&"BlendMode") && names.contains(&"ColorSpace") && names.contains(&"FilterType"));
-}
-
-#[test]
-fn show_types_blend_mode() {
-    let resp = do_show_types(Some("BlendMode"));
-    assert_eq!(resp.status, "ok");
-    let variants = resp.data.as_ref().unwrap()["variants"].as_array().unwrap();
-    assert_eq!(variants.len(), 17);
-    let names: Vec<&str> = variants.iter().map(|v| v.as_str().unwrap()).collect();
-    assert!(names.contains(&"Multiply") && names.contains(&"Screen"));
-}
-
-#[test]
-fn show_types_case_insensitive() {
-    let resp = do_show_types(Some("blendmode"));
-    assert_eq!(resp.status, "ok");
-    assert_eq!(resp.data.as_ref().unwrap()["variants"].as_array().unwrap().len(), 17);
-}
-
-#[test]
-fn show_types_unknown() {
-    let resp = do_show_types(Some("NotARealType"));
-    assert_eq!(resp.status, "error");
-    assert!(resp.error.as_ref().unwrap().contains("unknown type"));
-}
-
-#[test]
-fn show_types_color_space() { assert_eq!(do_show_types(Some("ColorSpace")).data.as_ref().unwrap()["variants"].as_array().unwrap().len(), 9); }
-#[test]
-fn show_types_filter_type() { assert_eq!(do_show_types(Some("FilterType")).data.as_ref().unwrap()["variants"].as_array().unwrap().len(), 5); }
-#[test]
-fn show_types_image_type() { assert_eq!(do_show_types(Some("ImageType")).data.as_ref().unwrap()["variants"].as_array().unwrap().len(), 13); }
-#[test]
-fn show_types_text_halign() { assert_eq!(do_show_types(Some("TextHAlign")).data.as_ref().unwrap()["variants"].as_array().unwrap().len(), 3); }
+// ── show-types ──────────────────────────────────────────────────────
 
 #[test]
 fn show_types_human_all() {
@@ -1210,152 +618,64 @@ fn show_types_human_specific() {
     assert!(text.contains("Multiply") && text.contains("Screen"));
 }
 
-#[tokio::test]
-async fn repl_line_show_types_json() {
-    let path = create_temp_graph("repl_showtypes");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "show-types BlendMode", OutputMode::Json, &mut buf).await;
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    assert_eq!(parsed["status"], "ok");
-    assert_eq!(parsed["data"]["variants"].as_array().unwrap().len(), 17);
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_show_types_all() {
-    let path = create_temp_graph("repl_showtypes_all");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "show-types", OutputMode::Json, &mut buf).await;
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    assert_eq!(parsed["status"], "ok");
-    assert!(parsed["data"]["types"].as_array().unwrap().len() >= 8);
-    let _ = std::fs::remove_file(&path);
-}
-
-// ── 9C: info --node and --compact ───────────────────────────────────
-
-#[tokio::test]
-async fn info_node_filter_shows_only_matching_node() {
-    let path = create_temp_graph("info_nodefilter");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id n1 --no-save", OutputMode::Json, &mut buf).await;
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id n2 --no-save", OutputMode::Json, &mut buf).await;
-    buf.clear();
-    process_repl_line(&mut graph, &path, "info --node n1", OutputMode::Json, &mut buf).await;
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    let nodes = parsed["data"]["nodes"].as_object().unwrap();
-    assert!(nodes.contains_key("n1") && !nodes.contains_key("n2"));
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn info_node_filter_nonexistent_errors() {
-    let path = create_temp_graph("info_nodefilter_bad");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "info --node ghost", OutputMode::Json, &mut buf).await;
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    assert_eq!(parsed["status"], "error");
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn info_shows_description() {
-    let path = create_temp_graph("info_desc");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id d1 --no-save", OutputMode::Json, &mut buf).await;
-    buf.clear();
-    process_repl_line(&mut graph, &path, "info", OutputMode::Json, &mut buf).await;
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    let node = &parsed["data"]["nodes"]["d1"];
-    assert!(node["description"].is_string() && !node["description"].as_str().unwrap().is_empty());
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn info_compact_omits_description() {
-    let path = create_temp_graph("info_compact");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id c1 --no-save", OutputMode::Json, &mut buf).await;
-    buf.clear();
-    process_repl_line(&mut graph, &path, "info --compact", OutputMode::Json, &mut buf).await;
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    assert!(parsed["data"]["nodes"]["c1"].get("description").is_none());
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn info_shows_default_values() {
-    let path = create_temp_graph("info_defaults");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id dv1 --no-save", OutputMode::Json, &mut buf).await;
-    buf.clear();
-    process_repl_line(&mut graph, &path, "info", OutputMode::Json, &mut buf).await;
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    assert!(parsed["data"]["nodes"]["dv1"]["inputs"].as_array().unwrap()[0].get("default_value").is_some());
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn info_compact_omits_defaults() {
-    let path = create_temp_graph("info_compact_def");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id cd1 --no-save", OutputMode::Json, &mut buf).await;
-    buf.clear();
-    process_repl_line(&mut graph, &path, "info --compact", OutputMode::Json, &mut buf).await;
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    assert!(parsed["data"]["nodes"]["cd1"]["inputs"].as_array().unwrap()[0].get("default_value").is_none());
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn info_human_shows_description() {
-    let path = create_temp_graph("info_human_desc");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id hd1 --no-save", OutputMode::Human, &mut buf).await;
-    buf.clear();
-    process_repl_line(&mut graph, &path, "info", OutputMode::Human, &mut buf).await;
-    assert!(output_to_string(&buf).contains("\""));
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn info_human_shows_default_when_changed() {
-    let path = create_temp_graph("info_human_defchg");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "add-node --type numbers/arithmetic/add --id dc1 --no-save", OutputMode::Json, &mut buf).await;
-    process_repl_line(&mut graph, &path, r#"set-input --node dc1 --input 0 --value '{"Decimal":99.0}' --no-save"#, OutputMode::Json, &mut buf).await;
-    buf.clear();
-    process_repl_line(&mut graph, &path, "info", OutputMode::Human, &mut buf).await;
-    assert!(output_to_string(&buf).contains("(default:"));
-    let _ = std::fs::remove_file(&path);
-}
-
-// ── 9D: --input flag naming ─────────────────────────────────────────
+// ── show-values ─────────────────────────────────────────────────────
 
 #[test]
-fn repl_parse_set_input_uses_input_flag() {
-    match ReplCli::try_parse_from(["set-input", "--node", "n1", "--input", "2", "--value", r#"{"Integer":1}"#]).unwrap().command {
-        ReplCommand::SetInput { node, input, value, .. } => { assert_eq!(node, "n1"); assert_eq!(input, 2); assert!(value.contains("Integer")); }
-        _ => panic!("expected SetInput"),
-    }
+fn show_values_text_contains_examples() {
+    let text = show_values_text();
+    assert!(!text.is_empty());
+    assert!(text.contains("Bool"));
+    assert!(text.contains("Color"));
+    assert!(text.contains("Decimal"));
+}
+
+// ── show-op ─────────────────────────────────────────────────────────
+
+#[test]
+fn show_op_human_contains_description() {
+    let text = format_show_op_human("numbers/arithmetic/add").unwrap();
+    assert!(text.contains("Inputs:"));
+    assert!(text.contains("Outputs:"));
 }
 
 #[test]
-fn repl_parse_set_input_rejects_old_index_flag() {
-    assert!(ReplCli::try_parse_from(["set-input", "--node", "n1", "--index", "0", "--value", r#"{"Integer":1}"#]).is_err());
+fn show_op_unknown_returns_err() {
+    assert!(format_show_op_human("not/real").is_err());
 }
 
-// ── 9E: Better error messages ───────────────────────────────────────
+// ── enum_variants helper tests ──────────────────────────────────────
+
+#[test]
+fn enum_variants_all_types_resolve() {
+    for name in ENUM_TYPE_NAMES { assert!(enum_variants(name).is_some(), "enum_variants({}) returned None", name); }
+}
+
+#[test]
+fn enum_variants_unknown_returns_none() { assert!(enum_variants("NotAType").is_none()); }
+
+#[test]
+fn value_type_enum_name_mappings() {
+    assert_eq!(value_type_enum_name(&ValueType::BlendMode), Some("BlendMode"));
+    assert_eq!(value_type_enum_name(&ValueType::ColorSpace), Some("ColorSpace"));
+    assert_eq!(value_type_enum_name(&ValueType::Decimal), None);
+    assert_eq!(value_type_enum_name(&ValueType::Bool), None);
+}
+
+// ── collect_categories ──────────────────────────────────────────────
+
+#[test]
+fn collect_categories_returns_expected() {
+    let all_ops = flatten_ops(&operation_list(), "");
+    let cats = collect_categories(&all_ops);
+    assert!(!cats.is_empty());
+    let names: Vec<&str> = cats.iter().map(|(n, _)| n.as_str()).collect();
+    assert!(names.contains(&"numbers") && names.contains(&"images"));
+}
+
+#[test]
+fn collect_categories_empty_input() { assert!(collect_categories(&[]).is_empty()); }
+
+// ── error messages ──────────────────────────────────────────────────
 
 #[tokio::test]
 async fn set_input_missing_node_error() {
@@ -1438,120 +758,5 @@ async fn connect_valid_still_works() {
     do_add_node(&mut graph, "numbers/arithmetic/add", Some("v1".to_string())).await.unwrap();
     do_add_node(&mut graph, "numbers/arithmetic/add", Some("v2".to_string())).await.unwrap();
     assert!(do_connect(&mut graph, "v1:0", "v2:0").await.is_ok());
-    let _ = std::fs::remove_file(&path);
-}
-
-// ── enum_variants helper tests ──────────────────────────────────────
-
-#[test]
-fn enum_variants_all_types_resolve() {
-    for name in ENUM_TYPE_NAMES { assert!(enum_variants(name).is_some(), "enum_variants({}) returned None", name); }
-}
-
-#[test]
-fn enum_variants_unknown_returns_none() { assert!(enum_variants("NotAType").is_none()); }
-
-#[test]
-fn value_type_enum_name_mappings() {
-    assert_eq!(value_type_enum_name(&ValueType::BlendMode), Some("BlendMode"));
-    assert_eq!(value_type_enum_name(&ValueType::ColorSpace), Some("ColorSpace"));
-    assert_eq!(value_type_enum_name(&ValueType::Decimal), None);
-    assert_eq!(value_type_enum_name(&ValueType::Bool), None);
-}
-
-// ── collect_categories ──────────────────────────────────────────────
-
-#[test]
-fn collect_categories_returns_expected() {
-    let all_ops = flatten_ops(&operation_list(), "");
-    let cats = collect_categories(&all_ops);
-    assert!(!cats.is_empty());
-    let names: Vec<&str> = cats.iter().map(|(n, _)| n.as_str()).collect();
-    assert!(names.contains(&"numbers") && names.contains(&"images"));
-}
-
-#[test]
-fn collect_categories_empty_input() { assert!(collect_categories(&[]).is_empty()); }
-
-// ── show-values ─────────────────────────────────────────────────────
-
-#[test]
-fn show_values_text_contains_examples() {
-    let text = show_values_text();
-    assert!(!text.is_empty());
-    assert!(text.contains("Bool"));
-    assert!(text.contains("Color"));
-    assert!(text.contains("Decimal"));
-}
-
-#[test]
-fn repl_parse_show_values() {
-    assert!(matches!(ReplCli::try_parse_from(["show-values"]).unwrap().command, ReplCommand::ShowValues));
-}
-
-#[tokio::test]
-async fn repl_line_show_values_json() {
-    let path = create_temp_graph("repl_showvalues");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "show-values", OutputMode::Json, &mut buf).await;
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    assert_eq!(parsed["status"], "ok");
-    assert!(parsed["data"]["message"].as_str().unwrap().contains("Bool"));
-    let _ = std::fs::remove_file(&path);
-}
-
-// ── show-op ─────────────────────────────────────────────────────────
-
-#[test]
-fn show_op_valid() {
-    let resp = do_show_op("numbers/arithmetic/add");
-    assert!(resp.is_ok());
-    let resp = resp.unwrap();
-    assert_eq!(resp.status, "ok");
-    assert!(resp.data.as_ref().unwrap()["inputs"].as_array().unwrap().len() > 0);
-}
-
-#[test]
-fn show_op_unknown_returns_err() {
-    assert!(do_show_op("not/real").is_err());
-}
-
-#[test]
-fn show_op_human_contains_description() {
-    let text = format_show_op_human("numbers/arithmetic/add").unwrap();
-    // The add operation should have a description in the output.
-    assert!(text.contains("Inputs:"));
-    assert!(text.contains("Outputs:"));
-}
-
-#[test]
-fn repl_parse_show_op() {
-    match ReplCli::try_parse_from(["show-op", "images/combine/blend"]).unwrap().command {
-        ReplCommand::ShowOp { op_type } => assert_eq!(op_type, "images/combine/blend"),
-        _ => panic!("expected ShowOp"),
-    }
-}
-
-#[tokio::test]
-async fn repl_line_show_op_json() {
-    let path = create_temp_graph("repl_showop");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "show-op numbers/arithmetic/add", OutputMode::Json, &mut buf).await;
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    assert_eq!(parsed["status"], "ok");
-    assert!(parsed["data"]["inputs"].as_array().unwrap().len() > 0);
-    let _ = std::fs::remove_file(&path);
-}
-
-#[tokio::test]
-async fn repl_line_show_op_unknown_errors() {
-    let path = create_temp_graph("repl_showop_bad");
-    let mut graph = load_graph(&path).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "show-op not/real/op", OutputMode::Json, &mut buf).await;
-    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
-    assert_eq!(parsed["status"], "error");
     let _ = std::fs::remove_file(&path);
 }

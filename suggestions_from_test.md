@@ -69,20 +69,6 @@ Execute only the subgraph needed for a specific node and print its outputs. Usef
 ### `run --watch` — re-run on file change
 Watch the graph JSON for external edits and re-execute automatically. Useful when editing the JSON directly or integrating with other tools.
 
-### Interactive REPL mode
-Building a graph requires many sequential commands with repeated `graph.json` path arguments. A REPL mode would be much faster:
-```
-$ mangler_tui repl graph.json
-mangler> add-node --type numbers/arithmetic/add --id a1
-mangler> set a1:0 10.5
-mangler> set a1:1 20.0
-mangler> run
-mangler> info a1
-```
-- Tab completion for operation types, node IDs, and enum values
-- Shorter syntax for common operations (e.g., `set a1:0 10.5` instead of full JSON)
-- Command history
-
 ### Simplified value syntax for `set-input`
 The current JSON syntax `'{"Decimal":3.14}'` is verbose and error-prone (quoting issues on different shells). Consider accepting shorthand:
 - `--value 3.14` (auto-detect Decimal)

@@ -207,75 +207,9 @@ This operates on the serialized `GraphSaveData` level (not via `Graph` methods) 
 
 ---
 
-## Phase 11: Interactive REPL Mode
+## Phase 11: Simplified `set-input` Value Syntax
 
-**Scope:** `app/crates/mangler_tui/src/main.rs` + dependencies `rustyline`, `shell-words`, `serde`
-
-### 11A. Basic REPL ✅ COMPLETE
-
-Interactive REPL via `Commands::Repl { path, json }`. Loads graph once into memory, parses each line via a separate `ReplCommand` enum (clap with `no_binary_name`), dispatches to `do_*` inner functions. Uses `rustyline` v15 for line editing, history, and Ctrl+C handling. Supports `exit`/`quit`/`help`. All `cmd_*` functions refactored into `do_*` (in-memory) + `cmd_*` (load/save/print) wrappers. 119 tests passing.
-
-### 11B. `--json` output mode ✅ COMPLETE
-
-`--json` flag on `repl` subcommand. All responses are newline-delimited JSON via `ReplResponse { status, data, error }`. No ANSI codes, no prompt, no rustyline — plain stdin/stdout. `emit()` writes to `&mut dyn Write` for testability.
-
-### 11C. `--no-save` flag ✅ COMPLETE
-
-Per-command `--no-save` flag on all mutation REPL commands. `save` command for explicit flush. Auto-saves by default without the flag.
-
-### 11D. `undo` command
-
-Revert the last graph mutation.
-
-Implementation lives in **`mangler_core`** — the GUI will also benefit from graph-level undo. Approach:
-
-- Add an undo stack to `Graph`: `undo_stack: Vec<GraphSaveData>` (capped at N snapshots, e.g. 50)
-- Before each mutation (`add_node`, `remove_node`, `add_connection`, `remove_connection`, `set_input`), push a snapshot of the current state via `to_save_data()`
-- `graph.undo()` pops the last snapshot and restores state from it
-- In the REPL, expose as the `undo` command
-- In `--json` mode: `{"status":"ok","data":{"message":"undone: add-node a1","undo_depth":3}}`
-
-### 11E. `status` command
-
-Quick graph summary without the full `info` dump.
-
-```
-mangler> status
-graph: my_graph (3 nodes, 2 connections, 0 errors, unsaved)
-```
-
-In `--json` mode:
-```json
-{"status":"ok","data":{"name":"my_graph","node_count":3,"connection_count":2,"error_count":0,"saved":false}}
-```
-
-### 11G. Simplified `set` syntax in REPL
-
-In REPL mode, allow shorthand value syntax:
-
-```
-mangler> set a1:0 10.5           → {"Decimal": 10.5}
-mangler> set a1:0 42             → {"Integer": 42}
-mangler> set a1:0 true           → {"Bool": true}
-mangler> set a1:0 "hello"        → {"Text": "hello"}
-mangler> set a1:0 #FF0044        → {"Text": "#FF0044"} (for from_hex nodes)
-```
-
-Auto-detection rules:
-1. `true`/`false` → `Value::Bool`
-2. String containing `.` and parseable as f32 → `Value::Decimal`
-3. Parseable as i32 → `Value::Integer`
-4. Quoted string → `Value::Text`
-5. Starts with `{` → raw JSON (existing behavior)
-6. Anything else → `Value::Text`
-
-For smarter detection: look up the target input's current `value.value_type()` and coerce accordingly. If the input expects `Decimal`, parse `10` as `10.0`. If it expects `BlendMode`, try parsing as a variant name directly.
-
----
-
-## Phase 12: Simplified `set-input` Value Syntax (non-REPL)
-
-Even outside REPL mode, the JSON syntax `'{"Decimal":3.14}'` is painful (shell quoting, verbose). Add `--auto` flag or make auto-detection the default.
+The JSON syntax `'{"Decimal":3.14}'` is painful (shell quoting, verbose). Add `--auto` flag or make auto-detection the default.
 
 ### Option A: Smart detection (default, breaking)
 
@@ -348,7 +282,6 @@ After each phase (from `app/` directory):
 | 6     | Logic Nodes (14) | Medium | ✅ Complete |
 | 7     | Text Rendering (1) | Medium | ✅ Complete |
 | 8     | GUI Improvements (~3+) | High | |
-| 9     | CLI Polish & Discoverability (5 items) | Medium | |
+| 9     | CLI Polish & Discoverability (5 items) | Medium | ✅ Complete |
 | 10    | New CLI Commands (3 commands) | Medium | |
-| 11    | Interactive REPL Mode | High | |
-| 12    | Simplified Value Syntax | Low | |
+| 11    | Simplified Value Syntax | Low | |
