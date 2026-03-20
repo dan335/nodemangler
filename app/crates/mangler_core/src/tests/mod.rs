@@ -6,3 +6,4 @@
 
 mod serialization_tests;
 mod perf_tests;
+mod all_operations_perf_tests;

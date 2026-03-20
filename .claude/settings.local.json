@@ -72,7 +72,8 @@
       "Bash(cp D:/rust/nodemangler/crates/nodemangler/assets/Manrope-Regular.ttf D:/rust/nodemangler/crates/mangler/assets/Manrope-Regular.ttf)",
       "Bash(node -e \":*)",
       "Bash(grep -A2 '^name = \"\"\"\"image\"\"\"\"' Cargo.lock)",
-      "Bash(1:*)"
+      "Bash(1:*)",
+      "Bash(sed 's/\\($//')"
     ]
   }
 }
