@@ -263,6 +263,24 @@ impl Graph {
             }
 
             if is_valid {
+                // If the input already has a connection, remove the stale entry
+                // from the old source's output connection list before wiring the
+                // new one. Without this, the old source node would still propagate
+                // its output into this input during graph execution.
+                if let Some(old_conn) = self.nodes.get(&input_node_id)
+                    .and_then(|n| n.inputs.get(input_connection_index))
+                    .and_then(|inp| inp.connection.clone())
+                {
+                    let (old_output_node_id, old_output_index) = old_conn;
+                    if let Some(old_source) = self.nodes.get_mut(&old_output_node_id) {
+                        if let Some(output) = old_source.outputs.get_mut(old_output_index) {
+                            if let Some(conns) = output.connection.as_mut() {
+                                conns.retain(|item| *item != (input_node_id.clone(), input_connection_index));
+                            }
+                        }
+                    }
+                }
+
                 // set output connection
                 if let Some(from_output) = self.nodes.get_mut(&output_node_id) {
                     from_output.set_output_connection(

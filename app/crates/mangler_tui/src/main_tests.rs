@@ -354,6 +354,34 @@ fn cmd_new_fails_if_file_already_exists() {
 }
 
 #[test]
+fn cmd_new_appends_mangle_json_when_no_json_extension() {
+    let base = std::env::temp_dir().join(format!(
+        "mangle_test_nosuffix_{}",
+        std::process::id()
+    ));
+    let expected = std::env::temp_dir().join(format!(
+        "mangle_test_nosuffix_{}.mangle.json",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&expected);
+    assert!(cmd_new(base).is_ok());
+    assert!(expected.exists(), "file should be created with .mangle.json suffix");
+    let _ = std::fs::remove_file(&expected);
+}
+
+#[test]
+fn cmd_new_keeps_json_extension_unchanged() {
+    let path = std::env::temp_dir().join(format!(
+        "mangle_test_keepjson_{}.json",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&path);
+    assert!(cmd_new(path.clone()).is_ok());
+    assert!(path.exists(), "file should be created at the exact .json path");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
 fn cmd_new_fails_in_nonexistent_directory() {
     let path = std::env::temp_dir().join("mangle_no_such_dir_xyz").join("graph.mangle.json");
     assert!(cmd_new(path).is_err());
@@ -656,9 +684,9 @@ fn repl_parse_remove_node() {
 }
 
 #[test]
-fn repl_parse_list_ops_with_group() {
-    match ReplCli::try_parse_from(["list-ops", "--group", "images"]).unwrap().command {
-        ReplCommand::ListOps { group, .. } => { assert_eq!(group, Some("images".to_string())); }
+fn repl_parse_show_ops_with_group() {
+    match ReplCli::try_parse_from(["show-ops", "--group", "images"]).unwrap().command {
+        ReplCommand::ShowOps { group, .. } => { assert_eq!(group, Some("images".to_string())); }
         _ => panic!("expected ListOps"),
     }
 }
@@ -950,11 +978,11 @@ async fn repl_batch_no_save_then_save_persists_all() {
 }
 
 #[tokio::test]
-async fn repl_line_list_ops_json() {
-    let path = create_temp_graph("repl_listops");
+async fn repl_line_show_ops_json() {
+    let path = create_temp_graph("repl_showops");
     let mut graph = load_graph(&path).unwrap();
     let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "list-ops --group numbers/arithmetic", OutputMode::Json, &mut buf).await;
+    process_repl_line(&mut graph, &path, "show-ops --group numbers/arithmetic", OutputMode::Json, &mut buf).await;
     let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
     assert_eq!(parsed["status"], "ok");
     assert!(!parsed["data"]["operations"].as_array().unwrap().is_empty());
@@ -962,11 +990,11 @@ async fn repl_line_list_ops_json() {
 }
 
 #[tokio::test]
-async fn repl_line_list_ops_human() {
-    let path = create_temp_graph("repl_listops_h");
+async fn repl_line_show_ops_human() {
+    let path = create_temp_graph("repl_showops_h");
     let mut graph = load_graph(&path).unwrap();
     let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "list-ops --group numbers/arithmetic", OutputMode::Human, &mut buf).await;
+    process_repl_line(&mut graph, &path, "show-ops --group numbers/arithmetic", OutputMode::Human, &mut buf).await;
     assert!(output_to_string(&buf).contains("numbers/arithmetic/add"));
     let _ = std::fs::remove_file(&path);
 }
@@ -1044,25 +1072,25 @@ fn do_info_empty_graph() {
 }
 
 #[test]
-fn do_list_ops_no_filter() {
-    let resp = do_list_ops(None, None);
+fn do_show_ops_no_filter() {
+    let resp = do_show_ops(None, None);
     assert_eq!(resp.status, "ok");
     assert!(!resp.data.as_ref().unwrap()["operations"].as_array().unwrap().is_empty());
 }
 
 #[test]
-fn do_list_ops_nonmatching_group() {
-    let resp = do_list_ops(Some("zzz_nonexistent"), None);
+fn do_show_ops_nonmatching_group() {
+    let resp = do_show_ops(Some("zzz_nonexistent"), None);
     assert_eq!(resp.status, "ok");
     assert!(resp.data.as_ref().unwrap()["operations"].as_array().unwrap().is_empty());
     assert!(!resp.data.as_ref().unwrap()["categories"].as_array().unwrap().is_empty());
 }
 
-// ── 9A: list-ops --search and --group category fallback ─────────────
+// ── 9A: show-ops --search and --group category fallback ─────────────
 
 #[test]
-fn list_ops_search_by_path() {
-    let resp = do_list_ops(None, Some("add"));
+fn show_ops_search_by_path() {
+    let resp = do_show_ops(None, Some("add"));
     let ops = resp.data.as_ref().unwrap()["operations"].as_array().unwrap();
     assert!(!ops.is_empty());
     for op in ops {
@@ -1074,9 +1102,9 @@ fn list_ops_search_by_path() {
 }
 
 #[test]
-fn list_ops_search_case_insensitive() {
-    let lower = do_list_ops(None, Some("add"));
-    let upper = do_list_ops(None, Some("ADD"));
+fn show_ops_search_case_insensitive() {
+    let lower = do_show_ops(None, Some("add"));
+    let upper = do_show_ops(None, Some("ADD"));
     assert_eq!(
         lower.data.as_ref().unwrap()["operations"].as_array().unwrap().len(),
         upper.data.as_ref().unwrap()["operations"].as_array().unwrap().len()
@@ -1084,52 +1112,52 @@ fn list_ops_search_case_insensitive() {
 }
 
 #[test]
-fn list_ops_search_no_match() {
-    let resp = do_list_ops(None, Some("zzzzznonexistent"));
+fn show_ops_search_no_match() {
+    let resp = do_show_ops(None, Some("zzzzznonexistent"));
     assert!(resp.data.as_ref().unwrap()["operations"].as_array().unwrap().is_empty());
 }
 
 #[test]
-fn list_ops_group_fallback_shows_categories() {
-    let text = format_list_ops_human(Some("zzz_bad_group"), None);
+fn show_ops_group_fallback_shows_categories() {
+    let text = format_show_ops_human(Some("zzz_bad_group"), None);
     assert!(text.contains("Available categories"));
     assert!(text.contains("numbers"));
     assert!(text.contains("images"));
 }
 
 #[test]
-fn list_ops_group_valid_prefix() {
-    let resp = do_list_ops(Some("numbers/arithmetic"), None);
+fn show_ops_group_valid_prefix() {
+    let resp = do_show_ops(Some("numbers/arithmetic"), None);
     let ops = resp.data.as_ref().unwrap()["operations"].as_array().unwrap();
     assert!(!ops.is_empty());
     for op in ops { assert!(op["path"].as_str().unwrap().starts_with("numbers/arithmetic")); }
 }
 
 #[test]
-fn list_ops_group_and_search_combined() {
-    let resp = do_list_ops(Some("numbers"), Some("add"));
+fn show_ops_group_and_search_combined() {
+    let resp = do_show_ops(Some("numbers"), Some("add"));
     let ops = resp.data.as_ref().unwrap()["operations"].as_array().unwrap();
     assert!(!ops.is_empty());
     for op in ops { assert!(op["path"].as_str().unwrap().starts_with("numbers")); }
 }
 
 #[tokio::test]
-async fn repl_line_list_ops_search() {
+async fn repl_line_show_ops_search() {
     let path = create_temp_graph("repl_search");
     let mut graph = load_graph(&path).unwrap();
     let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "list-ops --search blur", OutputMode::Json, &mut buf).await;
+    process_repl_line(&mut graph, &path, "show-ops --search blur", OutputMode::Json, &mut buf).await;
     let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
     assert_eq!(parsed["status"], "ok");
     assert!(!parsed["data"]["operations"].as_array().unwrap().is_empty());
     let _ = std::fs::remove_file(&path);
 }
 
-// ── 9B: list-types ──────────────────────────────────────────────────
+// ── 9B: show-types ──────────────────────────────────────────────────
 
 #[test]
-fn list_types_all() {
-    let resp = do_list_types(None);
+fn show_types_all() {
+    let resp = do_show_types(None);
     assert_eq!(resp.status, "ok");
     let types = resp.data.as_ref().unwrap()["types"].as_array().unwrap();
     assert!(types.len() >= 8);
@@ -1138,8 +1166,8 @@ fn list_types_all() {
 }
 
 #[test]
-fn list_types_blend_mode() {
-    let resp = do_list_types(Some("BlendMode"));
+fn show_types_blend_mode() {
+    let resp = do_show_types(Some("BlendMode"));
     assert_eq!(resp.status, "ok");
     let variants = resp.data.as_ref().unwrap()["variants"].as_array().unwrap();
     assert_eq!(variants.len(), 17);
@@ -1148,46 +1176,46 @@ fn list_types_blend_mode() {
 }
 
 #[test]
-fn list_types_case_insensitive() {
-    let resp = do_list_types(Some("blendmode"));
+fn show_types_case_insensitive() {
+    let resp = do_show_types(Some("blendmode"));
     assert_eq!(resp.status, "ok");
     assert_eq!(resp.data.as_ref().unwrap()["variants"].as_array().unwrap().len(), 17);
 }
 
 #[test]
-fn list_types_unknown() {
-    let resp = do_list_types(Some("NotARealType"));
+fn show_types_unknown() {
+    let resp = do_show_types(Some("NotARealType"));
     assert_eq!(resp.status, "error");
     assert!(resp.error.as_ref().unwrap().contains("unknown type"));
 }
 
 #[test]
-fn list_types_color_space() { assert_eq!(do_list_types(Some("ColorSpace")).data.as_ref().unwrap()["variants"].as_array().unwrap().len(), 9); }
+fn show_types_color_space() { assert_eq!(do_show_types(Some("ColorSpace")).data.as_ref().unwrap()["variants"].as_array().unwrap().len(), 9); }
 #[test]
-fn list_types_filter_type() { assert_eq!(do_list_types(Some("FilterType")).data.as_ref().unwrap()["variants"].as_array().unwrap().len(), 5); }
+fn show_types_filter_type() { assert_eq!(do_show_types(Some("FilterType")).data.as_ref().unwrap()["variants"].as_array().unwrap().len(), 5); }
 #[test]
-fn list_types_image_type() { assert_eq!(do_list_types(Some("ImageType")).data.as_ref().unwrap()["variants"].as_array().unwrap().len(), 13); }
+fn show_types_image_type() { assert_eq!(do_show_types(Some("ImageType")).data.as_ref().unwrap()["variants"].as_array().unwrap().len(), 13); }
 #[test]
-fn list_types_text_halign() { assert_eq!(do_list_types(Some("TextHAlign")).data.as_ref().unwrap()["variants"].as_array().unwrap().len(), 3); }
+fn show_types_text_halign() { assert_eq!(do_show_types(Some("TextHAlign")).data.as_ref().unwrap()["variants"].as_array().unwrap().len(), 3); }
 
 #[test]
-fn list_types_human_all() {
-    let text = format_list_types_human(None);
+fn show_types_human_all() {
+    let text = format_show_types_human(None);
     assert!(text.contains("BlendMode") && text.contains("ColorSpace"));
 }
 
 #[test]
-fn list_types_human_specific() {
-    let text = format_list_types_human(Some("BlendMode"));
+fn show_types_human_specific() {
+    let text = format_show_types_human(Some("BlendMode"));
     assert!(text.contains("Multiply") && text.contains("Screen"));
 }
 
 #[tokio::test]
-async fn repl_line_list_types_json() {
-    let path = create_temp_graph("repl_listtypes");
+async fn repl_line_show_types_json() {
+    let path = create_temp_graph("repl_showtypes");
     let mut graph = load_graph(&path).unwrap();
     let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "list-types BlendMode", OutputMode::Json, &mut buf).await;
+    process_repl_line(&mut graph, &path, "show-types BlendMode", OutputMode::Json, &mut buf).await;
     let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
     assert_eq!(parsed["status"], "ok");
     assert_eq!(parsed["data"]["variants"].as_array().unwrap().len(), 17);
@@ -1195,11 +1223,11 @@ async fn repl_line_list_types_json() {
 }
 
 #[tokio::test]
-async fn repl_line_list_types_all() {
-    let path = create_temp_graph("repl_listtypes_all");
+async fn repl_line_show_types_all() {
+    let path = create_temp_graph("repl_showtypes_all");
     let mut graph = load_graph(&path).unwrap();
     let mut buf: Vec<u8> = Vec::new();
-    process_repl_line(&mut graph, &path, "list-types", OutputMode::Json, &mut buf).await;
+    process_repl_line(&mut graph, &path, "show-types", OutputMode::Json, &mut buf).await;
     let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
     assert_eq!(parsed["status"], "ok");
     assert!(parsed["data"]["types"].as_array().unwrap().len() >= 8);
@@ -1444,3 +1472,86 @@ fn collect_categories_returns_expected() {
 
 #[test]
 fn collect_categories_empty_input() { assert!(collect_categories(&[]).is_empty()); }
+
+// ── show-values ─────────────────────────────────────────────────────
+
+#[test]
+fn show_values_text_contains_examples() {
+    let text = show_values_text();
+    assert!(!text.is_empty());
+    assert!(text.contains("Bool"));
+    assert!(text.contains("Color"));
+    assert!(text.contains("Decimal"));
+}
+
+#[test]
+fn repl_parse_show_values() {
+    assert!(matches!(ReplCli::try_parse_from(["show-values"]).unwrap().command, ReplCommand::ShowValues));
+}
+
+#[tokio::test]
+async fn repl_line_show_values_json() {
+    let path = create_temp_graph("repl_showvalues");
+    let mut graph = load_graph(&path).unwrap();
+    let mut buf: Vec<u8> = Vec::new();
+    process_repl_line(&mut graph, &path, "show-values", OutputMode::Json, &mut buf).await;
+    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
+    assert_eq!(parsed["status"], "ok");
+    assert!(parsed["data"]["message"].as_str().unwrap().contains("Bool"));
+    let _ = std::fs::remove_file(&path);
+}
+
+// ── show-op ─────────────────────────────────────────────────────────
+
+#[test]
+fn show_op_valid() {
+    let resp = do_show_op("numbers/arithmetic/add");
+    assert!(resp.is_ok());
+    let resp = resp.unwrap();
+    assert_eq!(resp.status, "ok");
+    assert!(resp.data.as_ref().unwrap()["inputs"].as_array().unwrap().len() > 0);
+}
+
+#[test]
+fn show_op_unknown_returns_err() {
+    assert!(do_show_op("not/real").is_err());
+}
+
+#[test]
+fn show_op_human_contains_description() {
+    let text = format_show_op_human("numbers/arithmetic/add").unwrap();
+    // The add operation should have a description in the output.
+    assert!(text.contains("Inputs:"));
+    assert!(text.contains("Outputs:"));
+}
+
+#[test]
+fn repl_parse_show_op() {
+    match ReplCli::try_parse_from(["show-op", "images/combine/blend"]).unwrap().command {
+        ReplCommand::ShowOp { op_type } => assert_eq!(op_type, "images/combine/blend"),
+        _ => panic!("expected ShowOp"),
+    }
+}
+
+#[tokio::test]
+async fn repl_line_show_op_json() {
+    let path = create_temp_graph("repl_showop");
+    let mut graph = load_graph(&path).unwrap();
+    let mut buf: Vec<u8> = Vec::new();
+    process_repl_line(&mut graph, &path, "show-op numbers/arithmetic/add", OutputMode::Json, &mut buf).await;
+    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
+    assert_eq!(parsed["status"], "ok");
+    assert!(parsed["data"]["inputs"].as_array().unwrap().len() > 0);
+    let _ = std::fs::remove_file(&path);
+}
+
+#[tokio::test]
+async fn repl_line_show_op_unknown_errors() {
+    let path = create_temp_graph("repl_showop_bad");
+    let mut graph = load_graph(&path).unwrap();
+    let mut buf: Vec<u8> = Vec::new();
+    process_repl_line(&mut graph, &path, "show-op not/real/op", OutputMode::Json, &mut buf).await;
+    let parsed: serde_json::Value = serde_json::from_str(output_to_string(&buf).trim()).unwrap();
+    assert_eq!(parsed["status"], "error");
+    let _ = std::fs::remove_file(&path);
+}

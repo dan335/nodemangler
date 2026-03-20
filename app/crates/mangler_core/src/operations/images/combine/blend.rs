@@ -29,7 +29,7 @@ impl OpImageCombineBlend {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "blend".to_string(),
-            description: "Blits an image onto another image.".to_string(),
+            description: "Blends an image onto another using a blend mode.".to_string(),
         }
     }
 

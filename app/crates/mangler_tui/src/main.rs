@@ -24,8 +24,32 @@ use serde::Serialize;
 // ── CLI definition ───────────────────────────────────────────────────────────
 
 #[derive(Parser)]
-#[command(name = "mangle", about = "CLI for the NodeMangler graph engine")]
+#[command(name = "mangle", about = "CLI for the NodeMangler graph engine", after_help = "\
+Examples:
+  mangle graph.json new                         Create a new graph
+  mangle graph.json info                        Inspect all nodes
+  mangle graph.json info --node mynode          Inspect one node
+  mangle show-ops                               List all operations
+  mangle show-ops --search blur                 Find operations by keyword
+  mangle show-ops --group images/transform      Browse a category
+  mangle show-op images/combine/blend           Detailed operation info
+  mangle show-types BlendMode                   List enum variants
+  mangle show-values                            JSON value format reference
+  mangle graph.json add-node --type images/combine/blend
+  mangle graph.json set-input --node <id> --input 0 --value '{\"Decimal\":3.14}'
+  mangle graph.json run                         Execute and print outputs
+  mangle graph.json repl                        Interactive REPL mode
+  mangle graph.json repl --json                 REPL with JSON output (for AI/scripts)
+
+REPL mode:
+  The `repl` subcommand loads a graph and enters an interactive loop.
+  All commands above (except `new`) work inside the REPL without the path.
+  Use `--no-save` on mutation commands to batch changes, then `save` explicitly.
+  Use `--json` for newline-delimited JSON output (no ANSI codes, no prompt) —
+  ideal for LLM agents and scripted pipelines.")]
 struct Cli {
+    /// Path to the graph JSON file (required for most commands, placed before the subcommand)
+    path: Option<PathBuf>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -33,15 +57,12 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Create a new empty graph JSON file
-    New {
-        /// Path to write the graph file (e.g. graph.mangle.json)
-        path: PathBuf,
-    },
+    #[command(override_usage = "mangle <PATH> new")]
+    New,
 
     /// Print all nodes, inputs, outputs, and connections in a graph
+    #[command(override_usage = "mangle <PATH> info [OPTIONS]")]
     Info {
-        /// Path to the graph JSON file
-        path: PathBuf,
         /// Show only a single node by ID
         #[arg(long)]
         node: Option<String>,
@@ -50,8 +71,8 @@ enum Commands {
         compact: bool,
     },
 
-    /// List all available operation types
-    ListOps {
+    /// Show all available operation types
+    ShowOps {
         /// Filter by category prefix (e.g. numbers, images/transform, colors).
         /// Shows categories with counts if no ops match.
         #[arg(long)]
@@ -61,16 +82,25 @@ enum Commands {
         search: Option<String>,
     },
 
-    /// List enum value types and their valid variants
-    ListTypes {
+    /// Show enum value types and their valid variants
+    ShowTypes {
         /// Type name to show variants for (e.g. BlendMode). Omit to list all types.
         type_name: Option<String>,
     },
 
+    /// Show JSON value format reference for set-input --value
+    ShowValues,
+
+    /// Show detailed info for a single operation type (no graph file needed)
+    ShowOp {
+        /// Operation type: full variant name or short path (e.g. images/combine/blend)
+        #[arg(id = "op_type")]
+        op_type: String,
+    },
+
     /// Add a node to a graph
+    #[command(override_usage = "mangle <PATH> add-node [OPTIONS] --type <op_type>")]
     AddNode {
-        /// Path to the graph JSON file
-        path: PathBuf,
         /// Operation type: full variant name (OpNumberMathAdd) or short path (numbers/arithmetic/add)
         #[arg(long = "type", id = "op_type")]
         op_type: String,
@@ -80,18 +110,16 @@ enum Commands {
     },
 
     /// Remove a node and all its connections from a graph
+    #[command(override_usage = "mangle <PATH> remove-node --id <ID>")]
     RemoveNode {
-        /// Path to the graph JSON file
-        path: PathBuf,
         /// ID of the node to remove
         #[arg(long)]
         id: String,
     },
 
     /// Connect an output slot to an input slot
+    #[command(override_usage = "mangle <PATH> connect --from <FROM> --to <TO>")]
     Connect {
-        /// Path to the graph JSON file
-        path: PathBuf,
         /// Source: <node-id>:<output-index>
         #[arg(long)]
         from: String,
@@ -101,9 +129,8 @@ enum Commands {
     },
 
     /// Remove the connection feeding into a specific input
+    #[command(override_usage = "mangle <PATH> disconnect --node <NODE> --input <INPUT>")]
     Disconnect {
-        /// Path to the graph JSON file
-        path: PathBuf,
         /// ID of the node whose input should be disconnected
         #[arg(long)]
         node: String,
@@ -113,9 +140,8 @@ enum Commands {
     },
 
     /// Set a literal value on a node input
+    #[command(override_usage = "mangle <PATH> set-input --node <NODE> --input <INPUT> --value <VALUE>")]
     SetInput {
-        /// Path to the graph JSON file
-        path: PathBuf,
         /// ID of the target node
         #[arg(long)]
         node: String,
@@ -128,15 +154,12 @@ enum Commands {
     },
 
     /// Execute the graph and print all node output values
-    Run {
-        /// Path to the graph JSON file
-        path: PathBuf,
-    },
+    #[command(override_usage = "mangle <PATH> run")]
+    Run,
 
     /// Enter interactive REPL mode with a graph loaded in memory
+    #[command(override_usage = "mangle <PATH> repl [OPTIONS]")]
     Repl {
-        /// Path to the graph JSON file
-        path: PathBuf,
         /// Output JSON lines instead of human-readable text (no ANSI, no prompt)
         #[arg(long)]
         json: bool,
@@ -169,8 +192,8 @@ enum ReplCommand {
         compact: bool,
     },
 
-    /// List all available operation types
-    ListOps {
+    /// Show all available operation types
+    ShowOps {
         /// Filter by category prefix
         #[arg(long)]
         group: Option<String>,
@@ -179,10 +202,20 @@ enum ReplCommand {
         search: Option<String>,
     },
 
-    /// List enum value types and their valid variants
-    ListTypes {
+    /// Show enum value types and their valid variants
+    ShowTypes {
         /// Type name to show variants for
         type_name: Option<String>,
+    },
+
+    /// Show JSON value format reference for set-input --value
+    ShowValues,
+
+    /// Show detailed info for a single operation type
+    ShowOp {
+        /// Operation type: full variant name or short path
+        #[arg(id = "op_type")]
+        op_type: String,
     },
 
     /// Add a node to the graph
@@ -343,23 +376,35 @@ fn emit(mode: OutputMode, response: &ReplResponse, writer: &mut dyn IoWrite) {
 async fn main() {
     let cli = Cli::parse();
 
-    let result = match cli.command {
-        Commands::New { path } => cmd_new(path),
-        Commands::Info { path, node, compact } => cmd_info(path, node, compact),
-        Commands::ListOps { group, search } => cmd_list_ops(group, search),
-        Commands::ListTypes { type_name } => cmd_list_types(type_name),
-        Commands::AddNode { path, op_type, id } => cmd_add_node(path, op_type, id).await,
-        Commands::RemoveNode { path, id } => cmd_remove_node(path, id).await,
-        Commands::Connect { path, from, to } => cmd_connect(path, from, to).await,
-        Commands::Disconnect { path, node, input } => cmd_disconnect(path, node, input).await,
-        Commands::SetInput { path, node, input, value } => cmd_set_input(path, node, input, value),
-        Commands::Run { path } => cmd_run(path).await,
-        Commands::Repl { path, json } => cmd_repl(path, json).await,
-    };
+    let result = run(cli).await;
 
     if let Err(e) = result {
         eprintln!("error: {e}");
         std::process::exit(1);
+    }
+}
+
+/// Dispatch the parsed CLI to the appropriate command handler.
+async fn run(cli: Cli) -> Result<(), String> {
+    // Extract the path, returning an error if it was not provided.
+    let require_path = || -> Result<PathBuf, String> {
+        cli.path.clone().ok_or_else(|| "a graph file path is required before this command (e.g. mangle graph.json <command>)".to_string())
+    };
+
+    match cli.command {
+        Commands::New => cmd_new(require_path()?),
+        Commands::Info { node, compact } => cmd_info(require_path()?, node, compact),
+        Commands::ShowOps { group, search } => cmd_show_ops(group, search),
+        Commands::ShowTypes { type_name } => cmd_show_types(type_name),
+        Commands::ShowValues => { print!("{}", show_values_text()); Ok(()) }
+        Commands::ShowOp { op_type } => cmd_show_op(op_type),
+        Commands::AddNode { op_type, id } => cmd_add_node(require_path()?, op_type, id).await,
+        Commands::RemoveNode { id } => cmd_remove_node(require_path()?, id).await,
+        Commands::Connect { from, to } => cmd_connect(require_path()?, from, to).await,
+        Commands::Disconnect { node, input } => cmd_disconnect(require_path()?, node, input).await,
+        Commands::SetInput { node, input, value } => cmd_set_input(require_path()?, node, input, value),
+        Commands::Run => cmd_run(require_path()?).await,
+        Commands::Repl { json } => cmd_repl(require_path()?, json).await,
     }
 }
 
@@ -382,20 +427,22 @@ fn save_graph(graph: &Graph, path: &PathBuf) -> Result<(), String> {
 /// Recursively flatten the `operation_list()` tree into `(short_path, Operation)` pairs.
 ///
 /// The path is built by joining category names with `/`, e.g. `numbers/arithmetic/add`.
+/// Spaces in names are replaced with underscores so paths are CLI-friendly without quoting.
 fn flatten_ops(items: &[OperationListItem], prefix: &str) -> Vec<(String, Operation)> {
     let mut result = Vec::new();
     for item in items {
         match item {
             OperationListItem::Category { name, operation_list_items } => {
+                let slug = name.replace(' ', "_");
                 let new_prefix = if prefix.is_empty() {
-                    name.clone()
+                    slug
                 } else {
-                    format!("{prefix}/{name}")
+                    format!("{prefix}/{slug}")
                 };
                 result.extend(flatten_ops(operation_list_items, &new_prefix));
             }
             OperationListItem::Operation { operation } => {
-                let op_name = operation.settings().name;
+                let op_name = operation.settings().name.replace(' ', "_");
                 let path = if prefix.is_empty() {
                     op_name
                 } else {
@@ -416,10 +463,11 @@ fn flatten_ops(items: &[OperationListItem], prefix: &str) -> Vec<(String, Operat
 fn resolve_op(type_str: &str) -> Result<Operation, String> {
     let all_ops = flatten_ops(&operation_list(), "");
 
-    // Try short path first (case-insensitive).
+    // Try short path first (case-insensitive, spaces normalized to underscores).
     let by_path: HashMap<String, Operation> =
         all_ops.iter().map(|(p, op)| (p.to_lowercase(), op.clone())).collect();
-    if let Some(op) = by_path.get(&type_str.to_lowercase()) {
+    let normalized = type_str.to_lowercase().replace(' ', "_");
+    if let Some(op) = by_path.get(&normalized) {
         return Ok(op.clone());
     }
 
@@ -430,7 +478,7 @@ fn resolve_op(type_str: &str) -> Result<Operation, String> {
     }
 
     Err(format!(
-        "unknown operation '{}' — run `mangle list-ops` to see all types",
+        "unknown operation '{}' — run `mangle show-ops` to see all types",
         type_str
     ))
 }
@@ -471,8 +519,8 @@ fn enum_variants(type_name: &str) -> Option<Vec<&'static str>> {
             "catmullrom", "gaussian", "lanczos3", "nearest", "triangle",
         ]),
         "ImageType" => Some(vec![
-            "Png", "Jpeg", "Gif", "WebP", "Pnm", "Tiff", "Tga",
-            "Bmp", "Ico", "Hdr", "OpenExr", "Farbfeld", "Qoi",
+            "png", "jpg", "gif", "webp", "pnm", "tiff", "tga",
+            "bmp", "ico", "hdr", "exr", "ff", "qoi",
         ]),
         "ColorFormat" => Some(vec![
             "Rgba32F", "Rgb32F", "Rgba16", "Rgb16", "GrayA16", "Gray16",
@@ -727,11 +775,11 @@ fn collect_categories(all_ops: &[(String, Operation)]) -> Vec<(String, usize)> {
     cats
 }
 
-/// Build the list-ops response data. Supports `--group` with category fallback and `--search`.
-fn do_list_ops(group: Option<&str>, search: Option<&str>) -> ReplResponse {
+/// Build the show-ops response data. Supports `--group` with category fallback and `--search`.
+fn do_show_ops(group: Option<&str>, search: Option<&str>) -> ReplResponse {
     let all_ops = flatten_ops(&operation_list(), "");
-    let group_filter = group.unwrap_or("").to_lowercase();
-    let search_filter = search.unwrap_or("").to_lowercase();
+    let group_filter = group.unwrap_or("").to_lowercase().replace(' ', "_");
+    let search_filter = search.unwrap_or("").to_lowercase().replace(' ', "_");
 
     let mut ops = Vec::new();
     for (path, op) in &all_ops {
@@ -758,19 +806,50 @@ fn do_list_ops(group: Option<&str>, search: Option<&str>) -> ReplResponse {
         let inputs = op.create_inputs();
         let outputs = op.create_outputs();
 
-        let in_str: Vec<String> = inputs.iter()
-            .map(|i| format!("{}({:?})", i.name, i.value.value_type()))
-            .collect();
-        let out_str: Vec<String> = outputs.iter()
-            .map(|o| format!("{}({:?})", o.name, o.value.value_type()))
-            .collect();
+        let in_json: Vec<serde_json::Value> = inputs.iter().map(|i| {
+            let vt = i.value.value_type();
+            let mut obj = serde_json::json!({
+                "name": i.name,
+                "type": format!("{:?}", vt),
+            });
+            if i.accepts_any_type {
+                obj["accepts_any_type"] = serde_json::json!(true);
+            } else {
+                // Show other types that can connect to this input, excluding self and Trigger.
+                let accepts: Vec<String> = vt.valid_conversions_from().iter()
+                    .filter(|t| **t != vt && **t != ValueType::Trigger)
+                    .map(|t| format!("{:?}", t))
+                    .collect();
+                if !accepts.is_empty() {
+                    obj["accepts"] = serde_json::json!(accepts);
+                }
+            }
+            obj
+        }).collect();
+
+        let out_json: Vec<serde_json::Value> = outputs.iter().map(|o| {
+            let vt = o.value.value_type();
+            let mut obj = serde_json::json!({
+                "name": o.name,
+                "type": format!("{:?}", vt),
+            });
+            // Show types this output can convert to, excluding self and Trigger.
+            let converts_to: Vec<String> = vt.valid_conversions().iter()
+                .filter(|t| **t != vt && **t != ValueType::Trigger)
+                .map(|t| format!("{:?}", t))
+                .collect();
+            if !converts_to.is_empty() {
+                obj["converts_to"] = serde_json::json!(converts_to);
+            }
+            obj
+        }).collect();
 
         ops.push(serde_json::json!({
             "path": path,
             "variant": variant,
             "description": description,
-            "inputs": in_str,
-            "outputs": out_str,
+            "inputs": in_json,
+            "outputs": out_json,
         }));
     }
 
@@ -786,11 +865,11 @@ fn do_list_ops(group: Option<&str>, search: Option<&str>) -> ReplResponse {
     ReplResponse::ok(serde_json::json!({ "operations": ops }))
 }
 
-/// Format list-ops as human-readable text. Supports `--group` with category fallback and `--search`.
-fn format_list_ops_human(group: Option<&str>, search: Option<&str>) -> String {
+/// Format show-ops as human-readable text. Supports `--group` with category fallback and `--search`.
+fn format_show_ops_human(group: Option<&str>, search: Option<&str>) -> String {
     let all_ops = flatten_ops(&operation_list(), "");
-    let group_filter = group.unwrap_or("").to_lowercase();
-    let search_filter = search.unwrap_or("").to_lowercase();
+    let group_filter = group.unwrap_or("").to_lowercase().replace(' ', "_");
+    let search_filter = search.unwrap_or("").to_lowercase().replace(' ', "_");
     let mut out = String::new();
     let mut count = 0;
 
@@ -817,10 +896,36 @@ fn format_list_ops_human(group: Option<&str>, search: Option<&str>) -> String {
         let outputs = op.create_outputs();
 
         let in_str: Vec<String> = inputs.iter()
-            .map(|i| format!("{}({:?})", i.name, i.value.value_type()))
+            .map(|i| {
+                let vt = i.value.value_type();
+                if i.accepts_any_type {
+                    format!("{}({:?}, accepts: any)", i.name, vt)
+                } else {
+                    let accepts: Vec<String> = vt.valid_conversions_from().iter()
+                        .filter(|t| **t != vt && **t != ValueType::Trigger)
+                        .map(|t| format!("{:?}", t))
+                        .collect();
+                    if accepts.is_empty() {
+                        format!("{}({:?})", i.name, vt)
+                    } else {
+                        format!("{}({:?}, accepts: {})", i.name, vt, accepts.join(", "))
+                    }
+                }
+            })
             .collect();
         let out_str: Vec<String> = outputs.iter()
-            .map(|o| format!("{}({:?})", o.name, o.value.value_type()))
+            .map(|o| {
+                let vt = o.value.value_type();
+                let converts_to: Vec<String> = vt.valid_conversions().iter()
+                    .filter(|t| **t != vt && **t != ValueType::Trigger)
+                    .map(|t| format!("{:?}", t))
+                    .collect();
+                if converts_to.is_empty() {
+                    format!("{}({:?})", o.name, vt)
+                } else {
+                    format!("{}({:?}, converts to: {})", o.name, vt, converts_to.join(", "))
+                }
+            })
             .collect();
 
         out.push_str(&format!(
@@ -842,8 +947,8 @@ fn format_list_ops_human(group: Option<&str>, search: Option<&str>) -> String {
     out
 }
 
-/// Build the list-types response.
-fn do_list_types(type_name: Option<&str>) -> ReplResponse {
+/// Build the show-types response.
+fn do_show_types(type_name: Option<&str>) -> ReplResponse {
     match type_name {
         None => {
             // List all enum type names.
@@ -872,8 +977,8 @@ fn do_list_types(type_name: Option<&str>) -> ReplResponse {
     }
 }
 
-/// Format list-types as human-readable text.
-fn format_list_types_human(type_name: Option<&str>) -> String {
+/// Format show-types as human-readable text.
+fn format_show_types_human(type_name: Option<&str>) -> String {
     match type_name {
         None => {
             format!("{}\n", ENUM_TYPE_NAMES.join(", "))
@@ -1055,7 +1160,16 @@ fn format_run_human(graph: &Graph) -> String {
 // ── Top-level commands ───────────────────────────────────────────────────────
 
 /// `mangle new <path>` — create an empty graph file.
+///
+/// If the path does not end in `.json`, `.mangle.json` is appended automatically.
 fn cmd_new(path: PathBuf) -> Result<(), String> {
+    let path = if path.extension().map_or(false, |ext| ext == "json") {
+        path
+    } else {
+        let mut name = path.as_os_str().to_os_string();
+        name.push(".mangle.json");
+        PathBuf::from(name)
+    };
     if path.exists() {
         return Err(format!("{} already exists", path.display()));
     }
@@ -1082,16 +1196,186 @@ fn cmd_info(path: PathBuf, node: Option<String>, compact: bool) -> Result<(), St
     Ok(())
 }
 
-/// `mangle list-ops [--group <prefix>] [--search <term>]` — list available operations.
-fn cmd_list_ops(group: Option<String>, search: Option<String>) -> Result<(), String> {
-    print!("{}", format_list_ops_human(group.as_deref(), search.as_deref()));
+/// `mangle show-ops [--group <prefix>] [--search <term>]` — show available operations.
+fn cmd_show_ops(group: Option<String>, search: Option<String>) -> Result<(), String> {
+    print!("{}", format_show_ops_human(group.as_deref(), search.as_deref()));
     Ok(())
 }
 
-/// `mangle list-types [<type_name>]` — list enum types or their variants.
-fn cmd_list_types(type_name: Option<String>) -> Result<(), String> {
-    print!("{}", format_list_types_human(type_name.as_deref()));
+/// `mangle show-types [<type_name>]` — show enum types or their variants.
+fn cmd_show_types(type_name: Option<String>) -> Result<(), String> {
+    print!("{}", format_show_types_human(type_name.as_deref()));
     Ok(())
+}
+
+/// `mangle show-values` — print JSON value format reference for set-input --value.
+fn show_values_text() -> &'static str {
+    concat!(
+        "Value formats for set-input --value:\n",
+        "\n",
+        "  Bool            {\"Bool\":true}\n",
+        "  Integer         {\"Integer\":42}\n",
+        "  Decimal         {\"Decimal\":3.14}\n",
+        "  Text            {\"Text\":\"hello\"}\n",
+        "  Color           {\"Color\":{\"r\":1.0,\"g\":0.0,\"b\":0.0,\"a\":1.0}}\n",
+        "  Path            {\"Path\":\"path/to/file.png\"}\n",
+        "  FilterType      {\"FilterType\":\"lanczos3\"}          (run `show-types FilterType` for values)\n",
+        "  ImageType       {\"ImageType\":\"png\"}                (run `show-types ImageType` for values)\n",
+        "  ColorFormat     {\"ColorFormat\":\"Rgba8\"}             (run `show-types ColorFormat` for values)\n",
+        "  BlendMode       {\"BlendMode\":\"Multiply\"}            (run `show-types BlendMode` for values)\n",
+        "  ColorSpace      {\"ColorSpace\":\"Srgb\"}               (run `show-types ColorSpace` for values)\n",
+        "  NoiseWorleyDistanceFunction  {\"NoiseWorleyDistanceFunction\":\"Euclidean\"}  (run `show-types ...` for values)\n",
+        "  TextHAlign      {\"TextHAlign\":\"Left\"}               (run `show-types TextHAlign` for values)\n",
+        "  TextVAlign      {\"TextVAlign\":\"Top\"}                (run `show-types TextVAlign` for values)\n",
+    )
+}
+
+/// `mangle show-op <type>` — show detailed info for one operation type.
+fn cmd_show_op(op_type: String) -> Result<(), String> {
+    print!("{}", format_show_op_human(&op_type)?);
+    Ok(())
+}
+
+/// Build a structured show-op response for one operation.
+///
+/// Returns JSON with name, description, variant, inputs (with types, defaults,
+/// enum values, and accepted types), and outputs (with types and conversion targets).
+fn do_show_op(op_type: &str) -> Result<ReplResponse, String> {
+    let op = resolve_op(op_type)?;
+    let settings = op.settings();
+    let inputs = op.create_inputs();
+    let outputs = op.create_outputs();
+
+    let variant = serde_json::to_string(&op)
+        .unwrap_or_default()
+        .trim_matches('"')
+        .to_string();
+
+    let in_json: Vec<serde_json::Value> = inputs.iter().enumerate().map(|(i, input)| {
+        let vt = input.value.value_type();
+        let mut obj = serde_json::json!({
+            "index": i,
+            "name": input.name,
+            "type": format!("{:?}", vt),
+            "default": display_value(&input.value),
+        });
+        // Add enum variant list if this is an enum type.
+        if let Some(enum_name) = value_type_enum_name(&vt) {
+            if let Some(variants) = enum_variants(enum_name) {
+                obj["enum_values"] = serde_json::json!(variants);
+            }
+        }
+        // Show other types that can connect to this input.
+        if input.accepts_any_type {
+            obj["accepts_any_type"] = serde_json::json!(true);
+        } else {
+            let accepts: Vec<String> = vt.valid_conversions_from().iter()
+                .filter(|t| **t != vt && **t != ValueType::Trigger)
+                .map(|t| format!("{:?}", t))
+                .collect();
+            if !accepts.is_empty() {
+                obj["accepts"] = serde_json::json!(accepts);
+            }
+        }
+        obj
+    }).collect();
+
+    let out_json: Vec<serde_json::Value> = outputs.iter().enumerate().map(|(i, output)| {
+        let vt = output.value.value_type();
+        let mut obj = serde_json::json!({
+            "index": i,
+            "name": output.name,
+            "type": format!("{:?}", vt),
+        });
+        let converts_to: Vec<String> = vt.valid_conversions().iter()
+            .filter(|t| **t != vt && **t != ValueType::Trigger)
+            .map(|t| format!("{:?}", t))
+            .collect();
+        if !converts_to.is_empty() {
+            obj["converts_to"] = serde_json::json!(converts_to);
+        }
+        obj
+    }).collect();
+
+    Ok(ReplResponse::ok(serde_json::json!({
+        "name": settings.name,
+        "description": settings.description,
+        "variant": variant,
+        "inputs": in_json,
+        "outputs": out_json,
+    })))
+}
+
+/// Format show-op as human-readable text.
+fn format_show_op_human(op_type: &str) -> Result<String, String> {
+    let op = resolve_op(op_type)?;
+    let settings = op.settings();
+    let inputs = op.create_inputs();
+    let outputs = op.create_outputs();
+
+    let variant = serde_json::to_string(&op)
+        .unwrap_or_default()
+        .trim_matches('"')
+        .to_string();
+
+    let mut out = String::new();
+    out.push_str(&format!("{} ({})\n", settings.name, variant));
+    if !settings.description.is_empty() {
+        out.push_str(&format!("  \"{}\"\n", settings.description));
+    }
+    out.push_str("\n  Inputs:\n");
+
+    for (i, input) in inputs.iter().enumerate() {
+        let vt = input.value.value_type();
+
+        // Build type string with enum variants or accepts info.
+        let type_str = if let Some(enum_name) = value_type_enum_name(&vt) {
+            if let Some(variants) = enum_variants(enum_name) {
+                format!("{}: {}", enum_name, variants.join("|"))
+            } else {
+                format!("{:?}", vt)
+            }
+        } else {
+            let mut s = format!("{:?}", vt);
+            if input.accepts_any_type {
+                s.push_str(", accepts: any");
+            } else {
+                let accepts: Vec<String> = vt.valid_conversions_from().iter()
+                    .filter(|t| **t != vt && **t != ValueType::Trigger)
+                    .map(|t| format!("{:?}", t))
+                    .collect();
+                if !accepts.is_empty() {
+                    s.push_str(&format!(", accepts: {}", accepts.join(", ")));
+                }
+            }
+            s
+        };
+
+        out.push_str(&format!(
+            "    [{}] {} ({}) = {}\n",
+            i, input.name, type_str, display_value(&input.value)
+        ));
+    }
+
+    out.push_str("\n  Outputs:\n");
+    for (i, output) in outputs.iter().enumerate() {
+        let vt = output.value.value_type();
+        let converts_to: Vec<String> = vt.valid_conversions().iter()
+            .filter(|t| **t != vt && **t != ValueType::Trigger)
+            .map(|t| format!("{:?}", t))
+            .collect();
+        let conv_str = if converts_to.is_empty() {
+            String::new()
+        } else {
+            format!(", converts to: {}", converts_to.join(", "))
+        };
+        out.push_str(&format!(
+            "    [{}] {} ({:?}{})\n",
+            i, output.name, vt, conv_str
+        ));
+    }
+
+    Ok(out)
 }
 
 /// `mangle add-node <path> --type <type> [--id <id>]` — add a node to the graph.
@@ -1240,8 +1524,10 @@ async fn process_repl_line(
             let help = concat!(
                 "Available commands:\n",
                 "  info [--node <id>] [--compact]          Print graph structure\n",
-                "  list-ops [--group <prefix>] [--search <term>]\n",
-                "  list-types [<type_name>]                List enum types/variants\n",
+                "  show-ops [--group <prefix>] [--search <term>]\n",
+                "  show-types [<type_name>]                Show enum types/variants\n",
+                "  show-values                             Show JSON value format reference\n",
+                "  show-op <type>                          Show detailed operation info\n",
                 "  add-node --type <type> [--id <id>] [--no-save]\n",
                 "  remove-node --id <id> [--no-save]\n",
                 "  connect --from <node:out> --to <node:in> [--no-save]\n",
@@ -1276,25 +1562,48 @@ async fn process_repl_line(
             }
         }
 
-        ReplCommand::ListOps { group, search } => {
+        ReplCommand::ShowOps { group, search } => {
             if mode == OutputMode::Json {
-                let resp = do_list_ops(group.as_deref(), search.as_deref());
+                let resp = do_show_ops(group.as_deref(), search.as_deref());
                 emit(mode, &resp, writer);
             } else {
-                let text = format_list_ops_human(group.as_deref(), search.as_deref());
+                let text = format_show_ops_human(group.as_deref(), search.as_deref());
                 let _ = write!(writer, "{text}");
                 let _ = writer.flush();
             }
         }
 
-        ReplCommand::ListTypes { type_name } => {
+        ReplCommand::ShowTypes { type_name } => {
             if mode == OutputMode::Json {
-                let resp = do_list_types(type_name.as_deref());
+                let resp = do_show_types(type_name.as_deref());
                 emit(mode, &resp, writer);
             } else {
-                let text = format_list_types_human(type_name.as_deref());
+                let text = format_show_types_human(type_name.as_deref());
                 let _ = write!(writer, "{text}");
                 let _ = writer.flush();
+            }
+        }
+
+        ReplCommand::ShowValues => {
+            if mode == OutputMode::Json {
+                emit(mode, &ReplResponse::ok_message(show_values_text().trim_end()), writer);
+            } else {
+                let _ = write!(writer, "{}", show_values_text());
+                let _ = writer.flush();
+            }
+        }
+
+        ReplCommand::ShowOp { op_type } => {
+            if mode == OutputMode::Json {
+                match do_show_op(&op_type) {
+                    Ok(resp) => emit(mode, &resp, writer),
+                    Err(e) => emit(mode, &ReplResponse::error(e), writer),
+                }
+            } else {
+                match format_show_op_human(&op_type) {
+                    Ok(text) => { let _ = write!(writer, "{text}"); let _ = writer.flush(); }
+                    Err(e) => emit(mode, &ReplResponse::error(e), writer),
+                }
             }
         }
 

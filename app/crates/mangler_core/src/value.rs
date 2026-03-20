@@ -110,9 +110,8 @@ impl Value {
 
                 Some(Thumbnail::Image(img))
             }
-            //Value::DynamicImage { data, change_id:_ } => Some(Thumbnail::Image(data.thumbnail(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]).into_rgba8())),
             Value::DynamicImage { data, change_id: _ } => Some(Thumbnail::Image(
-                data.thumbnail(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1])
+                data.resize(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1], FilterType::CatmullRom)
                     .to_rgba8(),
             )),
             Value::Bool(value) => Some(Thumbnail::Text(value.to_string())),

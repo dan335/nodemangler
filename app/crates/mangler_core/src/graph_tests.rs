@@ -903,3 +903,93 @@ async fn test_run_upstream_change_propagates() {
         other => panic!("Expected Decimal, got {:?}", other),
     }
 }
+
+/// Reconnecting an input to a different source must remove the stale entry
+/// from the old source's output connection list. Otherwise the old source
+/// continues to propagate its value into the input during graph execution,
+/// overwriting the value from the new source.
+#[tokio::test]
+async fn test_reconnect_input_cleans_up_old_output_connection() {
+    let mut graph = create_test_graph();
+
+    // Create three decimal-input nodes (source_a, source_b) and an add node (consumer).
+    let source_a = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO)
+        .await;
+    let source_b = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO)
+        .await;
+    let consumer = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO)
+        .await;
+
+    // Connect source_a output 0 → consumer input 0
+    graph.add_connection(consumer.clone(), 0, source_a.clone(), 0).await;
+
+    // Verify source_a output 0 lists the consumer connection
+    let conns_a = graph.nodes.get(&source_a).unwrap().outputs[0].connection.as_ref().unwrap();
+    assert!(conns_a.contains(&(consumer.clone(), 0)));
+
+    // Now reconnect: source_b output 0 → consumer input 0 (replacing source_a)
+    graph.add_connection(consumer.clone(), 0, source_b.clone(), 0).await;
+
+    // The consumer's input should now point to source_b
+    let (conn_id, conn_idx) = graph.nodes.get(&consumer).unwrap().inputs[0].connection.as_ref().unwrap();
+    assert_eq!(conn_id, &source_b);
+    assert_eq!(*conn_idx, 0);
+
+    // source_b output 0 should list the consumer
+    let conns_b = graph.nodes.get(&source_b).unwrap().outputs[0].connection.as_ref().unwrap();
+    assert!(conns_b.contains(&(consumer.clone(), 0)));
+
+    // source_a output 0 must NO LONGER list the consumer (stale entry cleaned up)
+    let conns_a_after = graph.nodes.get(&source_a).unwrap().outputs[0].connection.as_ref();
+    let has_stale = conns_a_after
+        .map(|c| c.contains(&(consumer.clone(), 0)))
+        .unwrap_or(false);
+    assert!(!has_stale, "Old source still has a stale output connection after reconnect");
+}
+
+/// After reconnecting an input, only the new source's value should propagate
+/// during graph execution — the old source must not overwrite it.
+#[tokio::test]
+async fn test_reconnect_input_propagates_correct_value() {
+    let mut graph = create_test_graph();
+
+    let source_a = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO)
+        .await;
+    let source_b = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO)
+        .await;
+    let consumer = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO)
+        .await;
+
+    // source_a = 10, source_b = 42
+    graph.set_input(source_a.clone(), 0, Value::Decimal(10.0));
+    graph.set_input(source_b.clone(), 0, Value::Decimal(42.0));
+
+    // Connect source_a → consumer input 0, leave input 1 at default (0)
+    graph.add_connection(consumer.clone(), 0, source_a.clone(), 0).await;
+    graph.run().await;
+
+    // consumer = 10 + 0 = 10
+    match &graph.nodes.get(&consumer).unwrap().outputs[0].value {
+        Value::Decimal(v) => assert!((*v - 10.0).abs() < 1e-6, "Expected 10.0, got {}", v),
+        other => panic!("Expected Decimal, got {:?}", other),
+    }
+
+    // Reconnect: source_b → consumer input 0
+    graph.add_connection(consumer.clone(), 0, source_b.clone(), 0).await;
+    // Mark source_a dirty so it runs and would propagate if stale connection exists
+    graph.set_input(source_a.clone(), 0, Value::Decimal(999.0));
+    graph.run().await;
+
+    // consumer should use source_b (42), not source_a (999)
+    // consumer = 42 + 0 = 42
+    match &graph.nodes.get(&consumer).unwrap().outputs[0].value {
+        Value::Decimal(v) => assert!((*v - 42.0).abs() < 1e-6, "Expected 42.0, got {}", v),
+        other => panic!("Expected Decimal, got {:?}", other),
+    }
+}
