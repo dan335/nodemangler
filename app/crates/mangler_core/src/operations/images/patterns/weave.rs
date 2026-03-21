@@ -2,9 +2,10 @@
 //!
 //! Generates a weave pattern where horizontal and vertical strands alternate
 //! in a checkerboard fashion, separated by configurable gaps. Horizontal strands
-//! are rendered brighter (200) than vertical strands (128) to simulate depth.
+//! are rendered brighter (~0.784) than vertical strands (~0.502) to simulate depth.
+//! Outputs a single-channel FloatImage.
 
-use image::{ImageBuffer, DynamicImage};
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -41,11 +42,14 @@ impl OpImagePatternWeave {
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
     /// Generates a basket weave pattern image from the given inputs.
+    ///
+    /// The output is a 1-channel FloatImage where horizontal strands are ~0.784,
+    /// vertical strands are ~0.502, and gaps are 0.0.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -74,7 +78,12 @@ impl OpImagePatternWeave {
         let cell_width = width as f64 / count as f64;
         let cell_height = height as f64 / count as f64;
 
-        let mut image_buffer = ImageBuffer::new(width as u32, height as u32);
+        // 1-channel grayscale mask
+        let mut image = FloatImage::new(width as u32, height as u32, 1);
+
+        // brightness values matching the original u8 values (200/255, 128/255)
+        let horizontal_brightness: f32 = 200.0 / 255.0;
+        let vertical_brightness: f32 = 128.0 / 255.0;
 
         for py in 0..height {
             for px in 0..width {
@@ -88,24 +97,22 @@ impl OpImagePatternWeave {
                 let in_gap = x_in_cell < gap_size || x_in_cell > (1.0 - gap_size)
                     || y_in_cell < gap_size || y_in_cell > (1.0 - gap_size);
 
-                let g: u8 = if in_gap {
-                    0
+                let val: f32 = if in_gap {
+                    0.0
                 } else {
                     // checkerboard pattern: alternating horizontal and vertical strands
                     let is_horizontal = (col + row) % 2 == 0;
-                    if is_horizontal { 200 } else { 128 }
+                    if is_horizontal { horizontal_brightness } else { vertical_brightness }
                 };
 
-                image_buffer.put_pixel(px as u32, py as u32, image::Luma([g]));
+                image.put_pixel(px as u32, py as u32, &[val]);
             }
         }
-
-        let dynamic_image = DynamicImage::ImageLuma8(image_buffer);
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(image), change_id: get_id() } },
             ],
         })
     }

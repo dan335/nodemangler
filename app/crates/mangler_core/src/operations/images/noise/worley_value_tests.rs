@@ -8,7 +8,7 @@ use crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFuncti
 #[tokio::test]
 async fn test_opimagenoiseworleyvalue_settings() {
     let s = OpImageNoiseWorleyValue::settings();
-    assert_eq!(s.name, "worley value");
+    assert_eq!(s.name, "worley value noise");
     assert_eq!(OpImageNoiseWorleyValue::create_inputs().len(), 5);
     assert_eq!(OpImageNoiseWorleyValue::create_outputs().len(), 1);
 }
@@ -26,8 +26,8 @@ async fn test_opimagenoiseworleyvalue_run() {
     let result = OpImageNoiseWorleyValue::run(&mut inputs).await;
     assert!(result.is_ok(), "run failed: {:?}", result.err());
     match &result.unwrap().responses[0].value {
-        Value::DynamicImage { .. } => {}
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        Value::Image { .. } => {}
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -42,11 +42,11 @@ async fn test_opimagenoiseworleyvalue_correct_dimensions() {
     ];
     let result = OpImageNoiseWorleyValue::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 16);
             assert_eq!(data.height(), 8);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -84,12 +84,12 @@ async fn test_opimagenoiseworleyvalue_deterministic() {
     let r1 = OpImageNoiseWorleyValue::run(&mut make()).await.unwrap();
     let r2 = OpImageNoiseWorleyValue::run(&mut make()).await.unwrap();
     match (&r1.responses[0].value, &r2.responses[0].value) {
-        (Value::DynamicImage { data: d1, .. }, Value::DynamicImage { data: d2, .. }) => {
-            assert_eq!(d1.to_luma8().pixels().collect::<Vec<_>>(),
-                       d2.to_luma8().pixels().collect::<Vec<_>>(),
+        (Value::Image { data: d1, .. }, Value::Image { data: d2, .. }) => {
+            assert_eq!(d1.pixels().collect::<Vec<_>>(),
+                       d2.pixels().collect::<Vec<_>>(),
                        "worley value is not deterministic");
         }
-        _ => panic!("Expected DynamicImage"),
+        _ => panic!("Expected Image"),
     }
 }
 
@@ -108,27 +108,26 @@ async fn test_opimagenoiseworleyvalue_tiles_seamlessly() {
     ];
     let result = OpImageNoiseWorleyValue::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            let img = data.to_luma8();
+        Value::Image { data, .. } => {
             let s = size as u32;
             // Worley value can jump at cell boundaries. Count how many seam pixels are
             // close; the vast majority should match since boundaries are rare.
             let mut v_mismatches = 0u32;
             let mut h_mismatches = 0u32;
             for x in 0..s {
-                let top = img.get_pixel(x, 0)[0];
-                let bottom = img.get_pixel(x, s - 1)[0];
-                if (top as i32 - bottom as i32).unsigned_abs() > 25 { v_mismatches += 1; }
+                let top = data.get_pixel(x, 0)[0];
+                let bottom = data.get_pixel(x, s - 1)[0];
+                if (top - bottom).abs() > 0.1 { v_mismatches += 1; }
             }
             for y in 0..s {
-                let left = img.get_pixel(0, y)[0];
-                let right = img.get_pixel(s - 1, y)[0];
-                if (left as i32 - right as i32).unsigned_abs() > 25 { h_mismatches += 1; }
+                let left = data.get_pixel(0, y)[0];
+                let right = data.get_pixel(s - 1, y)[0];
+                if (left - right).abs() > 0.1 { h_mismatches += 1; }
             }
             // At most 10% of edge pixels should straddle a cell boundary
             assert!(v_mismatches < s / 10, "Too many vertical seam mismatches: {}", v_mismatches);
             assert!(h_mismatches < s / 10, "Too many horizontal seam mismatches: {}", h_mismatches);
         }
-        _ => panic!("Expected DynamicImage"),
+        _ => panic!("Expected Image"),
     }
 }

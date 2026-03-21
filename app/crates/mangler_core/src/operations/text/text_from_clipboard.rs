@@ -24,7 +24,7 @@
 //     pub static ref OUTPUT_SETTINGS: Vec<ConnectionSettings> = vec![ConnectionSettings {
 //         name: "text".to_string(),
 //         default_value: Value::String("".to_string()),
-//         valid_types: vec![ValueType::DynamicImage],
+//         valid_types: vec![ValueType::Image],
 //         ui_type: None,
 //     },];
 // }

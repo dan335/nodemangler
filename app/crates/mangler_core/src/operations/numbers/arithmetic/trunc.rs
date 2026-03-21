@@ -22,7 +22,7 @@ impl OpNumberMathTrunc {
     /// Returns the node metadata (name and description).
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "trunc".to_string(),
+            name: "truncate".to_string(),
             description: "Truncates a decimal to its integer part.".to_string(),
         }
     }

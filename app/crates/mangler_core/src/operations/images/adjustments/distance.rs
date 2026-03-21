@@ -5,9 +5,9 @@
 //! distance to the nearest boundary pixel. Output is normalized with 0.5 at
 //! the boundary, values above 0.5 for inside regions, and below 0.5 for outside.
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::value::ValueType;
-use image::DynamicImage;
 use rayon::prelude::*;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -26,8 +26,8 @@ impl OpImageAdjustmentDistance {
     /// Returns the node metadata (name and description) for the distance operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "distance".to_string(),
-            description: "Computes distance field from a binary image.".to_string(),
+            name: "distance field".to_string(),
+            description: "Computes a signed distance field from a binary (black/white) image.".to_string(),
         }
     }
 
@@ -35,7 +35,7 @@ impl OpImageAdjustmentDistance {
     /// (maximum search radius in pixels).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
             Input::new("threshold".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
             Input::new("spread".to_string(), Value::Decimal(32.0), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 256.0)) }), None),
         ]
@@ -44,7 +44,7 @@ impl OpImageAdjustmentDistance {
     /// Creates the output port: the distance field image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
@@ -55,7 +55,7 @@ impl OpImageAdjustmentDistance {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
+        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
         let threshold_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
         let spread_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
 
@@ -63,28 +63,35 @@ impl OpImageAdjustmentDistance {
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
+        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
         let Value::Decimal(threshold) = threshold_converted.unwrap() else { unreachable!() };
         let Value::Decimal(spread) = spread_converted.unwrap() else { unreachable!() };
 
-        // run node
-        let buffer = data.to_rgba32f();
-        let threshold = threshold;
+        // run node — work directly on FloatImage data
         let spread = spread.max(1.0);
-        let width = buffer.width() as i32;
-        let height = buffer.height() as i32;
-        let spread_i = spread.ceil() as i32;
-
-        // threshold the image: compute binary mask
-        let inside: Vec<bool> = buffer.pixels().map(|pixel| {
-            let lum = 0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2];
-            lum >= threshold
-        }).collect();
-
-        // Compute distance transform and output image in parallel.
-        let inside_ref = &inside;
+        let width = data.width() as i32;
+        let height = data.height() as i32;
         let w = width as usize;
         let h = height as usize;
+        let spread_i = spread.ceil() as i32;
+        let ch = data.channels() as usize;
+
+        // threshold the image: compute binary mask from luminance
+        let data_ref = &*data;
+        let inside: Vec<bool> = (0..h).flat_map(|y| {
+            (0..w).map(move |x| {
+                let px = data_ref.get_pixel(x as u32, y as u32);
+                let lum = if ch >= 3 {
+                    0.2126 * px[0] + 0.7152 * px[1] + 0.0722 * px[2]
+                } else {
+                    px[0]
+                };
+                lum >= threshold
+            })
+        }).collect();
+
+        // Compute distance transform and output image in parallel
+        let inside_ref = &inside;
 
         let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(move |y| {
             (0..w).flat_map(move |x| {
@@ -124,13 +131,13 @@ impl OpImageAdjustmentDistance {
             })
         }).collect();
 
-        let out_buffer = image::Rgba32FImage::from_raw(width as u32, height as u32, pixels).unwrap();
-        let adjusted = DynamicImage::ImageRgba32F(out_buffer);
+        let output = FloatImage::from_raw(width as u32, height as u32, 4, pixels)
+            .expect("distance field pixel count mismatch");
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse {value: Value::DynamicImage { data:Arc::new(adjusted), change_id:get_id() }},
+                OutputResponse {value: Value::Image { data:Arc::new(output), change_id:get_id() }},
             ],
         })
     }

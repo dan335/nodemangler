@@ -6,7 +6,7 @@ use crate::value::Value;
 #[tokio::test]
 async fn test_gaussian_settings() {
     let s = OpImageNoiseGaussian::settings();
-    assert_eq!(s.name, "gaussian noise");
+    assert_eq!(s.name, "white noise");
     assert_eq!(OpImageNoiseGaussian::create_inputs().len(), 4);
     assert_eq!(OpImageNoiseGaussian::create_outputs().len(), 1);
 }
@@ -22,11 +22,11 @@ async fn test_gaussian_run() {
     let result = OpImageNoiseGaussian::run(&mut inputs).await;
     assert!(result.is_ok(), "run failed: {:?}", result.err());
     match &result.unwrap().responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 16);
             assert_eq!(data.height(), 16);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -41,14 +41,12 @@ async fn test_gaussian_different_seeds_differ() {
     let r1 = OpImageNoiseGaussian::run(&mut make_inputs(1)).await.unwrap();
     let r2 = OpImageNoiseGaussian::run(&mut make_inputs(50)).await.unwrap();
     match (&r1.responses[0].value, &r2.responses[0].value) {
-        (Value::DynamicImage { data: d1, .. }, Value::DynamicImage { data: d2, .. }) => {
-            let buf1 = d1.to_luma8();
-            let buf2 = d2.to_luma8();
-            let p1: Vec<_> = buf1.pixels().collect();
-            let p2: Vec<_> = buf2.pixels().collect();
+        (Value::Image { data: d1, .. }, Value::Image { data: d2, .. }) => {
+            let p1: Vec<_> = d1.pixels().collect();
+            let p2: Vec<_> = d2.pixels().collect();
             assert_ne!(p1, p2, "different seeds should produce different images");
         }
-        _ => panic!("Expected DynamicImage"),
+        _ => panic!("Expected Image"),
     }
 }
 
@@ -63,7 +61,7 @@ async fn test_gaussian_tiles_seamlessly() {
     ];
     let result = OpImageNoiseGaussian::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             // Generate a 32x32 image with same 16-pixel period
             let mut inputs2 = vec![
                 Input::new("seed".to_string(), Value::Integer(42), None, None),
@@ -72,18 +70,16 @@ async fn test_gaussian_tiles_seamlessly() {
                 Input::new("scale".to_string(), Value::Integer(16), None, None),
             ];
             let result2 = OpImageNoiseGaussian::run(&mut inputs2).await.unwrap();
-            if let Value::DynamicImage { data: d2, .. } = &result2.responses[0].value {
-                let buf1 = data.to_luma8();
-                let buf2 = d2.to_luma8();
+            if let Value::Image { data: d2, .. } = &result2.responses[0].value {
                 // The top-left 16x16 of the 32x32 image should match the 16x16 image
                 for y in 0..16u32 {
                     for x in 0..16u32 {
-                        assert_eq!(buf1.get_pixel(x, y), buf2.get_pixel(x, y),
+                        assert_eq!(data.get_pixel(x, y), d2.get_pixel(x, y),
                             "pixel ({}, {}) should match", x, y);
                     }
                 }
             }
         }
-        _ => panic!("Expected DynamicImage"),
+        _ => panic!("Expected Image"),
     }
 }

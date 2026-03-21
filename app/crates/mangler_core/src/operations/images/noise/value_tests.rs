@@ -1,26 +1,7 @@
 use super::*;
 
-use crate::get_id;
 use crate::input::Input;
 use crate::value::Value;
-use image::{DynamicImage, RgbaImage};
-use std::sync::Arc;
-
-fn test_image(w: u32, h: u32) -> Arc<DynamicImage> {
-    let mut img = RgbaImage::new(w, h);
-    for y in 0..h {
-        for x in 0..w {
-            let r = ((x as f32 / w as f32) * 255.0) as u8;
-            let g = ((y as f32 / h as f32) * 255.0) as u8;
-            img.put_pixel(x, y, image::Rgba([r, g, 128, 255]));
-        }
-    }
-    Arc::new(DynamicImage::ImageRgba8(img))
-}
-
-fn image_input(w: u32, h: u32) -> Value {
-    Value::DynamicImage { data: test_image(w, h), change_id: get_id() }
-}
 
 
 #[tokio::test]
@@ -44,8 +25,8 @@ async fn test_opimagenoisevalue_run() {
     let result = OpImageNoiseValue::run(&mut inputs).await;
     assert!(result.is_ok(), "run failed: {:?}", result.err());
     match &result.unwrap().responses[0].value {
-        Value::DynamicImage { .. } => {}
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        Value::Image { .. } => {}
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -60,11 +41,11 @@ async fn test_opimagenoisevalue_correct_dimensions() {
     ];
     let result = OpImageNoiseValue::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 16);
             assert_eq!(data.height(), 8);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -80,13 +61,11 @@ async fn test_opimagenoisevalue_different_seeds_differ() {
     let r1 = OpImageNoiseValue::run(&mut make_inputs(1)).await.unwrap();
     let r2 = OpImageNoiseValue::run(&mut make_inputs(50)).await.unwrap();
     match (&r1.responses[0].value, &r2.responses[0].value) {
-        (Value::DynamicImage { data: d1, .. }, Value::DynamicImage { data: d2, .. }) => {
-            let buf1 = d1.to_luma8();
-            let buf2 = d2.to_luma8();
-            let p1: Vec<_> = buf1.pixels().collect();
-            let p2: Vec<_> = buf2.pixels().collect();
+        (Value::Image { data: d1, .. }, Value::Image { data: d2, .. }) => {
+            let p1: Vec<_> = d1.pixels().collect();
+            let p2: Vec<_> = d2.pixels().collect();
             assert_ne!(p1, p2, "different seeds should produce different images");
         }
-        _ => panic!("Expected DynamicImage"),
+        _ => panic!("Expected Image"),
     }
 }

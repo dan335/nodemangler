@@ -4,9 +4,9 @@
 //! Uses integer hashing of pixel coordinates with periodic wrapping, so the
 //! pattern repeats every `scale` pixels in each axis for seamless tiling.
 
-use image::{ImageBuffer, DynamicImage};
 use rayon::prelude::*;
 use crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb;
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -38,7 +38,7 @@ impl OpImageNoiseGaussian {
     /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "gaussian noise".to_string(),
+            name: "white noise".to_string(),
             description: "Creates a seamlessly tiling image of per-pixel white noise.".to_string(),
         }
     }
@@ -56,7 +56,7 @@ impl OpImageNoiseGaussian {
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
@@ -90,23 +90,27 @@ impl OpImageNoiseGaussian {
         let h = height as usize;
 
         // Each pixel is hashed independently; wrap coordinates at `period` for tiling
-        let pixels: Vec<u16> = (0..h).into_par_iter().flat_map_iter(|y| {
+        let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(|y| {
             (0..w).map(move |x| {
                 let wx = (x as u32) % period;
                 let wy = (y as u32) % period;
                 let noise = pixel_hash(wx, wy, seed_u32);
-                let non_linear = linear_to_nonlinear_srgb(noise);
-                (non_linear * 65535.0) as u16
+                linear_to_nonlinear_srgb(noise)
             })
         }).collect();
 
-        let image_buffer = ImageBuffer::from_raw(width as u32, height as u32, pixels).unwrap();
-        let dynamic_image = DynamicImage::ImageLuma16(image_buffer);
+        // Build a single-channel FloatImage from the computed pixel values
+        let mut float_image = FloatImage::new(width as u32, height as u32, 1);
+        for (i, &val) in pixels.iter().enumerate() {
+            let x = (i % w) as u32;
+            let y = (i / w) as u32;
+            float_image.put_pixel(x, y, &[val]);
+        }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(float_image), change_id: get_id() } },
             ],
         })
     }

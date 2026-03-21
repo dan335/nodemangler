@@ -4,8 +4,8 @@
 //! producing sharp ridge-like formations that tile seamlessly. Useful for generating
 //! craggy mountainous terrain or marble-like textures.
 
-use image::{ImageBuffer, DynamicImage};
 use rayon::prelude::*;
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -84,7 +84,7 @@ impl OpImageNoiseRidgedMultifractalNoise {
     /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "ridged multifractal".to_string(),
+            name: "ridged multifractal noise".to_string(),
             description: "Noise function that outputs seamlessly tiling ridged-multifractal noise.
 
             This noise function, heavily based on the fBm-noise function, generates ridged-multifractal noise. Ridged-multifractal noise is generated in much the same way as fBm noise, except the output of each octave is modified by an absolute-value function. Modifying the octave values in this way produces ridge-like formations.
@@ -112,7 +112,7 @@ impl OpImageNoiseRidgedMultifractalNoise {
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
         ]
     }
 
@@ -158,23 +158,28 @@ impl OpImageNoiseRidgedMultifractalNoise {
         let w = width as usize;
         let h = height as usize;
         // Compute pixels in parallel using rayon, iterating rows then columns for correct row-major order.
-        let pixels: Vec<u16> = (0..h).into_par_iter().flat_map_iter(move |y| {
+        let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(move |y| {
             (0..w).map(move |x| {
                 // Lattice-periodic ridged multifractal: each octave uses an integer period
                 let u = x as f64 / w as f64;
                 let v = y as f64 / h as f64;
                 let noise = periodic_ridged_multi(u, v, oct, freq, lacunarity as f64, persistence as f64, attenuation as f64, perm_ref) as f32 * 0.5 + 0.5;
-                let non_linear = crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb(noise);
-                (non_linear * 65535.0) as u16
+                crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb(noise)
             })
         }).collect();
-        let image_buffer = ImageBuffer::from_raw(width as u32, height as u32, pixels).unwrap();
-        let dynamic_image = DynamicImage::ImageLuma16(image_buffer);
+
+        // Build a single-channel FloatImage from the computed pixel values
+        let mut float_image = FloatImage::new(width as u32, height as u32, 1);
+        for (i, &val) in pixels.iter().enumerate() {
+            let x = (i % w) as u32;
+            let y = (i / w) as u32;
+            float_image.put_pixel(x, y, &[val]);
+        }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(float_image), change_id: get_id() } },
             ],
         })
     }

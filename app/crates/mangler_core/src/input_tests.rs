@@ -139,10 +139,10 @@ fn test_accepts_any_type_default_false() {
 
 #[test]
 fn test_accepts_any_type_allows_incompatible_connection() {
-    // Normally a Text input can't accept a DynamicImage output
+    // Normally a Text input can't accept an Image output
     let mut input = Input::new("x".to_string(), Value::Text(String::new()), None, None);
-    let output = Output::new("out".to_string(), Value::DynamicImage {
-        data: std::sync::Arc::new(image::DynamicImage::ImageRgba8(image::RgbaImage::new(1, 1))),
+    let output = Output::new("out".to_string(), Value::Image {
+        data: std::sync::Arc::new(crate::float_image::FloatImage::new(1, 1, 4)),
         change_id: crate::get_id(),
     }, None);
     assert!(!input.is_valid_connection(&output));

@@ -1,23 +1,27 @@
+//! Tests for the grayscale conversion operation.
+
 use super::*;
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::Input;
 use crate::value::Value;
-use image::DynamicImage;
 use std::sync::Arc;
 
-fn test_image(w: u32, h: u32) -> Arc<DynamicImage> {
-    let mut imgbuf = image::RgbaImage::new(w, h);
-    for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-        let r = (x * 255 / w.max(1)) as u8;
-        let g = (y * 255 / h.max(1)) as u8;
-        *pixel = image::Rgba([r, g, 128, 255]);
+fn test_image(w: u32, h: u32) -> Arc<FloatImage> {
+    let mut img = FloatImage::new(w, h, 4);
+    for y in 0..h {
+        for x in 0..w {
+            let r = x as f32 / w.max(1) as f32;
+            let g = y as f32 / h.max(1) as f32;
+            img.put_pixel(x, y, &[r, g, 0.5, 1.0]);
+        }
     }
-    Arc::new(DynamicImage::ImageRgba8(imgbuf))
+    Arc::new(img)
 }
 
 fn image_input(w: u32, h: u32) -> Value {
-    Value::DynamicImage { data: test_image(w, h), change_id: get_id() }
+    Value::Image { data: test_image(w, h), change_id: get_id() }
 }
 
 #[tokio::test]
@@ -25,8 +29,8 @@ async fn test_grayscale() {
     let mut inputs = vec![Input::new("image".to_string(), image_input(4, 4), None, None)];
     let result = OpImageAdjustmentGrayscale::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { .. } => {}
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        Value::Image { .. } => {}
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -50,27 +54,23 @@ async fn test_grayscale_preserves_dimensions() {
     let mut inputs = vec![Input::new("image".to_string(), image_input(16, 8), None, None)];
     let result = OpImageAdjustmentGrayscale::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 16);
             assert_eq!(data.height(), 8);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
 #[tokio::test]
-async fn test_grayscale_equal_channels() {
-    // After grayscale, R == G == B for all pixels
+async fn test_grayscale_produces_single_channel() {
+    // After grayscale, output should be 1-channel
     let mut inputs = vec![Input::new("image".to_string(), image_input(8, 8), None, None)];
     let result = OpImageAdjustmentGrayscale::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            let buf = data.to_rgba8();
-            for px in buf.pixels() {
-                assert_eq!(px[0], px[1], "R != G after grayscale");
-                assert_eq!(px[1], px[2], "G != B after grayscale");
-            }
+        Value::Image { data, .. } => {
+            assert_eq!(data.channels(), 1, "grayscale output should be 1 channel");
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }

@@ -30,7 +30,7 @@ impl OpColorSampleMostCommonColors {
     /// Creates the input definitions: an image and quantization precision for hue, saturation, and lightness.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::DynamicImage{data:crate::operations::default_image(), change_id:crate::get_id()}, None, None),
+            Input::new("image".to_string(), Value::Image{data:crate::operations::default_image(), change_id:crate::get_id()}, None, None),
             Input::new("hue quantization".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (1.0, 100.0), step_by: Some(1.0), clamp_to_range: true}), None),
             Input::new("saturation quantization".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (1.0, 100.0), step_by: Some(1.0), clamp_to_range: true}), None),
             Input::new("lightness quantization".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (1.0, 100.0), step_by: Some(1.0), clamp_to_range: true}), None),
@@ -54,7 +54,7 @@ impl OpColorSampleMostCommonColors {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
+        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
         let hue_precision_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
         let saturation_precision_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
         let lightness_precision_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
@@ -64,7 +64,7 @@ impl OpColorSampleMostCommonColors {
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Value::DynamicImage{data:image, change_id:_} = image_converted.unwrap() else { unreachable!() };
+        let Value::Image{data:image, change_id:_} = image_converted.unwrap() else { unreachable!() };
         let Value::Decimal(hue_precision) = hue_precision_converted.unwrap() else { unreachable!() };
         let Value::Decimal(saturation_precision) = saturation_precision_converted.unwrap() else { unreachable!() };
         let Value::Decimal(lightness_precision) = lightness_precision_converted.unwrap() else { unreachable!() };
@@ -73,8 +73,15 @@ impl OpColorSampleMostCommonColors {
         // Higher precision values produce more buckets (finer color distinction).
         let mut color_counts: HashMap<[i32; 3], u32> = HashMap::new();
 
-        for rgb in image::Rgb32FImage::pixels(&image.to_rgb32f()) {
-            let color = Color::from_srgb_float(rgb[0], rgb[1], rgb[2], 1.0);
+        let ch = image.channels() as usize;
+        for pixel in image.pixels() {
+            // Extract RGB from any channel count
+            let (r, g, b) = if ch >= 3 {
+                (pixel[0], pixel[1], pixel[2])
+            } else {
+                (pixel[0], pixel[0], pixel[0])
+            };
+            let color = Color::from_srgb_float(r, g, b, 1.0);
             let hsl = color.to_hsl();
             // Round each channel to its quantized bucket index
             let h = ((hsl.0 / 360.0) * hue_precision).round() as i32;

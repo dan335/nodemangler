@@ -1,6 +1,6 @@
 use eframe::egui::{self};
 use epaint::{TextureHandle, Pos2, CornerRadius, Rect, Stroke, Color32};
-use image::DynamicImage;
+use mangler_core::float_image::FloatImage;
 
 use crate::{view_to_graph_space, graph_to_view_space, themes::theme::Theme, view_to_graph_space_pos2, graph_to_view_space_pos2};
 
@@ -30,7 +30,8 @@ impl ImageViewer {
         }
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, node_id: String, output_index: usize, change_id: String, dynamic_image: &DynamicImage, cursor_position: Pos2, theme: &Theme) {
+    /// Renders the image viewer panel with pan/zoom controls.
+    pub fn show(&mut self, ui: &mut egui::Ui, node_id: String, output_index: usize, change_id: String, float_image: &FloatImage, cursor_position: Pos2, theme: &Theme) {
         
         let view_rect = Rect::from_min_size(
             ui.cursor().left_top(),
@@ -48,7 +49,7 @@ impl ImageViewer {
 
         self.draw_background_grid(ui, view_rect, self.position + view_rect.left_top().to_vec2(), theme);
 
-        self.draw_image(node_id, output_index, change_id, dynamic_image, ui, view_rect);
+        self.draw_image(node_id, output_index, change_id, float_image, ui, view_rect);
 
         let view_rect_response = ui.allocate_rect(view_rect, egui::Sense::drag().union(egui::Sense::hover()));
 
@@ -61,6 +62,11 @@ impl ImageViewer {
 
         let cursor_primary_down: bool = ui.ctx().input(|i| i.pointer.primary_down());
 
+
+        // Fit image to view on F key
+        if ui.ctx().input(|i| i.key_pressed(egui::Key::F)) {
+            self.fit_to_view(view_rect, float_image.width() as f32, float_image.height() as f32);
+        }
 
         if ui.rect_contains_pointer(view_rect) {
             ui.ctx().input(|input_state| {
@@ -133,7 +139,8 @@ impl ImageViewer {
         }
     }
 
-    fn draw_image(&mut self, node_id: String, output_index: usize, change_id: String, dynamic_image: &DynamicImage, ui: &mut egui::Ui, view_rect: Rect) {
+    /// Draws the image on the canvas, uploading a new GPU texture when the image changes.
+    fn draw_image(&mut self, node_id: String, output_index: usize, change_id: String, float_image: &FloatImage, ui: &mut egui::Ui, view_rect: Rect) {
         let needs_update = match &self.image_id_index {
             Some((image_node_id, image_output_index, image_change_id)) => {
                 image_node_id != &node_id || *image_output_index != output_index || image_change_id != &change_id
@@ -142,7 +149,7 @@ impl ImageViewer {
         };
 
         if needs_update {
-            let texture_handle = self.create_egui_image(ui, dynamic_image, node_id.clone());
+            let texture_handle = self.create_egui_image(ui, float_image, node_id.clone());
             self.image_texture_handle = Some(texture_handle);
             self.image_id_index = Some((node_id.clone(), output_index, change_id.clone()));
         }
@@ -150,12 +157,12 @@ impl ImageViewer {
         if let Some(texture_handle) = &self.image_texture_handle {
             let rect = self.get_rect(
                 Pos2::new(
-                    view_rect.left() + dynamic_image.width() as f32 * 0.5,
-                    view_rect.top() + dynamic_image.height() as f32 * 0.5
+                    view_rect.left() + float_image.width() as f32 * 0.5,
+                    view_rect.top() + float_image.height() as f32 * 0.5
                 ),
                 self.zoom,
-                dynamic_image.width() as f32,
-                dynamic_image.height() as f32
+                float_image.width() as f32,
+                float_image.height() as f32
             );
             let uv = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0));
             ui.painter().image(texture_handle.id(), rect, uv, Color32::WHITE);
@@ -187,6 +194,24 @@ impl ImageViewer {
         }
     }
 
+    /// Resets position and zoom so the entire image fills the view.
+    fn fit_to_view(&mut self, view_rect: Rect, img_width: f32, img_height: f32) {
+        let view_width = view_rect.width();
+        let view_height = view_rect.height();
+
+        // Larger zoom = smaller on screen (graph_to_view_space divides by zoom),
+        // so pick the axis where the image is most oversized relative to the view.
+        let zoom = (img_width / view_width).max(img_height / view_height).max(ZOOM_BOUNDS[0]).min(ZOOM_BOUNDS[1]);
+
+        // Center the image: screen center = (graph_position + position) / zoom
+        // graph_position used in draw_image = (view_rect.left() + w/2, view_rect.top() + h/2)
+        let center_x = view_rect.center().x * zoom - view_rect.left() - img_width / 2.0;
+        let center_y = view_rect.center().y * zoom - view_rect.top() - img_height / 2.0;
+
+        self.zoom = zoom;
+        self.position = Pos2::new(center_x, center_y);
+    }
+
     fn start_dragging(&mut self) {
         self.is_dragging = true;
     }
@@ -211,8 +236,10 @@ impl ImageViewer {
     }
 
 
-    fn create_egui_image(&self, ui: &mut egui::Ui, dynamic_image: &DynamicImage, name: String) -> TextureHandle {
-        let rgba_image = dynamic_image.to_rgba8();
+    /// Converts a FloatImage to an egui texture for GPU display.
+    fn create_egui_image(&self, ui: &mut egui::Ui, float_image: &FloatImage, name: String) -> TextureHandle {
+        // Convert the internal f32 buffer to an 8-bit RGBA image for GPU upload
+        let rgba_image = float_image.to_rgba8();
 
         let pixels = rgba_image.as_flat_samples();
 

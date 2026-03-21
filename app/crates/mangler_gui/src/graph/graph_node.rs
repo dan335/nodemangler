@@ -317,7 +317,30 @@ impl GraphNode {
             self.outputs[output_index].connection = Some(vec![(input_id, input_index)]);
         }
     }
+
+    /// Remove a specific downstream connection from an output.
+    /// Identifies the connection by the target node ID and input index.
+    /// Sets the connection field to `None` if no connections remain.
+    pub fn clear_output_connection(
+        &mut self,
+        output_index: usize,
+        input_node_id: &str,
+        input_index: usize,
+    ) {
+        if let Some(c) = self.outputs.get_mut(output_index) {
+            if let Some(d) = c.connection.as_mut() {
+                d.retain(|(id, idx)| !(id == input_node_id && *idx == input_index));
+                if d.is_empty() {
+                    c.connection = None;
+                }
+            }
+        }
+    }
 }
+
+#[cfg(test)]
+#[path = "graph_node_tests.rs"]
+mod tests;
 
 #[derive(Debug)]
 pub struct GraphNodeResponse {

@@ -21,7 +21,7 @@ impl OpLogicCompareLessEqual {
     /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "less equal".to_string(),
+            name: "less or equal".to_string(),
             description: "Returns true if a is less than or equal to b.".to_string(),
         }
     }

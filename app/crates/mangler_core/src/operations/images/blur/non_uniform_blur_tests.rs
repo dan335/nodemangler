@@ -1,23 +1,27 @@
 use super::*;
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::Input;
 use crate::value::Value;
-use image::DynamicImage;
 use std::sync::Arc;
 
-fn test_image(w: u32, h: u32) -> Arc<DynamicImage> {
-    let mut imgbuf = image::RgbaImage::new(w, h);
-    for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-        let r = (x * 255 / w.max(1)) as u8;
-        let g = (y * 255 / h.max(1)) as u8;
-        *pixel = image::Rgba([r, g, 128, 255]);
+/// Creates a gradient test image as a 4-channel FloatImage.
+fn test_image(w: u32, h: u32) -> Arc<FloatImage> {
+    let mut img = FloatImage::new(w, h, 4);
+    for y in 0..h {
+        for x in 0..w {
+            let r = x as f32 / w.max(1) as f32;
+            let g = y as f32 / h.max(1) as f32;
+            img.put_pixel(x, y, &[r, g, 0.5, 1.0]);
+        }
     }
-    Arc::new(DynamicImage::ImageRgba8(imgbuf))
+    Arc::new(img)
 }
 
+/// Wraps a test image as a `Value::Image`.
 fn image_input(w: u32, h: u32) -> Value {
-    Value::DynamicImage { data: test_image(w, h), change_id: get_id() }
+    Value::Image { data: test_image(w, h), change_id: get_id() }
 }
 
 #[tokio::test]
@@ -30,16 +34,11 @@ async fn test_non_uniform_blur_settings() {
 
 #[tokio::test]
 async fn test_non_uniform_blur_1x1() {
-    let mut imgbuf = image::RgbaImage::new(1, 1);
-    imgbuf.put_pixel(0, 0, image::Rgba([200u8, 100, 50, 255]));
-    let img = Arc::new(DynamicImage::ImageRgba8(imgbuf));
-    let blur_map = {
-        let bm = image::RgbaImage::from_pixel(1, 1, image::Rgba([128u8, 128, 128, 255]));
-        Arc::new(DynamicImage::ImageRgba8(bm))
-    };
+    let img = Arc::new(FloatImage::from_pixel(1, 1, 4, &[0.78, 0.39, 0.20, 1.0]));
+    let blur_map = Arc::new(FloatImage::from_pixel(1, 1, 4, &[0.5, 0.5, 0.5, 1.0]));
     let mut inputs = vec![
-        Input::new("image".to_string(), Value::DynamicImage { data: img, change_id: get_id() }, None, None),
-        Input::new("blur map".to_string(), Value::DynamicImage { data: blur_map, change_id: get_id() }, None, None),
+        Input::new("image".to_string(), Value::Image { data: img, change_id: get_id() }, None, None),
+        Input::new("blur map".to_string(), Value::Image { data: blur_map, change_id: get_id() }, None, None),
         Input::new("max intensity".to_string(), Value::Decimal(5.0), None, None),
         Input::new("samples".to_string(), Value::Integer(4), None, None),
     ];
@@ -49,28 +48,22 @@ async fn test_non_uniform_blur_1x1() {
 
 #[tokio::test]
 async fn test_non_uniform_blur_zero_intensity() {
-    // With a black blur map (zero intensity per-pixel), output should match input
-    let uniform = {
-        let img = image::RgbaImage::from_pixel(8, 8, image::Rgba([100u8, 100, 100, 255]));
-        Arc::new(DynamicImage::ImageRgba8(img))
-    };
-    let black_map = {
-        let bm = image::RgbaImage::from_pixel(8, 8, image::Rgba([0u8, 0, 0, 255]));
-        Arc::new(DynamicImage::ImageRgba8(bm))
-    };
+    // With a black blur map (zero first channel), radius is 0 -> output matches input
+    let uniform = Arc::new(FloatImage::from_pixel(8, 8, 4, &[0.39, 0.39, 0.39, 1.0]));
+    let black_map = Arc::new(FloatImage::from_pixel(8, 8, 4, &[0.0, 0.0, 0.0, 1.0]));
     let mut inputs = vec![
-        Input::new("image".to_string(), Value::DynamicImage { data: uniform, change_id: get_id() }, None, None),
-        Input::new("blur map".to_string(), Value::DynamicImage { data: black_map, change_id: get_id() }, None, None),
+        Input::new("image".to_string(), Value::Image { data: uniform, change_id: get_id() }, None, None),
+        Input::new("blur map".to_string(), Value::Image { data: black_map, change_id: get_id() }, None, None),
         Input::new("max intensity".to_string(), Value::Decimal(20.0), None, None),
         Input::new("samples".to_string(), Value::Integer(8), None, None),
     ];
     let result = OpImageAdjustmentNonUniformBlur::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            let p = data.to_rgba8().get_pixel(4, 4).0;
-            assert!((p[0] as i32 - 100).abs() <= 2, "zero-blur map: expected ~100, got {}", p[0]);
+        Value::Image { data, .. } => {
+            let px = data.get_pixel(4, 4);
+            assert!((px[0] - 0.39).abs() < 0.02, "zero-blur map: expected ~0.39, got {}", px[0]);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -84,10 +77,10 @@ async fn test_non_uniform_blur_basic() {
     ];
     let result = OpImageAdjustmentNonUniformBlur::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 8);
             assert_eq!(data.height(), 8);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }

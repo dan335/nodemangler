@@ -1,12 +1,11 @@
 //! Channel split operation.
 //!
-//! Decomposes an RGBA image into four separate grayscale images, one per
-//! channel (red, green, blue, alpha). Each output image stores the channel
-//! value replicated across R, G, and B with full opacity.
+//! Decomposes an image into four separate 1-channel FloatImages, one per
+//! channel (red, green, blue, alpha). Missing channels default to 0 (or 1 for alpha).
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::value::ValueType;
-use image::RgbaImage;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
@@ -17,81 +16,69 @@ use std::sync::Arc;
 use std::time::Instant;
 
 /// Operation that splits an image into its individual R, G, B, and A channels.
-///
-/// Each output is a grayscale image where the channel value is replicated
-/// across all three RGB components (e.g., the red output has `[r, r, r, 255]`
-/// per pixel).
+/// Each output is a 1-channel FloatImage.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageChannelSplit {}
 
 impl OpImageChannelSplit {
-    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
-        NodeSettings {
-            name: "channel split".to_string(),
-            description: "Splits an image into R, G, B, A channels.".to_string(),
-        }
+        NodeSettings { name: "channel split".to_string(), description: "Splits an image into R, G, B, A channels.".to_string() }
     }
 
-    /// Creates the input definitions: a single RGBA image to split.
     pub fn create_inputs() -> Vec<Input> {
-        vec![
-            Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
-        ]
+        vec![Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)]
     }
 
-    /// Creates the output definitions: four grayscale images (red, green, blue, alpha).
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("red".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
-            Output::new("green".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
-            Output::new("blue".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
-            Output::new("alpha".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
+            Output::new("red".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("green".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("blue".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("alpha".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
-    /// Executes the operation: splits the input image into four channel images.
-    ///
-    /// Each channel value is replicated across RGB in the output to produce
-    /// a viewable grayscale representation of that channel.
+    /// Splits the input image into four 1-channel images (R, G, B, A).
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
-
-        // return if error
+        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
-        // get values
-        let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
+        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
 
-        // run node
-        let rgba = data.to_rgba8();
-        let (width, height) = rgba.dimensions();
+        let (width, height) = data.dimensions();
+        let ch = data.channels() as usize;
 
-        let mut red_buf = RgbaImage::new(width, height);
-        let mut green_buf = RgbaImage::new(width, height);
-        let mut blue_buf = RgbaImage::new(width, height);
-        let mut alpha_buf = RgbaImage::new(width, height);
+        let mut red_buf = FloatImage::new(width, height, 1);
+        let mut green_buf = FloatImage::new(width, height, 1);
+        let mut blue_buf = FloatImage::new(width, height, 1);
+        let mut alpha_buf = FloatImage::new(width, height, 1);
 
-        // Write each channel value to all three RGB components of its output buffer
-        for (x, y, pixel) in rgba.enumerate_pixels() {
-            let [r, g, b, a] = pixel.0;
-            red_buf.put_pixel(x, y, image::Rgba([r, r, r, 255]));
-            green_buf.put_pixel(x, y, image::Rgba([g, g, g, 255]));
-            blue_buf.put_pixel(x, y, image::Rgba([b, b, b, 255]));
-            alpha_buf.put_pixel(x, y, image::Rgba([a, a, a, 255]));
+        // Extract each channel, defaulting missing channels
+        for y in 0..height {
+            for x in 0..width {
+                let px = data.get_pixel(x, y);
+                let r = px[0];
+                let g = if ch >= 2 { px[1] } else { 0.0 };
+                let b = if ch >= 3 { px[2] } else { 0.0 };
+                let a = if ch == 2 { px[1] } else if ch == 4 { px[3] } else { 1.0 };
+
+                red_buf.put_pixel(x, y, &[r]);
+                green_buf.put_pixel(x, y, &[g]);
+                blue_buf.put_pixel(x, y, &[b]);
+                alpha_buf.put_pixel(x, y, &[a]);
+            }
         }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(image::DynamicImage::ImageRgba8(red_buf)), change_id: get_id() } },
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(image::DynamicImage::ImageRgba8(green_buf)), change_id: get_id() } },
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(image::DynamicImage::ImageRgba8(blue_buf)), change_id: get_id() } },
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(image::DynamicImage::ImageRgba8(alpha_buf)), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(red_buf), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(green_buf), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(blue_buf), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(alpha_buf), change_id: get_id() } },
             ],
         })
     }

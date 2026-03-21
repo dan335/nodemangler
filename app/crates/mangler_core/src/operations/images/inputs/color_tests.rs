@@ -13,11 +13,11 @@ async fn test_from_color() {
     let result = OpImageInputColor::run(&mut inputs).await.unwrap();
     assert_eq!(result.responses.len(), 4);
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 8);
             assert_eq!(data.height(), 8);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -39,7 +39,7 @@ async fn test_from_color_pixel_values() {
     ];
     let result = OpImageInputColor::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             let rgba = data.to_rgba8();
             // Every pixel should match (within u8 rounding of sRGB)
             for y in 0..4 {
@@ -50,7 +50,7 @@ async fn test_from_color_pixel_values() {
                 }
             }
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 

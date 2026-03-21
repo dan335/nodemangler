@@ -1490,14 +1490,10 @@ fn sample_coord_invalid_format() {
 /// compute_image_stats returns correct results for a uniform image.
 #[test]
 fn image_stats_uniform() {
-    use image::{DynamicImage, RgbaImage, Rgba};
-    // Create a 2x2 uniform red image.
-    let mut img = RgbaImage::new(2, 2);
-    for px in img.pixels_mut() {
-        *px = Rgba([255, 0, 0, 255]);
-    }
-    let dyn_img = DynamicImage::ImageRgba8(img);
-    let stats = compute_image_stats(&dyn_img);
+    use mangler_core::float_image::FloatImage;
+    // Create a 2x2 uniform red image (RGBA f32).
+    let img = FloatImage::from_pixel(2, 2, 4, &[1.0, 0.0, 0.0, 1.0]);
+    let stats = compute_image_stats(&img);
 
     // Red channel should be 1.0 everywhere.
     let r = &stats[0].1;
@@ -1515,44 +1511,50 @@ fn image_stats_uniform() {
 /// has_transparency returns false for fully opaque image.
 #[test]
 fn transparency_opaque() {
-    use image::{DynamicImage, RgbaImage, Rgba};
-    let mut img = RgbaImage::new(2, 2);
-    for px in img.pixels_mut() { *px = Rgba([128, 128, 128, 255]); }
-    assert!(!has_transparency(&DynamicImage::ImageRgba8(img)));
+    use mangler_core::float_image::FloatImage;
+    // 2x2 opaque gray image
+    let img = FloatImage::from_pixel(2, 2, 4, &[0.5, 0.5, 0.5, 1.0]);
+    assert!(!has_transparency(&img));
 }
 
-/// has_transparency returns true when any pixel has alpha < 255.
+/// has_transparency returns true when any pixel has alpha < 1.0.
 #[test]
 fn transparency_with_alpha() {
-    use image::{DynamicImage, RgbaImage, Rgba};
-    let mut img = RgbaImage::new(2, 2);
-    for px in img.pixels_mut() { *px = Rgba([128, 128, 128, 255]); }
-    img.put_pixel(0, 0, Rgba([0, 0, 0, 128]));
-    assert!(has_transparency(&DynamicImage::ImageRgba8(img)));
+    use mangler_core::float_image::FloatImage;
+    // Start with opaque gray, then set one pixel to semi-transparent
+    let mut img = FloatImage::from_pixel(2, 2, 4, &[0.5, 0.5, 0.5, 1.0]);
+    let px = img.get_pixel_mut(0, 0);
+    px[0] = 0.0; px[1] = 0.0; px[2] = 0.0; px[3] = 0.5;
+    assert!(has_transparency(&img));
 }
 
 /// count_unique_colors returns the correct count.
 #[test]
 fn unique_colors_count() {
-    use image::{DynamicImage, RgbaImage, Rgba};
-    let mut img = RgbaImage::new(2, 2);
-    img.put_pixel(0, 0, Rgba([255, 0, 0, 255]));
-    img.put_pixel(1, 0, Rgba([0, 255, 0, 255]));
-    img.put_pixel(0, 1, Rgba([0, 0, 255, 255]));
-    img.put_pixel(1, 1, Rgba([255, 0, 0, 255])); // duplicate of (0,0)
-    assert_eq!(count_unique_colors(&DynamicImage::ImageRgba8(img)), 3);
+    use mangler_core::float_image::FloatImage;
+    let mut img = FloatImage::new(2, 2, 4);
+    // Set 3 unique colors (pixel at (1,1) duplicates (0,0))
+    let px = img.get_pixel_mut(0, 0);
+    px[0] = 1.0; px[1] = 0.0; px[2] = 0.0; px[3] = 1.0; // red
+    let px = img.get_pixel_mut(1, 0);
+    px[0] = 0.0; px[1] = 1.0; px[2] = 0.0; px[3] = 1.0; // green
+    let px = img.get_pixel_mut(0, 1);
+    px[0] = 0.0; px[1] = 0.0; px[2] = 1.0; px[3] = 1.0; // blue
+    let px = img.get_pixel_mut(1, 1);
+    px[0] = 1.0; px[1] = 0.0; px[2] = 0.0; px[3] = 1.0; // red (duplicate)
+    assert_eq!(count_unique_colors(&img), 3);
 }
 
 /// sample_pixel returns correct RGBA values.
 #[test]
 fn sample_pixel_values() {
-    use image::{DynamicImage, RgbaImage, Rgba};
-    let mut img = RgbaImage::new(2, 2);
-    img.put_pixel(1, 0, Rgba([255, 128, 0, 255]));
-    let dyn_img = DynamicImage::ImageRgba8(img);
-    let px = sample_pixel(&dyn_img, 1, 0);
-    assert!((px[0] - 1.0).abs() < 0.01); // r = 255 -> ~1.0
-    assert!((px[1] - 0.502).abs() < 0.02); // g = 128 -> ~0.502
-    assert!(px[2] < 0.01); // b = 0
-    assert!((px[3] - 1.0).abs() < 0.01); // a = 255 -> 1.0
+    use mangler_core::float_image::FloatImage;
+    let mut img = FloatImage::new(2, 2, 4);
+    let px = img.get_pixel_mut(1, 0);
+    px[0] = 1.0; px[1] = 0.502; px[2] = 0.0; px[3] = 1.0;
+    let sampled = sample_pixel(&img, 1, 0);
+    assert!((sampled[0] - 1.0).abs() < 0.01);   // r
+    assert!((sampled[1] - 0.502).abs() < 0.02);  // g
+    assert!(sampled[2] < 0.01);                   // b
+    assert!((sampled[3] - 1.0).abs() < 0.01);    // a
 }

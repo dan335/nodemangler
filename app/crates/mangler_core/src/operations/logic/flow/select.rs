@@ -26,7 +26,7 @@ impl OpLogicFlowSelect {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "select".to_string(),
-            description: "Selects between two values based on a condition.".to_string(),
+            description: "Outputs one of two values based on a boolean condition (if/else).".to_string(),
         }
     }
 

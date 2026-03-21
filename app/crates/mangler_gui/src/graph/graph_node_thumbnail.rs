@@ -11,8 +11,8 @@ pub enum GraphNodeThumbnail {
         texture_handle: egui::TextureHandle,
         width: u32,
         height: u32,
-        channels: String,
-        bits: u16,
+        /// Number of channels (1–4).
+        channels: u32,
     },
     Color {
         texture_handle: egui::TextureHandle,
@@ -29,7 +29,7 @@ impl GraphNodeThumbnail {
         theme: &Theme,
     ) {
         match self {
-            GraphNodeThumbnail::Image { texture_handle, width, height, channels, bits } => {
+            GraphNodeThumbnail::Image { texture_handle, width, height, channels } => {
                 // image
                 let thumb_size =
                     graph_to_view_space_pos2(graph_zoom, texture_handle.size_vec2().to_pos2()).to_vec2();
@@ -59,11 +59,16 @@ impl GraphNodeThumbnail {
                     y: info_pos.y,
                 };
 
-                // channels/bits
+                // channel count label
+                let ch_label = if *channels == 1 {
+                    "1 channel".to_string()
+                } else {
+                    format!("{} channels", channels)
+                };
                 ui.painter().text(
                     channels_pos,
                     Align2::LEFT_TOP,
-                    format!("{}{}", channels, bits),
+                    ch_label,
                     egui::FontId::monospace(10.0),
                     Color32::from(theme.get().text_faint),
                 );

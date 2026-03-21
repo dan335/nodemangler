@@ -4,9 +4,9 @@
 //! gradient noise. The noise values are mapped from linear space to sRGB for
 //! perceptually correct display.
 
-use image::{ImageBuffer, DynamicImage};
 use rayon::prelude::*;
 use crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb;
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -44,14 +44,14 @@ impl OpImageNoisePerlin {
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
         ]
     }
 
     /// Generates a Perlin noise image from the given inputs.
     ///
     /// Each pixel is sampled in 2D noise space, normalized to `[0, 1]`, converted
-    /// from linear to sRGB, and written as an 8-bit grayscale value.
+    /// from linear to sRGB, and written as an f32 grayscale value.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -84,7 +84,7 @@ impl OpImageNoisePerlin {
         let w = width as usize;
         let h = height as usize;
         // Compute pixels in parallel, iterating in row-major order (y outer, x inner)
-        let pixels: Vec<u16> = (0..h).into_par_iter().flat_map_iter(|y| {
+        let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(|y| {
             (0..w).map(move |x| {
                 // Lattice-periodic noise: coordinates span [0, period] across the image,
                 // and the noise wraps exactly at the period boundary for seamless tiling.
@@ -92,18 +92,22 @@ impl OpImageNoisePerlin {
                 let v = y as f64 / h as f64 * period as f64;
                 let noise = periodic_perlin_2d(u, v, period, period, &perm_ref[0]) as f32 * 0.5 + 0.5;
                 // Apply sRGB gamma curve for perceptually correct display
-                let non_linear = linear_to_nonlinear_srgb(noise);
-                (non_linear * 65535.0) as u16
+                linear_to_nonlinear_srgb(noise)
             })
         }).collect();
 
-        let image_buffer = ImageBuffer::from_raw(width as u32, height as u32, pixels).unwrap();
-        let dynamic_image = DynamicImage::ImageLuma16(image_buffer);
+        // Build a single-channel FloatImage from the computed pixel values
+        let mut float_image = FloatImage::new(width as u32, height as u32, 1);
+        for (i, &val) in pixels.iter().enumerate() {
+            let x = (i % w) as u32;
+            let y = (i / w) as u32;
+            float_image.put_pixel(x, y, &[val]);
+        }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(float_image), change_id: get_id() } },
             ],
         })
     }

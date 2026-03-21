@@ -11,11 +11,12 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use image::{imageops::FilterType, DynamicImage, GrayImage, RgbaImage};
+use image::{imageops::FilterType, RgbaImage};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    color::Color, get_id, operations::images::noise::worley_distance::NoiseWorleyDistanceFunction,
+    color::Color, float_image::FloatImage, get_id,
+    operations::images::noise::worley_distance::NoiseWorleyDistanceFunction,
     thumbnail::Thumbnail,
 };
 
@@ -40,10 +41,14 @@ pub enum Value {
     /// An sRGBA color with floating-point channels.
     Color(Color),
     /// A full raster image wrapped in an `Arc` for cheap cloning.
-    DynamicImage {
+    ///
+    /// Uses [`FloatImage`] internally: 1–4 channel f32 buffer.
+    /// Format conversion (Rgb8, Gray16, etc.) only happens at I/O boundaries.
+    #[serde(alias = "DynamicImage")]
+    Image {
         /// The image data, reference-counted for efficient sharing.
-        #[serde(with = "crate::dynamic_image_serde")]
-        data: Arc<DynamicImage>,
+        #[serde(with = "crate::float_image_serde")]
+        data: Arc<FloatImage>,
         /// A unique ID regenerated each time the image changes, used for cache invalidation.
         change_id: String,
     },
@@ -116,9 +121,8 @@ impl Value {
 
                 Some(Thumbnail::Image(img))
             }
-            Value::DynamicImage { data, change_id: _ } => Some(Thumbnail::Image(
-                data.resize(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1], FilterType::CatmullRom)
-                    .to_rgba8(),
+            Value::Image { data, change_id: _ } => Some(Thumbnail::Image(
+                data.resize_fit(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]).to_rgba8(),
             )),
             Value::Bool(value) => Some(Thumbnail::Text(value.to_string())),
             Value::Integer(value) => Some(Thumbnail::Text(value.to_string())),
@@ -157,7 +161,7 @@ impl Value {
                 c.b.to_bits().hash(&mut h);
                 c.a.to_bits().hash(&mut h);
             }
-            Value::DynamicImage { data: _, change_id } => change_id.hash(&mut h),
+            Value::Image { data: _, change_id } => change_id.hash(&mut h),
             Value::Path(p) => p.hash(&mut h),
             Value::FilterType(f) => (*f as u8).hash(&mut h),
             Value::ColorFormat(cf) => (*cf as u8).hash(&mut h),
@@ -185,10 +189,10 @@ impl Value {
             Value::Trigger => ValueType::Trigger,
             Value::FilterType(_) => ValueType::FilterType,
             Value::Path(_) => ValueType::Path,
-            Value::DynamicImage {
+            Value::Image {
                 data: _,
                 change_id: _,
-            } => ValueType::DynamicImage,
+            } => ValueType::Image,
             Value::ImageType(_) => ValueType::ImageType,
             Value::NoiseWorleyDistanceFunction(_) => ValueType::NoiseWorleyDistanceFunction,
             Value::ColorSpace(_) => ValueType::ColorSpace,
@@ -231,11 +235,10 @@ impl Value {
                         Ok(Value::Color(Color::from_srgb_float(0.0, 0.0, 0.0, 1.0)))
                     }
                 }
-                ValueType::DynamicImage => {
-                    let v: u8 = if *a { 255 } else { 0 };
-                    let imgbuf = GrayImage::from_pixel(1, 1, image::Luma([v]));
-                    Ok(Value::DynamicImage {
-                        data: Arc::new(DynamicImage::ImageLuma8(imgbuf)),
+                ValueType::Image => {
+                    let v = if *a { 1.0 } else { 0.0 };
+                    Ok(Value::Image {
+                        data: Arc::new(FloatImage::from_pixel(1, 1, 1, &[v])),
                         change_id: get_id(),
                     })
                 }
@@ -252,10 +255,12 @@ impl Value {
                     let v = (*a).clamp(0, 255) as f32 / 255.0;
                     Ok(Value::Color(Color::from_srgb_float(v, v, v, 1.0)))
                 }
-                ValueType::DynamicImage => {
-                    let v = (*a).clamp(0, 255) as u8;
-                    let imgbuf = GrayImage::from_pixel(1, 1, image::Luma([v]));
-                    Ok(Value::DynamicImage { data: Arc::new(DynamicImage::ImageLuma8(imgbuf)), change_id: get_id() })
+                ValueType::Image => {
+                    let v = (*a).clamp(0, 255) as f32 / 255.0;
+                    Ok(Value::Image {
+                        data: Arc::new(FloatImage::from_pixel(1, 1, 1, &[v])),
+                        change_id: get_id(),
+                    })
                 }
                 _ => Err(ConversionError {
                     message: "Unable to convert integer to this type.".to_string(),
@@ -270,10 +275,12 @@ impl Value {
                     let v = a.clamp(0.0, 1.0);
                     Ok(Value::Color(Color::from_srgb_float(v, v, v, 1.0)))
                 }
-                ValueType::DynamicImage => {
-                    let v = (a.clamp(0.0, 1.0) * 255.0) as u8;
-                    let imgbuf = GrayImage::from_pixel(1, 1, image::Luma([v]));
-                    Ok(Value::DynamicImage { data: Arc::new(DynamicImage::ImageLuma8(imgbuf)), change_id: get_id() })
+                ValueType::Image => {
+                    let v = a.clamp(0.0, 1.0);
+                    Ok(Value::Image {
+                        data: Arc::new(FloatImage::from_pixel(1, 1, 1, &[v])),
+                        change_id: get_id(),
+                    })
                 }
                 _ => Err(ConversionError {
                     message: "Unable to convert decimal to this type.".to_string(),
@@ -291,10 +298,12 @@ impl Value {
                 }
                 ValueType::Text => Ok(Value::Text(format!("rgba({}, {}, {}, {})", a.r, a.g, a.b, a.a))),
                 ValueType::Color => Ok(Value::Color(*a)),
-                ValueType::DynamicImage => {
-                    let rgba = a.to_srgb_u8();
-                    let imgbuf = image::RgbaImage::from_pixel(1, 1, image::Rgba([rgba.0, rgba.1, rgba.2, rgba.3]));
-                    Ok(Value::DynamicImage { data: Arc::new(DynamicImage::ImageRgba8(imgbuf)), change_id: get_id() })
+                ValueType::Image => {
+                    let srgb = a.to_srgb_float();
+                    Ok(Value::Image {
+                        data: Arc::new(FloatImage::from_pixel(1, 1, 4, &[srgb.0, srgb.1, srgb.2, srgb.3])),
+                        change_id: get_id(),
+                    })
                 }
                 _ => Err(ConversionError {
                     message: "Unable to convert color to this type.".to_string(),
@@ -313,13 +322,13 @@ impl Value {
                 }),
             },
             Value::Trigger => todo!(),
-            Value::DynamicImage { data, change_id } => match other {
-                ValueType::DynamicImage => Ok(Value::DynamicImage {
+            Value::Image { data, change_id } => match other {
+                ValueType::Image => Ok(Value::Image {
                     data: data.clone(),
                     change_id: change_id.clone(),
                 }),
                 _ => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
+                    message: "Unable to convert image to this type.".to_string(),
                 }),
             },
             Value::Path(path) => match other {
@@ -434,8 +443,9 @@ pub enum ValueType {
     ImageType,
     /// Trigger signal type (carries no data).
     Trigger,
-    /// Raster image type.
-    DynamicImage,
+    /// Raster image type (FloatImage: 1–4 channel f32).
+    #[serde(alias = "DynamicImage")]
+    Image,
     /// Filesystem path type.
     Path,
     /// Worley noise distance function type.
@@ -462,7 +472,7 @@ impl ValueType {
             ValueType::FilterType,
             ValueType::ColorFormat,
             ValueType::Trigger,
-            ValueType::DynamicImage,
+            ValueType::Image,
             ValueType::Path,
         ];
 
@@ -481,8 +491,8 @@ impl ValueType {
             ValueType::ColorFormat => Value::ColorFormat(crate::value::ColorFormat::Rgba32F),
             ValueType::ImageType => Value::ImageType(image::ImageFormat::Png),
             ValueType::Trigger => Value::Trigger,
-            ValueType::DynamicImage => Value::DynamicImage {
-                data: Arc::new(DynamicImage::ImageRgba8(RgbaImage::new(1, 1))),
+            ValueType::Image => Value::Image {
+                data: Arc::new(FloatImage::from_pixel(1, 1, 4, &[1.0, 1.0, 1.0, 1.0])),
                 change_id: get_id(),
             },
             ValueType::Path => Value::Path(PathBuf::new()),
@@ -507,7 +517,7 @@ impl ValueType {
             ValueType::FilterType => "filter type".to_string(),
             ValueType::ColorFormat => "color format".to_string(),
             ValueType::Trigger => "trigger".to_string(),
-            ValueType::DynamicImage => "image".to_string(),
+            ValueType::Image => "image".to_string(),
             ValueType::Path => "path".to_string(),
             ValueType::ImageType => "image format".to_string(),
             ValueType::NoiseWorleyDistanceFunction => "worley noise distance function".to_string(),
@@ -522,7 +532,7 @@ impl ValueType {
     /// Currently only `DynamicImage` has associated file extensions.
     pub fn file_extensions(value_type: &ValueType) -> Vec<String> {
         match value_type {
-            ValueType::DynamicImage => {
+            ValueType::Image => {
                 let mut list = vec![];
 
                 for image_format in ImageType::types().iter() {
@@ -548,7 +558,7 @@ impl ValueType {
                 ValueType::Decimal,
                 ValueType::Text,
                 ValueType::Color,
-                ValueType::DynamicImage,
+                ValueType::Image,
                 ValueType::Trigger,
             ],
             ValueType::Integer => vec![
@@ -557,7 +567,7 @@ impl ValueType {
                 ValueType::Decimal,
                 ValueType::Text,
                 ValueType::Color,
-                ValueType::DynamicImage,
+                ValueType::Image,
                 ValueType::Trigger,
             ],
             ValueType::Decimal => vec![
@@ -566,7 +576,7 @@ impl ValueType {
                 ValueType::Decimal,
                 ValueType::Text,
                 ValueType::Color,
-                ValueType::DynamicImage,
+                ValueType::Image,
                 ValueType::Trigger,
             ],
             ValueType::Text => vec![ValueType::Text, ValueType::Path, ValueType::Trigger],
@@ -576,10 +586,10 @@ impl ValueType {
                 ValueType::Decimal,
                 ValueType::Text,
                 ValueType::Color,
-                ValueType::DynamicImage,
+                ValueType::Image,
                 ValueType::Trigger,
             ],
-            ValueType::DynamicImage => vec![ValueType::DynamicImage, ValueType::Trigger],
+            ValueType::Image => vec![ValueType::Image, ValueType::Trigger],
             ValueType::Path => vec![ValueType::Text, ValueType::Path, ValueType::Trigger],
             ValueType::FilterType => {
                 vec![ValueType::FilterType, ValueType::Trigger]
@@ -898,28 +908,28 @@ where
     }
 }
 
-/// Custom serde module that replaces `DynamicImage` values with a tiny 1x1
+/// Custom serde module that replaces image values with a tiny 1x1
 /// placeholder during serialization to avoid storing full image pixel data in
 /// save files. Non-image values pass through unchanged. On deserialization,
-/// values are read normally (the 1x1 placeholder is a valid `DynamicImage`).
+/// values are read normally (the 1x1 placeholder is a valid image).
 pub mod value_skip_images {
     use super::Value;
+    use crate::float_image::FloatImage;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use std::sync::Arc;
-    use image::{DynamicImage, RgbaImage};
     use crate::get_id;
 
-    /// Serializes a `Value`, replacing any `DynamicImage` with a 1x1 placeholder.
+    /// Serializes a `Value`, replacing any Image with a 1x1 placeholder.
     pub fn serialize<S>(value: &Value, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         match value {
-            Value::DynamicImage { .. } => {
+            Value::Image { .. } => {
                 // Replace with a tiny 1x1 placeholder to preserve the variant tag
                 // without storing megabytes of pixel data.
-                let placeholder = Value::DynamicImage {
-                    data: Arc::new(DynamicImage::ImageRgba8(RgbaImage::new(1, 1))),
+                let placeholder = Value::Image {
+                    data: Arc::new(FloatImage::from_pixel(1, 1, 4, &[1.0, 1.0, 1.0, 1.0])),
                     change_id: get_id(),
                 };
                 placeholder.serialize(serializer)

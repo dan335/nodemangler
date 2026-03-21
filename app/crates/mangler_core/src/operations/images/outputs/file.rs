@@ -2,6 +2,8 @@
 //!
 //! Saves an image to a file on disk, using a configurable file name, folder
 //! path, image format (e.g., JPEG, PNG), and color format (e.g., Rgba8, Rgba16).
+//! The input `FloatImage` is converted to a `DynamicImage` via [`FloatImage::to_dynamic`]
+//! before encoding, so all existing format/codec logic works unchanged.
 //! Outputs the resulting file path.
 
 use image::ImageFormat;
@@ -31,7 +33,7 @@ impl OpImageOutputFile {
     /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "image to file".to_string(),
+            name: "to file".to_string(),
             description: "Saves an image to a file.".to_string(),
         }
     }
@@ -40,7 +42,7 @@ impl OpImageOutputFile {
     /// JPEG quality, and color format.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None, None),
             Input::new("file name".to_string(), Value::Text("image01".to_string()), Some(InputSettings::SingleLineText), None),
             Input::new("folder".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path {
                 extension_filter: vec![],
@@ -101,7 +103,7 @@ impl OpImageOutputFile {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
+        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
         let file_name_converted = convert_input(inputs, 1, ValueType::Text, &mut input_errors);
         let folder_converted = convert_input(inputs, 2, ValueType::Path, &mut input_errors);
         let image_type_converted = convert_input(inputs, 3, ValueType::ImageType, &mut input_errors);
@@ -117,7 +119,7 @@ impl OpImageOutputFile {
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
+        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
         let Value::Text(file_name) = file_name_converted.unwrap() else { unreachable!() };
         let Value::Path(mut folder_path) = folder_converted.unwrap() else { unreachable!() };
         let Value::ImageType(image_type) = image_type_converted.unwrap() else { unreachable!() };
@@ -138,8 +140,9 @@ impl OpImageOutputFile {
             folder_path.push(file_name);
             folder_path.set_extension(image_type.extensions_str()[0]);
 
-            // Convert the image to the requested color format
-            let converted = Arc::new(Self::convert_to_format(&data, &color_format));
+            // Convert FloatImage to DynamicImage for file encoding, then apply color format
+            let dynamic = data.to_dynamic();
+            let converted = Arc::new(Self::convert_to_format(&dynamic, &color_format));
 
             let save_result = match image_type {
                 // JPEG uses a custom encoder for quality control

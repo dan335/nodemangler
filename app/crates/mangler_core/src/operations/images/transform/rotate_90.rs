@@ -1,6 +1,9 @@
 //! 90-degree clockwise rotation operation.
+//!
+//! Operates directly on [`FloatImage`] pixel data, swapping dimensions.
 
 use crate::get_id;
+use crate::float_image::FloatImage;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
@@ -28,39 +31,49 @@ impl OpImageTransformRotate90 {
     /// Creates the default inputs: a single source image.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
         ]
     }
 
     /// Creates the default outputs: the rotated image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
-    /// Executes the 90-degree clockwise rotation.
+    /// Executes the 90-degree clockwise rotation by rearranging pixels.
+    ///
+    /// For a 90-degree clockwise rotation, pixel at (x, y) in the source
+    /// maps to (h - 1 - y, x) in the output (with swapped dimensions).
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
-
+        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
 
         // return if error
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
+        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
 
-        // run node
-        let im = data.rotate90();
+        // Create output with swapped dimensions
+        let (w, h) = data.dimensions();
+        let mut output = FloatImage::new(h, w, data.channels());
+
+        // Rearrange pixels: source(x, y) -> output(h-1-y, x)
+        for y in 0..h {
+            for x in 0..w {
+                output.put_pixel(h - 1 - y, x, data.get_pixel(x, y));
+            }
+        }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse {value: Value::DynamicImage { data: Arc::new(im), change_id:get_id() }},
+                OutputResponse {value: Value::Image { data: Arc::new(output), change_id:get_id() }},
             ],
         })
     }

@@ -32,6 +32,8 @@ pub mod node_type;
 pub mod thumbnail;
 pub mod app;
 pub mod dynamic_image_serde;
+pub mod float_image;
+pub mod float_image_serde;
 pub mod color;
 mod tests;
 

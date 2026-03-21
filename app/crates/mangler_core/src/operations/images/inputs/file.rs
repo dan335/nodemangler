@@ -1,8 +1,11 @@
 //! Image-from-file input operation.
 //!
 //! Reads an image from a local file path and outputs the decoded image
-//! along with its width and height.
+//! along with its width and height. The loaded `DynamicImage` is converted
+//! to a `FloatImage` via [`FloatImage::from_dynamic`], preserving the
+//! original channel count (grayscale stays 1ch, RGB 3ch, etc.).
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -35,7 +38,7 @@ impl OpImageInputFile {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("path".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path{
-                extension_filter: ValueType::file_extensions(&ValueType::DynamicImage),
+                extension_filter: ValueType::file_extensions(&ValueType::Image),
                 set_directory: None,
                 set_file_name: None,
                 set_title: Some("image".to_string()),
@@ -47,7 +50,7 @@ impl OpImageInputFile {
     /// Creates the output definitions: the decoded image, its width, and its height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
             Output::new("width".to_string(), Value::Integer(1), None),
             Output::new("height".to_string(), Value::Integer(1), None),
         ]
@@ -77,9 +80,11 @@ impl OpImageInputFile {
 
         if let Ok(open) = ImageReader::open(path) {
             if let Ok(dynamic_image) = open.decode() {
-                width = dynamic_image.width();
-                height = dynamic_image.height();
-                img = Some(dynamic_image);
+                // Convert to FloatImage, preserving original channel count
+                let float_img = FloatImage::from_dynamic(&dynamic_image);
+                width = float_img.width();
+                height = float_img.height();
+                img = Some(float_img);
             }
         }
 
@@ -87,7 +92,7 @@ impl OpImageInputFile {
             Ok(OperationResponse {
                 time: Instant::now().duration_since(start_time),
                 responses: vec![
-                    OutputResponse { value: Value::DynamicImage { data: Arc::new(value), change_id: get_id() } },
+                    OutputResponse { value: Value::Image { data: Arc::new(value), change_id: get_id() } },
                     OutputResponse { value: Value::Integer(width as i32) },
                     OutputResponse { value: Value::Integer(height as i32) },
                 ],

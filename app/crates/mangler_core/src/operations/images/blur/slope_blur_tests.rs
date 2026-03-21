@@ -1,23 +1,27 @@
 use super::*;
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::Input;
 use crate::value::Value;
-use image::DynamicImage;
 use std::sync::Arc;
 
-fn test_image(w: u32, h: u32) -> Arc<DynamicImage> {
-    let mut imgbuf = image::RgbaImage::new(w, h);
-    for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-        let r = (x * 255 / w.max(1)) as u8;
-        let g = (y * 255 / h.max(1)) as u8;
-        *pixel = image::Rgba([r, g, 128, 255]);
+/// Creates a gradient test image as a 4-channel FloatImage.
+fn test_image(w: u32, h: u32) -> Arc<FloatImage> {
+    let mut img = FloatImage::new(w, h, 4);
+    for y in 0..h {
+        for x in 0..w {
+            let r = x as f32 / w.max(1) as f32;
+            let g = y as f32 / h.max(1) as f32;
+            img.put_pixel(x, y, &[r, g, 0.5, 1.0]);
+        }
     }
-    Arc::new(DynamicImage::ImageRgba8(imgbuf))
+    Arc::new(img)
 }
 
+/// Wraps a test image as a `Value::Image`.
 fn image_input(w: u32, h: u32) -> Value {
-    Value::DynamicImage { data: test_image(w, h), change_id: get_id() }
+    Value::Image { data: test_image(w, h), change_id: get_id() }
 }
 
 #[tokio::test]
@@ -30,16 +34,11 @@ async fn test_slope_blur_settings() {
 
 #[tokio::test]
 async fn test_slope_blur_1x1() {
-    let mut imgbuf = image::RgbaImage::new(1, 1);
-    imgbuf.put_pixel(0, 0, image::Rgba([200u8, 100, 50, 255]));
-    let img = Arc::new(DynamicImage::ImageRgba8(imgbuf));
-    let slope_map = {
-        let sm = image::RgbaImage::from_pixel(1, 1, image::Rgba([128u8, 128, 128, 255]));
-        Arc::new(DynamicImage::ImageRgba8(sm))
-    };
+    let img = Arc::new(FloatImage::from_pixel(1, 1, 4, &[0.78, 0.39, 0.20, 1.0]));
+    let slope_map = Arc::new(FloatImage::from_pixel(1, 1, 4, &[0.5, 0.5, 0.5, 1.0]));
     let mut inputs = vec![
-        Input::new("image".to_string(), Value::DynamicImage { data: img, change_id: get_id() }, None, None),
-        Input::new("slope map".to_string(), Value::DynamicImage { data: slope_map, change_id: get_id() }, None, None),
+        Input::new("image".to_string(), Value::Image { data: img, change_id: get_id() }, None, None),
+        Input::new("slope map".to_string(), Value::Image { data: slope_map, change_id: get_id() }, None, None),
         Input::new("intensity".to_string(), Value::Decimal(5.0), None, None),
         Input::new("samples".to_string(), Value::Integer(4), None, None),
     ];
@@ -49,28 +48,22 @@ async fn test_slope_blur_1x1() {
 
 #[tokio::test]
 async fn test_slope_blur_uniform_image_unchanged() {
-    // Uniform image with uniform slope map → no gradient direction → no movement
-    let uniform = {
-        let img = image::RgbaImage::from_pixel(8, 8, image::Rgba([100u8, 100, 100, 255]));
-        Arc::new(DynamicImage::ImageRgba8(img))
-    };
-    let flat_map = {
-        let sm = image::RgbaImage::from_pixel(8, 8, image::Rgba([128u8, 128, 128, 255]));
-        Arc::new(DynamicImage::ImageRgba8(sm))
-    };
+    // Uniform image with uniform slope map -> no gradient direction -> no movement
+    let uniform = Arc::new(FloatImage::from_pixel(8, 8, 4, &[0.39, 0.39, 0.39, 1.0]));
+    let flat_map = Arc::new(FloatImage::from_pixel(8, 8, 4, &[0.5, 0.5, 0.5, 1.0]));
     let mut inputs = vec![
-        Input::new("image".to_string(), Value::DynamicImage { data: uniform, change_id: get_id() }, None, None),
-        Input::new("slope map".to_string(), Value::DynamicImage { data: flat_map, change_id: get_id() }, None, None),
+        Input::new("image".to_string(), Value::Image { data: uniform, change_id: get_id() }, None, None),
+        Input::new("slope map".to_string(), Value::Image { data: flat_map, change_id: get_id() }, None, None),
         Input::new("intensity".to_string(), Value::Decimal(10.0), None, None),
         Input::new("samples".to_string(), Value::Integer(4), None, None),
     ];
     let result = OpImageAdjustmentSlopeBlur::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            let p = data.to_rgba8().get_pixel(4, 4).0;
-            assert!((p[0] as i32 - 100).abs() <= 2, "uniform slope blur: expected ~100, got {}", p[0]);
+        Value::Image { data, .. } => {
+            let px = data.get_pixel(4, 4);
+            assert!((px[0] - 0.39).abs() < 0.02, "uniform slope blur: expected ~0.39, got {}", px[0]);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -84,10 +77,10 @@ async fn test_slope_blur_basic() {
     ];
     let result = OpImageAdjustmentSlopeBlur::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 8);
             assert_eq!(data.height(), 8);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }

@@ -23,7 +23,7 @@ impl OpLogicInputBool {
     /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "bool".to_string(),
+            name: "boolean".to_string(),
             description: "A boolean input.".to_string(),
         }
     }

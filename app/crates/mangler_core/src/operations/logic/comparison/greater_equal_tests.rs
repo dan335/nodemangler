@@ -73,5 +73,5 @@ async fn test_greater_equal_bool_false_ge_bool_false() {
 #[tokio::test]
 async fn test_greater_equal_settings() {
     let s = OpLogicCompareGreaterEqual::settings();
-    assert_eq!(s.name, "greater equal");
+    assert_eq!(s.name, "greater or equal");
 }

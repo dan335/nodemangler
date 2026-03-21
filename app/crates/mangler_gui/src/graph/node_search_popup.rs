@@ -9,6 +9,7 @@ use mangler_core::operations::{operation_list, Operation, OperationListItem};
 
 use super::graph_editor::TempConnection;
 use super::graph_node::ConnectionType;
+use crate::themes::theme::Theme;
 
 /// A flattened entry from the operation menu tree, ready for search/display.
 #[derive(Clone)]
@@ -115,6 +116,14 @@ impl NodeSearchPopup {
             .cloned()
             .collect();
 
+        // Sort by type relevance when opened from a dropped connection.
+        // Direct type matches appear before accepts_any_type matches.
+        if let Some(conn) = &self.from_connection {
+            let conn = conn.clone();
+            self.filtered_results
+                .sort_by_key(|r| type_relevance_score(r, &conn));
+        }
+
         // Clamp selected index
         if self.filtered_results.is_empty() {
             self.selected_index = 0;
@@ -124,7 +133,7 @@ impl NodeSearchPopup {
     }
 
     /// Renders the popup and returns the response for this frame.
-    pub fn show(&mut self, ctx: &egui::Context) -> NodeSearchPopupResponse {
+    pub fn show(&mut self, ctx: &egui::Context, theme: &Theme) -> NodeSearchPopupResponse {
         let mut response = NodeSearchPopupResponse {
             selected_operation: None,
             selected_subgraph: false,
@@ -150,109 +159,130 @@ impl NodeSearchPopup {
             .order(egui::Order::Foreground)
             .fixed_pos(self.position)
             .show(ctx, |ui| {
-                egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_width(popup_width);
-                    ui.set_min_height(scroll_area_max_height);
+                egui::Frame::popup(ui.style())
+                    .fill(theme.get().panel_fill)
+                    .show(ui, |ui| {
+                        ui.set_width(popup_width);
+                        ui.set_min_height(scroll_area_max_height);
 
-                    // Search text field
-                    let text_edit = egui::TextEdit::singleline(&mut self.search_text)
-                        .desired_width(popup_width - 16.0)
-                        .hint_text("Search nodes...");
+                        // Search text field with themed background
+                        let text_response = egui::Frame::NONE
+                            .fill(theme.get().menu_bar)
+                            .corner_radius(1.0)
+                            .inner_margin(4.0)
+                            .show(ui, |ui| {
+                                let text_edit = egui::TextEdit::singleline(&mut self.search_text)
+                                    .frame(false)
+                                    .desired_width(popup_width - 24.0)
+                                    .hint_text("Search nodes...");
+                                ui.add(text_edit)
+                            })
+                            .inner;
 
-                    let text_response = ui.add(text_edit);
-
-                    // Request focus on first frame
-                    if self.request_focus {
-                        text_response.request_focus();
-                        self.request_focus = false;
-                    }
-
-                    // Handle keyboard input on the text field
-                    let should_update = text_response.changed();
-
-                    // Check for key presses
-                    let (pressed_up, pressed_down, pressed_enter, pressed_escape) =
-                        ctx.input(|i| {
-                            (
-                                i.key_pressed(egui::Key::ArrowUp),
-                                i.key_pressed(egui::Key::ArrowDown),
-                                i.key_pressed(egui::Key::Enter),
-                                i.key_pressed(egui::Key::Escape),
-                            )
-                        });
-
-                    if pressed_escape {
-                        response.closed = true;
-                        return;
-                    }
-
-                    if pressed_up && self.selected_index > 0 {
-                        self.selected_index -= 1;
-                    }
-
-                    if pressed_down && !self.filtered_results.is_empty() {
-                        if self.selected_index < self.filtered_results.len() - 1 {
-                            self.selected_index += 1;
+                        // Request focus on first frame
+                        if self.request_focus {
+                            text_response.request_focus();
+                            self.request_focus = false;
                         }
-                    }
 
-                    if pressed_enter && !self.filtered_results.is_empty() {
-                        let selected = &self.filtered_results[self.selected_index];
-                        response.selected_operation = Some(selected.operation.clone());
-                        response.closed = true;
-                        return;
-                    }
+                        // Handle keyboard input on the text field
+                        let should_update = text_response.changed();
 
-                    if should_update {
-                        self.update_filtered_results();
-                    }
+                        // Check for key presses
+                        let (pressed_up, pressed_down, pressed_enter, pressed_escape) =
+                            ctx.input(|i| {
+                                (
+                                    i.key_pressed(egui::Key::ArrowUp),
+                                    i.key_pressed(egui::Key::ArrowDown),
+                                    i.key_pressed(egui::Key::Enter),
+                                    i.key_pressed(egui::Key::Escape),
+                                )
+                            });
 
-                    // Results list
-                    ui.separator();
+                        if pressed_escape {
+                            response.closed = true;
+                            return;
+                        }
 
-                    egui::ScrollArea::vertical()
-                        .max_height(scroll_area_max_height)
-                        .show(ui, |ui| {
-                            for (i, result) in self.filtered_results.iter().enumerate() {
-                                let is_selected = i == self.selected_index;
+                        if pressed_up && self.selected_index > 0 {
+                            self.selected_index -= 1;
+                        }
 
-                                let mut job = egui::text::LayoutJob::default();
-                                job.append(
-                                    &format!("{}  ", result.name),
-                                    0.0,
-                                    egui::TextFormat::simple(
-                                        egui::FontId::default(),
-                                        ui.visuals().text_color(),
-                                    ),
-                                );
-                                job.append(
-                                    &result.category_path,
-                                    0.0,
-                                    egui::TextFormat::simple(
-                                        egui::FontId::proportional(10.0),
-                                        ui.visuals().weak_text_color(),
-                                    ),
-                                );
-                                let display_text = egui::WidgetText::from(job);
-
-                                let selectable = ui.selectable_label(is_selected, display_text);
-
-                                if selectable.clicked() {
-                                    response.selected_operation = Some(result.operation.clone());
-                                    response.closed = true;
-                                    return;
-                                }
-
-                                if selectable.hovered() {
-                                    self.selected_index = i;
-                                }
+                        if pressed_down && !self.filtered_results.is_empty() {
+                            if self.selected_index < self.filtered_results.len() - 1 {
+                                self.selected_index += 1;
                             }
+                        }
 
-                            if self.filtered_results.is_empty() {
-                                ui.label(egui::RichText::new("No matching nodes").weak().italics());
-                            }
-                        });
-                });
+                        if pressed_enter && !self.filtered_results.is_empty() {
+                            let selected = &self.filtered_results[self.selected_index];
+                            response.selected_operation = Some(selected.operation.clone());
+                            response.closed = true;
+                            return;
+                        }
+
+                        if should_update {
+                            self.update_filtered_results();
+                        }
+
+                        // Results list
+                        ui.separator();
+
+                        egui::ScrollArea::vertical()
+                            .max_height(scroll_area_max_height)
+                            .show(ui, |ui| {
+                                ui.with_layout(
+                                    egui::Layout::top_down_justified(egui::Align::LEFT),
+                                    |ui| {
+                                        for (i, result) in self.filtered_results.iter().enumerate()
+                                        {
+                                            let is_selected = i == self.selected_index;
+
+                                            let mut job = egui::text::LayoutJob::default();
+                                            job.append(
+                                                &format!("{}  ", result.name),
+                                                0.0,
+                                                egui::TextFormat::simple(
+                                                    egui::FontId::default(),
+                                                    ui.visuals().text_color(),
+                                                ),
+                                            );
+                                            job.append(
+                                                &result.category_path,
+                                                0.0,
+                                                egui::TextFormat::simple(
+                                                    egui::FontId::default(),
+                                                    ui.visuals().weak_text_color(),
+                                                ),
+                                            );
+                                            let display_text = egui::WidgetText::from(job);
+
+                                            let selectable =
+                                                ui.selectable_label(is_selected, display_text);
+
+                                            if selectable.clicked() {
+                                                response.selected_operation =
+                                                    Some(result.operation.clone());
+                                                response.closed = true;
+                                                return;
+                                            }
+
+                                            if selectable.hovered() {
+                                                self.selected_index = i;
+                                            }
+                                        }
+
+                                        if self.filtered_results.is_empty() {
+                                            ui.label(
+                                                egui::RichText::new("No matching nodes")
+                                                    .weak()
+                                                    .italics(),
+                                            );
+                                        }
+                                    },
+                                );
+                            });
+                    });
             });
 
         // Close if clicked outside
@@ -298,6 +328,55 @@ fn is_type_compatible(result: &SearchResult, conn: &TempConnection) -> bool {
             outputs
                 .iter()
                 .any(|output| valid_from.contains(&output.value.value_type()))
+        }
+    }
+}
+
+/// Returns a sort key for how relevant an operation is to a dropped connection.
+/// Lower values = more relevant (shown first).
+///
+/// - 0: has an input/output with an exact type match
+/// - 1: has an input/output with a compatible (convertible) type match
+/// - 2: only matches via accepts_any_type
+fn type_relevance_score(result: &SearchResult, conn: &TempConnection) -> u8 {
+    match conn.from_connection_type {
+        // Dragged from an output: score based on the operation's inputs
+        ConnectionType::Output => {
+            let inputs = result.operation.create_inputs();
+            let mut best = 2u8;
+            for input in &inputs {
+                if input.value.value_type() == conn.from_value_type {
+                    return 0; // Exact match, can't do better
+                }
+                if !input.accepts_any_type
+                    && input
+                        .value
+                        .value_type()
+                        .valid_conversions()
+                        .contains(&conn.from_value_type)
+                {
+                    best = best.min(1);
+                }
+            }
+            best
+        }
+        // Dragged from an input: score based on the operation's outputs
+        ConnectionType::Input => {
+            let outputs = result.operation.create_outputs();
+            let mut best = 2u8;
+            for output in &outputs {
+                if output.value.value_type() == conn.from_value_type {
+                    return 0;
+                }
+                if conn
+                    .from_value_type
+                    .valid_conversions_from()
+                    .contains(&output.value.value_type())
+                {
+                    best = best.min(1);
+                }
+            }
+            best
         }
     }
 }

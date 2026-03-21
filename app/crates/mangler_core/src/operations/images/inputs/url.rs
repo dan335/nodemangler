@@ -2,7 +2,10 @@
 //!
 //! Fetches an image from a remote URL via an async HTTP GET request and
 //! outputs the decoded image, its dimensions, and the resolved URL string.
+//! The downloaded `DynamicImage` is converted to a `FloatImage` via
+//! [`FloatImage::from_dynamic`], preserving the original channel count.
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -16,7 +19,7 @@ use std::time::Instant;
 /// Operation that downloads and decodes an image from a URL.
 ///
 /// Uses `reqwest` to perform an async HTTP GET, then decodes the response
-/// bytes into a `DynamicImage`. Outputs the image, its width and height,
+/// bytes into a `FloatImage`. Outputs the image, its width and height,
 /// and the URL string that was fetched.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageInputUrl {}
@@ -40,7 +43,7 @@ impl OpImageInputUrl {
     /// Creates the output definitions: the decoded image, width, height, and the fetched URL.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
             Output::new("width".to_string(), Value::Integer(i32::default()), None),
             Output::new("height".to_string(), Value::Integer(i32::default()), None),
             Output::new("url".to_string(), Value::Text("".to_string()), None),
@@ -68,14 +71,16 @@ impl OpImageInputUrl {
         // run node
         if let Ok(image_response) =  reqwest::get(url.clone()).await {
             if let Ok(image_bytes) = image_response.bytes().await {
-                if let Ok(image) = image::load_from_memory(&image_bytes) {
-                    let width = image.width() as i32;
-                    let height = image.height() as i32;
+                if let Ok(dynamic_image) = image::load_from_memory(&image_bytes) {
+                    // Convert to FloatImage, preserving original channel count
+                    let float_img = FloatImage::from_dynamic(&dynamic_image);
+                    let width = float_img.width() as i32;
+                    let height = float_img.height() as i32;
 
                     Ok(OperationResponse {
-                        time: Instant::now().duration_since(start_time), 
+                        time: Instant::now().duration_since(start_time),
                         responses: vec![
-                            OutputResponse { value: Value::DynamicImage { data: Arc::new(image), change_id: get_id() } },
+                            OutputResponse { value: Value::Image { data: Arc::new(float_img), change_id: get_id() } },
                             OutputResponse { value: Value::Integer(width) },
                             OutputResponse { value: Value::Integer(height) },
                             OutputResponse { value: Value::Text(url) },

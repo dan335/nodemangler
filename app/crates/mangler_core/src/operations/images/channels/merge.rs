@@ -1,13 +1,12 @@
 //! Channel merge operation.
 //!
-//! Recombines four separate grayscale images (one per channel) into a single
-//! RGBA image. Each input is converted to luminance (grayscale) to extract
-//! the channel value. The output dimensions match the red channel input;
-//! other channels that are smaller default to 0 (or 255 for alpha).
+//! Recombines four separate images (one per channel) into a single
+//! 4-channel RGBA FloatImage. Each input's first channel is used as
+//! the channel value.
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::value::ValueType;
-use image::RgbaImage;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
@@ -18,89 +17,72 @@ use std::sync::Arc;
 use std::time::Instant;
 
 /// Operation that merges four channel images into a single RGBA image.
-///
-/// Each input image is converted to grayscale (luma8) to extract a single
-/// channel value. The output image dimensions are determined by the red
-/// channel input. If other channel images are smaller, out-of-bounds pixels
-/// default to 0 for RGB and 255 for alpha.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageChannelMerge {}
 
 impl OpImageChannelMerge {
-    /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
-        NodeSettings {
-            name: "channel merge".to_string(),
-            description: "Merges R, G, B, A channel images into one RGBA image.".to_string(),
-        }
+        NodeSettings { name: "channel merge".to_string(), description: "Merges R, G, B, A channel images into one RGBA image.".to_string() }
     }
 
-    /// Creates the input definitions: four images for the red, green, blue, and alpha channels.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("red".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("green".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("blue".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("alpha".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("red".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("green".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("blue".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("alpha".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
         ]
     }
 
-    /// Creates the output definitions: the merged RGBA image.
     pub fn create_outputs() -> Vec<Output> {
-        vec![
-            Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
-        ]
+        vec![Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)]
     }
 
-    /// Executes the operation: converts each input to grayscale and assembles the RGBA image.
-    ///
-    /// Uses the red channel's dimensions for the output. Channels smaller than the
-    /// output default to 0 (or 255 for alpha) at out-of-bounds coordinates.
+    /// Merges four images by taking each one's first channel (or luminance) as an RGBA component.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let red_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
-        let green_converted = convert_input(inputs, 1, ValueType::DynamicImage, &mut input_errors);
-        let blue_converted = convert_input(inputs, 2, ValueType::DynamicImage, &mut input_errors);
-        let alpha_converted = convert_input(inputs, 3, ValueType::DynamicImage, &mut input_errors);
+        let red_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
+        let green_converted = convert_input(inputs, 1, ValueType::Image, &mut input_errors);
+        let blue_converted = convert_input(inputs, 2, ValueType::Image, &mut input_errors);
+        let alpha_converted = convert_input(inputs, 3, ValueType::Image, &mut input_errors);
 
-        // return if error
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
-        // get values
-        let Value::DynamicImage{data:red_data, change_id:_} = red_converted.unwrap() else { unreachable!() };
-        let Value::DynamicImage{data:green_data, change_id:_} = green_converted.unwrap() else { unreachable!() };
-        let Value::DynamicImage{data:blue_data, change_id:_} = blue_converted.unwrap() else { unreachable!() };
-        let Value::DynamicImage{data:alpha_data, change_id:_} = alpha_converted.unwrap() else { unreachable!() };
+        let Value::Image{data:red_data, change_id:_} = red_converted.unwrap() else { unreachable!() };
+        let Value::Image{data:green_data, change_id:_} = green_converted.unwrap() else { unreachable!() };
+        let Value::Image{data:blue_data, change_id:_} = blue_converted.unwrap() else { unreachable!() };
+        let Value::Image{data:alpha_data, change_id:_} = alpha_converted.unwrap() else { unreachable!() };
 
-        // run node — convert each input to single-channel grayscale
-        let red_luma = red_data.to_luma8();
-        let green_luma = green_data.to_luma8();
-        let blue_luma = blue_data.to_luma8();
-        let alpha_luma = alpha_data.to_luma8();
+        // Helper: extract the first-channel or luminance value from a FloatImage pixel
+        let channel_val = |img: &FloatImage, x: u32, y: u32| -> f32 {
+            if x >= img.width() || y >= img.height() { return 0.0; }
+            let px = img.get_pixel(x, y);
+            let ch = img.channels() as usize;
+            if ch >= 3 { 0.299 * px[0] + 0.587 * px[1] + 0.114 * px[2] } else { px[0] }
+        };
 
         // Use the red channel's dimensions as the output size
-        let (width, height) = red_luma.dimensions();
-        let mut output = RgbaImage::new(width, height);
+        let (width, height) = red_data.dimensions();
+        let mut output = FloatImage::new(width, height, 4);
 
         for y in 0..height {
             for x in 0..width {
-                let r = red_luma.get_pixel(x, y).0[0];
-                // Fall back to 0 for RGB and 255 for alpha when the channel image is smaller
-                let g = if x < green_luma.width() && y < green_luma.height() { green_luma.get_pixel(x, y).0[0] } else { 0 };
-                let b = if x < blue_luma.width() && y < blue_luma.height() { blue_luma.get_pixel(x, y).0[0] } else { 0 };
-                let a = if x < alpha_luma.width() && y < alpha_luma.height() { alpha_luma.get_pixel(x, y).0[0] } else { 255 };
-                output.put_pixel(x, y, image::Rgba([r, g, b, a]));
+                let r = channel_val(&red_data, x, y);
+                let g = channel_val(&green_data, x, y);
+                let b = channel_val(&blue_data, x, y);
+                // Alpha defaults to 1.0 for out-of-bounds pixels
+                let a = if x < alpha_data.width() && y < alpha_data.height() {
+                    channel_val(&alpha_data, x, y)
+                } else { 1.0 };
+                output.put_pixel(x, y, &[r, g, b, a]);
             }
         }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
-            responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(image::DynamicImage::ImageRgba8(output)), change_id: get_id() } },
-            ],
+            responses: vec![OutputResponse { value: Value::Image { data: Arc::new(output), change_id: get_id() } }],
         })
     }
 }

@@ -1,7 +1,7 @@
 //! Brightness adjustment operation for images.
 //!
-//! Adjusts image brightness by adding a fixed offset (scaled from -1..1 to -255..255)
-//! to every pixel channel using the `image` crate's `brighten` method.
+//! Adjusts image brightness by adding a fixed offset to every non-alpha channel.
+//! The amount is in the normalized range (-1..1) and is scaled to (-1..1) f32 offset.
 
 use crate::get_id;
 use crate::value::ValueType;
@@ -23,14 +23,14 @@ impl OpImageAdjustmentBrighten {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "brighten".to_string(),
-            description: "Brightens an image.".to_string(),
+            description: "Adjusts image brightness. Positive brightens, negative darkens.".to_string(),
         }
     }
 
     /// Creates the input ports: an image and an amount (-1.0 to 1.0) controlling brightness offset.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
             Input::new("amount".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
         ]
     }
@@ -38,17 +38,17 @@ impl OpImageAdjustmentBrighten {
     /// Creates the output port: the brightness-adjusted image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
-    /// Executes the brighten operation. Scales the normalized amount (-1..1) to pixel range (-255..255).
+    /// Executes the brighten operation. Adds the amount directly to each non-alpha channel.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
+        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
         let amount_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
 
 
@@ -56,16 +56,25 @@ impl OpImageAdjustmentBrighten {
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
+        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
         let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
 
-        // run node
-        let adjusted = data.brighten((amount * 255.0) as i32);
+        // run node — clone the FloatImage and add brightness offset to each non-alpha channel
+        let mut result = (*data).clone();
+        let ch = result.channels() as usize;
+        // Determine how many color channels to adjust (skip alpha if present)
+        let color_ch = if ch == 2 || ch == 4 { ch - 1 } else { ch };
+
+        for pixel in result.pixels_mut() {
+            for c in 0..color_ch {
+                pixel[c] += amount;
+            }
+        }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse {value: Value::DynamicImage { data:Arc::new(adjusted), change_id:get_id() }},
+                OutputResponse {value: Value::Image { data:Arc::new(result), change_id:get_id() }},
             ],
         })
     }

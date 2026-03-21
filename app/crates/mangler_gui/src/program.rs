@@ -14,8 +14,8 @@ use tokio::sync::mpsc;
 use crate::{
     graph::{
         graph_editor::{GraphEditor, GraphEditorResponse, TempConnection},
-        graph_node::GraphNode,
         graph_node::ConnectionType,
+        graph_node::GraphNode,
         graph_node_thumbnail::GraphNodeThumbnail,
         node_search_popup::NodeSearchPopup,
     },
@@ -200,10 +200,7 @@ impl Program {
 
                     if let Some((output_node_id, output_index)) = output {
                         if let Some(node) = self.graph_editor.graph_nodes.get_mut(&output_node_id) {
-                            if let Some(c) = node.outputs.get_mut(output_index) {
-                                let d = c.connection.as_mut().unwrap();
-                                d.remove(output_index);
-                            }
+                            node.clear_output_connection(output_index, &node_id, input_index);
                         }
                     }
 
@@ -288,7 +285,7 @@ impl Program {
                                                         ),
                                                     })
                                                 }
-                                                Value::DynamicImage { data, change_id: _ } => {
+                                                Value::Image { data, change_id: _ } => {
                                                     let pixels = thumbnail.as_flat_samples();
 
                                                     let size = [
@@ -302,18 +299,6 @@ impl Program {
                                                             pixels.as_slice(),
                                                         );
 
-                                                    // color format
-                                                    let bits = data.color().bits_per_pixel()
-                                                        / data.color().channel_count() as u16;
-                                                    let channels =
-                                                        match data.color().channel_count() {
-                                                            1 => "r".to_string(),
-                                                            2 => "rg".to_string(),
-                                                            3 => "rgb".to_string(),
-                                                            4 => "rgba".to_string(),
-                                                            _ => "".to_string(),
-                                                        };
-
                                                     Some(GraphNodeThumbnail::Image {
                                                         texture_handle: ui.ctx().load_texture(
                                                             node.id.clone(),
@@ -322,8 +307,7 @@ impl Program {
                                                         ),
                                                         width: data.width(),
                                                         height: data.height(),
-                                                        channels,
-                                                        bits,
+                                                        channels: data.channels(),
                                                     })
                                                 }
                                                 _ => None,
@@ -418,7 +402,7 @@ impl Program {
                                 for value_type in ValueType::types().iter() {
                                     if ValueType::file_extensions(value_type).contains(&ext.to_lowercase()) {
                                         match value_type {
-                                            ValueType::DynamicImage => {
+                                            ValueType::Image => {
                                                 let random_size = app_rect.width().min(app_rect.height()) * 0.3;
                                                 let x = app_rect.center().x + fastrand::f32() * random_size - random_size * 0.5;
                                                 let y = app_rect.center().y + fastrand::f32() * random_size - random_size * 0.5;
@@ -583,6 +567,7 @@ impl Program {
                 &self.viewing_node_id_index,
                 theme,
                 is_mouse_over_viewer,
+                self.node_search_popup.is_open,
             );
 
             if let Some(new_node_position) = graph_editor_response.new_node_position {
@@ -640,24 +625,32 @@ impl Program {
 
             // Open search popup when a connection is dropped on empty space
             if let Some(dropped) = graph_editor_response.dropped_connection {
-                self.node_search_popup.open(self.pointer_position, Some(dropped));
+                self.node_search_popup
+                    .open(self.pointer_position, Some(dropped));
             }
         });
 
         // Open search popup on Tab key (only when popup isn't already open)
-        if !self.node_search_popup.is_open
-            && node_graph_rect.contains(self.pointer_position)
-        {
+        if !self.node_search_popup.is_open && node_graph_rect.contains(self.pointer_position) {
             let tab_pressed = ctx.input(|i| i.key_pressed(egui::Key::Tab));
             if tab_pressed {
-                self.node_search_popup
-                    .open(self.pointer_position, None);
+                self.node_search_popup.open(self.pointer_position, None);
+            }
+        }
+
+        // Delete selected node on Delete key
+        if let Some(node_id) = &self.editing_node_id {
+            let delete_pressed = ctx.input(|i| i.key_pressed(egui::Key::Delete));
+            if delete_pressed {
+                let node_id = node_id.clone();
+                self.remove_node(node_id);
+                self.editing_node_id = None;
             }
         }
 
         // Show the search popup and handle selection
         if self.node_search_popup.is_open {
-            let popup_response = self.node_search_popup.show(ctx);
+            let popup_response = self.node_search_popup.show(ctx, theme);
 
             if let Some(operation) = popup_response.selected_operation {
                 let graph_pos = view_to_graph_space_pos2(
@@ -775,7 +768,7 @@ impl Program {
             app_rect.bottom() - 10.0,
         );
         let txt =
-            "left click: edit      right click: view      ctrl + left click: delete".to_string();
+            "left click: edit      right click: view      ctrl + left click: delete      delete: delete selected".to_string();
         ui.painter().text(
             pos,
             egui::Align2::LEFT_BOTTOM,
@@ -906,9 +899,10 @@ impl Program {
             ConnectionType::Input => {
                 let valid_from = conn.from_value_type.valid_conversions_from();
                 let outputs = operation.create_outputs();
-                if let Some(output_index) = outputs.iter().position(|output| {
-                    valid_from.contains(&output.value.value_type())
-                }) {
+                if let Some(output_index) = outputs
+                    .iter()
+                    .position(|output| valid_from.contains(&output.value.value_type()))
+                {
                     self.add_connection(
                         conn.from_node_id.clone(),
                         conn.from_connection_index,

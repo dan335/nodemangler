@@ -3,8 +3,9 @@
 //! Scatters instances of an input pattern image across a grid with optional
 //! randomization of scale, rotation, and position offset. Uses a linear
 //! congruential generator (LCG) for deterministic pseudo-random values.
+//! The output FloatImage matches the input pattern's channel count.
 
-use image::{ImageBuffer, DynamicImage};
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -31,7 +32,7 @@ fn lcg_float(seed: u64) -> (f64, u64) {
 ///
 /// Each grid cell can have its instance randomly offset, scaled, and rotated.
 /// Instances are composited using a max blend so overlapping regions take
-/// the brightest value.
+/// the brightest value per channel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImagePatternTileSampler {}
 
@@ -48,7 +49,7 @@ impl OpImagePatternTileSampler {
     /// and randomization parameters (scale_random, rotation_random, offset_random, seed).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("pattern".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("pattern".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
             Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
             Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
             Input::new("count_x".to_string(), Value::Integer(4), Some(InputSettings::DragValue { clamp: Some((1.0, 64.0)), speed: None }), None),
@@ -61,20 +62,23 @@ impl OpImagePatternTileSampler {
         ]
     }
 
-    /// Creates the default output: a single RGBA image.
+    /// Creates the default output: a single image matching the input pattern's channel count.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
     /// Scatters and composites pattern instances across the output image.
+    ///
+    /// The output FloatImage has the same channel count as the input pattern.
+    /// Compositing uses max blend (brightest value per channel wins).
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let pattern_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
+        let pattern_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
         let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
         let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
         let count_x_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
@@ -89,7 +93,7 @@ impl OpImagePatternTileSampler {
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Value::DynamicImage { data: pattern, change_id: _ } = pattern_converted.unwrap() else { unreachable!() };
+        let Value::Image { data: pattern, change_id: _ } = pattern_converted.unwrap() else { unreachable!() };
         let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
         let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
         let Value::Integer(mut count_x) = count_x_converted.unwrap() else { unreachable!() };
@@ -110,14 +114,19 @@ impl OpImagePatternTileSampler {
         let rotation_random = (rotation_random as f64).to_radians();
         let offset_random = offset_random as f64;
 
-        let pattern_rgba = pattern.to_rgba8();
-        let pat_w = pattern_rgba.width() as f64;
-        let pat_h = pattern_rgba.height() as f64;
+        // read pattern dimensions and channel count from the FloatImage
+        let pat_channels = pattern.channels();
+        let pat_w = pattern.width() as f64;
+        let pat_h = pattern.height() as f64;
 
         let cell_w = width as f64 / count_x as f64;
         let cell_h = height as f64 / count_y as f64;
 
-        let mut image_buffer: ImageBuffer<image::Rgba<u8>, Vec<u8>> = ImageBuffer::new(width as u32, height as u32);
+        // output matches the input pattern's channel count
+        let mut image = FloatImage::new(width as u32, height as u32, pat_channels);
+
+        // temporary buffer for per-pixel max compositing
+        let mut pixel_buf = vec![0.0f32; pat_channels as usize];
 
         // for each cell, stamp the pattern
         let mut rng_state = lcg(seed as u64);
@@ -196,27 +205,24 @@ impl OpImagePatternTileSampler {
                             continue;
                         }
 
-                        let src = pattern_rgba.get_pixel(u as u32, v as u32);
-                        let dst = image_buffer.get_pixel(px as u32, py as u32);
+                        let src = pattern.get_pixel(u as u32, v as u32);
+                        let dst = image.get_pixel(px as u32, py as u32);
 
                         // Max composite: take the brightest channel from source or destination
-                        let r = dst[0].max(src[0]);
-                        let g = dst[1].max(src[1]);
-                        let b = dst[2].max(src[2]);
-                        let a = dst[3].max(src[3]);
+                        for c in 0..pat_channels as usize {
+                            pixel_buf[c] = dst[c].max(src[c]);
+                        }
 
-                        image_buffer.put_pixel(px as u32, py as u32, image::Rgba([r, g, b, a]));
+                        image.put_pixel(px as u32, py as u32, &pixel_buf);
                     }
                 }
             }
         }
 
-        let dynamic_image = DynamicImage::ImageRgba8(image_buffer);
-
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(image), change_id: get_id() } },
             ],
         })
     }

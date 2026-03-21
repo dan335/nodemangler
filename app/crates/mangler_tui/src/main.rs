@@ -8,9 +8,9 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use image::GenericImageView;
 use mangler_core::{
     color::Color,
+    float_image::FloatImage,
     graph::Graph, get_id, AddNodeType, GraphSaveData,
     operations::{operation_list, Operation, OperationListItem},
     value::{Value, ValueType},
@@ -354,7 +354,7 @@ fn value_type_name(vt: &ValueType) -> &'static str {
         ValueType::Text => "text",
         ValueType::Color => "color",
         ValueType::Path => "path",
-        ValueType::DynamicImage => "image",
+        ValueType::Image => "image",
         ValueType::Trigger => "trigger",
         ValueType::BlendMode => "blendmode",
         ValueType::ColorSpace => "colorspace",
@@ -559,7 +559,7 @@ fn parse_typed_value(s: &str) -> Result<Value, String> {
 /// Return a concise human-readable representation of a `Value`.
 fn display_value(value: &Value) -> String {
     match value {
-        Value::DynamicImage { data, .. } => format!("<image {}x{}>", data.width(), data.height()),
+        Value::Image { data, .. } => format!("<image {}x{}>", data.width(), data.height()),
         _ => serde_json::to_string(value).unwrap_or_else(|_| format!("{:?}", value)),
     }
 }
@@ -1137,9 +1137,9 @@ fn format_run_human(graph: &Graph) -> String {
 /// Images are represented as metadata objects instead of raw data.
 fn json_value(value: &Value) -> serde_json::Value {
     match value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             serde_json::json!({
-                "type": "DynamicImage",
+                "type": "Image",
                 "width": data.width(),
                 "height": data.height()
             })
@@ -1804,8 +1804,11 @@ struct ChannelStats {
 }
 
 /// Compute per-channel (R, G, B, A) statistics for an image.
-fn compute_image_stats(img: &image::DynamicImage) -> Vec<(&'static str, ChannelStats)> {
-    let rgba = img.to_rgba32f();
+///
+/// Converts the FloatImage to RGBA f32 for uniform 4-channel analysis.
+fn compute_image_stats(img: &FloatImage) -> Vec<(&'static str, ChannelStats)> {
+    let dynamic = img.to_dynamic();
+    let rgba = dynamic.to_rgba32f();
     let pixels: Vec<&[f32]> = rgba.as_raw().chunks(4).collect();
     let n = pixels.len() as f64;
     if n == 0.0 {
@@ -1846,13 +1849,13 @@ fn compute_image_stats(img: &image::DynamicImage) -> Vec<(&'static str, ChannelS
 }
 
 /// Check whether an image has any transparent pixels (alpha < 1.0).
-fn has_transparency(img: &image::DynamicImage) -> bool {
+fn has_transparency(img: &FloatImage) -> bool {
     let rgba = img.to_rgba8();
     rgba.pixels().any(|p| p.0[3] < 255)
 }
 
 /// Count unique colors in an image (RGBA8).
-fn count_unique_colors(img: &image::DynamicImage) -> usize {
+fn count_unique_colors(img: &FloatImage) -> usize {
     let rgba = img.to_rgba8();
     let colors: HashSet<[u8; 4]> = rgba.pixels().map(|p| p.0).collect();
     colors.len()
@@ -1886,15 +1889,19 @@ fn resolve_sample_coord(s: &str, w: u32, h: u32) -> Result<(u32, u32), String> {
 }
 
 /// Sample a pixel from an image at (x, y), returning RGBA floats.
-fn sample_pixel(img: &image::DynamicImage, x: u32, y: u32) -> [f32; 4] {
-    let rgba = img.to_rgba32f();
+fn sample_pixel(img: &FloatImage, x: u32, y: u32) -> [f32; 4] {
+    let dynamic = img.to_dynamic();
+    let rgba = dynamic.to_rgba32f();
     let px = rgba.get_pixel(x, y);
     [px.0[0], px.0[1], px.0[2], px.0[3]]
 }
 
 /// Save an image to a file, inferring the format from the file extension.
-fn save_image_to_file(img: &image::DynamicImage, path: &PathBuf) -> Result<(), String> {
-    img.save(path).map_err(|e| format!("failed to save image: {}", e))
+///
+/// Converts the FloatImage to a DynamicImage for file I/O.
+fn save_image_to_file(img: &FloatImage, path: &PathBuf) -> Result<(), String> {
+    let dynamic = img.to_dynamic();
+    dynamic.save(path).map_err(|e| format!("failed to save image: {}", e))
 }
 
 // ── show-output formatting ───────────────────────────────────────────────
@@ -1917,7 +1924,7 @@ fn format_show_output_json(
     });
 
     match value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             let (w, h) = data.dimensions();
             obj["width"] = serde_json::json!(w);
             obj["height"] = serde_json::json!(h);
@@ -1989,7 +1996,7 @@ fn format_show_output_human(
     let mut out = String::new();
 
     match value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             let (w, h) = data.dimensions();
             out.push_str(&format!(
                 "[{}] out[{}] ({}) = <image {}x{}>\n",
@@ -2108,7 +2115,7 @@ async fn cmd_show_output(
         let value = &output.value;
 
         // Resolve sample coordinates for image outputs.
-        let resolved_samples: Vec<(String, u32, u32)> = if let Value::DynamicImage { data, .. } = value {
+        let resolved_samples: Vec<(String, u32, u32)> = if let Value::Image { data, .. } = value {
             let (w, h) = data.dimensions();
             sample_coords.iter().map(|s| {
                 let (x, y) = resolve_sample_coord(s, w, h)?;

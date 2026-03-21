@@ -10,8 +10,8 @@
 //! Uses MAX blending so overlapping splatters stay distinct instead of blurring
 //! together. Always tiles seamlessly by wrapping kernel positions at grid boundaries.
 
-use image::{ImageBuffer, DynamicImage};
 use rayon::prelude::*;
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -64,7 +64,7 @@ impl OpImageNoiseDirt {
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
@@ -282,22 +282,19 @@ impl OpImageNoiseDirt {
         }).collect();
 
         // No min/max normalization — values are already in [0,1] from MAX blending
-        let mut image_buffer = ImageBuffer::new(width as u32, height as u32);
+        let mut float_image = FloatImage::new(width as u32, height as u32, 1);
         for y in 0..h {
             for x in 0..w {
                 let linear = buffer[y * w + x] as f32;
                 let non_linear = crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb(linear);
-                let g = (non_linear * 65535.0) as u16;
-                image_buffer.put_pixel(x as u32, y as u32, image::Luma([g]));
+                float_image.put_pixel(x as u32, y as u32, &[non_linear]);
             }
         }
-
-        let dynamic_image = DynamicImage::ImageLuma16(image_buffer);
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(float_image), change_id: get_id() } },
             ],
         })
     }

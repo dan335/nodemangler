@@ -80,14 +80,15 @@ impl OpNumberMathAdd {
                             Value::Decimal(*b)
                         }
                     },
-                    Value::DynamicImage { data: image_b, change_id: _ } => {
-                        for (_x, _y, pixel) in image_b.to_rgba32f().enumerate_pixels_mut() {
-                            if *a {
-                                *pixel = image::Rgba([pixel.0[0] + 1.0, pixel.0[1] + 1.0, pixel.0[2] + 1.0, pixel.0[3] + 1.0]);
+                    Value::Image { data: image_b, change_id: _ } => {
+                        // Add 1.0 to all channels if boolean is true
+                        let mut result = (**image_b).clone();
+                        if *a {
+                            for pixel in result.pixels_mut() {
+                                for c in 0..pixel.len() { pixel[c] += 1.0; }
                             }
                         }
-
-                        Value::DynamicImage { data: image_b.clone(), change_id: get_id() }
+                        Value::Image { data: std::sync::Arc::new(result), change_id: get_id() }
                     },
                     Value::Text(b) => {
                         Value::Text(format!("{}{}", a, b))
@@ -123,12 +124,14 @@ impl OpNumberMathAdd {
                     Value::Decimal(b) => {
                         Value::Decimal(*a as f32 + *b)
                     },
-                    Value::DynamicImage { data: image_b, change_id: _ } => {
-                        for (_x, _y, pixel) in image_b.to_rgba32f().enumerate_pixels_mut() {
-                            *pixel = image::Rgba([pixel.0[0] + *a as f32, pixel.0[1] + *a as f32, pixel.0[2] + *a as f32, pixel.0[3] + *a as f32]);
+                    Value::Image { data: image_b, change_id: _ } => {
+                        // Add integer value to all channels
+                        let mut result = (**image_b).clone();
+                        let val = *a as f32;
+                        for pixel in result.pixels_mut() {
+                            for c in 0..pixel.len() { pixel[c] += val; }
                         }
-
-                        Value::DynamicImage { data: image_b.clone(), change_id: get_id() }
+                        Value::Image { data: std::sync::Arc::new(result), change_id: get_id() }
                     },
                     Value::Text(b) => {
                         Value::Text(format!("{}{}", a, b))
@@ -160,12 +163,13 @@ impl OpNumberMathAdd {
                     Value::Decimal(b) => {
                         Value::Decimal(*a + *b)
                     },
-                    Value::DynamicImage { data: image_b, change_id: _ } => {
-                        for (_x, _y, pixel) in image_b.to_rgba32f().enumerate_pixels_mut() {
-                            *pixel = image::Rgba([pixel.0[0] + *a, pixel.0[1] + *a, pixel.0[2] + *a, pixel.0[3] + *a]);
+                    Value::Image { data: image_b, change_id: _ } => {
+                        // Add decimal value to all channels
+                        let mut result = (**image_b).clone();
+                        for pixel in result.pixels_mut() {
+                            for c in 0..pixel.len() { pixel[c] += *a; }
                         }
-
-                        Value::DynamicImage { data: image_b.clone(), change_id: get_id() }
+                        Value::Image { data: std::sync::Arc::new(result), change_id: get_id() }
                     },
                     Value::Text(b) => {
                         Value::Text(format!("{}{}", a, b))
@@ -182,26 +186,29 @@ impl OpNumberMathAdd {
                     }); }
                 }
             },
-            Value::DynamicImage { data: image_a, change_id: _ } => {
+            Value::Image { data: image_a, change_id: _ } => {
                 match &inputs[1].value {
                     Value::Bool(b) => {
-                        for (_x, _y, pixel) in image_a.to_rgba32f().enumerate_pixels_mut() {
-                            if *b {
-                                *pixel = image::Rgba([pixel.0[0] + 1.0, pixel.0[1] + 1.0, pixel.0[2] + 1.0, pixel.0[3] + 1.0]);
+                        // Add 1.0 to all channels if boolean is true
+                        let mut result = (**image_a).clone();
+                        if *b {
+                            for pixel in result.pixels_mut() {
+                                for c in 0..pixel.len() { pixel[c] += 1.0; }
                             }
                         }
-
-                        Value::DynamicImage { data: image_a.clone(), change_id: get_id() }
+                        Value::Image { data: std::sync::Arc::new(result), change_id: get_id() }
                     },
                     Value::Integer(b) => {
-                        for (_x, _y, pixel) in image_a.to_rgba32f().enumerate_pixels_mut() {
-                            *pixel = image::Rgba([pixel.0[0] + *b as f32, pixel.0[1] + *b as f32, pixel.0[2] + *b as f32, pixel.0[3] + *b as f32]);
+                        // Add integer value to all channels
+                        let mut result = (**image_a).clone();
+                        let val = *b as f32;
+                        for pixel in result.pixels_mut() {
+                            for c in 0..pixel.len() { pixel[c] += val; }
                         }
-
-                        Value::DynamicImage { data: image_a.clone(), change_id: get_id() }
+                        Value::Image { data: std::sync::Arc::new(result), change_id: get_id() }
                     },
                     Value::Decimal(_b) => todo!(),
-                    Value::DynamicImage { data: _image_b, change_id: _change_id } => todo!(),
+                    Value::Image { data: _image_b, change_id: _change_id } => todo!(),
                     Value::Color(_b) => todo!(),
                     _ => {return Err(OperationError {
                         input_errors: vec![

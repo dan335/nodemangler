@@ -22,7 +22,7 @@ impl OpTextToString {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "to string".to_string(),
-            description: "Casts a text value to a string.".to_string(),
+            description: "Converts any value to its text representation.".to_string(),
         }
     }
 

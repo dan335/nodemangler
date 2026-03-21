@@ -4,9 +4,9 @@
 //! Uses toroidal distance so the rings wrap at tile boundaries, centering the
 //! pattern at (0.5, 0.5) in UV space.
 
-use image::{ImageBuffer, DynamicImage};
 use rayon::prelude::*;
 use crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb;
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -46,7 +46,7 @@ impl OpImageNoiseCylinders {
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
@@ -79,7 +79,7 @@ impl OpImageNoiseCylinders {
         let h = height as usize;
 
         // Compute all pixels in parallel using toroidal distance for seamless tiling.
-        let pixels: Vec<u16> = (0..h).into_par_iter().flat_map_iter(move |y| {
+        let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(move |y| {
             (0..w).map(move |x| {
                 // Normalize to [0, 1]
                 let u = x as f64 / w as f64;
@@ -98,18 +98,22 @@ impl OpImageNoiseCylinders {
                 let fract = scaled - scaled.floor();
                 let noise = (1.0 - fract.min(1.0 - fract) * 4.0) as f32 * 0.5 + 0.5;
 
-                let non_linear = linear_to_nonlinear_srgb(noise);
-                (non_linear * 65535.0) as u16
+                linear_to_nonlinear_srgb(noise)
             })
         }).collect();
 
-        let image_buffer = ImageBuffer::from_raw(width as u32, height as u32, pixels).unwrap();
-        let dynamic_image = DynamicImage::ImageLuma16(image_buffer);
+        // Build a single-channel FloatImage from the computed pixel values
+        let mut float_image = FloatImage::new(width as u32, height as u32, 1);
+        for (i, &val) in pixels.iter().enumerate() {
+            let x = (i % w) as u32;
+            let y = (i / w) as u32;
+            float_image.put_pixel(x, y, &[val]);
+        }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(float_image), change_id: get_id() } },
             ],
         })
     }

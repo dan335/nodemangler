@@ -1,23 +1,29 @@
 use super::*;
 use image::DynamicImage;
+use crate::float_image::FloatImage;
 use std::sync::Arc;
 use crate::get_id;
 use crate::value::ColorFormat;
 
+/// Helper to create a `FloatImage` from a `DynamicImage` for test convenience.
+fn float_from_dynamic(img: DynamicImage) -> Arc<FloatImage> {
+    Arc::new(FloatImage::from_dynamic(&img))
+}
+
 /// Helper to build file output inputs with default Rgba8 color format.
-fn make_file_inputs(img: Arc<DynamicImage>, folder: std::path::PathBuf, format: image::ImageFormat) -> Vec<Input> {
+fn make_file_inputs(img: Arc<FloatImage>, folder: std::path::PathBuf, format: image::ImageFormat) -> Vec<Input> {
     make_file_inputs_with_format(img, folder, format, ColorFormat::Rgba8)
 }
 
 /// Helper to build file output inputs with a specific color format.
 fn make_file_inputs_with_format(
-    img: Arc<DynamicImage>,
+    img: Arc<FloatImage>,
     folder: std::path::PathBuf,
     format: image::ImageFormat,
     color_format: ColorFormat,
 ) -> Vec<Input> {
     vec![
-        Input::new("image".to_string(), Value::DynamicImage { data: img, change_id: get_id() }, None, None),
+        Input::new("image".to_string(), Value::Image { data: img, change_id: get_id() }, None, None),
         Input::new("file name".to_string(), Value::Text("test_output".to_string()), None, None),
         Input::new("folder".to_string(), Value::Path(folder), None, None),
         Input::new("image format".to_string(), Value::ImageType(format), None, None),
@@ -45,7 +51,7 @@ async fn test_file_output_settings() {
 #[tokio::test]
 async fn test_file_output_exact_settings() {
     let s = OpImageOutputFile::settings();
-    assert_eq!(s.name, "image to file");
+    assert_eq!(s.name, "to file");
     assert_eq!(OpImageOutputFile::create_inputs().len(), 6);
     assert_eq!(OpImageOutputFile::create_outputs().len(), 1);
 }
@@ -53,7 +59,7 @@ async fn test_file_output_exact_settings() {
 #[tokio::test]
 async fn test_file_output_nonexistent_folder_returns_error() {
     let imgbuf = image::RgbaImage::new(4, 4);
-    let img = Arc::new(DynamicImage::ImageRgba8(imgbuf));
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
     let mut inputs = make_file_inputs(img, std::path::PathBuf::from("/this/path/does/not/exist/at/all"), image::ImageFormat::Png);
     let result = OpImageOutputFile::run(&mut inputs).await;
     assert!(result.is_err(), "saving to nonexistent folder should fail");
@@ -68,7 +74,7 @@ async fn test_file_output_rgba32f_saves_png() {
     let imgbuf = image::Rgba32FImage::from_fn(8, 8, |x, y| {
         image::Rgba([x as f32 / 8.0, y as f32 / 8.0, 0.5, 1.0])
     });
-    let img = Arc::new(DynamicImage::ImageRgba32F(imgbuf));
+    let img = float_from_dynamic(DynamicImage::ImageRgba32F(imgbuf));
 
     let tmp = std::env::temp_dir().join("nodemangler_test_rgba32f_png");
     std::fs::create_dir_all(&tmp).unwrap();
@@ -90,7 +96,7 @@ async fn test_file_output_rgba32f_saves_jpeg() {
     let imgbuf = image::Rgba32FImage::from_fn(8, 8, |x, y| {
         image::Rgba([x as f32 / 8.0, y as f32 / 8.0, 0.5, 1.0])
     });
-    let img = Arc::new(DynamicImage::ImageRgba32F(imgbuf));
+    let img = float_from_dynamic(DynamicImage::ImageRgba32F(imgbuf));
 
     let tmp = std::env::temp_dir().join("nodemangler_test_rgba32f_jpg");
     std::fs::create_dir_all(&tmp).unwrap();
@@ -110,7 +116,7 @@ async fn test_file_output_rgba32f_saves_bmp() {
     let imgbuf = image::Rgba32FImage::from_fn(8, 8, |_, _| {
         image::Rgba([0.3, 0.6, 0.9, 1.0])
     });
-    let img = Arc::new(DynamicImage::ImageRgba32F(imgbuf));
+    let img = float_from_dynamic(DynamicImage::ImageRgba32F(imgbuf));
 
     let tmp = std::env::temp_dir().join("nodemangler_test_rgba32f_bmp");
     std::fs::create_dir_all(&tmp).unwrap();
@@ -131,7 +137,7 @@ async fn test_file_output_rgba32f_with_hdr_values_saves() {
     let imgbuf = image::Rgba32FImage::from_fn(4, 4, |_, _| {
         image::Rgba([2.5, -0.3, 1.5, 1.0])
     });
-    let img = Arc::new(DynamicImage::ImageRgba32F(imgbuf));
+    let img = float_from_dynamic(DynamicImage::ImageRgba32F(imgbuf));
 
     let tmp = std::env::temp_dir().join("nodemangler_test_rgba32f_hdr");
     std::fs::create_dir_all(&tmp).unwrap();
@@ -151,7 +157,7 @@ async fn test_file_output_rgba8_still_works() {
     let imgbuf = image::RgbaImage::from_fn(8, 8, |x, y| {
         image::Rgba([(x * 32) as u8, (y * 32) as u8, 128, 255])
     });
-    let img = Arc::new(DynamicImage::ImageRgba8(imgbuf));
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
 
     let tmp = std::env::temp_dir().join("nodemangler_test_rgba8_png");
     std::fs::create_dir_all(&tmp).unwrap();
@@ -171,7 +177,7 @@ async fn test_file_output_returns_path_on_success() {
     let imgbuf = image::Rgba32FImage::from_fn(4, 4, |_, _| {
         image::Rgba([0.5, 0.5, 0.5, 1.0])
     });
-    let img = Arc::new(DynamicImage::ImageRgba32F(imgbuf));
+    let img = float_from_dynamic(DynamicImage::ImageRgba32F(imgbuf));
 
     let tmp = std::env::temp_dir().join("nodemangler_test_rgba32f_path");
     std::fs::create_dir_all(&tmp).unwrap();
@@ -197,7 +203,7 @@ async fn test_file_output_luma8_saves_png() {
     let imgbuf = image::GrayImage::from_fn(8, 8, |x, _| {
         image::Luma([(x * 32) as u8])
     });
-    let img = Arc::new(DynamicImage::ImageLuma8(imgbuf));
+    let img = float_from_dynamic(DynamicImage::ImageLuma8(imgbuf));
 
     let tmp = std::env::temp_dir().join("nodemangler_test_luma8_png");
     std::fs::create_dir_all(&tmp).unwrap();
@@ -220,7 +226,7 @@ async fn test_file_output_rgba16_saves_png() {
     let imgbuf = image::Rgba32FImage::from_fn(8, 8, |x, y| {
         image::Rgba([x as f32 / 8.0, y as f32 / 8.0, 0.5, 1.0])
     });
-    let img = Arc::new(DynamicImage::ImageRgba32F(imgbuf));
+    let img = float_from_dynamic(DynamicImage::ImageRgba32F(imgbuf));
 
     let tmp = std::env::temp_dir().join("nodemangler_test_rgba16_png");
     std::fs::create_dir_all(&tmp).unwrap();
@@ -240,7 +246,7 @@ async fn test_file_output_rgba32f_saves_exr() {
     let imgbuf = image::Rgba32FImage::from_fn(8, 8, |x, y| {
         image::Rgba([x as f32 / 8.0, y as f32 / 8.0, 0.5, 1.0])
     });
-    let img = Arc::new(DynamicImage::ImageRgba32F(imgbuf));
+    let img = float_from_dynamic(DynamicImage::ImageRgba32F(imgbuf));
 
     let tmp = std::env::temp_dir().join("nodemangler_test_rgba32f_exr");
     std::fs::create_dir_all(&tmp).unwrap();
@@ -260,7 +266,7 @@ async fn test_file_output_gray8_saves_jpeg() {
     let imgbuf = image::GrayImage::from_fn(8, 8, |x, _| {
         image::Luma([(x * 32) as u8])
     });
-    let img = Arc::new(DynamicImage::ImageLuma8(imgbuf));
+    let img = float_from_dynamic(DynamicImage::ImageLuma8(imgbuf));
 
     let tmp = std::env::temp_dir().join("nodemangler_test_gray8_jpg");
     std::fs::create_dir_all(&tmp).unwrap();
@@ -280,7 +286,7 @@ async fn test_file_output_gray16_saves_png() {
     let imgbuf = image::Rgba32FImage::from_fn(8, 8, |x, _| {
         image::Rgba([x as f32 / 8.0, 0.0, 0.0, 1.0])
     });
-    let img = Arc::new(DynamicImage::ImageRgba32F(imgbuf));
+    let img = float_from_dynamic(DynamicImage::ImageRgba32F(imgbuf));
 
     let tmp = std::env::temp_dir().join("nodemangler_test_gray16_png");
     std::fs::create_dir_all(&tmp).unwrap();
@@ -300,7 +306,7 @@ async fn test_file_output_incompatible_rgba32f_png_errors() {
     let imgbuf = image::Rgba32FImage::from_fn(4, 4, |_, _| {
         image::Rgba([0.5, 0.5, 0.5, 1.0])
     });
-    let img = Arc::new(DynamicImage::ImageRgba32F(imgbuf));
+    let img = float_from_dynamic(DynamicImage::ImageRgba32F(imgbuf));
 
     let tmp = std::env::temp_dir().join("nodemangler_test_incompat_rgba32f_png");
     std::fs::create_dir_all(&tmp).unwrap();
@@ -318,7 +324,7 @@ async fn test_file_output_incompatible_rgba32f_png_errors() {
 async fn test_file_output_incompatible_rgb16_jpeg_errors() {
     // Rgb16 is not compatible with JPEG — should return an error.
     let imgbuf = image::RgbaImage::new(4, 4);
-    let img = Arc::new(DynamicImage::ImageRgba8(imgbuf));
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
 
     let tmp = std::env::temp_dir().join("nodemangler_test_incompat_rgb16_jpg");
     std::fs::create_dir_all(&tmp).unwrap();
@@ -338,7 +344,7 @@ async fn test_file_output_farbfeld_rgba16() {
     let imgbuf = image::RgbaImage::from_fn(8, 8, |x, y| {
         image::Rgba([(x * 32) as u8, (y * 32) as u8, 128, 255])
     });
-    let img = Arc::new(DynamicImage::ImageRgba8(imgbuf));
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
 
     let tmp = std::env::temp_dir().join("nodemangler_test_farbfeld_rgba16");
     std::fs::create_dir_all(&tmp).unwrap();
@@ -356,7 +362,7 @@ async fn test_file_output_farbfeld_rgba16() {
 async fn test_file_output_farbfeld_wrong_format_errors() {
     // Farbfeld with Rgba8 — should be rejected.
     let imgbuf = image::RgbaImage::new(4, 4);
-    let img = Arc::new(DynamicImage::ImageRgba8(imgbuf));
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
 
     let tmp = std::env::temp_dir().join("nodemangler_test_farbfeld_wrong");
     std::fs::create_dir_all(&tmp).unwrap();

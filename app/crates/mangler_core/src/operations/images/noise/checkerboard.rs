@@ -3,9 +3,8 @@
 //! Produces a grayscale checkerboard pattern using the noise library's
 //! `Checkerboard` function. The cell size controls the scale of the squares.
 
-use image::{RgbaImage, ImageBuffer, DynamicImage};
-use crate::color::Color;
-use crate::color::color_spaces::rgb_linear::{nonlinear_to_linear_rgb, linear_to_nonlinear_srgb};
+use crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb;
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -13,8 +12,9 @@ use crate::operations::{OperationResponse, OperationError, OutputResponse, defau
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Instant;
-use noise::{NoiseFn, Perlin, Seedable, Checkerboard};
+use noise::{NoiseFn, Checkerboard};
 
 /// Operation that generates a checkerboard pattern as a grayscale image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,7 +41,7 @@ impl OpImageNoiseCheckerboard {
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
         ]
     }
 
@@ -71,7 +71,8 @@ impl OpImageNoiseCheckerboard {
         height = height.max(1);
         size = size.max(1);
 
-        let mut image_buffer = ImageBuffer::new(width as u32, height as u32);
+        // Build a single-channel FloatImage from the checkerboard pattern
+        let mut float_image = FloatImage::new(width as u32, height as u32, 1);
 
         let perlin = Checkerboard::new(size as usize);
 
@@ -82,17 +83,14 @@ impl OpImageNoiseCheckerboard {
                 let coords_y = (y as f64) / (size as f64);
                 let noise = perlin.get([coords_x, coords_y]) as f32 * 0.5 + 0.5;
                 let non_linear = linear_to_nonlinear_srgb(noise);
-                let g = (non_linear * 65535.0) as u16;
-                image_buffer.put_pixel(x as u32, y as u32, image::Luma([g]));
+                float_image.put_pixel(x as u32, y as u32, &[non_linear]);
             }
         }
-        
-        let dynamic_image = DynamicImage::ImageLuma16(image_buffer);
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: dynamic_image, change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(float_image), change_id: get_id() } },
             ],
         })
     }

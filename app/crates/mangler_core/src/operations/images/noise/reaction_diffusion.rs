@@ -7,8 +7,8 @@
 //!
 //! Always tiles seamlessly by wrapping the grid edges during diffusion.
 
-use image::{ImageBuffer, DynamicImage};
 use rayon::prelude::*;
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -36,7 +36,7 @@ impl OpImageNoiseReactionDiffusion {
     /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "reaction diffusion noise".to_string(),
+            name: "reaction diffusion".to_string(),
             description: "Gray-Scott reaction-diffusion simulation producing organic spots, worms, maze, and coral patterns.".to_string(),
         }
     }
@@ -58,7 +58,7 @@ impl OpImageNoiseReactionDiffusion {
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
@@ -193,22 +193,19 @@ impl OpImageNoiseReactionDiffusion {
         }
 
         // Output the B channel (inverted: patterns appear bright on dark background)
-        let mut image_buffer = ImageBuffer::new(width as u32, height as u32);
+        let mut float_image = FloatImage::new(width as u32, height as u32, 1);
         for y in 0..h {
             for x in 0..w {
                 let b = grid_b[y * w + x] as f32;
                 let non_linear = crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb(b);
-                let g = (non_linear * 65535.0) as u16;
-                image_buffer.put_pixel(x as u32, y as u32, image::Luma([g]));
+                float_image.put_pixel(x as u32, y as u32, &[non_linear]);
             }
         }
-
-        let dynamic_image = DynamicImage::ImageLuma16(image_buffer);
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(float_image), change_id: get_id() } },
             ],
         })
     }

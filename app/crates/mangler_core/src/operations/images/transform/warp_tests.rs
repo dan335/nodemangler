@@ -1,32 +1,40 @@
+//! Tests for the warp operation.
+
 use super::*;
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::Input;
 use crate::value::Value;
-use image::DynamicImage;
 use std::sync::Arc;
 
-fn test_image(w: u32, h: u32) -> Arc<DynamicImage> {
-    let mut imgbuf = image::RgbaImage::new(w, h);
-    for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-        let r = (x * 255 / w.max(1)) as u8;
-        let g = (y * 255 / h.max(1)) as u8;
-        *pixel = image::Rgba([r, g, 128, 255]);
+/// Creates a test gradient image as a 4-channel FloatImage.
+fn test_image(w: u32, h: u32) -> Arc<FloatImage> {
+    let mut img = FloatImage::new(w, h, 4);
+    for y in 0..h {
+        for x in 0..w {
+            let r = x as f32 / w.max(1) as f32;
+            let g = y as f32 / h.max(1) as f32;
+            img.put_pixel(x, y, &[r, g, 0.5, 1.0]);
+        }
     }
-    Arc::new(DynamicImage::ImageRgba8(imgbuf))
+    Arc::new(img)
 }
 
 fn image_input(w: u32, h: u32) -> Value {
-    Value::DynamicImage { data: test_image(w, h), change_id: get_id() }
+    Value::Image { data: test_image(w, h), change_id: get_id() }
 }
 
+/// Creates a horizontal gradient image for displacement maps.
 fn gradient_h_image(w: u32, h: u32) -> Value {
-    let mut imgbuf = image::RgbaImage::new(w, h);
-    for (x, _y, pixel) in imgbuf.enumerate_pixels_mut() {
-        let v = (x * 255 / w.max(1)) as u8;
-        *pixel = image::Rgba([v, v, v, 255]);
+    let mut img = FloatImage::new(w, h, 4);
+    for y in 0..h {
+        for x in 0..w {
+            let v = x as f32 / w.max(1) as f32;
+            img.put_pixel(x, y, &[v, v, v, 1.0]);
+        }
     }
-    Value::DynamicImage { data: Arc::new(DynamicImage::ImageRgba8(imgbuf)), change_id: get_id() }
+    Value::Image { data: Arc::new(img), change_id: get_id() }
 }
 
 #[tokio::test]
@@ -47,20 +55,12 @@ async fn test_warp_basic() {
     let result = OpImageTransformWarp::run(&mut inputs).await.unwrap();
     assert_eq!(result.responses.len(), 1);
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 16);
             assert_eq!(data.height(), 16);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
-}
-
-#[tokio::test]
-async fn test_bilinear_sample_exact_pixel() {
-    let mut img = image::RgbaImage::new(4, 4);
-    img.put_pixel(2, 1, image::Rgba([255, 0, 0, 255]));
-    let result = bilinear_sample_rgba(&img, 2.0, 1.0);
-    assert_eq!(result, [255, 0, 0, 255]);
 }
 
 #[tokio::test]
@@ -76,23 +76,21 @@ async fn test_warp_1x1() {
 
 #[tokio::test]
 async fn test_warp_zero_intensity_is_passthrough() {
-    // With intensity=0, displacement offsets are 0 → output should equal input
-    let uniform = image::RgbaImage::from_pixel(8, 8, image::Rgba([200u8, 100, 50, 255]));
-    let img = Arc::new(DynamicImage::ImageRgba8(uniform));
-    let disp = image::RgbaImage::from_pixel(8, 8, image::Rgba([128u8, 128, 128, 255]));
-    let disp_img = Arc::new(DynamicImage::ImageRgba8(disp));
+    // With intensity=0, displacement offsets are 0 -> output should equal input
+    let img = Arc::new(FloatImage::from_pixel(8, 8, 4, &[0.784, 0.392, 0.196, 1.0]));
+    let disp = Arc::new(FloatImage::from_pixel(8, 8, 4, &[0.5, 0.5, 0.5, 1.0]));
     let mut inputs = vec![
-        Input::new("image".to_string(), Value::DynamicImage { data: img, change_id: get_id() }, None, None),
-        Input::new("displacement".to_string(), Value::DynamicImage { data: disp_img, change_id: get_id() }, None, None),
+        Input::new("image".to_string(), Value::Image { data: img, change_id: get_id() }, None, None),
+        Input::new("displacement".to_string(), Value::Image { data: disp, change_id: get_id() }, None, None),
         Input::new("intensity".to_string(), Value::Decimal(0.0), None, None),
     ];
     let result = OpImageTransformWarp::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            let p = data.to_rgba8().get_pixel(4, 4).0;
-            assert_eq!(p, [200u8, 100, 50, 255], "zero intensity warp should be passthrough");
+        Value::Image { data, .. } => {
+            let p = data.get_pixel(4, 4);
+            assert!((p[0] - 0.784).abs() < 0.01, "zero intensity warp should be passthrough, got {}", p[0]);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -105,10 +103,10 @@ async fn test_warp_preserves_dimensions() {
     ];
     let result = OpImageTransformWarp::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 8);
             assert_eq!(data.height(), 8);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }

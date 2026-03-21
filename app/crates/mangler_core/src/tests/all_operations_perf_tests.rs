@@ -7,9 +7,8 @@ mod all_operations_perf {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use image::{DynamicImage, RgbaImage};
-
     use crate::{
+        float_image::FloatImage,
         get_id,
         input::Input,
         operations::{operation_list, Operation, OperationListItem},
@@ -26,12 +25,18 @@ mod all_operations_perf {
         "text from clipboard",
     ];
 
-    /// Create a 512x512 gradient test image.
-    fn make_test_image() -> Arc<DynamicImage> {
-        let img = RgbaImage::from_fn(512, 512, |x, y| {
-            image::Rgba([(x % 256) as u8, (y % 256) as u8, 128, 255])
-        });
-        Arc::new(DynamicImage::ImageRgba8(img))
+    /// Create a 512x512 gradient test image as a 4-channel FloatImage.
+    fn make_test_image() -> Arc<FloatImage> {
+        let mut data = Vec::with_capacity(512 * 512 * 4);
+        for y in 0..512u32 {
+            for x in 0..512u32 {
+                data.push((x % 256) as f32 / 255.0); // r
+                data.push((y % 256) as f32 / 255.0); // g
+                data.push(128.0 / 255.0);             // b
+                data.push(1.0);                        // a
+            }
+        }
+        Arc::new(FloatImage::from_raw(512, 512, 4, data).expect("data length matches"))
     }
 
     /// Recursively flatten the operation menu tree into a list of operations.
@@ -51,11 +56,11 @@ mod all_operations_perf {
         ops
     }
 
-    /// Replace any DynamicImage inputs with a 512x512 test image.
-    fn prepare_inputs(inputs: &mut [Input], test_image: &Arc<DynamicImage>) {
+    /// Replace any Image inputs with a 512x512 test image.
+    fn prepare_inputs(inputs: &mut [Input], test_image: &Arc<FloatImage>) {
         for input in inputs.iter_mut() {
-            if matches!(input.value, Value::DynamicImage { .. }) {
-                let img_value = Value::DynamicImage {
+            if matches!(input.value, Value::Image { .. }) {
+                let img_value = Value::Image {
                     data: Arc::clone(test_image),
                     change_id: get_id(),
                 };

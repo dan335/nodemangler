@@ -45,7 +45,7 @@ async fn test_bool_input_from_integer_zero() {
 #[tokio::test]
 async fn test_bool_settings() {
     let s = OpLogicInputBool::settings();
-    assert_eq!(s.name, "bool");
+    assert_eq!(s.name, "boolean");
     assert_eq!(OpLogicInputBool::create_inputs().len(), 1);
     assert_eq!(OpLogicInputBool::create_outputs().len(), 1);
 }

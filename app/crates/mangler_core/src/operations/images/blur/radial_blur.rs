@@ -2,16 +2,16 @@
 //!
 //! Applies a circular motion blur around the image center by sampling
 //! pixels at multiple angular offsets at the same radial distance.
+//! Works directly on [`FloatImage`] f32 data.
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
-use crate::operations::images::transform::warp::bilinear_sample_rgba;
 use crate::output::Output;
 use crate::value::Value;
-use image::DynamicImage;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -33,7 +33,7 @@ impl OpImageAdjustmentRadialBlur {
     /// Creates the input ports: image, spin angle (degrees), and number of samples.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
             Input::new("angle".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 180.0), step_by: Some(1.0), clamp_to_range: true }), None),
             Input::new("samples".to_string(), Value::Integer(10), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 100.0)) }), None),
         ]
@@ -42,7 +42,7 @@ impl OpImageAdjustmentRadialBlur {
     /// Creates the output port: the radially blurred image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
@@ -53,7 +53,7 @@ impl OpImageAdjustmentRadialBlur {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
+        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
         let angle_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
         let samples_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
 
@@ -61,7 +61,7 @@ impl OpImageAdjustmentRadialBlur {
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Value::DynamicImage { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
+        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Decimal(angle) = angle_converted.unwrap() else { unreachable!() };
         let Value::Integer(samples) = samples_converted.unwrap() else { unreachable!() };
 
@@ -69,26 +69,30 @@ impl OpImageAdjustmentRadialBlur {
         let samples = samples.max(1) as u32;
         let angle_rad = angle.to_radians();
 
-        let rgba = data.to_rgba8();
-        let (width, height) = rgba.dimensions();
+        let (width, height) = data.dimensions();
+        let ch = data.channels() as usize;
         let cx = width as f32 / 2.0;
         let cy = height as f32 / 2.0;
-        let rgba_ref = &rgba;
+        let data_ref = &data;
         let h = height as usize;
         let w = width as usize;
 
-        let pixels: Vec<u8> = (0..h).into_par_iter().flat_map_iter(move |y| {
-            (0..w).flat_map(move |x| {
+        // Process each row in parallel, sampling along arcs around the center
+        let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(move |y| {
+            // Thread-local sample buffer to avoid per-pixel allocation
+            let mut sample = vec![0.0f32; ch];
+            let mut row_pixels = Vec::with_capacity(w * ch);
+
+            for x in 0..w {
+                // Compute polar coordinates relative to the image center
                 let ddx = x as f32 - cx;
                 let ddy = y as f32 - cy;
                 let base_angle = ddy.atan2(ddx);
                 let dist = (ddx * ddx + ddy * ddy).sqrt();
 
-                let mut r_sum: f64 = 0.0;
-                let mut g_sum: f64 = 0.0;
-                let mut b_sum: f64 = 0.0;
-                let mut a_sum: f64 = 0.0;
+                let mut sums = vec![0.0f64; ch];
 
+                // Sample at angular offsets along the arc
                 for i in 0..samples {
                     let t = if samples > 1 {
                         (i as f32 / (samples - 1) as f32) - 0.5
@@ -98,29 +102,28 @@ impl OpImageAdjustmentRadialBlur {
                     let sample_angle = base_angle + t * angle_rad;
                     let sx = cx + dist * sample_angle.cos();
                     let sy = cy + dist * sample_angle.sin();
-                    let pixel = bilinear_sample_rgba(rgba_ref, sx, sy);
-                    r_sum += pixel[0] as f64;
-                    g_sum += pixel[1] as f64;
-                    b_sum += pixel[2] as f64;
-                    a_sum += pixel[3] as f64;
+                    data_ref.bilinear_sample(sx, sy, &mut sample);
+                    for c in 0..ch {
+                        sums[c] += sample[c] as f64;
+                    }
                 }
 
+                // Average across all samples
                 let count = samples as f64;
-                [
-                    (r_sum / count) as u8,
-                    (g_sum / count) as u8,
-                    (b_sum / count) as u8,
-                    (a_sum / count) as u8,
-                ]
-            })
+                for c in 0..ch {
+                    row_pixels.push((sums[c] / count) as f32);
+                }
+            }
+            row_pixels
         }).collect();
 
-        let output_buf = image::RgbaImage::from_raw(width, height, pixels).unwrap();
+        // Build the output FloatImage from the computed pixel buffer
+        let output = FloatImage::from_raw(width, height, data.channels(), pixels).unwrap();
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(DynamicImage::ImageRgba8(output_buf)), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(output), change_id: get_id() } },
             ],
         })
     }

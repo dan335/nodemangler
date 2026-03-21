@@ -1,25 +1,27 @@
 use super::*;
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::Input;
 use crate::value::Value;
-use image::{DynamicImage, RgbaImage};
 use std::sync::Arc;
 
-fn test_image(w: u32, h: u32) -> Arc<DynamicImage> {
-    let mut img = RgbaImage::new(w, h);
+/// Creates a test FloatImage with a gradient pattern (4-channel RGBA).
+fn test_image(w: u32, h: u32) -> Arc<FloatImage> {
+    let mut img = FloatImage::new(w, h, 4);
     for y in 0..h {
         for x in 0..w {
-            let r = ((x as f32 / w as f32) * 255.0) as u8;
-            let g = ((y as f32 / h as f32) * 255.0) as u8;
-            img.put_pixel(x, y, image::Rgba([r, g, 128, 255]));
+            let r = x as f32 / w as f32;
+            let g = y as f32 / h as f32;
+            img.put_pixel(x, y, &[r, g, 0.5, 1.0]);
         }
     }
-    Arc::new(DynamicImage::ImageRgba8(img))
+    Arc::new(img)
 }
 
+/// Wraps a test image as a Value::Image.
 fn image_input(w: u32, h: u32) -> Value {
-    Value::DynamicImage { data: test_image(w, h), change_id: get_id() }
+    Value::Image { data: test_image(w, h), change_id: get_id() }
 }
 
 
@@ -43,8 +45,8 @@ async fn test_opimagepatternhexagonal_run() {
     let result = OpImagePatternHexagonal::run(&mut inputs).await;
     assert!(result.is_ok(), "run failed: {:?}", result.err());
     match &result.unwrap().responses[0].value {
-        Value::DynamicImage { .. } => {}
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        Value::Image { .. } => {}
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -58,10 +60,12 @@ async fn test_opimagepatternhexagonal_correct_dimensions() {
     ];
     let result = OpImagePatternHexagonal::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 16);
             assert_eq!(data.height(), 8);
+            // output should be 1-channel grayscale mask
+            assert_eq!(data.channels(), 1);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }

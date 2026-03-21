@@ -1,18 +1,22 @@
+//! Tests for the most common colors operation.
+
 use super::*;
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::Input;
 use crate::value::Value;
-use image::DynamicImage;
 use std::sync::Arc;
 
 fn test_image(w: u32, h: u32) -> Value {
-    let mut imgbuf = image::RgbaImage::new(w, h);
-    for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-        let r = (x * 255 / w.max(1)) as u8;
-        let g = (y * 255 / h.max(1)) as u8;
-        *pixel = image::Rgba([r, g, 128, 255]);
+    let mut img = FloatImage::new(w, h, 4);
+    for y in 0..h {
+        for x in 0..w {
+            let r = x as f32 / w.max(1) as f32;
+            let g = y as f32 / h.max(1) as f32;
+            img.put_pixel(x, y, &[r, g, 0.5, 1.0]);
+        }
     }
-    Value::DynamicImage { data: Arc::new(DynamicImage::ImageRgba8(imgbuf)), change_id: get_id() }
+    Value::Image { data: Arc::new(img), change_id: get_id() }
 }
 
 #[tokio::test]
@@ -55,13 +59,9 @@ async fn test_most_common_colors_always_five_responses() {
 
 #[tokio::test]
 async fn test_most_common_colors_uniform_image() {
-    // Uniform image: all pixels the same color — top result should be approximately that color
-    let mut imgbuf = image::RgbaImage::new(4, 4);
-    for pixel in imgbuf.pixels_mut() {
-        *pixel = image::Rgba([255u8, 0, 0, 255]);
-    }
-    let img = Value::DynamicImage {
-        data: Arc::new(DynamicImage::ImageRgba8(imgbuf)),
+    // Uniform red image
+    let img = Value::Image {
+        data: Arc::new(FloatImage::from_pixel(4, 4, 4, &[1.0, 0.0, 0.0, 1.0])),
         change_id: get_id(),
     };
     let mut inputs = vec![
@@ -72,7 +72,6 @@ async fn test_most_common_colors_uniform_image() {
     ];
     let result = OpColorSampleMostCommonColors::run(&mut inputs).await.unwrap();
     assert_eq!(result.responses.len(), 5);
-    // At least the first should be a valid Color
     match &result.responses[0].value {
         Value::Color(_) => {}
         other => panic!("Expected Color, got {:?}", other),
@@ -81,10 +80,8 @@ async fn test_most_common_colors_uniform_image() {
 
 #[tokio::test]
 async fn test_most_common_colors_1x1_image() {
-    let mut imgbuf = image::RgbaImage::new(1, 1);
-    imgbuf.put_pixel(0, 0, image::Rgba([128u8, 64, 32, 255]));
-    let img = Value::DynamicImage {
-        data: Arc::new(DynamicImage::ImageRgba8(imgbuf)),
+    let img = Value::Image {
+        data: Arc::new(FloatImage::from_pixel(1, 1, 4, &[0.5, 0.25, 0.125, 1.0])),
         change_id: get_id(),
     };
     let mut inputs = vec![

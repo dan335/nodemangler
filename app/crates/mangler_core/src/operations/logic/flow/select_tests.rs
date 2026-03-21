@@ -90,23 +90,23 @@ fn test_select_branch_inputs_accept_any_type() {
 #[tokio::test]
 async fn test_select_with_images() {
     use std::sync::Arc;
-    use image::{DynamicImage, RgbaImage};
+    use crate::float_image::FloatImage;
     use crate::get_id;
 
-    let img_true = Value::DynamicImage {
-        data: Arc::new(DynamicImage::ImageRgba8(RgbaImage::from_pixel(1, 1, image::Rgba([255, 0, 0, 255])))),
+    let img_true = Value::Image {
+        data: Arc::new(FloatImage::from_pixel(1, 1, 4, &[1.0, 0.0, 0.0, 1.0])),
         change_id: get_id(),
     };
-    let img_false = Value::DynamicImage {
-        data: Arc::new(DynamicImage::ImageRgba8(RgbaImage::from_pixel(1, 1, image::Rgba([0, 255, 0, 255])))),
+    let img_false = Value::Image {
+        data: Arc::new(FloatImage::from_pixel(1, 1, 4, &[0.0, 1.0, 0.0, 1.0])),
         change_id: get_id(),
     };
 
     let mut inputs = make_inputs(Value::Bool(true), img_true.clone(), img_false.clone());
     let result = OpLogicFlowSelect::run(&mut inputs).await.unwrap();
-    assert!(matches!(result.responses[0].value, Value::DynamicImage { .. }));
+    assert!(matches!(result.responses[0].value, Value::Image { .. }));
 
     let mut inputs = make_inputs(Value::Bool(false), img_true, img_false);
     let result = OpLogicFlowSelect::run(&mut inputs).await.unwrap();
-    assert!(matches!(result.responses[0].value, Value::DynamicImage { .. }));
+    assert!(matches!(result.responses[0].value, Value::Image { .. }));
 }

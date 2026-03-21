@@ -8,24 +8,30 @@
 mod perf_tests {
     use std::sync::Arc;
     use std::time::Instant;
-    use image::{DynamicImage, RgbaImage};
     use tokio::sync::mpsc;
 
     use crate::{
+        float_image::FloatImage,
         get_id, graph::Graph, operations::Operation, value::Value, AddNodeType,
         GraphChangedMessage, NodeChangedMessage,
     };
 
-    /// Create a test image of the given dimensions
-    fn make_test_image(width: u32, height: u32) -> DynamicImage {
-        let img = RgbaImage::from_fn(width, height, |x, y| {
-            image::Rgba([(x % 256) as u8, (y % 256) as u8, 128, 255])
-        });
-        DynamicImage::ImageRgba8(img)
+    /// Create a test FloatImage of the given dimensions (4-channel RGBA gradient).
+    fn make_test_image(width: u32, height: u32) -> FloatImage {
+        let mut data = Vec::with_capacity((width * height * 4) as usize);
+        for y in 0..height {
+            for x in 0..width {
+                data.push((x % 256) as f32 / 255.0); // r
+                data.push((y % 256) as f32 / 255.0); // g
+                data.push(128.0 / 255.0);             // b
+                data.push(1.0);                        // a
+            }
+        }
+        FloatImage::from_raw(width, height, 4, data).expect("data length matches")
     }
 
     fn make_image_value(width: u32, height: u32) -> Value {
-        Value::DynamicImage {
+        Value::Image {
             data: Arc::new(make_test_image(width, height)),
             change_id: get_id(),
         }
@@ -38,7 +44,7 @@ mod perf_tests {
     }
 
     // ---------------------------------------------------------------
-    // Simple test: measure how long it takes to clone a Value::DynamicImage
+    // Simple test: measure how long it takes to clone a Value::Image
     // ---------------------------------------------------------------
     #[test]
     fn perf_image_value_clone() {

@@ -1,9 +1,11 @@
 //! Image-from-clipboard input operation.
 //!
 //! Reads image data from the system clipboard using the `arboard` crate
-//! and outputs the image along with its dimensions.
+//! and outputs the image along with its dimensions. The clipboard RGBA
+//! bytes are converted to a 4-channel `FloatImage`.
 
 use image::{RgbaImage, ImageBuffer};
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
@@ -19,7 +21,7 @@ use arboard::Clipboard;
 ///
 /// Triggered by a `Trigger` input (button press in the UI). Reads raw RGBA
 /// pixel data from the clipboard via `arboard` and converts it into a
-/// `DynamicImage`.
+/// `FloatImage`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageInputClipboard {}
 
@@ -42,7 +44,7 @@ impl OpImageInputClipboard {
     /// Creates the output definitions: the grabbed image, its width, and its height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
             Output::new("width".to_string(), Value::Integer(1), None),
             Output::new("height".to_string(), Value::Integer(1), None),
         ]
@@ -68,10 +70,13 @@ impl OpImageInputClipboard {
                     image_bytes.bytes.into_owned(),
                 );
                 
-                if let Some(image) = image_option{
-                    width = image.width();
-                    height = image.height();
-                    img = Some(Value::DynamicImage{ data:Arc::new(image::DynamicImage::ImageRgba8(image)), change_id:get_id() });
+                if let Some(rgba_image) = image_option {
+                    // Convert the RgbaImage to a 4-channel FloatImage
+                    let dynamic = image::DynamicImage::ImageRgba8(rgba_image);
+                    let float_img = FloatImage::from_dynamic(&dynamic);
+                    width = float_img.width();
+                    height = float_img.height();
+                    img = Some(Value::Image { data: Arc::new(float_img), change_id: get_id() });
                 } 
             }
         }

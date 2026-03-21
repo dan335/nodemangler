@@ -1,23 +1,27 @@
+//! Tests for the invert adjustment operation.
+
 use super::*;
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::Input;
 use crate::value::Value;
-use image::DynamicImage;
 use std::sync::Arc;
 
-fn test_image(w: u32, h: u32) -> Arc<DynamicImage> {
-    let mut imgbuf = image::RgbaImage::new(w, h);
-    for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-        let r = (x * 255 / w.max(1)) as u8;
-        let g = (y * 255 / h.max(1)) as u8;
-        *pixel = image::Rgba([r, g, 128, 255]);
+fn test_image(w: u32, h: u32) -> Arc<FloatImage> {
+    let mut img = FloatImage::new(w, h, 4);
+    for y in 0..h {
+        for x in 0..w {
+            let r = x as f32 / w.max(1) as f32;
+            let g = y as f32 / h.max(1) as f32;
+            img.put_pixel(x, y, &[r, g, 0.5, 1.0]);
+        }
     }
-    Arc::new(DynamicImage::ImageRgba8(imgbuf))
+    Arc::new(img)
 }
 
 fn image_input(w: u32, h: u32) -> Value {
-    Value::DynamicImage { data: test_image(w, h), change_id: get_id() }
+    Value::Image { data: test_image(w, h), change_id: get_id() }
 }
 
 #[tokio::test]
@@ -25,8 +29,8 @@ async fn test_invert() {
     let mut inputs = vec![Input::new("image".to_string(), image_input(4, 4), None, None)];
     let result = OpImageAdjustmentInvert::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { .. } => {}
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        Value::Image { .. } => {}
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -47,47 +51,41 @@ async fn test_invert_1x1() {
 
 #[tokio::test]
 async fn test_invert_twice_is_identity() {
-    let original = Arc::new(DynamicImage::ImageRgba8(
-        image::RgbaImage::from_pixel(4, 4, image::Rgba([100u8, 150, 200, 255]))
-    ));
+    let original = Arc::new(FloatImage::from_pixel(4, 4, 4, &[0.4, 0.6, 0.8, 1.0]));
     let mut inputs1 = vec![Input::new("image".to_string(),
-        Value::DynamicImage { data: original.clone(), change_id: get_id() }, None, None)];
+        Value::Image { data: original.clone(), change_id: get_id() }, None, None)];
     let result1 = OpImageAdjustmentInvert::run(&mut inputs1).await.unwrap();
     let inverted = match &result1.responses[0].value {
-        Value::DynamicImage { data, .. } => data.clone(),
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        Value::Image { data, .. } => data.clone(),
+        other => panic!("Expected Image, got {:?}", other),
     };
     let mut inputs2 = vec![Input::new("image".to_string(),
-        Value::DynamicImage { data: inverted, change_id: get_id() }, None, None)];
+        Value::Image { data: inverted, change_id: get_id() }, None, None)];
     let result2 = OpImageAdjustmentInvert::run(&mut inputs2).await.unwrap();
     match &result2.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            let buf = data.to_rgba8();
-            let px = buf.get_pixel(0, 0);
-            assert_eq!(px[0], 100, "double invert R mismatch");
-            assert_eq!(px[1], 150, "double invert G mismatch");
-            assert_eq!(px[2], 200, "double invert B mismatch");
+        Value::Image { data, .. } => {
+            let px = data.get_pixel(0, 0);
+            assert!((px[0] - 0.4).abs() < 0.001, "double invert R mismatch: {}", px[0]);
+            assert!((px[1] - 0.6).abs() < 0.001, "double invert G mismatch: {}", px[1]);
+            assert!((px[2] - 0.8).abs() < 0.001, "double invert B mismatch: {}", px[2]);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
 #[tokio::test]
 async fn test_invert_white_becomes_black() {
-    let white_img = Arc::new(DynamicImage::ImageRgba8(
-        image::RgbaImage::from_pixel(4, 4, image::Rgba([255u8, 255, 255, 255]))
-    ));
+    let white_img = Arc::new(FloatImage::from_pixel(4, 4, 4, &[1.0, 1.0, 1.0, 1.0]));
     let mut inputs = vec![Input::new("image".to_string(),
-        Value::DynamicImage { data: white_img, change_id: get_id() }, None, None)];
+        Value::Image { data: white_img, change_id: get_id() }, None, None)];
     let result = OpImageAdjustmentInvert::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            let buf = data.to_rgba8();
-            let px = buf.get_pixel(0, 0);
-            assert_eq!(px[0], 0, "inverted white R should be 0");
-            assert_eq!(px[1], 0, "inverted white G should be 0");
-            assert_eq!(px[2], 0, "inverted white B should be 0");
+        Value::Image { data, .. } => {
+            let px = data.get_pixel(0, 0);
+            assert!((px[0]).abs() < 0.001, "inverted white R should be 0.0, got {}", px[0]);
+            assert!((px[1]).abs() < 0.001, "inverted white G should be 0.0, got {}", px[1]);
+            assert!((px[2]).abs() < 0.001, "inverted white B should be 0.0, got {}", px[2]);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }

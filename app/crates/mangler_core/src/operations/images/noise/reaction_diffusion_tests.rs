@@ -19,7 +19,7 @@ fn make_inputs(seed: i32, width: i32, height: i32, feed: f32, kill: f32, da: f32
 #[tokio::test]
 async fn test_settings() {
     let s = OpImageNoiseReactionDiffusion::settings();
-    assert_eq!(s.name, "reaction diffusion noise");
+    assert_eq!(s.name, "reaction diffusion");
     assert_eq!(OpImageNoiseReactionDiffusion::create_inputs().len(), 8);
     assert_eq!(OpImageNoiseReactionDiffusion::create_outputs().len(), 1);
 }
@@ -31,8 +31,8 @@ async fn test_run_basic() {
     let result = OpImageNoiseReactionDiffusion::run(&mut inputs).await;
     assert!(result.is_ok(), "run failed: {:?}", result.err());
     match &result.unwrap().responses[0].value {
-        Value::DynamicImage { .. } => {}
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        Value::Image { .. } => {}
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -41,11 +41,11 @@ async fn test_correct_dimensions() {
     let mut inputs = make_inputs(1, 32, 16, 0.055, 0.062, 1.0, 0.5, 100);
     let result = OpImageNoiseReactionDiffusion::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 32);
             assert_eq!(data.height(), 16);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -54,12 +54,12 @@ async fn test_deterministic() {
     let r1 = OpImageNoiseReactionDiffusion::run(&mut make_inputs(7, 16, 16, 0.055, 0.062, 1.0, 0.5, 200)).await.unwrap();
     let r2 = OpImageNoiseReactionDiffusion::run(&mut make_inputs(7, 16, 16, 0.055, 0.062, 1.0, 0.5, 200)).await.unwrap();
     match (&r1.responses[0].value, &r2.responses[0].value) {
-        (Value::DynamicImage { data: d1, .. }, Value::DynamicImage { data: d2, .. }) => {
-            assert_eq!(d1.to_luma8().pixels().collect::<Vec<_>>(),
-                       d2.to_luma8().pixels().collect::<Vec<_>>(),
+        (Value::Image { data: d1, .. }, Value::Image { data: d2, .. }) => {
+            assert_eq!(d1.pixels().collect::<Vec<_>>(),
+                       d2.pixels().collect::<Vec<_>>(),
                        "reaction diffusion is not deterministic");
         }
-        _ => panic!("Expected DynamicImage"),
+        _ => panic!("Expected Image"),
     }
 }
 
@@ -68,11 +68,11 @@ async fn test_different_seeds_differ() {
     let r1 = OpImageNoiseReactionDiffusion::run(&mut make_inputs(1, 16, 16, 0.055, 0.062, 1.0, 0.5, 500)).await.unwrap();
     let r2 = OpImageNoiseReactionDiffusion::run(&mut make_inputs(42, 16, 16, 0.055, 0.062, 1.0, 0.5, 500)).await.unwrap();
     match (&r1.responses[0].value, &r2.responses[0].value) {
-        (Value::DynamicImage { data: d1, .. }, Value::DynamicImage { data: d2, .. }) => {
-            assert_ne!(d1.to_luma8().pixels().collect::<Vec<_>>(),
-                       d2.to_luma8().pixels().collect::<Vec<_>>(),
+        (Value::Image { data: d1, .. }, Value::Image { data: d2, .. }) => {
+            assert_ne!(d1.pixels().collect::<Vec<_>>(),
+                       d2.pixels().collect::<Vec<_>>(),
                        "different seeds should produce different output");
         }
-        _ => panic!("Expected DynamicImage"),
+        _ => panic!("Expected Image"),
     }
 }

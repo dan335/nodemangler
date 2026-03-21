@@ -1,8 +1,7 @@
-use epaint::{Color32, CornerRadius, Rgba, Shadow, Stroke, Hsva};
 use super::theme::ThemeValues;
+use epaint::{Color32, CornerRadius, Hsva, Rgba, Shadow, Stroke};
 
-pub fn theme_dark_green() -> ThemeValues 
-{
+pub fn theme_dark_green() -> ThemeValues {
     ThemeValues {
         panel_fill: Rgba::from_srgba_premultiplied(42, 54, 56, 255).into(),
         extreme_bg_color: Color32::from_rgb(29, 37, 38),
@@ -22,14 +21,14 @@ pub fn theme_dark_green() -> ThemeValues
 
         node_header_bg: Color32::from_rgb(48, 62, 63),
         node_header_selected_border: Color32::from_rgb(187, 52, 71),
-        
+
         text_faint: Color32::from_rgb(82, 128, 134),
 
         window_corner_radius: CornerRadius::same(1),
         window_shadow: Shadow::NONE,
         window_fill: Hsva::new(0.525, 0.25, 0.018, 1.0).into(),
         window_stroke: Stroke::NONE,
-        
+
         widgets_noninteractive_bg_fill: Color32::from_rgb(29, 37, 38),
         widgets_noninteractive_weak_bg_fill: Color32::from_rgb(29, 37, 38),
         widgets_noninteractive_bg_stroke: (0.0, Color32::WHITE),

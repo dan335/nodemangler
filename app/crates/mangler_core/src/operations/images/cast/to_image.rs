@@ -15,7 +15,7 @@ use std::time::Instant;
 
 /// Node operation that converts a value to a 1x1 image.
 ///
-/// Uses `Value::try_convert_to(ValueType::DynamicImage)` for the conversion.
+/// Uses `Value::try_convert_to(ValueType::Image)` for the conversion.
 /// Accepts booleans (black/white), integers (grayscale 0–255), decimals
 /// (grayscale 0.0–1.0), and colors (sRGBA pixel).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,7 +40,7 @@ impl OpImageCastToImage {
     /// Creates the default output list: a single image output.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
@@ -48,7 +48,7 @@ impl OpImageCastToImage {
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
 
-        let result = inputs[0].value.try_convert_to(ValueType::DynamicImage);
+        let result = inputs[0].value.try_convert_to(ValueType::Image);
 
         match result {
             Ok(image_value) => Ok(OperationResponse {

@@ -1,10 +1,11 @@
 //! Solid-color image generation operation.
 //!
 //! Creates an image of a specified width and height where every pixel is
-//! filled with the same color. The color is converted to sRGB u8 for storage.
+//! filled with the same color. The color is stored as a 4-channel `FloatImage`
+//! with sRGB float values directly, avoiding u8 quantisation.
 
-use image::{ImageBuffer, DynamicImage};
 use crate::color::Color;
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -44,7 +45,7 @@ impl OpImageInputColor {
     /// Creates the output definitions: the generated image, the color, width, and height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
             Output::new("color".to_string(), Value::Color(Color::default()), None),
             Output::new("width".to_string(), Value::Integer(1), None),
             Output::new("height".to_string(), Value::Integer(1), None),
@@ -74,22 +75,20 @@ impl OpImageInputColor {
         width = width.max(1);
         height = height.max(1);
 
-        let mut image_buffer = ImageBuffer::new(width as u32, height as u32);
-        // Convert the color to 8-bit sRGB once, then fill every pixel
-        let rgba = color.to_srgb_u8();
-
-        for x in 0..width {
-            for y in 0..height {
-                image_buffer.put_pixel(x as u32, y as u32, image::Rgba([rgba.0, rgba.1, rgba.2, rgba.3]));
-            }
-        }
-        
-        let dynamic_image = DynamicImage::ImageRgba8(image_buffer);
+        // Create a 4-channel FloatImage filled with the sRGB float color directly.
+        // This avoids u8 quantisation, preserving full float precision.
+        let srgb = color.to_srgb_float();
+        let float_img = FloatImage::from_pixel(
+            width as u32,
+            height as u32,
+            4,
+            &[srgb.0, srgb.1, srgb.2, srgb.3],
+        );
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(float_img), change_id: get_id() } },
                 OutputResponse { value: Value::Color(color) },
                 OutputResponse { value: Value::Integer(width) },
                 OutputResponse { value: Value::Integer(height) },

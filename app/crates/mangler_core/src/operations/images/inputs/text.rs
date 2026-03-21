@@ -11,6 +11,7 @@
 use ab_glyph::{Font, FontArc, PxScale, ScaleFont};
 use image::{DynamicImage, GrayImage};
 use imageproc::geometric_transformations::{rotate_about_center, Interpolation};
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -121,7 +122,7 @@ impl OpImageInputText {
         vec![
             Output::new(
                 "output".to_string(),
-                Value::DynamicImage { data: default_image(), change_id: get_id() },
+                Value::Image { data: default_image(), change_id: get_id() },
                 None,
             ),
         ]
@@ -345,11 +346,14 @@ impl OpImageInputText {
             DynamicImage::ImageLuma8(temp)
         };
 
+        // Convert the grayscale DynamicImage to a 1-channel FloatImage
+        let float_img = FloatImage::from_dynamic(&dynamic_image);
+
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse {
-                    value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() },
+                    value: Value::Image { data: Arc::new(float_img), change_id: get_id() },
                 },
             ],
         })

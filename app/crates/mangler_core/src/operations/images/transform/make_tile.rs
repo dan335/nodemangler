@@ -1,4 +1,6 @@
 //! Make-tile operation that creates seamlessly tileable images via edge cross-fading.
+//!
+//! Works directly on [`FloatImage`] pixel data for channel-agnostic blending.
 
 use crate::get_id;
 use crate::value::ValueType;
@@ -32,7 +34,7 @@ impl OpImageTransformMakeTile {
     /// Creates the default inputs: source image and blend size (fraction of image dimensions).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
             Input::new("blend size".to_string(), Value::Decimal(0.25), Some(InputSettings::Slider { range: (0.01, 0.5), step_by: Some(0.01), clamp_to_range: true }), None),
         ]
     }
@@ -40,7 +42,7 @@ impl OpImageTransformMakeTile {
     /// Creates the default outputs: the tileable image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
@@ -52,17 +54,18 @@ impl OpImageTransformMakeTile {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
+        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
         let blend_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
 
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
-        let Value::DynamicImage { data: src_data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
+        let Value::Image { data: src_data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Decimal(blend_size) = blend_converted.unwrap() else { unreachable!() };
 
-        let src = src_data.to_rgba8();
-        let (w, h) = (src.width(), src.height());
-        let mut output = src.clone();
+        let (w, h) = src_data.dimensions();
+        let ch = src_data.channels() as usize;
+        // Start with a copy of the source image
+        let mut output = (*src_data).clone();
 
         // Compute the pixel-space blend region sizes from the normalized blend fraction
         let blend_size = blend_size.clamp(0.01, 0.5);
@@ -73,7 +76,7 @@ impl OpImageTransformMakeTile {
             return Ok(OperationResponse {
                 time: Instant::now().duration_since(start_time),
                 responses: vec![
-                    OutputResponse { value: Value::DynamicImage { data: Arc::new(image::DynamicImage::ImageRgba8(output)), change_id: get_id() } },
+                    OutputResponse { value: Value::Image { data: Arc::new(output), change_id: get_id() } },
                 ],
             });
         }
@@ -86,18 +89,18 @@ impl OpImageTransformMakeTile {
             for bx in 0..blend_w {
                 let tx = bx as f32 / blend_w as f32;
 
-                let tl = src.get_pixel(bx, by).0;
-                let tr = src.get_pixel(w - blend_w + bx, by).0;
-                let bl = src.get_pixel(bx, h - blend_h + by).0;
-                let br = src.get_pixel(w - blend_w + bx, h - blend_h + by).0;
+                let tl = src_data.get_pixel(bx, by);
+                let tr = src_data.get_pixel(w - blend_w + bx, by);
+                let bl = src_data.get_pixel(bx, h - blend_h + by);
+                let br = src_data.get_pixel(w - blend_w + bx, h - blend_h + by);
 
-                let blended = bilinear_blend(&tl, &tr, &bl, &br, tx, ty);
-                let pixel = image::Rgba(blended);
+                // Bilinear blend of the four corner pixels
+                let blended = bilinear_blend_f32(tl, tr, bl, br, tx, ty, ch);
 
-                output.put_pixel(bx, by, pixel);
-                output.put_pixel(w - blend_w + bx, by, pixel);
-                output.put_pixel(bx, h - blend_h + by, pixel);
-                output.put_pixel(w - blend_w + bx, h - blend_h + by, pixel);
+                output.put_pixel(bx, by, &blended);
+                output.put_pixel(w - blend_w + bx, by, &blended);
+                output.put_pixel(bx, h - blend_h + by, &blended);
+                output.put_pixel(w - blend_w + bx, h - blend_h + by, &blended);
             }
         }
 
@@ -106,12 +109,11 @@ impl OpImageTransformMakeTile {
         for y in blend_h..(h - blend_h) {
             for bx in 0..blend_w {
                 let t = bx as f32 / blend_w as f32;
-                let left = src.get_pixel(bx, y).0;
-                let right = src.get_pixel(w - blend_w + bx, y).0;
-                let blended = blend_pixels(&left, &right, t);
-                let pixel = image::Rgba(blended);
-                output.put_pixel(bx, y, pixel);
-                output.put_pixel(w - blend_w + bx, y, pixel);
+                let left = src_data.get_pixel(bx, y);
+                let right = src_data.get_pixel(w - blend_w + bx, y);
+                let blended = blend_pixels_f32(left, right, t, ch);
+                output.put_pixel(bx, y, &blended);
+                output.put_pixel(w - blend_w + bx, y, &blended);
             }
         }
 
@@ -120,41 +122,40 @@ impl OpImageTransformMakeTile {
         for x in blend_w..(w - blend_w) {
             for by in 0..blend_h {
                 let t = by as f32 / blend_h as f32;
-                let top = src.get_pixel(x, by).0;
-                let bottom = src.get_pixel(x, h - blend_h + by).0;
-                let blended = blend_pixels(&top, &bottom, t);
-                let pixel = image::Rgba(blended);
-                output.put_pixel(x, by, pixel);
-                output.put_pixel(x, h - blend_h + by, pixel);
+                let top = src_data.get_pixel(x, by);
+                let bottom = src_data.get_pixel(x, h - blend_h + by);
+                let blended = blend_pixels_f32(top, bottom, t, ch);
+                output.put_pixel(x, by, &blended);
+                output.put_pixel(x, h - blend_h + by, &blended);
             }
         }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(image::DynamicImage::ImageRgba8(output)), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(output), change_id: get_id() } },
             ],
         })
     }
 }
 
-/// Linearly interpolates between two RGBA pixels by factor `t` (0.0 = fully `b`, 1.0 = fully `a`).
-fn blend_pixels(a: &[u8; 4], b: &[u8; 4], t: f32) -> [u8; 4] {
-    let mut result = [0u8; 4];
-    for i in 0..4 {
-        result[i] = (a[i] as f32 * t + b[i] as f32 * (1.0 - t)).clamp(0.0, 255.0) as u8;
+/// Linearly interpolates between two f32 pixel slices by factor `t` (0.0 = fully `b`, 1.0 = fully `a`).
+fn blend_pixels_f32(a: &[f32], b: &[f32], t: f32, ch: usize) -> Vec<f32> {
+    let mut result = vec![0.0f32; ch];
+    for i in 0..ch {
+        result[i] = a[i] * t + b[i] * (1.0 - t);
     }
     result
 }
 
-/// Bilinearly interpolates four corner RGBA pixels by factors `tx` and `ty`.
+/// Bilinearly interpolates four corner f32 pixel slices by factors `tx` and `ty`.
 /// At `tx=0, ty=0` returns `br`; at `tx=1, ty=1` returns `tl`.
-fn bilinear_blend(tl: &[u8; 4], tr: &[u8; 4], bl: &[u8; 4], br: &[u8; 4], tx: f32, ty: f32) -> [u8; 4] {
-    let mut result = [0u8; 4];
-    for i in 0..4 {
-        let top = tl[i] as f32 * tx + tr[i] as f32 * (1.0 - tx);
-        let bottom = bl[i] as f32 * tx + br[i] as f32 * (1.0 - tx);
-        result[i] = (top * ty + bottom * (1.0 - ty)).clamp(0.0, 255.0) as u8;
+fn bilinear_blend_f32(tl: &[f32], tr: &[f32], bl: &[f32], br: &[f32], tx: f32, ty: f32, ch: usize) -> Vec<f32> {
+    let mut result = vec![0.0f32; ch];
+    for i in 0..ch {
+        let top = tl[i] * tx + tr[i] * (1.0 - tx);
+        let bottom = bl[i] * tx + br[i] * (1.0 - tx);
+        result[i] = top * ty + bottom * (1.0 - ty);
     }
     result
 }

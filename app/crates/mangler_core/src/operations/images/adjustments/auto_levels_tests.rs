@@ -1,23 +1,27 @@
+//! Tests for the auto levels adjustment operation.
+
 use super::*;
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::Input;
 use crate::value::Value;
-use image::DynamicImage;
 use std::sync::Arc;
 
-fn test_image(w: u32, h: u32) -> Arc<DynamicImage> {
-    let mut imgbuf = image::RgbaImage::new(w, h);
-    for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-        let r = (x * 255 / w.max(1)) as u8;
-        let g = (y * 255 / h.max(1)) as u8;
-        *pixel = image::Rgba([r, g, 128, 255]);
+fn test_image(w: u32, h: u32) -> Arc<FloatImage> {
+    let mut img = FloatImage::new(w, h, 4);
+    for y in 0..h {
+        for x in 0..w {
+            let r = x as f32 / w.max(1) as f32;
+            let g = y as f32 / h.max(1) as f32;
+            img.put_pixel(x, y, &[r, g, 0.5, 1.0]);
+        }
     }
-    Arc::new(DynamicImage::ImageRgba8(imgbuf))
+    Arc::new(img)
 }
 
 fn image_input(w: u32, h: u32) -> Value {
-    Value::DynamicImage { data: test_image(w, h), change_id: get_id() }
+    Value::Image { data: test_image(w, h), change_id: get_id() }
 }
 
 #[tokio::test]
@@ -30,11 +34,9 @@ async fn test_auto_levels_settings() {
 
 #[tokio::test]
 async fn test_auto_levels_1x1() {
-    let mut imgbuf = image::RgbaImage::new(1, 1);
-    imgbuf.put_pixel(0, 0, image::Rgba([128u8, 64, 32, 255]));
-    let img = Arc::new(DynamicImage::ImageRgba8(imgbuf));
+    let img = Arc::new(FloatImage::from_pixel(1, 1, 4, &[0.5, 0.25, 0.125, 1.0]));
     let mut inputs = vec![
-        Input::new("image".to_string(), Value::DynamicImage { data: img, change_id: get_id() }, None, None),
+        Input::new("image".to_string(), Value::Image { data: img, change_id: get_id() }, None, None),
         Input::new("clip black".to_string(), Value::Decimal(0.0), None, None),
         Input::new("clip white".to_string(), Value::Decimal(0.0), None, None),
     ];
@@ -51,14 +53,14 @@ async fn test_auto_levels_output_range() {
     ];
     let result = OpImageAdjustmentAutoLevels::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            for pixel in data.to_rgba32f().pixels() {
-                for c in 0..3 {
+        Value::Image { data, .. } => {
+            for pixel in data.pixels() {
+                for c in 0..pixel.len().min(3) {
                     assert!(pixel[c] >= 0.0 && pixel[c] <= 1.0, "pixel out of range: {}", pixel[c]);
                 }
             }
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -71,10 +73,10 @@ async fn test_auto_levels_basic() {
     ];
     let result = OpImageAdjustmentAutoLevels::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 8);
             assert_eq!(data.height(), 8);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }

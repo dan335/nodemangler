@@ -1,23 +1,27 @@
 use super::*;
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::Input;
 use crate::value::Value;
-use image::DynamicImage;
 use std::sync::Arc;
 
-fn test_image(w: u32, h: u32) -> Arc<DynamicImage> {
-    let mut imgbuf = image::RgbaImage::new(w, h);
-    for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-        let r = (x * 255 / w.max(1)) as u8;
-        let g = (y * 255 / h.max(1)) as u8;
-        *pixel = image::Rgba([r, g, 128, 255]);
+/// Creates a gradient test image as a 4-channel FloatImage.
+fn test_image(w: u32, h: u32) -> Arc<FloatImage> {
+    let mut img = FloatImage::new(w, h, 4);
+    for y in 0..h {
+        for x in 0..w {
+            let r = x as f32 / w.max(1) as f32;
+            let g = y as f32 / h.max(1) as f32;
+            img.put_pixel(x, y, &[r, g, 0.5, 1.0]);
+        }
     }
-    Arc::new(DynamicImage::ImageRgba8(imgbuf))
+    Arc::new(img)
 }
 
+/// Wraps a test image as a `Value::Image`.
 fn image_input(w: u32, h: u32) -> Value {
-    Value::DynamicImage { data: test_image(w, h), change_id: get_id() }
+    Value::Image { data: test_image(w, h), change_id: get_id() }
 }
 
 #[tokio::test]
@@ -28,8 +32,8 @@ async fn test_blur() {
     ];
     let result = OpImageAdjustmentBlur::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { .. } => {}
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        Value::Image { .. } => {}
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -69,32 +73,46 @@ async fn test_blur_preserves_dimensions() {
     ];
     let result = OpImageAdjustmentBlur::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 16);
             assert_eq!(data.height(), 8);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
 #[tokio::test]
 async fn test_blur_uniform_image() {
     // Blurring a uniform image should produce a uniform image
-    let uniform_img = Arc::new(DynamicImage::ImageRgba8(
-        image::RgbaImage::from_pixel(8, 8, image::Rgba([200u8, 100, 50, 255]))
-    ));
+    let uniform_img = Arc::new(FloatImage::from_pixel(8, 8, 4, &[0.78, 0.39, 0.20, 1.0]));
     let mut inputs = vec![
-        Input::new("image".to_string(), Value::DynamicImage { data: uniform_img, change_id: get_id() }, None, None),
+        Input::new("image".to_string(), Value::Image { data: uniform_img, change_id: get_id() }, None, None),
         Input::new("sigma".to_string(), Value::Decimal(2.0), None, None),
     ];
     let result = OpImageAdjustmentBlur::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            let buf = data.to_rgba8();
-            let px = buf.get_pixel(4, 4);
-            // Center pixels should remain close to the original value
-            assert!((px[0] as i32 - 200).abs() <= 5, "R channel drifted: {}", px[0]);
+        Value::Image { data, .. } => {
+            // Center pixel should remain close to the original value
+            let px = data.get_pixel(4, 4);
+            assert!((px[0] - 0.78).abs() < 0.02, "R channel drifted: {}", px[0]);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_blur_preserves_channels() {
+    // Verify a 1-channel image stays 1-channel after blur
+    let gray = Arc::new(FloatImage::from_pixel(8, 8, 1, &[0.5]));
+    let mut inputs = vec![
+        Input::new("image".to_string(), Value::Image { data: gray, change_id: get_id() }, None, None),
+        Input::new("sigma".to_string(), Value::Decimal(1.0), None, None),
+    ];
+    let result = OpImageAdjustmentBlur::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Image { data, .. } => {
+            assert_eq!(data.channels(), 1, "Channel count should be preserved");
+        }
+        other => panic!("Expected Image, got {:?}", other),
     }
 }

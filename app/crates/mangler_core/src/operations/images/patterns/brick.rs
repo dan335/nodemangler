@@ -1,10 +1,11 @@
 //! Brick pattern image generator.
 //!
-//! Generates a tileable brick wall pattern as a grayscale image where white
-//! represents bricks and black represents mortar gaps. Supports configurable
-//! row/column count, row offset (staggering), and gap size.
+//! Generates a tileable brick wall pattern as a grayscale image where 1.0
+//! represents bricks and 0.0 represents mortar gaps. Supports configurable
+//! row/column count, row offset (staggering), and gap size. Outputs a
+//! single-channel FloatImage.
 
-use image::{ImageBuffer, DynamicImage};
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -43,11 +44,13 @@ impl OpImagePatternBrick {
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
     /// Generates a brick pattern image from the given inputs.
+    ///
+    /// The output is a 1-channel FloatImage where 1.0 = brick and 0.0 = mortar gap.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -82,7 +85,8 @@ impl OpImagePatternBrick {
         let cell_width = width as f64 / columns as f64;
         let cell_height = height as f64 / rows as f64;
 
-        let mut image_buffer = ImageBuffer::new(width as u32, height as u32);
+        // 1-channel grayscale mask
+        let mut image = FloatImage::new(width as u32, height as u32, 1);
 
         for y in 0..height {
             let row = (y as f64 / cell_height).floor() as i32;
@@ -95,20 +99,20 @@ impl OpImagePatternBrick {
                 let shifted_x = (x as f64 + row_offset) % width as f64;
                 let x_in_cell = (shifted_x % cell_width) / cell_width;
 
+                // check if pixel is in the gap area
                 let in_gap = x_in_cell < gap_size || x_in_cell > (1.0 - gap_size)
                     || y_in_cell < gap_size || y_in_cell > (1.0 - gap_size);
 
-                let g: u8 = if in_gap { 0 } else { 255 };
-                image_buffer.put_pixel(x as u32, y as u32, image::Luma([g]));
+                // 1.0 for brick, 0.0 for mortar gap
+                let val: f32 = if in_gap { 0.0 } else { 1.0 };
+                image.put_pixel(x as u32, y as u32, &[val]);
             }
         }
-
-        let dynamic_image = DynamicImage::ImageLuma8(image_buffer);
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(image), change_id: get_id() } },
             ],
         })
     }

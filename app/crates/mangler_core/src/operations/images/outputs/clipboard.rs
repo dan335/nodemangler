@@ -1,7 +1,9 @@
 //! Image-to-clipboard output operation.
 //!
 //! Copies an image to the system clipboard using the `arboard` crate,
-//! making it available for pasting into other applications.
+//! making it available for pasting into other applications. The input
+//! `FloatImage` is converted to RGBA8 via [`FloatImage::to_rgba8`] before
+//! writing to the clipboard.
 
 use crate::get_id;
 use crate::input::Input;
@@ -25,7 +27,7 @@ impl OpImageOutputClipboard {
     /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "image to clipboard".to_string(),
+            name: "to clipboard".to_string(),
             description: "Copies an image to the clipboard.".to_string(),
         }
     }
@@ -33,7 +35,7 @@ impl OpImageOutputClipboard {
     /// Creates the input definitions: a single image to copy to the clipboard.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None, None),
         ]
     }
 
@@ -50,20 +52,20 @@ impl OpImageOutputClipboard {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
+        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
 
         // return if error
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
+        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
 
-        // run node — convert to RGBA8 and prepare arboard ImageData
+        // run node — convert FloatImage to RGBA8 and prepare arboard ImageData
         let rgba8 = data.to_rgba8();
         let image_data = ImageData {
             width: data.width() as usize,
             height: data.height() as usize,
-            bytes: std::borrow::Cow::Borrowed( rgba8.as_flat_samples().samples)
+            bytes: std::borrow::Cow::Borrowed(rgba8.as_flat_samples().samples)
         };
         
         if let Ok(mut clipboard) = Clipboard::new() {

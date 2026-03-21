@@ -1,9 +1,10 @@
 //! Regular polygon shape image generator.
 //!
 //! Generates an anti-aliased regular polygon as a grayscale SDF image with
-//! configurable side count, radius, and rotation.
+//! configurable side count, radius, and rotation. Outputs a single-channel
+//! FloatImage mask with values in [0.0, 1.0].
 
-use image::{ImageBuffer, DynamicImage};
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -72,11 +73,14 @@ impl OpImageShapePolygon {
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
     /// Generates an anti-aliased regular polygon image from the given inputs.
+    ///
+    /// The output is a 1-channel FloatImage where 1.0 = inside the polygon and
+    /// 0.0 = outside, with smooth anti-aliased edges.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -107,9 +111,11 @@ impl OpImageShapePolygon {
         let angle = (rotation as f64).to_radians();
         let cos_a = angle.cos();
         let sin_a = angle.sin();
+        // anti-aliasing width in normalized coordinates
         let pixel_size = 1.5 / (width.max(height) as f64 * 0.5);
 
-        let mut image_buffer = ImageBuffer::new(width as u32, height as u32);
+        // 1-channel grayscale mask
+        let mut image = FloatImage::new(width as u32, height as u32, 1);
 
         for y in 0..height {
             for x in 0..width {
@@ -123,18 +129,16 @@ impl OpImageShapePolygon {
 
                 let dist = sdf_polygon(px, py, rad, sides);
 
+                // smoothstep for anti-aliased edge, result in [0.0, 1.0]
                 let alpha = 1.0 - smoothstep(-pixel_size, pixel_size, dist);
-                let g = (alpha * 255.0).clamp(0.0, 255.0) as u8;
-                image_buffer.put_pixel(x as u32, y as u32, image::Luma([g]));
+                image.put_pixel(x as u32, y as u32, &[alpha as f32]);
             }
         }
-
-        let dynamic_image = DynamicImage::ImageLuma8(image_buffer);
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(image), change_id: get_id() } },
             ],
         })
     }

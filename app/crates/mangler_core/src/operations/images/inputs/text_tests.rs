@@ -55,11 +55,11 @@ async fn test_text_basic_render() {
     let mut inputs = default_inputs("Hi", 32.0, 256, 256, 0.5, 0.5);
     let result = OpImageInputText::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(),  256);
             assert_eq!(data.height(), 256);
         }
-        other => panic!("Expected DynamicImage, got {other:?}"),
+        other => panic!("Expected Image, got {other:?}"),
     }
 }
 
@@ -69,11 +69,11 @@ async fn test_text_not_all_black() {
     let mut inputs = default_inputs("A", 64.0, 128, 128, 0.5, 0.5);
     let result = OpImageInputText::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            let has_white = data.to_luma8().pixels().any(|p| p.0[0] > 0);
+        Value::Image { data, .. } => {
+            let has_white = data.to_dynamic().to_luma8().pixels().any(|p| p.0[0] > 0);
             assert!(has_white, "text image should have non-zero pixels");
         }
-        other => panic!("Expected DynamicImage, got {other:?}"),
+        other => panic!("Expected Image, got {other:?}"),
     }
 }
 
@@ -83,15 +83,15 @@ async fn test_text_empty_string() {
     let mut inputs = default_inputs("", 48.0, 64, 64, 0.5, 0.5);
     let result = OpImageInputText::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(),  64);
             assert_eq!(data.height(), 64);
             assert!(
-                data.to_luma8().pixels().all(|p| p.0[0] == 0),
+                data.to_dynamic().to_luma8().pixels().all(|p| p.0[0] == 0),
                 "empty text should produce an all-black image"
             );
         }
-        other => panic!("Expected DynamicImage, got {other:?}"),
+        other => panic!("Expected Image, got {other:?}"),
     }
 }
 
@@ -100,11 +100,11 @@ async fn test_text_custom_dimensions() {
     let mut inputs = default_inputs("Test", 24.0, 400, 100, 0.5, 0.5);
     let result = OpImageInputText::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(),  400);
             assert_eq!(data.height(), 100);
         }
-        other => panic!("Expected DynamicImage, got {other:?}"),
+        other => panic!("Expected Image, got {other:?}"),
     }
 }
 
@@ -141,11 +141,11 @@ async fn test_text_minimum_dimensions() {
     let mut inputs = default_inputs("A", 8.0, 1, 1, 0.5, 0.5);
     let result = OpImageInputText::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(),  1);
             assert_eq!(data.height(), 1);
         }
-        other => panic!("Expected DynamicImage, got {other:?}"),
+        other => panic!("Expected Image, got {other:?}"),
     }
 }
 
@@ -157,10 +157,10 @@ async fn test_letter_spacing_positive() {
     let mut inputs = make_inputs("AB", 32.0, 256, 64, 0.5, 0.5, 10.0, 1.0, 0, TextHAlign::Center, TextVAlign::Middle, 0.0);
     let result = OpImageInputText::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            assert!(data.to_luma8().pixels().any(|p| p.0[0] > 0));
+        Value::Image { data, .. } => {
+            assert!(data.to_dynamic().to_luma8().pixels().any(|p| p.0[0] > 0));
         }
-        other => panic!("Expected DynamicImage, got {other:?}"),
+        other => panic!("Expected Image, got {other:?}"),
     }
 }
 
@@ -183,7 +183,7 @@ async fn test_multiline_explicit_newline() {
     let one_result = OpImageInputText::run(&mut one_line).await.unwrap();
 
     let count_lit = |result: &OperationResponse| match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => data.to_luma8().pixels().filter(|p| p.0[0] > 0).count(),
+        Value::Image { data, .. } => data.to_dynamic().to_luma8().pixels().filter(|p| p.0[0] > 0).count(),
         _ => 0,
     };
 
@@ -241,10 +241,10 @@ async fn test_wrap_width_active() {
     );
     let result = OpImageInputText::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            assert!(data.to_luma8().pixels().any(|p| p.0[0] > 0));
+        Value::Image { data, .. } => {
+            assert!(data.to_dynamic().to_luma8().pixels().any(|p| p.0[0] > 0));
         }
-        other => panic!("Expected DynamicImage, got {other:?}"),
+        other => panic!("Expected Image, got {other:?}"),
     }
 }
 
@@ -286,10 +286,10 @@ async fn test_left_align_lit_pixels_in_right_half() {
     );
     let result = OpImageInputText::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            assert!(data.to_luma8().pixels().any(|p| p.0[0] > 0));
+        Value::Image { data, .. } => {
+            assert!(data.to_dynamic().to_luma8().pixels().any(|p| p.0[0] > 0));
         }
-        other => panic!("Expected DynamicImage, got {other:?}"),
+        other => panic!("Expected Image, got {other:?}"),
     }
 }
 
@@ -303,12 +303,12 @@ async fn test_rotation_90_degrees() {
     );
     let result = OpImageInputText::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(),  256);
             assert_eq!(data.height(), 256);
-            assert!(data.to_luma8().pixels().any(|p| p.0[0] > 0));
+            assert!(data.to_dynamic().to_luma8().pixels().any(|p| p.0[0] > 0));
         }
-        other => panic!("Expected DynamicImage, got {other:?}"),
+        other => panic!("Expected Image, got {other:?}"),
     }
 }
 
@@ -339,11 +339,11 @@ async fn test_rotation_zero_same_size() {
     );
     let result = OpImageInputText::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(),  300);
             assert_eq!(data.height(), 150);
         }
-        other => panic!("Expected DynamicImage, got {other:?}"),
+        other => panic!("Expected Image, got {other:?}"),
     }
 }
 
@@ -377,9 +377,9 @@ async fn test_multiline_with_rotation_produces_lit_pixels() {
     );
     let result = OpImageInputText::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            assert!(data.to_luma8().pixels().any(|p| p.0[0] > 0));
+        Value::Image { data, .. } => {
+            assert!(data.to_dynamic().to_luma8().pixels().any(|p| p.0[0] > 0));
         }
-        other => panic!("Expected DynamicImage, got {other:?}"),
+        other => panic!("Expected Image, got {other:?}"),
     }
 }

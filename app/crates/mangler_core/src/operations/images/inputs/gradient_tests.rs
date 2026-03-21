@@ -15,11 +15,11 @@ async fn test_gradient_srgb() {
     ];
     let result = OpImageInputGradient::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 4);
             assert_eq!(data.height(), 8);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -97,7 +97,7 @@ async fn test_gradient_same_colors_produces_uniform_image() {
     ];
     let result = OpImageInputGradient::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             let rgba = data.to_rgba8();
             let p0 = rgba.get_pixel(0, 0).0;
             for y in 0..4 {
@@ -106,6 +106,6 @@ async fn test_gradient_same_colors_produces_uniform_image() {
                 }
             }
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }

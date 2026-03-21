@@ -7,7 +7,7 @@ use crate::value::Value;
 #[tokio::test]
 async fn test_opimagenoiseworleydistance_settings() {
     let s = OpImageNoiseWorleyDistance::settings();
-    assert_eq!(s.name, "worley distance");
+    assert_eq!(s.name, "worley distance noise");
     assert_eq!(OpImageNoiseWorleyDistance::create_inputs().len(), 5);
     assert_eq!(OpImageNoiseWorleyDistance::create_outputs().len(), 1);
 }
@@ -25,8 +25,8 @@ async fn test_opimagenoiseworleydistance_run() {
     let result = OpImageNoiseWorleyDistance::run(&mut inputs).await;
     assert!(result.is_ok(), "run failed: {:?}", result.err());
     match &result.unwrap().responses[0].value {
-        Value::DynamicImage { .. } => {}
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        Value::Image { .. } => {}
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -63,11 +63,11 @@ async fn test_opimagenoiseworleydistance_correct_dimensions() {
     ];
     let result = OpImageNoiseWorleyDistance::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 16);
             assert_eq!(data.height(), 8);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -83,12 +83,12 @@ async fn test_opimagenoiseworleydistance_deterministic() {
     let r1 = OpImageNoiseWorleyDistance::run(&mut make()).await.unwrap();
     let r2 = OpImageNoiseWorleyDistance::run(&mut make()).await.unwrap();
     match (&r1.responses[0].value, &r2.responses[0].value) {
-        (Value::DynamicImage { data: d1, .. }, Value::DynamicImage { data: d2, .. }) => {
-            assert_eq!(d1.to_luma8().pixels().collect::<Vec<_>>(),
-                       d2.to_luma8().pixels().collect::<Vec<_>>(),
+        (Value::Image { data: d1, .. }, Value::Image { data: d2, .. }) => {
+            assert_eq!(d1.pixels().collect::<Vec<_>>(),
+                       d2.pixels().collect::<Vec<_>>(),
                        "worley distance is not deterministic");
         }
-        _ => panic!("Expected DynamicImage"),
+        _ => panic!("Expected Image"),
     }
 }
 
@@ -107,23 +107,23 @@ async fn test_opimagenoiseworleydistance_tiles_seamlessly() {
     ];
     let result = OpImageNoiseWorleyDistance::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            let img = data.to_luma8();
+        Value::Image { data, .. } => {
             let s = size as u32;
-            let max_diff = 25u32;
+            // Max difference threshold in f32 space (equivalent to ~25/255 in u8)
+            let max_diff = 0.1_f32;
             for x in 0..s {
-                let top = img.get_pixel(x, 0)[0];
-                let bottom = img.get_pixel(x, s - 1)[0];
-                assert!((top as i32 - bottom as i32).unsigned_abs() < max_diff,
+                let top = data.get_pixel(x, 0)[0];
+                let bottom = data.get_pixel(x, s - 1)[0];
+                assert!((top - bottom).abs() < max_diff,
                     "Vertical seam at x={}: top={}, bottom={}", x, top, bottom);
             }
             for y in 0..s {
-                let left = img.get_pixel(0, y)[0];
-                let right = img.get_pixel(s - 1, y)[0];
-                assert!((left as i32 - right as i32).unsigned_abs() < max_diff,
+                let left = data.get_pixel(0, y)[0];
+                let right = data.get_pixel(s - 1, y)[0];
+                assert!((left - right).abs() < max_diff,
                     "Horizontal seam at y={}: left={}, right={}", y, left, right);
             }
         }
-        _ => panic!("Expected DynamicImage"),
+        _ => panic!("Expected Image"),
     }
 }

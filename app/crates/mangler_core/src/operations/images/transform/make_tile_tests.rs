@@ -1,23 +1,27 @@
 use super::*;
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::Input;
 use crate::value::Value;
-use image::DynamicImage;
 use std::sync::Arc;
 
-fn test_image(w: u32, h: u32) -> Arc<DynamicImage> {
-    let mut imgbuf = image::RgbaImage::new(w, h);
-    for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-        let r = (x * 255 / w.max(1)) as u8;
-        let g = (y * 255 / h.max(1)) as u8;
-        *pixel = image::Rgba([r, g, 128, 255]);
+/// Creates a test FloatImage with an x/y gradient pattern (4 channels).
+fn test_image(w: u32, h: u32) -> Arc<FloatImage> {
+    let mut img = FloatImage::new(w, h, 4);
+    for y in 0..h {
+        for x in 0..w {
+            let r = x as f32 / w.max(1) as f32;
+            let g = y as f32 / h.max(1) as f32;
+            img.put_pixel(x, y, &[r, g, 0.5, 1.0]);
+        }
     }
-    Arc::new(DynamicImage::ImageRgba8(imgbuf))
+    Arc::new(img)
 }
 
+/// Creates a Value::Image from a test gradient image.
 fn image_input(w: u32, h: u32) -> Value {
-    Value::DynamicImage { data: test_image(w, h), change_id: get_id() }
+    Value::Image { data: test_image(w, h), change_id: get_id() }
 }
 
 #[tokio::test]
@@ -37,11 +41,11 @@ async fn test_make_tile_basic() {
     let result = OpImageTransformMakeTile::run(&mut inputs).await.unwrap();
     assert_eq!(result.responses.len(), 1);
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 16);
             assert_eq!(data.height(), 16);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -63,31 +67,31 @@ async fn test_make_tile_preserves_dimensions() {
     ];
     let result = OpImageTransformMakeTile::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 32);
             assert_eq!(data.height(), 16);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
 #[tokio::test]
 async fn test_make_tile_uniform_image_unchanged() {
     // A uniform image tiled should remain the same uniform color
-    let uniform = image::RgbaImage::from_pixel(8, 8, image::Rgba([100u8, 150, 200, 255]));
-    let img = Arc::new(DynamicImage::ImageRgba8(uniform));
+    let img = Arc::new(FloatImage::from_pixel(8, 8, 4, &[0.39, 0.59, 0.78, 1.0]));
     let mut inputs = vec![
-        Input::new("image".to_string(), Value::DynamicImage { data: img, change_id: get_id() }, None, None),
+        Input::new("image".to_string(), Value::Image { data: img, change_id: get_id() }, None, None),
         Input::new("blend size".to_string(), Value::Decimal(0.25), None, None),
     ];
     let result = OpImageTransformMakeTile::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            let rgba = data.to_rgba8();
+        Value::Image { data, .. } => {
             // Blending uniform pixels together still gives the same color
-            let p = rgba.get_pixel(4, 4).0;
-            assert_eq!(p, [100u8, 150, 200, 255], "uniform image should stay uniform after tiling");
+            let p = data.get_pixel(4, 4);
+            assert!((p[0] - 0.39).abs() < 0.01, "uniform image should stay uniform after tiling, got r={}", p[0]);
+            assert!((p[1] - 0.59).abs() < 0.01, "uniform image should stay uniform after tiling, got g={}", p[1]);
+            assert!((p[2] - 0.78).abs() < 0.01, "uniform image should stay uniform after tiling, got b={}", p[2]);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }

@@ -1,4 +1,6 @@
 //! Directional warp operation that displaces pixels along a single angle.
+//!
+//! Uses [`FloatImage::bilinear_sample`] for channel-agnostic interpolation.
 
 use crate::get_id;
 use crate::value::ValueType;
@@ -7,6 +9,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::Value;
+use crate::float_image::FloatImage;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -32,8 +35,8 @@ impl OpImageTransformDirectionalWarp {
     /// Creates the default inputs: source image, grayscale intensity map, angle (degrees), and intensity scalar.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("intensity map".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("intensity map".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
             Input::new("angle".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(0.1), clamp_to_range: false }), None),
             Input::new("intensity".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 200.0), step_by: Some(0.1), clamp_to_range: false }), None),
         ]
@@ -42,7 +45,7 @@ impl OpImageTransformDirectionalWarp {
     /// Creates the default outputs: the warped image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
@@ -51,51 +54,62 @@ impl OpImageTransformDirectionalWarp {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
-        let map_converted = convert_input(inputs, 1, ValueType::DynamicImage, &mut input_errors);
+        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
+        let map_converted = convert_input(inputs, 1, ValueType::Image, &mut input_errors);
         let angle_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
         let intensity_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
 
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
-        let Value::DynamicImage { data: src_data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::DynamicImage { data: map_data, change_id: _ } = map_converted.unwrap() else { unreachable!() };
+        let Value::Image { data: src_data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
+        let Value::Image { data: map_data, change_id: _ } = map_converted.unwrap() else { unreachable!() };
         let Value::Decimal(angle) = angle_converted.unwrap() else { unreachable!() };
         let Value::Decimal(intensity) = intensity_converted.unwrap() else { unreachable!() };
 
-        let src = src_data.to_rgba8();
-        let map_img = map_data.to_rgba8();
-        let (w, h) = (src.width(), src.height());
-        let mut output = image::RgbaImage::new(w, h);
+        let (w, h) = src_data.dimensions();
+        // Output preserves the source image's channel count
+        let mut output = FloatImage::new(w, h, src_data.channels());
 
         // Precompute the unit direction vector from the angle
         let angle_rad = angle.to_radians();
         let dir_x = angle_rad.cos();
         let dir_y = angle_rad.sin();
 
+        // Temporary buffers for bilinear sampling
+        let map_ch = map_data.channels() as usize;
+        let src_ch = src_data.channels() as usize;
+        let mut mp = vec![0.0f32; map_ch];
+        let mut sp = vec![0.0f32; src_ch];
+
         for y in 0..h {
             for x in 0..w {
-                // Sample intensity map (resize-aware)
-                let mx = x as f32 * map_img.width() as f32 / w as f32;
-                let my = y as f32 * map_img.height() as f32 / h as f32;
-                let mp = super::warp::bilinear_sample_rgba(&map_img, mx, my);
+                // Sample intensity map (resize-aware), mapping output coords to map coords
+                let mx = x as f32 * map_data.width() as f32 / w as f32;
+                let my = y as f32 * map_data.height() as f32 / h as f32;
+                map_data.bilinear_sample(mx, my, &mut mp);
 
-                // Compute luminance using BT.601 coefficients, centered to -0.5..0.5
-                let lum = (mp[0] as f32 * 0.299 + mp[1] as f32 * 0.587 + mp[2] as f32 * 0.114) / 255.0 - 0.5;
+                // Compute luminance using BT.601 coefficients, centered to -0.5..0.5.
+                // For single-channel maps, use the value directly.
+                let lum = if map_ch >= 3 {
+                    mp[0] * 0.299 + mp[1] * 0.587 + mp[2] * 0.114
+                } else {
+                    mp[0]
+                } - 0.5;
                 let displacement = lum * intensity;
 
                 let sx = x as f32 + dir_x * displacement;
                 let sy = y as f32 + dir_y * displacement;
 
-                let pixel = super::warp::bilinear_sample_rgba(&src, sx, sy);
-                output.put_pixel(x, y, image::Rgba(pixel));
+                // Sample source image at displaced coordinates
+                src_data.bilinear_sample(sx, sy, &mut sp);
+                output.put_pixel(x, y, &sp);
             }
         }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(image::DynamicImage::ImageRgba8(output)), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(output), change_id: get_id() } },
             ],
         })
     }

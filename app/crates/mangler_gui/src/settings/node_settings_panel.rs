@@ -541,7 +541,7 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 );
             }
         }
-        Value::DynamicImage{data:_, change_id:_} => {
+        Value::Image{data:_, change_id:_} => {
 
         }
         Value::Path(path) => {

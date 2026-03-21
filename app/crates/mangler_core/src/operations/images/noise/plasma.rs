@@ -5,9 +5,9 @@
 //! The grid wraps at boundaries for seamless tiling: edge and corner values are shared
 //! between opposite sides of the image.
 
-use image::{ImageBuffer, DynamicImage};
 use rayon::prelude::*;
 use crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb;
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -163,7 +163,7 @@ impl OpImageNoisePlasma {
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
@@ -205,7 +205,7 @@ impl OpImageNoisePlasma {
 
         // Bilinearly resample the grid to the output dimensions (parallelized with rayon)
         let grid_ref = &grid;
-        let pixels: Vec<u16> = (0..h).into_par_iter().flat_map_iter(|y| {
+        let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(|y| {
             (0..w).map(move |x| {
                 // Map output pixel to grid coordinates [0, grid_size), wrapping for tiling
                 let gx = x as f64 / w as f64 * grid_size as f64;
@@ -229,18 +229,22 @@ impl OpImageNoisePlasma {
                 let bot = v01 + (v11 - v01) * fx;
                 let noise = (top + (bot - top) * fy) as f32;
 
-                let non_linear = linear_to_nonlinear_srgb(noise.clamp(0.0, 1.0));
-                (non_linear * 65535.0) as u16
+                linear_to_nonlinear_srgb(noise.clamp(0.0, 1.0))
             })
         }).collect();
 
-        let image_buffer = ImageBuffer::from_raw(width as u32, height as u32, pixels).unwrap();
-        let dynamic_image = DynamicImage::ImageLuma16(image_buffer);
+        // Build a single-channel FloatImage from the computed pixel values
+        let mut float_image = FloatImage::new(width as u32, height as u32, 1);
+        for (i, &val) in pixels.iter().enumerate() {
+            let x = (i % w) as u32;
+            let y = (i / w) as u32;
+            float_image.put_pixel(x, y, &[val]);
+        }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(float_image), change_id: get_id() } },
             ],
         })
     }

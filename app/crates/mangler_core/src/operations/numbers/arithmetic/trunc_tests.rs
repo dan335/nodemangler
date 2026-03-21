@@ -5,7 +5,7 @@ use crate::value::Value;
 #[tokio::test]
 async fn test_trunc_settings() {
     let s = OpNumberMathTrunc::settings();
-    assert_eq!(s.name, "trunc");
+    assert_eq!(s.name, "truncate");
     assert_eq!(OpNumberMathTrunc::create_inputs().len(), 1);
     assert_eq!(OpNumberMathTrunc::create_outputs().len(), 1);
 }

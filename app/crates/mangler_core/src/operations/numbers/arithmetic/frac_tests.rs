@@ -5,7 +5,7 @@ use crate::value::Value;
 #[tokio::test]
 async fn test_frac_settings() {
     let s = OpNumberMathFrac::settings();
-    assert_eq!(s.name, "frac");
+    assert_eq!(s.name, "fractional part");
     assert_eq!(OpNumberMathFrac::create_inputs().len(), 1);
     assert_eq!(OpNumberMathFrac::create_outputs().len(), 1);
 }

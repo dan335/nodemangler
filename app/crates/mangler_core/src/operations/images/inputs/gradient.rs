@@ -3,11 +3,11 @@
 //! Creates a vertical linear gradient image by blending two colors from top
 //! to bottom. The blending is performed in a user-selectable color space
 //! (sRGB, Linear RGB, HSL, HSV, Lab, LCH, XYZ, YUV, or CMYK) using Lerp
-//! interpolation.
+//! interpolation. The output is a 4-channel `FloatImage` with sRGB float values.
 
-use image::{ImageBuffer, DynamicImage};
 use crate::color::Color;
 use crate::color::color_spaces::ColorSpace;
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -49,7 +49,7 @@ impl OpImageInputGradient {
     /// Creates the output definitions: the gradient image, width, and height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
             Output::new("width".to_string(), Value::Integer(1), None),
             Output::new("height".to_string(), Value::Integer(1), None),
         ]
@@ -85,95 +85,39 @@ impl OpImageInputGradient {
         width = width.max(1);
         height = height.max(1);
 
-        let mut image_buffer = ImageBuffer::new(width as u32, height as u32);
+        // Create a 4-channel FloatImage to hold the gradient output
+        let mut float_img = FloatImage::new(width as u32, height as u32, 4);
 
         // Use Lerp blend mode for smooth linear interpolation between colors
         let blend_mode = crate::color::blend::BlendMode::Lerp;
 
-        // Blend per-row in the selected color space, converting each result to sRGB u8
-        match color_space {
-            ColorSpace::Srgb => {
-                for y in 0..height {
-                    let blended = Color::blend_srgb(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    for x in 0..width {
-                        image_buffer.put_pixel(x as u32, y as u32, image::Rgba([blended.0, blended.1, blended.2, blended.3]));
-                    }
-                }
-            },
-            ColorSpace::RgbLinear => {
-                for y in 0..height {
-                    let blended = Color::blend_linear(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    for x in 0..width {
-                        image_buffer.put_pixel(x as u32, y as u32, image::Rgba([blended.0, blended.1, blended.2, blended.3]));
-                    }
-                }
-            },
-            ColorSpace::Hsl => {
-                for y in 0..height {
-                    let blended = Color::blend_hsl(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    for x in 0..width {
-                        image_buffer.put_pixel(x as u32, y as u32, image::Rgba([blended.0, blended.1, blended.2, blended.3]));
-                    }
-                }
-            },
-            ColorSpace::Hsv => {
-                for y in 0..height {
-                    let blended = Color::blend_hsv(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    for x in 0..width {
-                        image_buffer.put_pixel(x as u32, y as u32, image::Rgba([blended.0, blended.1, blended.2, blended.3]));
-                    }
-                }
-            },
-            ColorSpace::Lch => {
-                for y in 0..height {
-                    let blended = Color::blend_lch(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    for x in 0..width {
-                        image_buffer.put_pixel(x as u32, y as u32, image::Rgba([blended.0, blended.1, blended.2, blended.3]));
-                    }
-                }
-            },
-            ColorSpace::Xyz => {
-                for y in 0..height {
-                    let blended = Color::blend_xyz(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    for x in 0..width {
-                        image_buffer.put_pixel(x as u32, y as u32, image::Rgba([blended.0, blended.1, blended.2, blended.3]));
-                    }
-                }
-            },
-            ColorSpace::Lab => {
-                for y in 0..height {
-                    let blended = Color::blend_lab(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    for x in 0..width {
-                        image_buffer.put_pixel(x as u32, y as u32, image::Rgba([blended.0, blended.1, blended.2, blended.3]));
-                    }
-                }
-            },
-            ColorSpace::Yuv => {
-                for y in 0..height {
-                    let blended = Color::blend_yuv(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    for x in 0..width {
-                        image_buffer.put_pixel(x as u32, y as u32, image::Rgba([blended.0, blended.1, blended.2, blended.3]));
-                    }
-                }
-            },
-            ColorSpace::Cmyk => {
-                for y in 0..height {
-                    let blended = Color::blend_cmyk(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    for x in 0..width {
-                        image_buffer.put_pixel(x as u32, y as u32, image::Rgba([blended.0, blended.1, blended.2, blended.3]));
-                    }
-                }
-            },
-        }
+        // Select the blend function for the chosen color space
+        let blend_fn: fn(Color, Color, &crate::color::blend::BlendMode, f32) -> Color = match color_space {
+            ColorSpace::Srgb      => Color::blend_srgb,
+            ColorSpace::RgbLinear => Color::blend_linear,
+            ColorSpace::Hsl       => Color::blend_hsl,
+            ColorSpace::Hsv       => Color::blend_hsv,
+            ColorSpace::Lch       => Color::blend_lch,
+            ColorSpace::Xyz       => Color::blend_xyz,
+            ColorSpace::Lab       => Color::blend_lab,
+            ColorSpace::Yuv       => Color::blend_yuv,
+            ColorSpace::Cmyk      => Color::blend_cmyk,
+        };
 
-        
-        
-        let dynamic_image = DynamicImage::ImageRgba8(image_buffer);
+        // Blend per-row in the selected color space, storing sRGB floats directly
+        for y in 0..height {
+            let blended = blend_fn(a, b, &blend_mode, y as f32 / height as f32);
+            let srgb = blended.to_srgb_float();
+            let pixel = [srgb.0, srgb.1, srgb.2, srgb.3];
+            for x in 0..width {
+                float_img.put_pixel(x as u32, y as u32, &pixel);
+            }
+        }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(float_img), change_id: get_id() } },
                 OutputResponse { value: Value::Integer(width) },
                 OutputResponse { value: Value::Integer(height) },
             ],

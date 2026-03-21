@@ -23,7 +23,7 @@ impl OpNumberMathReciprocal {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "reciprocal".to_string(),
-            description: "Computes 1/x (reciprocal).".to_string(),
+            description: "Returns 1 divided by the input value.".to_string(),
         }
     }
 

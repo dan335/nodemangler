@@ -7,7 +7,7 @@
 
 use crate::value::{Value, ValueType};
 use crate::input::Input;
-use image::DynamicImage;
+use crate::float_image::FloatImage;
 use serde::{Deserialize, Serialize};
 use core::fmt::Debug;
 use std::sync::Arc;
@@ -144,17 +144,11 @@ impl OperationListItem {
     }
 }
 
-/// Creates a 1x1 opaque white RGBA image wrapped in an `Arc`.
+/// Creates a 1x1 opaque white 4-channel FloatImage wrapped in an `Arc`.
 ///
 /// Used as the default placeholder image for image-typed inputs.
-pub fn default_image() -> Arc<DynamicImage> {
-    let mut imgbuf = image::RgbaImage::new(1, 1);
-
-    for (_x, _y, pixel) in imgbuf.enumerate_pixels_mut() {
-        *pixel = image::Rgba([255, 255, 255, 255]);
-    }
-
-    Arc::new(DynamicImage::ImageRgba8(imgbuf))
+pub fn default_image() -> Arc<FloatImage> {
+    Arc::new(FloatImage::from_pixel(1, 1, 4, &[1.0, 1.0, 1.0, 1.0]))
 }
 
 /// Generates the [`Operation`] enum and its method dispatch implementations.
@@ -577,9 +571,6 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpColorOutputXyz },
                 OperationListItem::Operation { operation: Operation::OpColorOutputYuv },
             ]},
-            OperationListItem::Category { name: "blend".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::OpColorBlendMode },
-            ]},
             OperationListItem::Category { name: "analysis".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpColorSampleMostCommonColors },
                 OperationListItem::Operation { operation: Operation::OpColorAnalysisDistance },
@@ -590,13 +581,11 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpColorAnalysisHarmonyScore },
                 OperationListItem::Operation { operation: Operation::OpColorAnalysisMixRatio },
             ]},
-            OperationListItem::Category { name: "cast".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::OpColorCastToColor },
-            ]},
             OperationListItem::Category { name: "generation".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpColorGenerationFromHex },
                 OperationListItem::Operation { operation: Operation::OpColorGenerationToHex },
                 OperationListItem::Operation { operation: Operation::OpColorGenerationRandomColor },
+                OperationListItem::Operation { operation: Operation::OpColorCastToColor },
             ]},
             OperationListItem::Category { name: "manipulation".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpColorManipulationInvert },
@@ -604,8 +593,9 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpColorManipulationAdjustHsv },
                 OperationListItem::Operation { operation: Operation::OpColorManipulationClamp },
                 OperationListItem::Operation { operation: Operation::OpColorManipulationSetAlpha },
+                OperationListItem::Operation { operation: Operation::OpColorBlendMode },
             ]},
-            OperationListItem::Category { name: "relationship".to_string(), operation_list_items: vec![
+            OperationListItem::Category { name: "harmony".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpColorHarmonyComplementary },
                 OperationListItem::Operation { operation: Operation::OpColorHarmonyTriadic },
                 OperationListItem::Operation { operation: Operation::OpColorHarmonyAnalogous },
@@ -661,7 +651,6 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentPosterize },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentHistogramScan },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentHistogramRange },
-                OperationListItem::Operation { operation: Operation::OpImageAdjustmentDistance },
             ]},
             OperationListItem::Category { name: "blur".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentBlur },
@@ -675,6 +664,9 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentEmboss },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentSharpen },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentUnsharpen },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentDistance },
+            ]},
+            OperationListItem::Category { name: "pbr".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImagePbrNormalFromHeight },
                 OperationListItem::Operation { operation: Operation::OpImagePbrAoFromHeight },
                 OperationListItem::Operation { operation: Operation::OpImagePbrCurvature },

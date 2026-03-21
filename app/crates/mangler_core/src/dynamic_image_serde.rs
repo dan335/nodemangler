@@ -3,7 +3,7 @@
 //! The `image` crate's `DynamicImage` doesn't implement Serialize/Deserialize,
 //! so we provide a custom format that stores the color type tag, dimensions,
 //! and raw pixel bytes. Used via `#[serde(serialize_with, deserialize_with)]`
-//! on fields that hold an `Arc<DynamicImage>` (e.g. in `Value::DynamicImage`).
+//! on fields that hold an `Arc<DynamicImage>` (e.g. in `Value::Image`).
 //!
 //! Serialized format (as a struct with 4 fields):
 //!   - `type`:   color type string (e.g. "ImageRgba8", "ImageRgb32F")

@@ -8,8 +8,8 @@
 //!
 //! Always tiles seamlessly via 4D torus mapping.
 
-use image::{ImageBuffer, DynamicImage};
 use rayon::prelude::*;
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -34,7 +34,7 @@ impl OpImageNoiseDomainWarpFbm {
     /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "domain warp fbm".to_string(),
+            name: "domain warp".to_string(),
             description: "Domain-warped fBm noise. Recursively distorts coordinates with fBm to produce organic, grunge-like textures.".to_string(),
         }
     }
@@ -57,7 +57,7 @@ impl OpImageNoiseDomainWarpFbm {
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
@@ -148,7 +148,7 @@ impl OpImageNoiseDomainWarpFbm {
 
         // Compute all pixels in parallel using torus-mapped coordinates for seamless tiling.
         let fbm_ref = &fbm;
-        let pixels: Vec<u16> = (0..h).into_par_iter().flat_map_iter(move |y| {
+        let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(move |y| {
             (0..w).map(move |x| {
                 // Compute torus-mapped base coordinates
                 let u = x as f64 / w as f64;
@@ -176,18 +176,22 @@ impl OpImageNoiseDomainWarpFbm {
                 let final_coords = Self::torus_coords(u + warp_x, v + warp_y);
                 let noise = Self::sample_fbm(fbm_ref, final_coords) as f32 * 0.5 + 0.5;
 
-                let non_linear = crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb(noise);
-                (non_linear * 65535.0) as u16
+                crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb(noise)
             })
         }).collect();
 
-        let image_buffer = ImageBuffer::from_raw(width as u32, height as u32, pixels).unwrap();
-        let dynamic_image = DynamicImage::ImageLuma16(image_buffer);
+        // Build a single-channel FloatImage from the computed pixel values
+        let mut float_image = FloatImage::new(width as u32, height as u32, 1);
+        for (i, &val) in pixels.iter().enumerate() {
+            let x = (i % w) as u32;
+            let y = (i / w) as u32;
+            float_image.put_pixel(x, y, &[val]);
+        }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(float_image), change_id: get_id() } },
             ],
         })
     }

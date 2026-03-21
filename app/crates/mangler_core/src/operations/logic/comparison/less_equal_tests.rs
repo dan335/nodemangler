@@ -73,5 +73,5 @@ async fn test_less_equal_bool_true_le_decimal_point_one() {
 #[tokio::test]
 async fn test_less_equal_settings() {
     let s = OpLogicCompareLessEqual::settings();
-    assert_eq!(s.name, "less equal");
+    assert_eq!(s.name, "less or equal");
 }

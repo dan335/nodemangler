@@ -1,6 +1,6 @@
 //! Color inversion operation for images.
 //!
-//! Inverts each pixel's color channels (R, G, B) so that `new = 255 - old`,
+//! Inverts each pixel's non-alpha channels so that `new = 1.0 - old`,
 //! producing a photographic negative effect. Alpha is preserved.
 
 use crate::get_id;
@@ -23,48 +23,55 @@ impl OpImageAdjustmentInvert {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "invert".to_string(),
-            description: "Inverts the colors of an image.".to_string(),
+            description: "Inverts all color channels of an image.".to_string(),
         }
     }
 
     /// Creates the input port: a single image to invert.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
         ]
     }
 
     /// Creates the output port: the color-inverted image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
     /// Executes the invert operation. Attempts to unwrap the Arc to avoid cloning when possible.
+    /// Inverts each non-alpha channel: `pixel[c] = 1.0 - pixel[c]`.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
-
+        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
 
         // return if error
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
+        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
 
-        // run node
-        // Try to take ownership of the image data to avoid cloning; fall back to clone if shared
+        // run node — try to take ownership of the image data to avoid cloning if possible
         let mut data_inner = Arc::try_unwrap(data).unwrap_or_else(|a| (*a).clone());
-        data_inner.invert();
+        let ch = data_inner.channels() as usize;
+        // Determine how many color channels to invert (skip alpha if present)
+        let color_ch = if ch == 2 || ch == 4 { ch - 1 } else { ch };
+
+        for pixel in data_inner.pixels_mut() {
+            for c in 0..color_ch {
+                pixel[c] = 1.0 - pixel[c];
+            }
+        }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse {value: Value::DynamicImage { data: Arc::new(data_inner), change_id:get_id() }},
+                OutputResponse {value: Value::Image { data: Arc::new(data_inner), change_id:get_id() }},
             ],
         })
     }

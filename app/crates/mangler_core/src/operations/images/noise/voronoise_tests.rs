@@ -28,8 +28,8 @@ async fn test_run_basic() {
     let result = OpImageNoiseVoronoise::run(&mut inputs).await;
     assert!(result.is_ok(), "run failed: {:?}", result.err());
     match &result.unwrap().responses[0].value {
-        Value::DynamicImage { .. } => {}
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        Value::Image { .. } => {}
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -38,11 +38,11 @@ async fn test_correct_dimensions() {
     let mut inputs = make_inputs(1, 32, 16, 8.0, 1.0, 0.5);
     let result = OpImageNoiseVoronoise::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 32);
             assert_eq!(data.height(), 16);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -51,12 +51,12 @@ async fn test_deterministic() {
     let r1 = OpImageNoiseVoronoise::run(&mut make_inputs(7, 16, 16, 8.0, 1.0, 0.5)).await.unwrap();
     let r2 = OpImageNoiseVoronoise::run(&mut make_inputs(7, 16, 16, 8.0, 1.0, 0.5)).await.unwrap();
     match (&r1.responses[0].value, &r2.responses[0].value) {
-        (Value::DynamicImage { data: d1, .. }, Value::DynamicImage { data: d2, .. }) => {
-            assert_eq!(d1.to_luma8().pixels().collect::<Vec<_>>(),
-                       d2.to_luma8().pixels().collect::<Vec<_>>(),
+        (Value::Image { data: d1, .. }, Value::Image { data: d2, .. }) => {
+            assert_eq!(d1.pixels().collect::<Vec<_>>(),
+                       d2.pixels().collect::<Vec<_>>(),
                        "voronoise is not deterministic");
         }
-        _ => panic!("Expected DynamicImage"),
+        _ => panic!("Expected Image"),
     }
 }
 
@@ -65,12 +65,12 @@ async fn test_different_seeds_differ() {
     let r1 = OpImageNoiseVoronoise::run(&mut make_inputs(1, 16, 16, 8.0, 1.0, 0.5)).await.unwrap();
     let r2 = OpImageNoiseVoronoise::run(&mut make_inputs(42, 16, 16, 8.0, 1.0, 0.5)).await.unwrap();
     match (&r1.responses[0].value, &r2.responses[0].value) {
-        (Value::DynamicImage { data: d1, .. }, Value::DynamicImage { data: d2, .. }) => {
-            assert_ne!(d1.to_luma8().pixels().collect::<Vec<_>>(),
-                       d2.to_luma8().pixels().collect::<Vec<_>>(),
+        (Value::Image { data: d1, .. }, Value::Image { data: d2, .. }) => {
+            assert_ne!(d1.pixels().collect::<Vec<_>>(),
+                       d2.pixels().collect::<Vec<_>>(),
                        "different seeds should produce different output");
         }
-        _ => panic!("Expected DynamicImage"),
+        _ => panic!("Expected Image"),
     }
 }
 
@@ -79,12 +79,12 @@ async fn test_smoothness_affects_output() {
     let r1 = OpImageNoiseVoronoise::run(&mut make_inputs(1, 16, 16, 8.0, 1.0, 0.0)).await.unwrap();
     let r2 = OpImageNoiseVoronoise::run(&mut make_inputs(1, 16, 16, 8.0, 1.0, 1.0)).await.unwrap();
     match (&r1.responses[0].value, &r2.responses[0].value) {
-        (Value::DynamicImage { data: d1, .. }, Value::DynamicImage { data: d2, .. }) => {
-            assert_ne!(d1.to_luma8().pixels().collect::<Vec<_>>(),
-                       d2.to_luma8().pixels().collect::<Vec<_>>(),
+        (Value::Image { data: d1, .. }, Value::Image { data: d2, .. }) => {
+            assert_ne!(d1.pixels().collect::<Vec<_>>(),
+                       d2.pixels().collect::<Vec<_>>(),
                        "different smoothness values should produce different output");
         }
-        _ => panic!("Expected DynamicImage"),
+        _ => panic!("Expected Image"),
     }
 }
 
@@ -93,12 +93,12 @@ async fn test_jitter_affects_output() {
     let r1 = OpImageNoiseVoronoise::run(&mut make_inputs(1, 16, 16, 8.0, 0.0, 0.5)).await.unwrap();
     let r2 = OpImageNoiseVoronoise::run(&mut make_inputs(1, 16, 16, 8.0, 1.0, 0.5)).await.unwrap();
     match (&r1.responses[0].value, &r2.responses[0].value) {
-        (Value::DynamicImage { data: d1, .. }, Value::DynamicImage { data: d2, .. }) => {
-            assert_ne!(d1.to_luma8().pixels().collect::<Vec<_>>(),
-                       d2.to_luma8().pixels().collect::<Vec<_>>(),
+        (Value::Image { data: d1, .. }, Value::Image { data: d2, .. }) => {
+            assert_ne!(d1.pixels().collect::<Vec<_>>(),
+                       d2.pixels().collect::<Vec<_>>(),
                        "different jitter values should produce different output");
         }
-        _ => panic!("Expected DynamicImage"),
+        _ => panic!("Expected Image"),
     }
 }
 
@@ -109,23 +109,23 @@ async fn test_tiles_seamlessly() {
     let mut inputs = make_inputs(1, size, size, 4.0, 1.0, 0.5);
     let result = OpImageNoiseVoronoise::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            let img = data.to_luma8();
+        Value::Image { data, .. } => {
             let s = size as u32;
-            let max_diff = 25u32;
+            // Max difference threshold in f32 space (equivalent to ~25/255 in u8)
+            let max_diff = 0.1_f32;
             for x in 0..s {
-                let top = img.get_pixel(x, 0)[0];
-                let bottom = img.get_pixel(x, s - 1)[0];
-                assert!((top as i32 - bottom as i32).unsigned_abs() < max_diff,
+                let top = data.get_pixel(x, 0)[0];
+                let bottom = data.get_pixel(x, s - 1)[0];
+                assert!((top - bottom).abs() < max_diff,
                     "Vertical seam at x={}: top={}, bottom={}", x, top, bottom);
             }
             for y in 0..s {
-                let left = img.get_pixel(0, y)[0];
-                let right = img.get_pixel(s - 1, y)[0];
-                assert!((left as i32 - right as i32).unsigned_abs() < max_diff,
+                let left = data.get_pixel(0, y)[0];
+                let right = data.get_pixel(s - 1, y)[0];
+                assert!((left - right).abs() < max_diff,
                     "Horizontal seam at y={}: left={}, right={}", y, left, right);
             }
         }
-        _ => panic!("Expected DynamicImage"),
+        _ => panic!("Expected Image"),
     }
 }

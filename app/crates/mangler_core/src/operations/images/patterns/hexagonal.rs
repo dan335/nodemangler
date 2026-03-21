@@ -2,9 +2,10 @@
 //!
 //! Generates a flat-top hexagonal tile pattern as a grayscale image using
 //! axial/cube coordinate rounding to find the nearest hex center, then
-//! computing the hexagonal distance for gap detection.
+//! computing the hexagonal distance for gap detection. Outputs a single-channel
+//! FloatImage.
 
-use image::{ImageBuffer, DynamicImage};
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -41,11 +42,14 @@ impl OpImagePatternHexagonal {
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
         ]
     }
 
     /// Generates a hexagonal tile pattern image from the given inputs.
+    ///
+    /// The output is a 1-channel FloatImage where 1.0 = inside hex tile and
+    /// 0.0 = gap between tiles.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -74,7 +78,8 @@ impl OpImagePatternHexagonal {
         let size = width.max(height) as f64;
         let sqrt3 = 3.0_f64.sqrt();
 
-        let mut image_buffer = ImageBuffer::new(width as u32, height as u32);
+        // 1-channel grayscale mask
+        let mut image = FloatImage::new(width as u32, height as u32, 1);
 
         for py in 0..height {
             for px in 0..width {
@@ -119,17 +124,16 @@ impl OpImagePatternHexagonal {
 
                 let in_gap = edge_proximity > (1.0 - gap_size);
 
-                let g: u8 = if in_gap { 0 } else { 255 };
-                image_buffer.put_pixel(px as u32, py as u32, image::Luma([g]));
+                // 1.0 for tile, 0.0 for gap
+                let val: f32 = if in_gap { 0.0 } else { 1.0 };
+                image.put_pixel(px as u32, py as u32, &[val]);
             }
         }
-
-        let dynamic_image = DynamicImage::ImageLuma8(image_buffer);
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(image), change_id: get_id() } },
             ],
         })
     }

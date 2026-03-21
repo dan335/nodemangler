@@ -23,7 +23,7 @@ impl OpNumberMathFrac {
     /// Returns the node metadata (name and description).
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "frac".to_string(),
+            name: "fractional part".to_string(),
             description: "Returns the fractional part of a decimal.".to_string(),
         }
     }

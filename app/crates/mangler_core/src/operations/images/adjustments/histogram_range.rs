@@ -5,7 +5,6 @@
 
 use crate::get_id;
 use crate::value::ValueType;
-use image::DynamicImage;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
@@ -31,7 +30,7 @@ impl OpImageAdjustmentHistogramRange {
     /// Creates the input ports: image, target range min, and target range max.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
             Input::new("range min".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
             Input::new("range max".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
         ]
@@ -40,7 +39,7 @@ impl OpImageAdjustmentHistogramRange {
     /// Creates the output port: the range-remapped image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
@@ -51,7 +50,7 @@ impl OpImageAdjustmentHistogramRange {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
+        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
         let range_min_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
         let range_max_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
 
@@ -59,20 +58,24 @@ impl OpImageAdjustmentHistogramRange {
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
+        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
         let Value::Decimal(range_min) = range_min_converted.unwrap() else { unreachable!() };
         let Value::Decimal(range_max) = range_max_converted.unwrap() else { unreachable!() };
 
-        // run node
-        let mut buffer = data.to_rgba32f();
-        let range_min = range_min;
-        let range_max = range_max;
+        // run node — clone and work directly on FloatImage
+        let mut result = (*data).clone();
+        let ch = result.channels() as usize;
+        let color_ch = if ch == 2 || ch == 4 { ch - 1 } else { ch };
 
         // find actual min/max luminance
         let mut actual_min: f32 = f32::MAX;
         let mut actual_max: f32 = f32::MIN;
-        for pixel in buffer.pixels() {
-            let lum = 0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2];
+        for pixel in result.pixels() {
+            let lum = if color_ch >= 3 {
+                0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2]
+            } else {
+                pixel[0]
+            };
             if lum < actual_min { actual_min = lum; }
             if lum > actual_max { actual_max = lum; }
         }
@@ -80,9 +83,8 @@ impl OpImageAdjustmentHistogramRange {
         let actual_range = actual_max - actual_min;
         let target_range = range_max - range_min;
 
-        for pixel in buffer.pixels_mut() {
-            let alpha = pixel[3];
-            for c in 0..3 {
+        for pixel in result.pixels_mut() {
+            for c in 0..color_ch {
                 if actual_range <= 0.0 {
                     pixel[c] = range_min;
                 } else {
@@ -91,15 +93,13 @@ impl OpImageAdjustmentHistogramRange {
                     pixel[c] = new_val.clamp(0.0, 1.0);
                 }
             }
-            pixel[3] = alpha;
+            // alpha unchanged
         }
-
-        let adjusted = DynamicImage::ImageRgba32F(buffer);
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse {value: Value::DynamicImage { data:Arc::new(adjusted), change_id:get_id() }},
+                OutputResponse {value: Value::Image { data:Arc::new(result), change_id:get_id() }},
             ],
         })
     }

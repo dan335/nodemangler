@@ -1,6 +1,9 @@
 //! Horizontal flip (mirror left-to-right) operation.
+//!
+//! Operates directly on [`FloatImage`] pixel data.
 
 use crate::get_id;
+use crate::float_image::FloatImage;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
@@ -12,9 +15,7 @@ use std::time::Instant;
 
 /// Flips an image horizontally (mirrors left-to-right).
 ///
-/// The operation is performed in-place when possible (single `Arc` reference),
-/// otherwise the image data is cloned first. Applying this operation twice
-/// restores the original image.
+/// Applying this operation twice restores the original image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageTransformFlipHorizontal {}
 
@@ -30,41 +31,46 @@ impl OpImageTransformFlipHorizontal {
     /// Creates the default inputs: a single source image.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
         ]
     }
 
     /// Creates the default outputs: the flipped image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
         ]
     }
 
-    /// Executes the horizontal flip operation in-place.
+    /// Executes the horizontal flip by mirroring pixels left-to-right.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::DynamicImage, &mut input_errors);
-
+        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
 
         // return if error
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
-        let Value::DynamicImage{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
+        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
 
-        // run node
-        // Try to take ownership; clone if other references exist
-        let mut data_inner = Arc::try_unwrap(data).unwrap_or_else(|a| (*a).clone());
-        image::imageops::flip_horizontal_in_place(&mut data_inner);
+        // Create output with same dimensions
+        let (w, h) = data.dimensions();
+        let mut output = FloatImage::new(w, h, data.channels());
+
+        // Mirror pixels: source(x, y) -> output(w-1-x, y)
+        for y in 0..h {
+            for x in 0..w {
+                output.put_pixel(w - 1 - x, y, data.get_pixel(x, y));
+            }
+        }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse {value: Value::DynamicImage { data: Arc::new(data_inner), change_id:get_id() }},
+                OutputResponse {value: Value::Image { data: Arc::new(output), change_id:get_id() }},
             ],
         })
     }

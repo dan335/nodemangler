@@ -4,9 +4,9 @@
 //! patent-free alternative to simplex noise. Tiling is achieved by mapping
 //! 2D coordinates onto a 4D torus.
 
-use image::{ImageBuffer, DynamicImage};
 use rayon::prelude::*;
 use crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb;
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -44,7 +44,7 @@ impl OpImageNoiseOpenSimplex {
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::DynamicImage { data:default_image(), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
         ]
     }
 
@@ -80,7 +80,7 @@ impl OpImageNoiseOpenSimplex {
         let w = width as usize;
         let h = height as usize;
         // Compute pixels in parallel, iterating in row-major order (y outer, x inner)
-        let pixels: Vec<u16> = (0..h).into_par_iter().flat_map_iter(|y| {
+        let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(|y| {
             (0..w).map(move |x| {
                 // Map 2D coordinates onto a 4D torus for seamless tiling.
                 // OpenSimplex supports 4D natively, so this produces correct tiles.
@@ -94,18 +94,22 @@ impl OpImageNoiseOpenSimplex {
                     (tau * v).cos() * r,
                     (tau * v).sin() * r,
                 ]) as f32 * 0.5 + 0.5;
-                let non_linear = linear_to_nonlinear_srgb(noise);
-                (non_linear * 65535.0) as u16
+                linear_to_nonlinear_srgb(noise)
             })
         }).collect();
 
-        let image_buffer = ImageBuffer::from_raw(width as u32, height as u32, pixels).unwrap();
-        let dynamic_image = DynamicImage::ImageLuma16(image_buffer);
+        // Build a single-channel FloatImage from the computed pixel values
+        let mut float_image = FloatImage::new(width as u32, height as u32, 1);
+        for (i, &val) in pixels.iter().enumerate() {
+            let x = (i % w) as u32;
+            let y = (i / w) as u32;
+            float_image.put_pixel(x, y, &[val]);
+        }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::DynamicImage { data: Arc::new(dynamic_image), change_id: get_id() } },
+                OutputResponse { value: Value::Image { data: Arc::new(float_image), change_id: get_id() } },
             ],
         })
     }

@@ -58,9 +58,9 @@ fn test_search_filter_empty_returns_all() {
     );
 }
 
-/// When `from_connection` has `from_value_type: DynamicImage` and
+/// When `from_connection` has `from_value_type: Image` and
 /// `from_connection_type: Output`, results only include operations
-/// with at least one input accepting `DynamicImage`.
+/// with at least one input accepting `Image`.
 #[test]
 fn test_type_filter_from_output() {
     let mut popup = NodeSearchPopup::new();
@@ -69,14 +69,14 @@ fn test_type_filter_from_output() {
         from_node_id: "test".to_string(),
         from_connection_index: 0,
         from_connection_type: super::ConnectionType::Output,
-        from_value_type: ValueType::DynamicImage,
+        from_value_type: ValueType::Image,
         from_accepts_any_type: false,
     });
     popup.update_filtered_results();
 
     assert!(
         !popup.filtered_results.is_empty(),
-        "should find operations that accept DynamicImage"
+        "should find operations that accept Image"
     );
 
     for result in &popup.filtered_results {
@@ -87,11 +87,11 @@ fn test_type_filter_from_output() {
                     .value
                     .value_type()
                     .valid_conversions()
-                    .contains(&ValueType::DynamicImage)
+                    .contains(&ValueType::Image)
         });
         assert!(
             has_compatible_input,
-            "operation '{}' should have at least one input accepting DynamicImage",
+            "operation '{}' should have at least one input accepting Image",
             result.name
         );
     }
@@ -107,17 +107,17 @@ fn test_type_filter_from_input() {
         from_node_id: "test".to_string(),
         from_connection_index: 0,
         from_connection_type: super::ConnectionType::Input,
-        from_value_type: ValueType::DynamicImage,
+        from_value_type: ValueType::Image,
         from_accepts_any_type: false,
     });
     popup.update_filtered_results();
 
     assert!(
         !popup.filtered_results.is_empty(),
-        "should find operations that output DynamicImage-compatible types"
+        "should find operations that output Image-compatible types"
     );
 
-    let valid_from = ValueType::DynamicImage.valid_conversions_from();
+    let valid_from = ValueType::Image.valid_conversions_from();
     for result in &popup.filtered_results {
         let outputs = result.operation.create_outputs();
         let has_compatible_output = outputs.iter().any(|output| {
@@ -125,7 +125,7 @@ fn test_type_filter_from_input() {
         });
         assert!(
             has_compatible_output,
-            "operation '{}' should have at least one output compatible with DynamicImage input",
+            "operation '{}' should have at least one output compatible with Image input",
             result.name
         );
     }

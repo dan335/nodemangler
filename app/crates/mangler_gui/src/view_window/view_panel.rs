@@ -100,7 +100,7 @@ impl ViewPanel {
                 mangler_core::value::Value::Decimal(value) => TextViewer::show(ui, format!("{:?}", value)),
                 mangler_core::value::Value::Text(value) => TextViewer::show(ui, value.to_string()),
                 mangler_core::value::Value::Color(value) => ColorViewer::show(ui, *value),
-                mangler_core::value::Value::DynamicImage { data, change_id } => self.image_viewer.show(ui, graph_node.id.clone(), output_index, change_id.clone(), data, cursor_position, theme),
+                mangler_core::value::Value::Image { data, change_id } => self.image_viewer.show(ui, graph_node.id.clone(), output_index, change_id.clone(), data, cursor_position, theme),
                 mangler_core::value::Value::Path(path) => TextViewer::show(ui, path.to_str().unwrap_or("none").to_string()),
                 mangler_core::value::Value::FilterType(value) => TextViewer::show(ui, format!("{:?}", value)),
                 mangler_core::value::Value::ColorFormat(value) => TextViewer::show(ui, format!("{:?}", value)),

@@ -25,8 +25,8 @@ async fn test_run_basic() {
     let result = OpImageNoiseCylinders::run(&mut inputs).await;
     assert!(result.is_ok(), "run failed: {:?}", result.err());
     match &result.unwrap().responses[0].value {
-        Value::DynamicImage { .. } => {}
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        Value::Image { .. } => {}
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -35,11 +35,11 @@ async fn test_correct_dimensions() {
     let mut inputs = make_inputs(32, 16, 2.0);
     let result = OpImageNoiseCylinders::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 32);
             assert_eq!(data.height(), 16);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -55,12 +55,12 @@ async fn test_deterministic() {
     let r1 = OpImageNoiseCylinders::run(&mut make_inputs(32, 32, 3.0)).await.unwrap();
     let r2 = OpImageNoiseCylinders::run(&mut make_inputs(32, 32, 3.0)).await.unwrap();
     match (&r1.responses[0].value, &r2.responses[0].value) {
-        (Value::DynamicImage { data: d1, .. }, Value::DynamicImage { data: d2, .. }) => {
-            assert_eq!(d1.to_luma8().pixels().collect::<Vec<_>>(),
-                       d2.to_luma8().pixels().collect::<Vec<_>>(),
+        (Value::Image { data: d1, .. }, Value::Image { data: d2, .. }) => {
+            assert_eq!(d1.pixels().collect::<Vec<_>>(),
+                       d2.pixels().collect::<Vec<_>>(),
                        "cylinders noise is not deterministic");
         }
-        _ => panic!("Expected DynamicImage"),
+        _ => panic!("Expected Image"),
     }
 }
 
@@ -73,26 +73,25 @@ async fn test_tiles_seamlessly() {
     let size = 256;
     let r = OpImageNoiseCylinders::run(&mut make_inputs(size, size, 2.0)).await.unwrap();
     match &r.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            let buf = data.to_luma8();
-            let w = buf.width();
-            let h = buf.height();
+        Value::Image { data, .. } => {
+            let w = data.width();
+            let h = data.height();
             // Horizontal seam: compare left edge to right edge (adjacent across wrap)
             for y in 0..h {
-                let left = buf.get_pixel(0, y)[0];
-                let right = buf.get_pixel(w - 1, y)[0];
-                assert!((left as i16 - right as i16).unsigned_abs() <= 8,
+                let left = data.get_pixel(0, y)[0];
+                let right = data.get_pixel(w - 1, y)[0];
+                assert!((left - right).abs() <= 0.04,
                         "horizontal seam mismatch at y={}: left={}, right={}", y, left, right);
             }
             // Vertical seam: compare top edge to bottom edge (adjacent across wrap)
             for x in 0..w {
-                let top = buf.get_pixel(x, 0)[0];
-                let bottom = buf.get_pixel(x, h - 1)[0];
-                assert!((top as i16 - bottom as i16).unsigned_abs() <= 8,
+                let top = data.get_pixel(x, 0)[0];
+                let bottom = data.get_pixel(x, h - 1)[0];
+                assert!((top - bottom).abs() <= 0.04,
                         "vertical seam mismatch at x={}: top={}, bottom={}", x, top, bottom);
             }
         }
-        _ => panic!("Expected DynamicImage"),
+        _ => panic!("Expected Image"),
     }
 }
 
@@ -101,11 +100,11 @@ async fn test_frequency_affects_output() {
     let r1 = OpImageNoiseCylinders::run(&mut make_inputs(32, 32, 1.0)).await.unwrap();
     let r2 = OpImageNoiseCylinders::run(&mut make_inputs(32, 32, 5.0)).await.unwrap();
     match (&r1.responses[0].value, &r2.responses[0].value) {
-        (Value::DynamicImage { data: d1, .. }, Value::DynamicImage { data: d2, .. }) => {
-            assert_ne!(d1.to_luma8().pixels().collect::<Vec<_>>(),
-                       d2.to_luma8().pixels().collect::<Vec<_>>(),
+        (Value::Image { data: d1, .. }, Value::Image { data: d2, .. }) => {
+            assert_ne!(d1.pixels().collect::<Vec<_>>(),
+                       d2.pixels().collect::<Vec<_>>(),
                        "different frequencies should produce different output");
         }
-        _ => panic!("Expected DynamicImage"),
+        _ => panic!("Expected Image"),
     }
 }

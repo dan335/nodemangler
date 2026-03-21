@@ -1,23 +1,27 @@
 use super::*;
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::Input;
 use crate::value::Value;
-use image::DynamicImage;
 use std::sync::Arc;
 
-fn test_image(w: u32, h: u32) -> Arc<DynamicImage> {
-    let mut imgbuf = image::RgbaImage::new(w, h);
-    for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-        let r = (x * 255 / w.max(1)) as u8;
-        let g = (y * 255 / h.max(1)) as u8;
-        *pixel = image::Rgba([r, g, 128, 255]);
+/// Creates a test FloatImage with an x/y gradient pattern (4 channels).
+fn test_image(w: u32, h: u32) -> Arc<FloatImage> {
+    let mut img = FloatImage::new(w, h, 4);
+    for y in 0..h {
+        for x in 0..w {
+            let r = x as f32 / w.max(1) as f32;
+            let g = y as f32 / h.max(1) as f32;
+            img.put_pixel(x, y, &[r, g, 0.5, 1.0]);
+        }
     }
-    Arc::new(DynamicImage::ImageRgba8(imgbuf))
+    Arc::new(img)
 }
 
+/// Creates a Value::Image from a test gradient image.
 fn image_input(w: u32, h: u32) -> Value {
-    Value::DynamicImage { data: test_image(w, h), change_id: get_id() }
+    Value::Image { data: test_image(w, h), change_id: get_id() }
 }
 
 #[tokio::test]
@@ -33,8 +37,8 @@ async fn test_flip_vertical() {
     let mut inputs = vec![Input::new("image".to_string(), image_input(4, 4), None, None)];
     let result = OpImageTransformFlipVertical::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { .. } => {}
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        Value::Image { .. } => {}
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -50,29 +54,28 @@ async fn test_flip_vertical_preserves_dimensions() {
     let mut inputs = vec![Input::new("image".to_string(), image_input(8, 8), None, None)];
     let result = OpImageTransformFlipVertical::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 8);
             assert_eq!(data.height(), 8);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
 #[tokio::test]
 async fn test_flip_vertical_reverses_rows() {
     // Top pixel should move to bottom after flip
-    let mut imgbuf = image::RgbaImage::new(4, 4);
-    imgbuf.put_pixel(0, 0, image::Rgba([255u8, 0, 0, 255]));
-    imgbuf.put_pixel(0, 3, image::Rgba([0u8, 0, 255, 255]));
-    let img = Arc::new(DynamicImage::ImageRgba8(imgbuf));
-    let mut inputs = vec![Input::new("image".to_string(), Value::DynamicImage { data: img, change_id: get_id() }, None, None)];
+    let mut img = FloatImage::new(4, 4, 4);
+    img.put_pixel(0, 0, &[1.0, 0.0, 0.0, 1.0]); // red at top
+    img.put_pixel(0, 3, &[0.0, 0.0, 1.0, 1.0]); // blue at bottom
+    let mut inputs = vec![Input::new("image".to_string(), Value::Image { data: Arc::new(img), change_id: get_id() }, None, None)];
     let result = OpImageTransformFlipVertical::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
-            let top = data.to_rgba8().get_pixel(0, 0).0;
+        Value::Image { data, .. } => {
+            let top = data.get_pixel(0, 0);
             // After vertical flip, row 3 becomes row 0
-            assert_eq!(top[2], 255, "blue should be at top after flip, got {:?}", top);
+            assert!((top[2] - 1.0).abs() < 0.01, "blue should be at top after flip, got {:?}", top);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }

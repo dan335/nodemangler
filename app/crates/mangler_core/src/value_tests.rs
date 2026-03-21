@@ -148,15 +148,15 @@ fn test_bool_to_color_false() {
 }
 
 #[test]
-fn test_bool_to_dynamic_image() {
-    let result = Value::Bool(true).try_convert_to(ValueType::DynamicImage);
+fn test_bool_to_image() {
+    let result = Value::Bool(true).try_convert_to(ValueType::Image);
     assert!(result.is_ok());
     match result.unwrap() {
-        Value::DynamicImage {
+        Value::Image {
             data: _,
             change_id: _,
         } => {}
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -650,92 +650,98 @@ fn test_decimal_to_color_clamps_above_one() {
     }
 }
 
-// === Integer → DynamicImage (1x1 R8 grayscale) ===
+// === Integer → Image (1x1 single-channel grayscale) ===
 
 #[test]
-fn test_integer_to_dynamic_image_zero() {
-    let result = Value::Integer(0).try_convert_to(ValueType::DynamicImage).unwrap();
+fn test_integer_to_image_zero() {
+    let result = Value::Integer(0).try_convert_to(ValueType::Image).unwrap();
     match result {
-        Value::DynamicImage { data, .. } => {
-            let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
-            assert_eq!(pixel.0, [0]);
+        Value::Image { data, .. } => {
+            // Integer 0 → f32 0.0 (clamped 0..255, divided by 255)
+            let pixel = data.get_pixel(0, 0);
+            assert_eq!(pixel, &[0.0]);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
 #[test]
-fn test_integer_to_dynamic_image_255() {
-    let result = Value::Integer(255).try_convert_to(ValueType::DynamicImage).unwrap();
+fn test_integer_to_image_255() {
+    let result = Value::Integer(255).try_convert_to(ValueType::Image).unwrap();
     match result {
-        Value::DynamicImage { data, .. } => {
-            let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
-            assert_eq!(pixel.0, [255]);
+        Value::Image { data, .. } => {
+            // Integer 255 → f32 1.0
+            let pixel = data.get_pixel(0, 0);
+            assert_eq!(pixel, &[1.0]);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
 #[test]
-fn test_integer_to_dynamic_image_clamps() {
-    let result = Value::Integer(999).try_convert_to(ValueType::DynamicImage).unwrap();
+fn test_integer_to_image_clamps() {
+    let result = Value::Integer(999).try_convert_to(ValueType::Image).unwrap();
     match result {
-        Value::DynamicImage { data, .. } => {
-            let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
-            assert_eq!(pixel.0, [255]);
+        Value::Image { data, .. } => {
+            // Integer 999 clamps to 255, then 255/255 = 1.0
+            let pixel = data.get_pixel(0, 0);
+            assert_eq!(pixel, &[1.0]);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
-// === Decimal → DynamicImage (1x1 R8 grayscale) ===
+// === Decimal → Image (1x1 single-channel grayscale) ===
 
 #[test]
-fn test_decimal_to_dynamic_image_zero() {
-    let result = Value::Decimal(0.0).try_convert_to(ValueType::DynamicImage).unwrap();
+fn test_decimal_to_image_zero() {
+    let result = Value::Decimal(0.0).try_convert_to(ValueType::Image).unwrap();
     match result {
-        Value::DynamicImage { data, .. } => {
-            let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
-            assert_eq!(pixel.0, [0]);
+        Value::Image { data, .. } => {
+            // Decimal 0.0 → f32 0.0
+            let pixel = data.get_pixel(0, 0);
+            assert_eq!(pixel, &[0.0]);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
-    }
-}
-
-#[test]
-fn test_decimal_to_dynamic_image_one() {
-    let result = Value::Decimal(1.0).try_convert_to(ValueType::DynamicImage).unwrap();
-    match result {
-        Value::DynamicImage { data, .. } => {
-            let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
-            assert_eq!(pixel.0, [255]);
-        }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
 #[test]
-fn test_decimal_to_dynamic_image_half() {
-    let result = Value::Decimal(0.5).try_convert_to(ValueType::DynamicImage).unwrap();
+fn test_decimal_to_image_one() {
+    let result = Value::Decimal(1.0).try_convert_to(ValueType::Image).unwrap();
     match result {
-        Value::DynamicImage { data, .. } => {
-            let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
-            // 0.5 * 255 = 127
-            assert_eq!(pixel.0, [127]);
+        Value::Image { data, .. } => {
+            // Decimal 1.0 → f32 1.0
+            let pixel = data.get_pixel(0, 0);
+            assert_eq!(pixel, &[1.0]);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
 #[test]
-fn test_decimal_to_dynamic_image_clamps_negative() {
-    let result = Value::Decimal(-1.0).try_convert_to(ValueType::DynamicImage).unwrap();
+fn test_decimal_to_image_half() {
+    let result = Value::Decimal(0.5).try_convert_to(ValueType::Image).unwrap();
     match result {
-        Value::DynamicImage { data, .. } => {
-            let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
-            assert_eq!(pixel.0, [0]);
+        Value::Image { data, .. } => {
+            // Decimal 0.5 stored directly as f32
+            let pixel = data.get_pixel(0, 0);
+            assert_eq!(pixel, &[0.5]);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_decimal_to_image_clamps_negative() {
+    let result = Value::Decimal(-1.0).try_convert_to(ValueType::Image).unwrap();
+    match result {
+        Value::Image { data, .. } => {
+            // Decimal -1.0 clamps to 0.0
+            let pixel = data.get_pixel(0, 0);
+            assert_eq!(pixel, &[0.0]);
+        }
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -849,34 +855,36 @@ fn test_color_to_text() {
     }
 }
 
-// === Color → DynamicImage (1x1 solid color) ===
+// === Color → Image (1x1 solid color) ===
 
 #[test]
-fn test_color_to_dynamic_image() {
+fn test_color_to_image() {
     let c = Color::from_srgb_float(1.0, 0.0, 0.0, 1.0);
-    let result = Value::Color(c).try_convert_to(ValueType::DynamicImage).unwrap();
+    let result = Value::Color(c).try_convert_to(ValueType::Image).unwrap();
     match result {
-        Value::DynamicImage { data, .. } => {
-            let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
-            assert_eq!(pixel.0[0], 255); // red
-            assert_eq!(pixel.0[1], 0);   // green
-            assert_eq!(pixel.0[2], 0);   // blue
-            assert_eq!(pixel.0[3], 255); // alpha
+        Value::Image { data, .. } => {
+            // Color → 4-channel FloatImage with sRGB float values
+            let pixel = data.get_pixel(0, 0);
+            assert_eq!(pixel[0], 1.0); // red
+            assert_eq!(pixel[1], 0.0); // green
+            assert_eq!(pixel[2], 0.0); // blue
+            assert_eq!(pixel[3], 1.0); // alpha
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
 #[test]
-fn test_color_to_dynamic_image_black() {
+fn test_color_to_image_black() {
     let c = Color::from_srgb_float(0.0, 0.0, 0.0, 1.0);
-    let result = Value::Color(c).try_convert_to(ValueType::DynamicImage).unwrap();
+    let result = Value::Color(c).try_convert_to(ValueType::Image).unwrap();
     match result {
-        Value::DynamicImage { data, .. } => {
-            let pixel = data.as_rgba8().unwrap().get_pixel(0, 0);
-            assert_eq!(pixel.0, [0, 0, 0, 255]);
+        Value::Image { data, .. } => {
+            // Black color → all zeros except alpha
+            let pixel = data.get_pixel(0, 0);
+            assert_eq!(pixel, &[0.0, 0.0, 0.0, 1.0]);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -1008,7 +1016,7 @@ fn test_text_to_color_fails() {
 
 #[test]
 fn test_text_to_dynamic_image_fails() {
-    let result = Value::Text("img".to_string()).try_convert_to(ValueType::DynamicImage);
+    let result = Value::Text("img".to_string()).try_convert_to(ValueType::Image);
     assert!(result.is_err());
 }
 
@@ -1024,28 +1032,30 @@ fn test_path_to_integer_fails() {
     assert!(result.is_err());
 }
 
-// === Bool → DynamicImage edge case: false produces black pixel ===
+// === Bool → Image edge case: false produces black pixel ===
 #[test]
-fn test_bool_false_to_dynamic_image() {
-    let result = Value::Bool(false).try_convert_to(ValueType::DynamicImage).unwrap();
+fn test_bool_false_to_image() {
+    let result = Value::Bool(false).try_convert_to(ValueType::Image).unwrap();
     match result {
-        Value::DynamicImage { data, change_id: _ } => {
-            let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
-            assert_eq!(pixel.0, [0]);
+        Value::Image { data, change_id: _ } => {
+            // false → 1-channel FloatImage with value 0.0
+            let pixel = data.get_pixel(0, 0);
+            assert_eq!(pixel, &[0.0]);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
 #[test]
-fn test_bool_true_to_dynamic_image_white() {
-    let result = Value::Bool(true).try_convert_to(ValueType::DynamicImage).unwrap();
+fn test_bool_true_to_image_white() {
+    let result = Value::Bool(true).try_convert_to(ValueType::Image).unwrap();
     match result {
-        Value::DynamicImage { data, change_id: _ } => {
-            let pixel = data.as_luma8().unwrap().get_pixel(0, 0);
-            assert_eq!(pixel.0, [255]);
+        Value::Image { data, change_id: _ } => {
+            // true → 1-channel FloatImage with value 1.0
+            let pixel = data.get_pixel(0, 0);
+            assert_eq!(pixel, &[1.0]);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -1096,8 +1106,8 @@ fn test_bool_valid_conversions() {
 
 #[test]
 fn test_dynamic_image_valid_conversions() {
-    let conversions = ValueType::DynamicImage.valid_conversions();
-    assert!(conversions.contains(&ValueType::DynamicImage));
+    let conversions = ValueType::Image.valid_conversions();
+    assert!(conversions.contains(&ValueType::Image));
     assert!(conversions.contains(&ValueType::Trigger));
     assert!(!conversions.contains(&ValueType::Integer));
 }
@@ -1124,7 +1134,7 @@ fn test_default_value_matches_type() {
         ValueType::ColorFormat,
         ValueType::ImageType,
         ValueType::Trigger,
-        ValueType::DynamicImage,
+        ValueType::Image,
         ValueType::Path,
         ValueType::NoiseWorleyDistanceFunction,
         ValueType::ColorSpace,
@@ -1143,7 +1153,7 @@ fn test_value_type_name() {
     assert_eq!(ValueType::Decimal.value_name(), "decimal");
     assert_eq!(ValueType::Text.value_name(), "text");
     assert_eq!(ValueType::Color.value_name(), "color");
-    assert_eq!(ValueType::DynamicImage.value_name(), "image");
+    assert_eq!(ValueType::Image.value_name(), "image");
     assert_eq!(ValueType::Path.value_name(), "path");
 }
 

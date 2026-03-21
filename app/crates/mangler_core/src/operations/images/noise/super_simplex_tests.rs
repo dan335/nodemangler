@@ -1,26 +1,7 @@
 use super::*;
 
-use crate::get_id;
 use crate::input::Input;
 use crate::value::Value;
-use image::{DynamicImage, RgbaImage};
-use std::sync::Arc;
-
-fn test_image(w: u32, h: u32) -> Arc<DynamicImage> {
-    let mut img = RgbaImage::new(w, h);
-    for y in 0..h {
-        for x in 0..w {
-            let r = ((x as f32 / w as f32) * 255.0) as u8;
-            let g = ((y as f32 / h as f32) * 255.0) as u8;
-            img.put_pixel(x, y, image::Rgba([r, g, 128, 255]));
-        }
-    }
-    Arc::new(DynamicImage::ImageRgba8(img))
-}
-
-fn image_input(w: u32, h: u32) -> Value {
-    Value::DynamicImage { data: test_image(w, h), change_id: get_id() }
-}
 
 
 #[tokio::test]
@@ -44,8 +25,8 @@ async fn test_opimagenoisesupersimplex_run() {
     let result = OpImageNoiseSuperSimplex::run(&mut inputs).await;
     assert!(result.is_ok(), "run failed: {:?}", result.err());
     match &result.unwrap().responses[0].value {
-        Value::DynamicImage { .. } => {}
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        Value::Image { .. } => {}
+        other => panic!("Expected Image, got {:?}", other),
     }
 }
 
@@ -60,10 +41,10 @@ async fn test_opimagenoisesupersimplex_correct_dimensions() {
     ];
     let result = OpImageNoiseSuperSimplex::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::DynamicImage { data, .. } => {
+        Value::Image { data, .. } => {
             assert_eq!(data.width(), 16);
             assert_eq!(data.height(), 8);
         }
-        other => panic!("Expected DynamicImage, got {:?}", other),
+        other => panic!("Expected Image, got {:?}", other),
     }
 }

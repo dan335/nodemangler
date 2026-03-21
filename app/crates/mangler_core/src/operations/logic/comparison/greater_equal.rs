@@ -21,7 +21,7 @@ impl OpLogicCompareGreaterEqual {
     /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "greater equal".to_string(),
+            name: "greater or equal".to_string(),
             description: "Returns true if a is greater than or equal to b.".to_string(),
         }
     }
