@@ -285,3 +285,12 @@ After each phase (from `app/` directory):
 | 9     | CLI Polish & Discoverability (5 items) | Medium | ✅ Complete |
 | 10    | New CLI Commands (3 commands) | Medium | |
 | 11    | Simplified Value Syntax | Low | |
+
+
+
+
+## todo
+
+- make_tile needs fixing - the seam artifacts make it unusable in its current state.
+- make all noise generators tiling
+- Add JPG quality control. The image_to_file node has no quality parameter for JPG output.

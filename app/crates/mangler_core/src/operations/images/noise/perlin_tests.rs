@@ -38,7 +38,8 @@ async fn test_opimagenoiseperlin_run() {
         Input::new("i0".to_string(), Value::Integer(4), None, None),
         Input::new("i1".to_string(), Value::Integer(4), None, None),
         Input::new("i2".to_string(), Value::Integer(4), None, None),
-        Input::new("i3".to_string(), Value::Integer(4), None, None)
+        Input::new("i3".to_string(), Value::Integer(4), None, None),
+
     ];
     let result = OpImageNoisePerlin::run(&mut inputs).await;
     assert!(result.is_ok(), "run failed: {:?}", result.err());
@@ -54,7 +55,8 @@ async fn test_opimagenoiseperlin_1x1() {
         Input::new("seed".to_string(), Value::Integer(1), None, None),
         Input::new("width".to_string(), Value::Integer(1), None, None),
         Input::new("height".to_string(), Value::Integer(1), None, None),
-        Input::new("scale".to_string(), Value::Decimal(5.0), None, None),
+        Input::new("scale".to_string(), Value::Integer(5), None, None),
+
     ];
     let result = OpImageNoisePerlin::run(&mut inputs).await;
     assert!(result.is_ok(), "perlin 1x1 failed: {:?}", result.err());
@@ -66,7 +68,8 @@ async fn test_opimagenoiseperlin_correct_dimensions() {
         Input::new("seed".to_string(), Value::Integer(1), None, None),
         Input::new("width".to_string(), Value::Integer(16), None, None),
         Input::new("height".to_string(), Value::Integer(8), None, None),
-        Input::new("scale".to_string(), Value::Decimal(5.0), None, None),
+        Input::new("scale".to_string(), Value::Integer(5), None, None),
+
     ];
     let result = OpImageNoisePerlin::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
@@ -85,7 +88,8 @@ async fn test_opimagenoiseperlin_different_seeds_differ() {
         Input::new("seed".to_string(), Value::Integer(seed), None, None),
         Input::new("width".to_string(), Value::Integer(8), None, None),
         Input::new("height".to_string(), Value::Integer(8), None, None),
-        Input::new("scale".to_string(), Value::Decimal(5.0), None, None),
+        Input::new("scale".to_string(), Value::Integer(5), None, None),
+
     ];
     let r1 = OpImageNoisePerlin::run(&mut make_inputs(1)).await.unwrap();
     let r2 = OpImageNoisePerlin::run(&mut make_inputs(42)).await.unwrap();

@@ -41,15 +41,15 @@ pub fn show(
                 replacement: "", // str to replace sanitized chars/strings
             };
 
-            let mut starting_file_name =
+            let sanitized =
                 sanitize_filename::sanitize_with_options(program_name, options);
 
-            // remove whitespace
-            starting_file_name = starting_file_name.replace(' ', "_");
+            // remove whitespace and append .mangle.json extension
+            let starting_file_name = format!("{}.mangle.json", sanitized.replace(' ', "_"));
 
             if let Some(save_path) = rfd::FileDialog::new()
                 .set_file_name(&starting_file_name)
-                .add_filter("mangler", &["mangle"])
+                .add_filter("mangler", &["mangle.json", "json"])
                 .save_file()
             {
                 graph_settings_response.new_save_path = Some(save_path);

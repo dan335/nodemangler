@@ -46,7 +46,27 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: &Sender<Cha
         });
     });
     ui.label(egui::RichText::new(format!("{}", node.settings.description)).color(theme.get().text_faint));
-    
+
+    ui.add_space(12.0);
+
+    // Enabled checkbox
+    {
+        let mut is_enabled = node.is_enabled;
+        if ui.add(egui::Checkbox::new(&mut is_enabled, "Enabled")).changed() {
+            let message = ChangeNodeMessage::SetEnabled {
+                node_id: node.id.clone(),
+                set_to: is_enabled,
+            };
+            match tx_change_node.try_send(message) {
+                Ok(_) => {
+                    node.is_enabled = is_enabled;
+                }
+                Err(err) => {
+                    println!("Error sending SetEnabled: {:?}", err);
+                }
+            }
+        }
+    }
 
     ui.add_space(40.0);
 
@@ -54,6 +74,32 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: &Sender<Cha
     ui.add_space(12.0);
 
     // todo: try using ui.columns
+
+    // Extract sibling image format before the mutable input loop so the
+    // ColorFormat dropdown can grey out incompatible formats.
+    let sibling_image_format = node.inputs.iter().find_map(|i| {
+        if let Value::ImageType(fmt) = &i.value {
+            Some(fmt.clone())
+        } else {
+            None
+        }
+    });
+
+    // Auto-correct: if the current color format is incompatible with the
+    // selected image format, switch to a sensible default.
+    if let Some(ref img_fmt) = sibling_image_format {
+        if let Some((cf_idx, _)) = node.inputs.iter().enumerate().find(|(_, i)| {
+            if let Value::ColorFormat(cf) = &i.value {
+                !cf.is_compatible_with_image_format(img_fmt)
+            } else {
+                false
+            }
+        }) {
+            let new_cf = ColorFormat::default_for_image_format(img_fmt);
+            let value = Value::ColorFormat(new_cf);
+            change_value(tx_change_node, &node.id, cf_idx, &mut node.inputs[cf_idx], value);
+        }
+    }
 
     ui.push_id("inputs", |ui| {
         TableBuilder::new(ui).striped(true)
@@ -83,7 +129,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: &Sender<Cha
 
                     row.col(|ui| {
                         ui.horizontal_centered(|ui| {
-                            input_value(ui, input.value.clone(), input, input_index, &node.id, &tx_change_node);
+                            input_value(ui, input.value.clone(), input, input_index, &node.id, &tx_change_node, sibling_image_format);
                         });
                     });                        
 
@@ -207,7 +253,7 @@ fn output_value(ui: &mut egui::Ui,  value: &Value) {
 }
 
 
-fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: usize, node_id: &str, tx_change_node: &Sender<ChangeNodeMessage>) {
+fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: usize, node_id: &str, tx_change_node: &Sender<ChangeNodeMessage>, sibling_image_format: Option<image::ImageFormat>) {
     match value {
         Value::Bool(a) => {
             if input.connection.is_some() {
@@ -466,10 +512,18 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                     .selected_text(format!("{:?}", x))
                     .show_ui(ui, |ui| {
                         for color_format in ColorFormat::types().iter() {
-                            if ui.selectable_value(&mut x, color_format.clone(), format!("{:?}", color_format)).changed() {
-                                let value = Value::ColorFormat(color_format.clone());
-                                change_value(tx_change_node, node_id, input_index, input, value);
-                            }
+                            // Grey out color formats that are incompatible with the
+                            // selected image format (if one exists on this node).
+                            let compatible = sibling_image_format
+                                .as_ref()
+                                .map(|fmt| color_format.is_compatible_with_image_format(fmt))
+                                .unwrap_or(true);
+                            ui.add_enabled_ui(compatible, |ui| {
+                                if ui.selectable_value(&mut x, color_format.clone(), format!("{:?}", color_format)).changed() {
+                                    let value = Value::ColorFormat(color_format.clone());
+                                    change_value(tx_change_node, node_id, input_index, input, value);
+                                }
+                            });
                         }
                     });
             }

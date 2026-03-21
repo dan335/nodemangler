@@ -16,6 +16,12 @@ use tokio::time::Duration;
 use crate::{input::Input, output::Output, value::Value};
 use super::node_settings::NodeSettings;
 
+/// Default value for `is_enabled` — used by serde to handle old save files
+/// that don't have the field.
+fn default_true() -> bool {
+    true
+}
+
 /// A single node in the processing graph.
 ///
 /// Nodes are the fundamental units of computation. They receive data through
@@ -33,6 +39,8 @@ pub struct Node {
     /// Ordered list of outputs that carry results to downstream nodes.
     pub outputs: Vec<Output>,
     /// How long the last execution took, if the node has run.
+    /// Skipped during serialization — transient execution state.
+    #[serde(skip)]
     pub time: Option<Duration>,
     /// Whether this node needs to be re-run on the next graph execution pass.
     pub is_dirty: bool,
@@ -41,15 +49,25 @@ pub struct Node {
     /// Whether this node is an operation or a subgraph.
     pub node_type: NodeType,
     /// Whether the node is currently executing.
+    /// Skipped during serialization — transient execution state.
+    #[serde(skip)]
     pub is_busy: bool,
     /// Whether the last execution resulted in an error.
+    /// Skipped during serialization — transient execution state.
+    #[serde(skip)]
     pub is_error: bool,
     /// Human-readable error message from the last failed execution.
+    /// Skipped during serialization — transient execution state.
+    #[serde(skip)]
     pub error_message: Option<String>,
     /// Hash of all input values from the last successful run, used to skip
     /// re-execution when inputs have not changed. Not serialized.
     #[serde(skip)]
     pub cached_input_hash: Option<u64>,
+    /// Whether this node is enabled. Disabled nodes skip their operation and
+    /// pass the first type-matching input through to each output (passthrough).
+    #[serde(default = "default_true")]
+    pub is_enabled: bool,
 }
 
 /// Nodes are compared by identity (ID) only, ignoring all other fields.
@@ -80,6 +98,7 @@ impl Node {
                 is_error: false,
                 error_message: None,
                 cached_input_hash: None,
+                is_enabled: true,
             },
             AddNodeType::Subgraph => Node {
                 id,
@@ -101,6 +120,7 @@ impl Node {
                 is_error: false,
                 error_message: None,
                 cached_input_hash: None,
+                is_enabled: true,
             },
         }
     }

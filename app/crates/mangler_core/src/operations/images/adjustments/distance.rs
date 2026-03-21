@@ -8,6 +8,7 @@
 use crate::get_id;
 use crate::value::ValueType;
 use image::DynamicImage;
+use rayon::prelude::*;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
@@ -80,62 +81,50 @@ impl OpImageAdjustmentDistance {
             lum >= threshold
         }).collect();
 
-        // compute distance transform with brute-force search, limited to spread radius
-        let mut distances: Vec<f32> = vec![spread; (width * height) as usize];
+        // Compute distance transform and output image in parallel.
+        let inside_ref = &inside;
+        let w = width as usize;
+        let h = height as usize;
 
-        for y in 0..height {
-            for x in 0..width {
-                let idx = (y * width + x) as usize;
-                let is_inside = inside[idx];
+        let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(move |y| {
+            (0..w).flat_map(move |x| {
+                let idx = y * w + x;
+                let is_inside = inside_ref[idx];
                 let mut min_dist_sq = spread * spread;
 
-                let y_start = (y - spread_i).max(0);
-                let y_end = (y + spread_i).min(height - 1);
-                let x_start = (x - spread_i).max(0);
-                let x_end = (x + spread_i).min(width - 1);
+                let y_start = (y as i32 - spread_i).max(0) as usize;
+                let y_end = ((y as i32 + spread_i).min(height - 1)) as usize;
+                let x_start = (x as i32 - spread_i).max(0) as usize;
+                let x_end = ((x as i32 + spread_i).min(width - 1)) as usize;
 
-                for sy in y_start..=y_end {
+                'outer: for sy in y_start..=y_end {
                     for sx in x_start..=x_end {
-                        let sidx = (sy * width + sx) as usize;
-                        if inside[sidx] != is_inside {
-                            let dx = (sx - x) as f32;
-                            let dy = (sy - y) as f32;
-                            let dist_sq = dx * dx + dy * dy;
+                        let sidx = sy * w + sx;
+                        if inside_ref[sidx] != is_inside {
+                            let ddx = (sx as f32) - (x as f32);
+                            let ddy = (sy as f32) - (y as f32);
+                            let dist_sq = ddx * ddx + ddy * ddy;
                             if dist_sq < min_dist_sq {
                                 min_dist_sq = dist_sq;
-                                // early termination: can't get closer than 1 pixel
-                                if dist_sq <= 1.0 { break; }
+                                if dist_sq <= 1.0 { break 'outer; }
                             }
                         }
                     }
-                    if min_dist_sq <= 1.0 { break; }
                 }
 
                 let dist = min_dist_sq.sqrt();
-                distances[idx] = dist;
-            }
-        }
-
-        // build output image
-        let mut out_buffer = image::Rgba32FImage::new(width as u32, height as u32);
-        for y in 0..height {
-            for x in 0..width {
-                let idx = (y * width + x) as usize;
-                let is_inside = inside[idx];
-                let normalized_dist = (distances[idx] / spread).clamp(0.0, 1.0);
-
-                // Map distance to [0, 1]: inside pixels > 0.5, outside pixels < 0.5
+                let normalized_dist = (dist / spread).clamp(0.0, 1.0);
                 let result = if is_inside {
                     0.5 + normalized_dist / 2.0
                 } else {
                     0.5 - normalized_dist / 2.0
-                };
+                }.clamp(0.0, 1.0);
 
-                let result = result.clamp(0.0, 1.0);
-                out_buffer.put_pixel(x as u32, y as u32, image::Rgba([result, result, result, 1.0]));
-            }
-        }
+                [result, result, result, 1.0]
+            })
+        }).collect();
 
+        let out_buffer = image::Rgba32FImage::from_raw(width as u32, height as u32, pixels).unwrap();
         let adjusted = DynamicImage::ImageRgba32F(out_buffer);
 
         Ok(OperationResponse {

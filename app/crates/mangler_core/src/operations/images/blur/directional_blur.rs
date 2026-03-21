@@ -12,6 +12,7 @@ use crate::operations::images::transform::warp::bilinear_sample_rgba;
 use crate::output::Output;
 use crate::value::Value;
 use image::DynamicImage;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -76,17 +77,18 @@ impl OpImageAdjustmentDirectionalBlur {
 
         let rgba = data.to_rgba8();
         let (width, height) = rgba.dimensions();
-        let mut output_buf = image::RgbaImage::new(width, height);
+        let rgba_ref = &rgba;
+        let h = height as usize;
+        let w = width as usize;
 
-        for y in 0..height {
-            for x in 0..width {
+        let pixels: Vec<u8> = (0..h).into_par_iter().flat_map_iter(move |y| {
+            (0..w).flat_map(move |x| {
                 let mut r_sum: f64 = 0.0;
                 let mut g_sum: f64 = 0.0;
                 let mut b_sum: f64 = 0.0;
                 let mut a_sum: f64 = 0.0;
 
                 for i in 0..samples {
-                    // Map sample index to [-1, 1] range for symmetric distribution
                     let t = if samples > 1 {
                         (i as f32 / (samples - 1) as f32) * 2.0 - 1.0
                     } else {
@@ -95,7 +97,7 @@ impl OpImageAdjustmentDirectionalBlur {
                     let offset = t * intensity;
                     let sx = x as f32 + dx * offset;
                     let sy = y as f32 + dy * offset;
-                    let pixel = bilinear_sample_rgba(&rgba, sx, sy);
+                    let pixel = bilinear_sample_rgba(rgba_ref, sx, sy);
                     r_sum += pixel[0] as f64;
                     g_sum += pixel[1] as f64;
                     b_sum += pixel[2] as f64;
@@ -103,14 +105,16 @@ impl OpImageAdjustmentDirectionalBlur {
                 }
 
                 let count = samples as f64;
-                output_buf.put_pixel(x, y, image::Rgba([
+                [
                     (r_sum / count) as u8,
                     (g_sum / count) as u8,
                     (b_sum / count) as u8,
                     (a_sum / count) as u8,
-                ]));
-            }
-        }
+                ]
+            })
+        }).collect();
+
+        let output_buf = image::RgbaImage::from_raw(width, height, pixels).unwrap();
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

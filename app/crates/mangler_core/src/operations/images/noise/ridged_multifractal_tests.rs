@@ -26,7 +26,7 @@ fn image_input(w: u32, h: u32) -> Value {
 #[tokio::test]
 async fn test_opimagenoiseridgedmultifractalnoise_settings() {
     let s = OpImageNoiseRidgedMultifractalNoise::settings();
-    assert_eq!(s.name, "ridged multifractal noise");
+    assert_eq!(s.name, "ridged multifractal");
     assert_eq!(OpImageNoiseRidgedMultifractalNoise::create_inputs().len(), 8);
     assert_eq!(OpImageNoiseRidgedMultifractalNoise::create_outputs().len(), 1);
 }
@@ -42,7 +42,8 @@ async fn test_opimagenoiseridgedmultifractalnoise_run() {
         Input::new("i4".to_string(), Value::Integer(4), None, None),
         Input::new("i5".to_string(), Value::Integer(4), None, None),
         Input::new("i6".to_string(), Value::Integer(4), None, None),
-        Input::new("i7".to_string(), Value::Integer(4), None, None)
+        Input::new("i7".to_string(), Value::Integer(4), None, None),
+
     ];
     let result = OpImageNoiseRidgedMultifractalNoise::run(&mut inputs).await;
     assert!(result.is_ok(), "run failed: {:?}", result.err());
@@ -59,10 +60,11 @@ async fn test_opimagenoiseridgedmultifractalnoise_correct_dimensions() {
         Input::new("width".to_string(), Value::Integer(16), None, None),
         Input::new("height".to_string(), Value::Integer(8), None, None),
         Input::new("octaves".to_string(), Value::Integer(4), None, None),
-        Input::new("frequency".to_string(), Value::Decimal(5.0), None, None),
+        Input::new("frequency".to_string(), Value::Integer(5), None, None),
         Input::new("lacunarity".to_string(), Value::Decimal(2.0), None, None),
         Input::new("persistence".to_string(), Value::Decimal(0.5), None, None),
         Input::new("attenuation".to_string(), Value::Decimal(2.0), None, None),
+
     ];
     let result = OpImageNoiseRidgedMultifractalNoise::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
@@ -81,10 +83,11 @@ async fn test_opimagenoiseridgedmultifractalnoise_different_seeds_differ() {
         Input::new("width".to_string(), Value::Integer(8), None, None),
         Input::new("height".to_string(), Value::Integer(8), None, None),
         Input::new("octaves".to_string(), Value::Integer(3), None, None),
-        Input::new("frequency".to_string(), Value::Decimal(5.0), None, None),
+        Input::new("frequency".to_string(), Value::Integer(5), None, None),
         Input::new("lacunarity".to_string(), Value::Decimal(2.0), None, None),
         Input::new("persistence".to_string(), Value::Decimal(0.5), None, None),
         Input::new("attenuation".to_string(), Value::Decimal(2.0), None, None),
+
     ];
     let r1 = OpImageNoiseRidgedMultifractalNoise::run(&mut make_inputs(1)).await.unwrap();
     let r2 = OpImageNoiseRidgedMultifractalNoise::run(&mut make_inputs(99)).await.unwrap();

@@ -19,8 +19,12 @@ pub struct Output {
     /// Display name shown in the graph editor.
     pub name: String,
     /// The current computed value produced by the node.
+    /// Skipped during serialization — outputs are always recomputed when the graph runs.
+    #[serde(skip)]
     pub value: Value,
     /// The initial/reset value for this output.
+    /// Skipped during serialization — reconstructed from the operation definition.
+    #[serde(skip)]
     pub default_value: Value,
     /// Fan-out connections: list of (downstream_node_id, input_index) pairs.
     pub connection: Option<Vec<(String, usize)>>,

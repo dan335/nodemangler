@@ -13,9 +13,11 @@ use tokio::sync::mpsc;
 
 use crate::{
     graph::{
-        graph_editor::{GraphEditor, GraphEditorResponse},
+        graph_editor::{GraphEditor, GraphEditorResponse, TempConnection},
         graph_node::GraphNode,
+        graph_node::ConnectionType,
         graph_node_thumbnail::GraphNodeThumbnail,
+        node_search_popup::NodeSearchPopup,
     },
     graph_to_view_space,
     node_menu::{menu_item::MenuItemsResult, menu_panel::MenuPanel},
@@ -40,6 +42,7 @@ pub struct Program {
     dragging_menu_button: MenuItemsResult,
     pointer_position: Pos2,
     graph_run_time: Duration,
+    node_search_popup: NodeSearchPopup,
 }
 
 impl Program {
@@ -73,6 +76,7 @@ impl Program {
                 rx_graph_changed,
                 pointer_position: Pos2::ZERO,
                 graph_run_time: Duration::ZERO,
+                node_search_popup: NodeSearchPopup::new(),
             }),
             Err(error) => Err(NewGraphError(format!(
                 "Error creating program. {:?}",
@@ -127,7 +131,7 @@ impl Program {
                         is_subgraph = true;
                     }
 
-                    let graph_node = GraphNode::new(
+                    let mut graph_node = GraphNode::new(
                         node.id.clone(),
                         Pos2::new(node.position.x, node.position.y),
                         node.settings,
@@ -135,6 +139,7 @@ impl Program {
                         node.outputs,
                         is_subgraph,
                     );
+                    graph_node.is_enabled = node.is_enabled;
 
                     self.graph_editor.graph_nodes.insert(node.id, graph_node);
                 }
@@ -205,6 +210,17 @@ impl Program {
                     //self.needs_to_save = true;
                 }
             }
+        }
+
+        // Auto-layout nodes if they're all stacked at the same position
+        // (e.g. graphs created from the CLI where all nodes default to origin).
+        let moved_nodes = self.graph_editor.auto_layout_if_needed();
+        for (node_id, new_pos) in moved_nodes {
+            let message = ChangeNodeMessage::SetPosition {
+                node_id,
+                position: glam::f32::vec2(new_pos.x, new_pos.y),
+            };
+            let _ = self.tx_change_node.try_send(message);
         }
 
         while let Ok(node_changed_message) = self.rx_node_changed.try_recv() {
@@ -621,7 +637,53 @@ impl Program {
             for node_id in graph_editor_response.nodes_to_delete.iter() {
                 self.remove_node(node_id.clone());
             }
+
+            // Open search popup when a connection is dropped on empty space
+            if let Some(dropped) = graph_editor_response.dropped_connection {
+                self.node_search_popup.open(self.pointer_position, Some(dropped));
+            }
         });
+
+        // Open search popup on Tab key (only when popup isn't already open)
+        if !self.node_search_popup.is_open
+            && node_graph_rect.contains(self.pointer_position)
+        {
+            let tab_pressed = ctx.input(|i| i.key_pressed(egui::Key::Tab));
+            if tab_pressed {
+                self.node_search_popup
+                    .open(self.pointer_position, None);
+            }
+        }
+
+        // Show the search popup and handle selection
+        if self.node_search_popup.is_open {
+            let popup_response = self.node_search_popup.show(ctx);
+
+            if let Some(operation) = popup_response.selected_operation {
+                let graph_pos = view_to_graph_space_pos2(
+                    self.graph_editor.zoom,
+                    self.node_search_popup.position,
+                ) - self.graph_editor.position.to_vec2();
+
+                // Store connection info before closing popup
+                let from_connection = self.node_search_popup.from_connection.clone();
+
+                if let Ok(new_node_id) =
+                    self.add_node(AddNodeType::Operation(operation.clone()), graph_pos)
+                {
+                    self.edit_node(new_node_id.clone());
+
+                    // Auto-connect if opened from a dropped connection
+                    if let Some(conn) = from_connection {
+                        self.auto_connect_node(&new_node_id, &operation, &conn);
+                    }
+                }
+            }
+
+            if popup_response.closed {
+                self.node_search_popup.close();
+            }
+        }
 
         // dragging from menu
         // mouse leaves app
@@ -806,6 +868,54 @@ impl Program {
                     "Error sending ChangeGraphMessage::RemoveConnection: {:?}",
                     err
                 );
+            }
+        }
+    }
+
+    /// Auto-connects a newly created node to the source of a dropped connection.
+    ///
+    /// Finds the first compatible input or output port on the new node and
+    /// creates a connection to the original node the connection was dragged from.
+    fn auto_connect_node(
+        &mut self,
+        new_node_id: &str,
+        operation: &mangler_core::operations::Operation,
+        conn: &TempConnection,
+    ) {
+        match conn.from_connection_type {
+            // Dragged from an output: connect the output to the new node's first compatible input
+            ConnectionType::Output => {
+                let inputs = operation.create_inputs();
+                if let Some(input_index) = inputs.iter().position(|input| {
+                    input.accepts_any_type
+                        || input
+                            .value
+                            .value_type()
+                            .valid_conversions()
+                            .contains(&conn.from_value_type)
+                }) {
+                    self.add_connection(
+                        new_node_id.to_string(),
+                        input_index,
+                        conn.from_node_id.clone(),
+                        conn.from_connection_index,
+                    );
+                }
+            }
+            // Dragged from an input: connect the new node's first compatible output to the input
+            ConnectionType::Input => {
+                let valid_from = conn.from_value_type.valid_conversions_from();
+                let outputs = operation.create_outputs();
+                if let Some(output_index) = outputs.iter().position(|output| {
+                    valid_from.contains(&output.value.value_type())
+                }) {
+                    self.add_connection(
+                        conn.from_node_id.clone(),
+                        conn.from_connection_index,
+                        new_node_id.to_string(),
+                        output_index,
+                    );
+                }
             }
         }
     }

@@ -144,6 +144,17 @@ impl App {
                                         }
                                     }
                                 }
+                                ChangeNodeMessage::SetEnabled {
+                                    node_id,
+                                    set_to,
+                                } => {
+                                    if let Some(node) = graph.nodes.get_mut(&node_id) {
+                                        node.is_enabled = set_to;
+                                        node.is_dirty = true;
+                                        node.cached_input_hash = None;
+                                        needs_to_save = true;
+                                    }
+                                }
                             }
                         }
 

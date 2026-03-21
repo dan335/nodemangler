@@ -2316,6 +2316,7 @@ dependencies = [
  "imageproc",
  "nanoid",
  "noise",
+ "rayon",
  "reqwest",
  "serde",
  "serde_json",
@@ -2348,6 +2349,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "glam",
+ "image 0.24.9",
  "mangler_core",
  "serde_json",
  "tokio",

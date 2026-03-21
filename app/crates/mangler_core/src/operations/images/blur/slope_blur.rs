@@ -13,6 +13,7 @@ use crate::operations::images::transform::warp::bilinear_sample_rgba;
 use crate::output::Output;
 use crate::value::Value;
 use image::DynamicImage;
+use rayon::prelude::*;
 use image::imageops::FilterType;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -85,27 +86,29 @@ impl OpImageAdjustmentSlopeBlur {
         };
         let slope_rgba = slope_resized.to_rgba8();
 
-        // helper: get luminance from slope map pixel
-        let luminance_at = |x: u32, y: u32| -> f32 {
-            let px = slope_rgba.get_pixel(x.min(width - 1), y.min(height - 1));
-            0.299 * (px[0] as f32 / 255.0) + 0.587 * (px[1] as f32 / 255.0) + 0.114 * (px[2] as f32 / 255.0)
-        };
+        let rgba_ref = &rgba;
+        let slope_ref = &slope_rgba;
+        let h = height as usize;
+        let w = width as usize;
 
-        let mut output_buf = image::RgbaImage::new(width, height);
+        let pixels: Vec<u8> = (0..h).into_par_iter().flat_map_iter(move |y| {
+            (0..w).flat_map(move |x| {
+                let luminance_at = |lx: u32, ly: u32| -> f32 {
+                    let px = slope_ref.get_pixel(lx.min(width - 1), ly.min(height - 1));
+                    0.299 * (px[0] as f32 / 255.0) + 0.587 * (px[1] as f32 / 255.0) + 0.114 * (px[2] as f32 / 255.0)
+                };
 
-        for y in 0..height {
-            for x in 0..width {
-                // compute gradient direction from slope map (sobel-like)
-                let x_left = if x > 0 { x - 1 } else { 0 };
-                let x_right = if x < width - 1 { x + 1 } else { width - 1 };
-                let y_top = if y > 0 { y - 1 } else { 0 };
-                let y_bottom = if y < height - 1 { y + 1 } else { height - 1 };
+                let xu = x as u32;
+                let yu = y as u32;
+                let x_left = if xu > 0 { xu - 1 } else { 0 };
+                let x_right = if xu < width - 1 { xu + 1 } else { width - 1 };
+                let y_top = if yu > 0 { yu - 1 } else { 0 };
+                let y_bottom = if yu < height - 1 { yu + 1 } else { height - 1 };
 
-                let grad_x = luminance_at(x_right, y) - luminance_at(x_left, y);
-                let grad_y = luminance_at(x, y_bottom) - luminance_at(x, y_top);
+                let grad_x = luminance_at(x_right, yu) - luminance_at(x_left, yu);
+                let grad_y = luminance_at(xu, y_bottom) - luminance_at(xu, y_top);
 
                 let grad_len = (grad_x * grad_x + grad_y * grad_y).sqrt();
-                // Normalize gradient to unit direction; zero gradient means no blur direction
                 let (dx, dy) = if grad_len > 1e-6 {
                     (grad_x / grad_len, grad_y / grad_len)
                 } else {
@@ -126,7 +129,7 @@ impl OpImageAdjustmentSlopeBlur {
                     let offset = t * intensity;
                     let sx = x as f32 + dx * offset;
                     let sy = y as f32 + dy * offset;
-                    let pixel = bilinear_sample_rgba(&rgba, sx, sy);
+                    let pixel = bilinear_sample_rgba(rgba_ref, sx, sy);
                     r_sum += pixel[0] as f64;
                     g_sum += pixel[1] as f64;
                     b_sum += pixel[2] as f64;
@@ -134,14 +137,16 @@ impl OpImageAdjustmentSlopeBlur {
                 }
 
                 let count = samples as f64;
-                output_buf.put_pixel(x, y, image::Rgba([
+                [
                     (r_sum / count) as u8,
                     (g_sum / count) as u8,
                     (b_sum / count) as u8,
                     (a_sum / count) as u8,
-                ]));
-            }
-        }
+                ]
+            })
+        }).collect();
+
+        let output_buf = image::RgbaImage::from_raw(width, height, pixels).unwrap();
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

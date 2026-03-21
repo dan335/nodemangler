@@ -31,6 +31,7 @@ pub struct GraphNode {
     pub is_busy: bool,
     pub is_error: bool,
     pub error_message: Option<String>,
+    pub is_enabled: bool,
 }
 
 impl GraphNode {
@@ -56,6 +57,7 @@ impl GraphNode {
             is_busy: false,
             is_error: false,
             error_message: None,
+            is_enabled: true,
         }
     }
 
@@ -132,6 +134,7 @@ impl GraphNode {
             graph_zoom,
             theme,
             self.is_busy,
+            self.is_enabled,
         );
 
         show_graph_node_info(ui, self.time, node_rect, graph_zoom, theme);

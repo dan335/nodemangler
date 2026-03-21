@@ -7,6 +7,7 @@
 use crate::get_id;
 use crate::value::ValueType;
 use image::DynamicImage;
+use rayon::prelude::*;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
@@ -85,24 +86,23 @@ impl OpImagePbrAoFromHeight {
             heights.push(h);
         }
 
-        let mut out_buffer = image::ImageBuffer::new(width as u32, height as u32);
         let two_pi = std::f32::consts::TAU;
+        let heights_ref = &heights;
 
-        for y in 0..height {
-            for x in 0..width {
-                let h = heights[y * width + x];
+        let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |y| {
+            (0..width).flat_map(move |x| {
+                let h = heights_ref[y * width + x];
                 let mut occlusion = 0.0f32;
 
                 for i in 0..samples {
                     let angle = i as f32 * two_pi / samples as f32;
-                    let dx = angle.cos() * radius as f32;
-                    let dy = angle.sin() * radius as f32;
+                    let ddx = angle.cos() * radius as f32;
+                    let ddy = angle.sin() * radius as f32;
 
-                    // Clamp sample coordinates to image bounds
-                    let sx = (x as f32 + dx).round().clamp(0.0, (width - 1) as f32) as usize;
-                    let sy = (y as f32 + dy).round().clamp(0.0, (height - 1) as f32) as usize;
+                    let sx = (x as f32 + ddx).round().clamp(0.0, (width - 1) as f32) as usize;
+                    let sy = (y as f32 + ddy).round().clamp(0.0, (height - 1) as f32) as usize;
 
-                    let nh = heights[sy * width + sx];
+                    let nh = heights_ref[sy * width + sx];
                     let dist = ((sx as f32 - x as f32).powi(2) + (sy as f32 - y as f32).powi(2)).sqrt().max(1.0);
                     let diff = (nh - h).max(0.0);
                     occlusion += diff / dist;
@@ -110,10 +110,11 @@ impl OpImagePbrAoFromHeight {
 
                 occlusion /= samples as f32;
                 let ao = (1.0 - occlusion * intensity).clamp(0.0, 1.0);
-                out_buffer.put_pixel(x as u32, y as u32, image::Rgba([ao, ao, ao, 1.0]));
-            }
-        }
+                [ao, ao, ao, 1.0]
+            })
+        }).collect();
 
+        let out_buffer = image::Rgba32FImage::from_raw(width as u32, height as u32, pixels).unwrap();
         let result = DynamicImage::ImageRgba32F(out_buffer);
 
         Ok(OperationResponse {

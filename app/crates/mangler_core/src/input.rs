@@ -21,16 +21,26 @@ pub struct Input {
     /// Display name shown in the graph editor.
     pub name: String,
     /// The current value held by this input.
+    /// Images are replaced with a 1x1 placeholder during serialization to avoid
+    /// storing full pixel data. Non-image values (numbers, paths, colors, etc.)
+    /// are preserved so user settings survive save/load.
+    #[serde(with = "crate::value::value_skip_images")]
     pub value: Value,
     /// The initial/reset value for this input.
+    /// Skipped during serialization — reconstructed from the operation definition.
+    #[serde(skip)]
     pub default_value: Value,
     /// Optional UI widget configuration (drag value, slider, file picker, etc.).
     pub settings: Option<InputSettings>,
     /// If connected, the (node_id, output_index) of the upstream source.
     pub connection: Option<(String, usize)>,
     /// Whether this input is in an error state (e.g. validation failure).
+    /// Skipped during serialization — transient execution state.
+    #[serde(skip)]
     pub is_error: bool,
     /// Human-readable error message when `is_error` is true.
+    /// Skipped during serialization — transient execution state.
+    #[serde(skip)]
     pub error_message: Option<String>,
     /// Whether this input is exposed to the parent graph (for subgraph composition).
     pub is_exposed: bool,

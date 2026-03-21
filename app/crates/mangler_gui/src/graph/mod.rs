@@ -5,3 +5,4 @@ pub mod graph_node_header;
 pub mod graph_node_info;
 pub mod graph_node_thumbnail;
 pub mod graph_output;
+pub mod node_search_popup;

@@ -13,6 +13,7 @@ use crate::operations::images::transform::warp::bilinear_sample_rgba;
 use crate::output::Output;
 use crate::value::Value;
 use image::DynamicImage;
+use rayon::prelude::*;
 use image::imageops::FilterType;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -100,12 +101,15 @@ impl OpImageAdjustmentNonUniformBlur {
             }
         }
 
-        let mut output_buf = image::RgbaImage::new(width, height);
+        let rgba_ref = &rgba;
+        let blur_map_ref = &blur_map_rgba;
+        let offsets_ref = &offsets;
+        let h = height as usize;
+        let w = width as usize;
 
-        for y in 0..height {
-            for x in 0..width {
-                // read blur map luminance for per-pixel radius
-                let map_px = blur_map_rgba.get_pixel(x, y);
+        let pixels: Vec<u8> = (0..h).into_par_iter().flat_map_iter(move |y| {
+            (0..w).flat_map(move |x| {
+                let map_px = blur_map_ref.get_pixel(x as u32, y as u32);
                 let luminance = 0.299 * (map_px[0] as f32 / 255.0)
                     + 0.587 * (map_px[1] as f32 / 255.0)
                     + 0.114 * (map_px[2] as f32 / 255.0);
@@ -116,10 +120,10 @@ impl OpImageAdjustmentNonUniformBlur {
                 let mut b_sum: f64 = 0.0;
                 let mut a_sum: f64 = 0.0;
 
-                for &(ox, oy) in &offsets {
+                for &(ox, oy) in offsets_ref {
                     let sx = x as f32 + ox * radius;
                     let sy = y as f32 + oy * radius;
-                    let pixel = bilinear_sample_rgba(&rgba, sx, sy);
+                    let pixel = bilinear_sample_rgba(rgba_ref, sx, sy);
                     r_sum += pixel[0] as f64;
                     g_sum += pixel[1] as f64;
                     b_sum += pixel[2] as f64;
@@ -127,14 +131,16 @@ impl OpImageAdjustmentNonUniformBlur {
                 }
 
                 let count = samples as f64;
-                output_buf.put_pixel(x, y, image::Rgba([
+                [
                     (r_sum / count) as u8,
                     (g_sum / count) as u8,
                     (b_sum / count) as u8,
                     (a_sum / count) as u8,
-                ]));
-            }
-        }
+                ]
+            })
+        }).collect();
+
+        let output_buf = image::RgbaImage::from_raw(width, height, pixels).unwrap();
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

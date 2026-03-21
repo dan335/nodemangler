@@ -320,6 +320,10 @@ impl GraphEditor {
         }
 
         if self.temp_connection.is_some() && !cursor_primary_down {
+            // If no new connection was made, signal that the connection was dropped
+            if graph_editor_response.new_connection.is_none() {
+                graph_editor_response.dropped_connection = self.temp_connection.clone();
+            }
             self.temp_connection = None;
         }
 
@@ -497,6 +501,123 @@ impl GraphEditor {
     pub fn remove_node(&mut self, node_id: &String) {
         self.graph_nodes.remove(node_id);
     }
+
+    /// Automatically layout nodes if they all share the same position (e.g. all at origin).
+    ///
+    /// Uses a topological sort based on connections to arrange nodes in columns
+    /// by depth, with vertical spacing within each column. Returns a list of
+    /// (node_id, new_position) pairs for nodes that were moved.
+    pub fn auto_layout_if_needed(&mut self) -> Vec<(String, Pos2)> {
+        if self.graph_nodes.len() < 2 {
+            return Vec::new();
+        }
+
+        // Check if all nodes are at the same position (or very close).
+        let positions: Vec<Pos2> = self.graph_nodes.values().map(|n| n.position).collect();
+        let first = positions[0];
+        let all_overlapping = positions.iter().all(|p| {
+            (p.x - first.x).abs() < 1.0 && (p.y - first.y).abs() < 1.0
+        });
+
+        if !all_overlapping {
+            return Vec::new();
+        }
+
+        // Build adjacency: for each node, find its depth (column) via connections.
+        // A node's depth = max(depth of all upstream nodes) + 1.
+        // Nodes with no inputs or no connected inputs are depth 0.
+        let node_ids: Vec<String> = self.graph_nodes.keys().cloned().collect();
+
+        // Map node_id -> set of upstream node_ids (nodes that feed into this one).
+        let mut upstream: HashMap<String, Vec<String>> = HashMap::new();
+        for (node_id, node) in self.graph_nodes.iter() {
+            let mut ups = Vec::new();
+            for input in node.inputs.iter() {
+                if let Some((output_node_id, _)) = &input.connection {
+                    ups.push(output_node_id.clone());
+                }
+            }
+            upstream.insert(node_id.clone(), ups);
+        }
+
+        // Compute depth for each node via iterative relaxation.
+        let mut depth: HashMap<String, usize> = HashMap::new();
+        for id in node_ids.iter() {
+            depth.insert(id.clone(), 0);
+        }
+
+        // Relax until stable (handles DAGs of any depth).
+        let mut changed = true;
+        let max_iterations = node_ids.len() + 1;
+        let mut iteration = 0;
+        while changed && iteration < max_iterations {
+            changed = false;
+            iteration += 1;
+            for id in node_ids.iter() {
+                if let Some(ups) = upstream.get(id) {
+                    let max_upstream_depth = ups.iter()
+                        .filter_map(|uid| depth.get(uid))
+                        .max()
+                        .copied()
+                        .unwrap_or(0);
+                    if !ups.is_empty() {
+                        let new_depth = max_upstream_depth + 1;
+                        if new_depth > depth[id] {
+                            depth.insert(id.clone(), new_depth);
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Group nodes by depth (column).
+        let max_depth = depth.values().max().copied().unwrap_or(0);
+        let mut columns: Vec<Vec<String>> = vec![Vec::new(); max_depth + 1];
+        for id in node_ids.iter() {
+            let d = depth[id];
+            columns[d].push(id.clone());
+        }
+
+        // Sort nodes within each column alphabetically by name for deterministic layout.
+        for col in columns.iter_mut() {
+            col.sort_by(|a, b| {
+                let name_a = self.graph_nodes.get(a).map(|n| &n.settings.name).unwrap();
+                let name_b = self.graph_nodes.get(b).map(|n| &n.settings.name).unwrap();
+                name_a.cmp(name_b)
+            });
+        }
+
+        // Assign positions: horizontal spacing by column, vertical spacing within column.
+        // Node header is 40px tall, thumbnail is 150x150, plus ~20px info text below.
+        // Total visual height per node is ~210px, so use 230px vertical spacing.
+        let h_spacing = 250.0;
+        let v_spacing = 230.0;
+        let start_x = 100.0;
+        let start_y = 100.0;
+
+        let mut moved: Vec<(String, Pos2)> = Vec::new();
+
+        for (col_index, col) in columns.iter().enumerate() {
+            // Center the column vertically.
+            let col_height = (col.len() as f32 - 1.0) * v_spacing;
+            let col_start_y = start_y - col_height * 0.5;
+
+            for (row_index, node_id) in col.iter().enumerate() {
+                let new_pos = Pos2::new(
+                    start_x + col_index as f32 * h_spacing,
+                    col_start_y + row_index as f32 * v_spacing,
+                );
+
+                if let Some(node) = self.graph_nodes.get_mut(node_id) {
+                    node.position = new_pos;
+                    moved.push((node_id.clone(), new_pos));
+                }
+            }
+        }
+
+        moved
+    }
 }
 
 // connection that is being created
@@ -526,6 +647,7 @@ pub struct GraphEditorResponse {
     pub nodes_to_delete: Vec<String>,
     pub connections_to_delete: Vec<(String, usize)>, // node id, input index
     pub new_node_position: Option<(String, Pos2)>,
+    pub dropped_connection: Option<TempConnection>,
 }
 
 impl GraphEditorResponse {
@@ -542,6 +664,7 @@ impl GraphEditorResponse {
             clear_editing_node: false, // should editing node be cleared.  clicked on graph bg
             clear_viewing_node: false,
             new_node_position: None,
+            dropped_connection: None,
         }
     }
 }

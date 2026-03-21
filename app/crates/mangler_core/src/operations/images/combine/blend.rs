@@ -39,7 +39,7 @@ impl OpImageCombineBlend {
         vec![
             Input::new("background".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
             Input::new("foreground".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("amount".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("amount".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
             Input::new("alpha".to_string(),  Value::DynamicImage { data:default_image(), change_id:get_id() }, None, None),
             Input::new("blend mode".to_string(), Value::BlendMode(crate::color::blend::BlendMode::Over), None, None),
             Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Srgb), None, None),

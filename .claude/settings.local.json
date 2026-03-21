@@ -73,7 +73,11 @@
       "Bash(node -e \":*)",
       "Bash(grep -A2 '^name = \"\"\"\"image\"\"\"\"' Cargo.lock)",
       "Bash(1:*)",
-      "Bash(sed 's/\\($//')"
+      "Bash(sed 's/\\($//')",
+      "Bash(do echo:*)",
+      "Bash(/c/Python311/python -c \":*)",
+      "Bash(node:*)",
+      "Bash(xargs -0 -I{} basename {})"
     ]
   }
 }

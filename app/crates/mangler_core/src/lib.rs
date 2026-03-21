@@ -78,7 +78,15 @@ pub enum ChangeNodeMessage {
         output_index: usize,
         /// `true` to expose, `false` to hide.
         set_to: bool,
-    }
+    },
+    /// Enable or disable a node. Disabled nodes skip their operation and
+    /// pass the first type-matching input through to each output.
+    SetEnabled {
+        /// The target node's unique identifier.
+        node_id: String,
+        /// `true` to enable, `false` to disable.
+        set_to: bool,
+    },
 }
 
 /// Messages sent from the engine to the UI when a node's state changes.

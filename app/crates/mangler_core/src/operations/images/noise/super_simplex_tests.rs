@@ -38,7 +38,8 @@ async fn test_opimagenoisesupersimplex_run() {
         Input::new("i0".to_string(), Value::Integer(4), None, None),
         Input::new("i1".to_string(), Value::Integer(4), None, None),
         Input::new("i2".to_string(), Value::Integer(4), None, None),
-        Input::new("i3".to_string(), Value::Integer(4), None, None)
+        Input::new("i3".to_string(), Value::Integer(4), None, None),
+
     ];
     let result = OpImageNoiseSuperSimplex::run(&mut inputs).await;
     assert!(result.is_ok(), "run failed: {:?}", result.err());
@@ -54,7 +55,8 @@ async fn test_opimagenoisesupersimplex_correct_dimensions() {
         Input::new("seed".to_string(), Value::Integer(1), None, None),
         Input::new("width".to_string(), Value::Integer(16), None, None),
         Input::new("height".to_string(), Value::Integer(8), None, None),
-        Input::new("scale".to_string(), Value::Decimal(10.0), None, None),
+        Input::new("scale".to_string(), Value::Integer(10), None, None),
+
     ];
     let result = OpImageNoiseSuperSimplex::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {

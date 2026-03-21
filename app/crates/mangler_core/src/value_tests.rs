@@ -900,6 +900,104 @@ fn test_text_to_path_empty() {
     }
 }
 
+// === Text → NoiseWorleyDistanceFunction (bug #3 regression) ===
+
+#[test]
+fn test_text_to_distance_function_euclidean() {
+    let result = Value::Text("euclidean".to_string())
+        .try_convert_to(ValueType::NoiseWorleyDistanceFunction)
+        .unwrap();
+    match result {
+        Value::NoiseWorleyDistanceFunction(f) => {
+            assert_eq!(f, crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Euclidean);
+        }
+        other => panic!("Expected NoiseWorleyDistanceFunction, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_text_to_distance_function_chebyshev() {
+    let result = Value::Text("chebyshev".to_string())
+        .try_convert_to(ValueType::NoiseWorleyDistanceFunction)
+        .unwrap();
+    match result {
+        Value::NoiseWorleyDistanceFunction(f) => {
+            assert_eq!(f, crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Chebyshev);
+        }
+        other => panic!("Expected NoiseWorleyDistanceFunction, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_text_to_distance_function_manhattan() {
+    let result = Value::Text("manhattan".to_string())
+        .try_convert_to(ValueType::NoiseWorleyDistanceFunction)
+        .unwrap();
+    match result {
+        Value::NoiseWorleyDistanceFunction(f) => {
+            assert_eq!(f, crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Manhattan);
+        }
+        other => panic!("Expected NoiseWorleyDistanceFunction, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_text_to_distance_function_euclidean_squared() {
+    let result = Value::Text("euclidean_squared".to_string())
+        .try_convert_to(ValueType::NoiseWorleyDistanceFunction)
+        .unwrap();
+    match result {
+        Value::NoiseWorleyDistanceFunction(f) => {
+            assert_eq!(f, crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::EuclideanSquared);
+        }
+        other => panic!("Expected NoiseWorleyDistanceFunction, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_text_to_distance_function_quadratic() {
+    let result = Value::Text("quadratic".to_string())
+        .try_convert_to(ValueType::NoiseWorleyDistanceFunction)
+        .unwrap();
+    match result {
+        Value::NoiseWorleyDistanceFunction(f) => {
+            assert_eq!(f, crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Quadratic);
+        }
+        other => panic!("Expected NoiseWorleyDistanceFunction, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_text_to_distance_function_case_insensitive() {
+    // "Euclidean" (capitalized, as from JSON) should work
+    let result = Value::Text("Euclidean".to_string())
+        .try_convert_to(ValueType::NoiseWorleyDistanceFunction)
+        .unwrap();
+    match result {
+        Value::NoiseWorleyDistanceFunction(f) => {
+            assert_eq!(f, crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Euclidean);
+        }
+        other => panic!("Expected NoiseWorleyDistanceFunction, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_text_to_distance_function_invalid() {
+    let result = Value::Text("not_a_function".to_string())
+        .try_convert_to(ValueType::NoiseWorleyDistanceFunction);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_text_to_distance_function_euclidean_squared_variants() {
+    // All three accepted spellings should work
+    for spelling in &["euclideansquared", "euclidean_squared", "euclidean squared"] {
+        let result = Value::Text(spelling.to_string())
+            .try_convert_to(ValueType::NoiseWorleyDistanceFunction);
+        assert!(result.is_ok(), "Failed for spelling: {}", spelling);
+    }
+}
+
 // === Still-unsupported conversions ===
 
 #[test]
@@ -1047,4 +1145,196 @@ fn test_value_type_name() {
     assert_eq!(ValueType::Color.value_name(), "color");
     assert_eq!(ValueType::DynamicImage.value_name(), "image");
     assert_eq!(ValueType::Path.value_name(), "path");
+}
+
+// === ColorFormat::is_compatible_with_image_format ===
+
+#[test]
+fn test_color_format_jpeg_only_rgb8_and_gray8() {
+    let fmt = image::ImageFormat::Jpeg;
+    assert!(ColorFormat::Rgb8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Gray8.is_compatible_with_image_format(&fmt));
+    // Everything else is incompatible
+    assert!(!ColorFormat::Rgba8.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::GrayA8.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgb16.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgba16.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Gray16.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::GrayA16.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgb32F.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgba32F.is_compatible_with_image_format(&fmt));
+}
+
+#[test]
+fn test_color_format_openexr_only_32f() {
+    let fmt = image::ImageFormat::OpenExr;
+    assert!(ColorFormat::Rgba32F.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Rgb32F.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgba8.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgb8.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgba16.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Gray8.is_compatible_with_image_format(&fmt));
+}
+
+#[test]
+fn test_color_format_farbfeld_only_rgba16() {
+    let fmt = image::ImageFormat::Farbfeld;
+    assert!(ColorFormat::Rgba16.is_compatible_with_image_format(&fmt));
+    // Everything else rejected
+    for cf in ColorFormat::types() {
+        if cf != ColorFormat::Rgba16 {
+            assert!(!cf.is_compatible_with_image_format(&fmt), "{:?} should be incompatible with Farbfeld", cf);
+        }
+    }
+}
+
+#[test]
+fn test_color_format_png_no_32f() {
+    let fmt = image::ImageFormat::Png;
+    // 32F not supported
+    assert!(!ColorFormat::Rgba32F.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgb32F.is_compatible_with_image_format(&fmt));
+    // 8-bit and 16-bit all supported
+    assert!(ColorFormat::Rgba8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Rgb8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::GrayA8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Gray8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Rgba16.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Rgb16.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::GrayA16.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Gray16.is_compatible_with_image_format(&fmt));
+}
+
+#[test]
+fn test_color_format_tiff_no_32f() {
+    let fmt = image::ImageFormat::Tiff;
+    assert!(!ColorFormat::Rgba32F.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgb32F.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Rgba8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Rgba16.is_compatible_with_image_format(&fmt));
+}
+
+#[test]
+fn test_color_format_bmp_only_rgb8_and_gray8() {
+    let fmt = image::ImageFormat::Bmp;
+    assert!(ColorFormat::Rgb8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Gray8.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgba8.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgb16.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgba32F.is_compatible_with_image_format(&fmt));
+}
+
+#[test]
+fn test_color_format_pnm_only_rgb8_and_gray8() {
+    let fmt = image::ImageFormat::Pnm;
+    assert!(ColorFormat::Rgb8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Gray8.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgba8.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgba16.is_compatible_with_image_format(&fmt));
+}
+
+#[test]
+fn test_color_format_gif_8bit_only() {
+    let fmt = image::ImageFormat::Gif;
+    assert!(ColorFormat::Rgba8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Rgb8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::GrayA8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Gray8.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgba16.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgb32F.is_compatible_with_image_format(&fmt));
+}
+
+#[test]
+fn test_color_format_webp_8bit_only() {
+    let fmt = image::ImageFormat::WebP;
+    assert!(ColorFormat::Rgba8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Rgb8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::GrayA8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Gray8.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgb16.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgba32F.is_compatible_with_image_format(&fmt));
+}
+
+#[test]
+fn test_color_format_tga_8bit_only() {
+    let fmt = image::ImageFormat::Tga;
+    assert!(ColorFormat::Rgba8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Rgb8.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgba16.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgb32F.is_compatible_with_image_format(&fmt));
+}
+
+#[test]
+fn test_color_format_ico_8bit_only() {
+    let fmt = image::ImageFormat::Ico;
+    assert!(ColorFormat::Rgba8.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgba16.is_compatible_with_image_format(&fmt));
+}
+
+#[test]
+fn test_color_format_qoi_8bit_only() {
+    let fmt = image::ImageFormat::Qoi;
+    assert!(ColorFormat::Rgba8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Rgb8.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgb16.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgba32F.is_compatible_with_image_format(&fmt));
+}
+
+#[test]
+fn test_color_format_hdr_nothing_compatible() {
+    let fmt = image::ImageFormat::Hdr;
+    for cf in ColorFormat::types() {
+        assert!(!cf.is_compatible_with_image_format(&fmt), "{:?} should be incompatible with HDR (read-only)", cf);
+    }
+}
+
+// === ColorFormat::default_for_image_format ===
+
+#[test]
+fn test_default_color_format_jpeg_is_rgb8() {
+    assert_eq!(ColorFormat::default_for_image_format(&image::ImageFormat::Jpeg), ColorFormat::Rgb8);
+}
+
+#[test]
+fn test_default_color_format_openexr_is_rgba32f() {
+    assert_eq!(ColorFormat::default_for_image_format(&image::ImageFormat::OpenExr), ColorFormat::Rgba32F);
+}
+
+#[test]
+fn test_default_color_format_farbfeld_is_rgba16() {
+    assert_eq!(ColorFormat::default_for_image_format(&image::ImageFormat::Farbfeld), ColorFormat::Rgba16);
+}
+
+#[test]
+fn test_default_color_format_png_is_rgba8() {
+    assert_eq!(ColorFormat::default_for_image_format(&image::ImageFormat::Png), ColorFormat::Rgba8);
+}
+
+#[test]
+fn test_default_color_format_bmp_is_rgb8() {
+    assert_eq!(ColorFormat::default_for_image_format(&image::ImageFormat::Bmp), ColorFormat::Rgb8);
+}
+
+#[test]
+fn test_default_color_format_pnm_is_rgb8() {
+    assert_eq!(ColorFormat::default_for_image_format(&image::ImageFormat::Pnm), ColorFormat::Rgb8);
+}
+
+#[test]
+fn test_default_color_format_is_always_compatible() {
+    // The default for every format should itself be compatible with that format
+    // (except HDR which is read-only and has no valid write format).
+    for image_type in ImageType::types() {
+        let fmt = image_type.format();
+        if fmt == image::ImageFormat::Hdr {
+            continue;
+        }
+        let default_cf = ColorFormat::default_for_image_format(&fmt);
+        assert!(
+            default_cf.is_compatible_with_image_format(&fmt),
+            "default {:?} should be compatible with {:?}",
+            default_cf,
+            fmt
+        );
+    }
 }

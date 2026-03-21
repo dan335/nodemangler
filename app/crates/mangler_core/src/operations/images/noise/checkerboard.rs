@@ -82,12 +82,12 @@ impl OpImageNoiseCheckerboard {
                 let coords_y = (y as f64) / (size as f64);
                 let noise = perlin.get([coords_x, coords_y]) as f32 * 0.5 + 0.5;
                 let non_linear = linear_to_nonlinear_srgb(noise);
-                let g = (non_linear * 255.0) as u8;
+                let g = (non_linear * 65535.0) as u16;
                 image_buffer.put_pixel(x as u32, y as u32, image::Luma([g]));
             }
         }
         
-        let dynamic_image = DynamicImage::ImageLuma8(image_buffer);
+        let dynamic_image = DynamicImage::ImageLuma16(image_buffer);
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

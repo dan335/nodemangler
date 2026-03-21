@@ -16,22 +16,25 @@ pub fn show_graph_node_header(
     graph_zoom: f32,
     theme: &Theme,
     is_busy: bool,
+    is_enabled: bool,
 ) {
-    // bg
-    if is_busy {
-        ui.painter().add(egui::Shape::rect_filled(
-            node_rect,
-            CornerRadius::same(NODE_ROUNDING as u8),
-            theme.get().grid_connection_line,
-        ));
-    } else {
-        ui.painter().add(egui::Shape::rect_filled(
-            node_rect,
-            CornerRadius::same(NODE_ROUNDING as u8),
-            theme.get().node_header_bg,
-        ));
+    /// Dim a color by reducing its alpha to indicate a disabled state.
+    fn dim(color: Color32) -> Color32 {
+        Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), color.a() / 3)
     }
-    
+
+    // bg
+    let bg_color = if is_busy {
+        theme.get().grid_connection_line
+    } else {
+        theme.get().node_header_bg
+    };
+
+    ui.painter().add(egui::Shape::rect_filled(
+        node_rect,
+        CornerRadius::same(NODE_ROUNDING as u8),
+        if is_enabled { bg_color } else { dim(bg_color) },
+    ));
 
     // outline
     if is_editing {
@@ -44,14 +47,25 @@ pub fn show_graph_node_header(
     }
 
     // node name
+    let text_color = Color32::from(theme.get().override_text_color);
     ui.painter().text(
         node_rect.center(),
         Align2::CENTER_CENTER,
         name,
-        //egui::style::Style::text_styles(),
         egui::FontId::proportional(graph_to_view_space(graph_zoom, 14.0)),
-        Color32::from(theme.get().override_text_color),
+        if is_enabled { text_color } else { dim(text_color) },
     );
+
+    // "disabled" label above the node
+    if !is_enabled {
+        ui.painter().text(
+            Pos2::new(node_rect.center().x, node_rect.top() - graph_to_view_space(graph_zoom, 16.0)),
+            Align2::CENTER_BOTTOM,
+            "disabled",
+            egui::FontId::proportional(graph_to_view_space(graph_zoom, 11.0)),
+            dim(text_color),
+        );
+    }
 
     // subgraph
     if is_subgraph {

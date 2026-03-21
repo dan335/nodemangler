@@ -76,7 +76,7 @@ impl AppMenu {
                             ui.horizontal(|ui| {
                                 if ui.button("load").clicked() {
                                     if let Some(save_path) = rfd::FileDialog::new()
-                                    .add_filter("mangler", &["mangle"])
+                                    .add_filter("mangler", &["mangle.json", "json"])
                                     .pick_file()
                                 {
                                     if let Ok(new_program) = Program::new(None, Some(save_path)) {

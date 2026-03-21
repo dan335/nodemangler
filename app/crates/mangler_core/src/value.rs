@@ -91,6 +91,12 @@ pub enum PathType {
     SaveFile,
 }
 
+impl Default for Value {
+    fn default() -> Self {
+        Value::Bool(false)
+    }
+}
+
 impl Value {
     /// Generate a thumbnail preview for this value, suitable for display in the UI.
     ///
@@ -389,6 +395,16 @@ impl Value {
                         Err(_) => Err(ConversionError { message: "Error converting text to decimal.".to_string() }),
                     }
                 }
+                ValueType::NoiseWorleyDistanceFunction => {
+                    match a.to_lowercase().as_str() {
+                        "chebyshev" => Ok(Value::NoiseWorleyDistanceFunction(crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Chebyshev)),
+                        "euclidean" => Ok(Value::NoiseWorleyDistanceFunction(crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Euclidean)),
+                        "euclideansquared" | "euclidean_squared" | "euclidean squared" => Ok(Value::NoiseWorleyDistanceFunction(crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::EuclideanSquared)),
+                        "manhattan" => Ok(Value::NoiseWorleyDistanceFunction(crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Manhattan)),
+                        "quadratic" => Ok(Value::NoiseWorleyDistanceFunction(crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Quadratic)),
+                        _ => Err(ConversionError { message: format!("Unknown distance function '{}'. Expected: chebyshev, euclidean, euclidean_squared, manhattan, quadratic.", a) }),
+                    }
+                }
                 _ => Err(ConversionError { message: "Unable to convert text to this type.".to_string() }),
             },
         }
@@ -662,6 +678,59 @@ impl ColorFormat {
 
         types
     }
+
+    /// Return a sensible default color format for the given image file format.
+    ///
+    /// Used to auto-correct the color format when the user picks an image format
+    /// that doesn't support the currently selected color format.
+    pub fn default_for_image_format(image_format: &image::ImageFormat) -> ColorFormat {
+        match image_format {
+            image::ImageFormat::OpenExr => ColorFormat::Rgba32F,
+            image::ImageFormat::Farbfeld => ColorFormat::Rgba16,
+            image::ImageFormat::Jpeg | image::ImageFormat::Bmp | image::ImageFormat::Pnm => ColorFormat::Rgb8,
+            image::ImageFormat::Hdr => ColorFormat::Rgb8, // HDR is read-only but need a fallback
+            _ => ColorFormat::Rgba8,
+        }
+    }
+
+    /// Check whether this color format is compatible with the given image file format.
+    ///
+    /// Different image encoders support different bit depths and channel layouts.
+    /// For example, JPEG only supports 8-bit without alpha, OpenEXR only supports
+    /// 32-bit float, and Farbfeld only supports Rgba16.
+    pub fn is_compatible_with_image_format(&self, image_format: &image::ImageFormat) -> bool {
+        match image_format {
+            // OpenEXR supports 32-bit float only
+            image::ImageFormat::OpenExr => matches!(self, ColorFormat::Rgba32F | ColorFormat::Rgb32F),
+            // Farbfeld supports Rgba16 only
+            image::ImageFormat::Farbfeld => matches!(self, ColorFormat::Rgba16),
+            // JPEG supports 8-bit without alpha only
+            image::ImageFormat::Jpeg => matches!(self, ColorFormat::Rgb8 | ColorFormat::Gray8),
+            // PNG and TIFF support 8-bit and 16-bit (no 32F)
+            image::ImageFormat::Png | image::ImageFormat::Tiff => {
+                !matches!(self, ColorFormat::Rgba32F | ColorFormat::Rgb32F)
+            }
+            // BMP and PNM support 8-bit, no alpha
+            image::ImageFormat::Bmp | image::ImageFormat::Pnm => {
+                matches!(self, ColorFormat::Rgb8 | ColorFormat::Gray8)
+            }
+            // GIF, WebP, TGA, ICO, QOI support 8-bit only
+            image::ImageFormat::Gif
+            | image::ImageFormat::WebP
+            | image::ImageFormat::Tga
+            | image::ImageFormat::Ico
+            | image::ImageFormat::Qoi => {
+                matches!(
+                    self,
+                    ColorFormat::Rgba8 | ColorFormat::Rgb8 | ColorFormat::GrayA8 | ColorFormat::Gray8
+                )
+            }
+            // HDR is read-only
+            image::ImageFormat::Hdr => false,
+            // Unknown/other formats — allow and let the encoder decide
+            _ => true,
+        }
+    }
 }
 
 /// Supported image file formats for reading and writing.
@@ -826,6 +895,45 @@ where
         }
     } else {
         Err(serde::de::Error::custom("Unknown enum value"))
+    }
+}
+
+/// Custom serde module that replaces `DynamicImage` values with a tiny 1x1
+/// placeholder during serialization to avoid storing full image pixel data in
+/// save files. Non-image values pass through unchanged. On deserialization,
+/// values are read normally (the 1x1 placeholder is a valid `DynamicImage`).
+pub mod value_skip_images {
+    use super::Value;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::sync::Arc;
+    use image::{DynamicImage, RgbaImage};
+    use crate::get_id;
+
+    /// Serializes a `Value`, replacing any `DynamicImage` with a 1x1 placeholder.
+    pub fn serialize<S>(value: &Value, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match value {
+            Value::DynamicImage { .. } => {
+                // Replace with a tiny 1x1 placeholder to preserve the variant tag
+                // without storing megabytes of pixel data.
+                let placeholder = Value::DynamicImage {
+                    data: Arc::new(DynamicImage::ImageRgba8(RgbaImage::new(1, 1))),
+                    change_id: get_id(),
+                };
+                placeholder.serialize(serializer)
+            }
+            other => other.serialize(serializer),
+        }
+    }
+
+    /// Deserializes a `Value` normally (the placeholder is a valid image).
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Value::deserialize(deserializer)
     }
 }
 

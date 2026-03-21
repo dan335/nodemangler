@@ -1,32 +1,13 @@
 use super::*;
 
-use crate::get_id;
 use crate::input::Input;
 use crate::value::Value;
-use image::{DynamicImage, RgbaImage};
-use std::sync::Arc;
-
-fn test_image(w: u32, h: u32) -> Arc<DynamicImage> {
-    let mut img = RgbaImage::new(w, h);
-    for y in 0..h {
-        for x in 0..w {
-            let r = ((x as f32 / w as f32) * 255.0) as u8;
-            let g = ((y as f32 / h as f32) * 255.0) as u8;
-            img.put_pixel(x, y, image::Rgba([r, g, 128, 255]));
-        }
-    }
-    Arc::new(DynamicImage::ImageRgba8(img))
-}
-
-fn image_input(w: u32, h: u32) -> Value {
-    Value::DynamicImage { data: test_image(w, h), change_id: get_id() }
-}
 
 
 #[tokio::test]
 async fn test_opimagenoiseworleydistance_settings() {
     let s = OpImageNoiseWorleyDistance::settings();
-    assert_eq!(s.name, "worley noise distance");
+    assert_eq!(s.name, "worley distance");
     assert_eq!(OpImageNoiseWorleyDistance::create_inputs().len(), 5);
     assert_eq!(OpImageNoiseWorleyDistance::create_outputs().len(), 1);
 }
@@ -87,5 +68,62 @@ async fn test_opimagenoiseworleydistance_correct_dimensions() {
             assert_eq!(data.height(), 8);
         }
         other => panic!("Expected DynamicImage, got {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_opimagenoiseworleydistance_deterministic() {
+    let make = || vec![
+        Input::new("seed".to_string(), Value::Integer(7), None, None),
+        Input::new("width".to_string(), Value::Integer(16), None, None),
+        Input::new("height".to_string(), Value::Integer(16), None, None),
+        Input::new("distance_function".to_string(), Value::NoiseWorleyDistanceFunction(NoiseWorleyDistanceFunction::Euclidean), None, None),
+        Input::new("frequency".to_string(), Value::Decimal(5.0), None, None),
+    ];
+    let r1 = OpImageNoiseWorleyDistance::run(&mut make()).await.unwrap();
+    let r2 = OpImageNoiseWorleyDistance::run(&mut make()).await.unwrap();
+    match (&r1.responses[0].value, &r2.responses[0].value) {
+        (Value::DynamicImage { data: d1, .. }, Value::DynamicImage { data: d2, .. }) => {
+            assert_eq!(d1.to_luma8().pixels().collect::<Vec<_>>(),
+                       d2.to_luma8().pixels().collect::<Vec<_>>(),
+                       "worley distance is not deterministic");
+        }
+        _ => panic!("Expected DynamicImage"),
+    }
+}
+
+#[tokio::test]
+async fn test_opimagenoiseworleydistance_tiles_seamlessly() {
+    // Use a large image so adjacent pixels at the seam are very close in coordinate space.
+    // With size=128 and grid_size=4, each cell is 32 pixels, so the step across the seam
+    // (pixel 127 to next-tile pixel 0) is only 1/32 of a cell.
+    let size = 128i32;
+    let mut inputs = vec![
+        Input::new("seed".to_string(), Value::Integer(1), None, None),
+        Input::new("width".to_string(), Value::Integer(size), None, None),
+        Input::new("height".to_string(), Value::Integer(size), None, None),
+        Input::new("distance_function".to_string(), Value::NoiseWorleyDistanceFunction(NoiseWorleyDistanceFunction::Euclidean), None, None),
+        Input::new("frequency".to_string(), Value::Decimal(4.0), None, None),
+    ];
+    let result = OpImageNoiseWorleyDistance::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::DynamicImage { data, .. } => {
+            let img = data.to_luma8();
+            let s = size as u32;
+            let max_diff = 25u32;
+            for x in 0..s {
+                let top = img.get_pixel(x, 0)[0];
+                let bottom = img.get_pixel(x, s - 1)[0];
+                assert!((top as i32 - bottom as i32).unsigned_abs() < max_diff,
+                    "Vertical seam at x={}: top={}, bottom={}", x, top, bottom);
+            }
+            for y in 0..s {
+                let left = img.get_pixel(0, y)[0];
+                let right = img.get_pixel(s - 1, y)[0];
+                assert!((left as i32 - right as i32).unsigned_abs() < max_diff,
+                    "Horizontal seam at y={}: left={}, right={}", y, left, right);
+            }
+        }
+        _ => panic!("Expected DynamicImage"),
     }
 }

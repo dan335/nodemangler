@@ -689,6 +689,64 @@ impl Graph {
                 continue;
             }
 
+            // Passthrough: if the node is disabled, copy the first type-matching
+            // input value to each output instead of running the operation.
+            let is_disabled = self.nodes.get(&node_id).is_some_and(|n| !n.is_enabled);
+            if is_disabled {
+                let mut output_data: Vec<(String, usize, Value)> = Vec::new();
+
+                if let Some(node) = self.nodes.get_mut(&node_id) {
+                    node.cached_input_hash = Some(input_hash);
+
+                    for (out_idx, output) in node.outputs.iter_mut().enumerate() {
+                        let out_type = output.value.value_type();
+                        // Find the first input whose type matches this output's type.
+                        let passthrough_value = node.inputs.iter()
+                            .find(|inp| inp.value.value_type() == out_type)
+                            .map(|inp| inp.value.clone())
+                            .unwrap_or_else(|| output.default_value.clone());
+
+                        output.value = passthrough_value.clone();
+
+                        // Notify UI of output change.
+                        if let Some(tx) = &self.tx_node_changed {
+                            let _ = tx.try_send(NodeChangedMessage::OutputChanged {
+                                node_id: node_id.clone(),
+                                output_index: out_idx,
+                                value: passthrough_value.clone(),
+                                thumbnail: passthrough_value.create_thumbnail(),
+                            });
+                        }
+
+                        // Gather downstream connections.
+                        if let Some(connections) = &output.connection {
+                            for (connected_node_id, input_index) in connections.iter() {
+                                output_data.push((
+                                    connected_node_id.clone(),
+                                    *input_index,
+                                    passthrough_value.clone(),
+                                ));
+                            }
+                        }
+                    }
+                }
+
+                // Propagate passthrough values to downstream nodes.
+                for (connected_node_id, input_index, value) in output_data.into_iter() {
+                    if let Some(connected_node) = self.nodes.get_mut(&connected_node_id) {
+                        if let Some(tx) = &self.tx_node_changed {
+                            let _ = tx.try_send(NodeChangedMessage::InputChanged {
+                                node_id: connected_node_id.clone(),
+                                input_index,
+                                value: value.clone(),
+                            });
+                        }
+                        connected_node.inputs[input_index].value = value;
+                    }
+                }
+                continue;
+            }
+
             // Run node
             let mut output_data: Vec<(String, usize, Value)> = Vec::new();
 
