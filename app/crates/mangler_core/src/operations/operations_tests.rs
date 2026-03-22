@@ -1,5 +1,3 @@
-use super::*;
-
 use super::{operation_list, default_image, OperationListItem};
 
 #[test]

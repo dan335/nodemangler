@@ -112,8 +112,6 @@ impl OpImageNoiseReactionDiffusion {
         let kill = kill as f64;
         let da = da as f64;
         let db = db as f64;
-        let dt = 1.0;
-
         let w = width as usize;
         let h = height as usize;
 
@@ -183,6 +181,7 @@ impl OpImageNoiseReactionDiffusion {
                             - b;
 
                         let abb = a * b * b;
+                        // Gray-Scott update with implicit dt=1.0 baked into the equations.
                         row_a[x] = (a + da * lap_a - abb + feed * (1.0 - a)).clamp(0.0, 1.0);
                         row_b[x] = (b + db * lap_b + abb - kill_feed * b).clamp(0.0, 1.0);
                     }

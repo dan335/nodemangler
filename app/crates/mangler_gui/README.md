@@ -69,7 +69,7 @@ Graphs serialize to JSON files. Use the menu bar to save, open, or create new gr
 
 ### Communication with the Engine
 
-The GUI communicates with the [mangler](../mangler/) engine through tokio mpsc channels:
+The GUI communicates with the [mangler_core](../mangler_core/) engine through tokio mpsc channels:
 
 ```
 UI ──ChangeGraphMessage──> Engine (add/remove nodes, connections)
@@ -85,7 +85,7 @@ The engine runs on a separate tokio task. The UI polls for incoming messages eac
 - `eframe` / `epaint` — egui framework for native desktop apps
 - `egui_extras` — additional egui widgets
 - `egui-phosphor` — icon font
-- `mangler` — the core engine (workspace dependency)
+- `mangler_core` — the core engine (workspace dependency)
 - `tokio` — async runtime
 - `image` — icon loading
 - `rfd` — native file dialogs (open/save)

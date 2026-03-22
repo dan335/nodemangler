@@ -336,18 +336,6 @@ impl GlRenderer {
         }
     }
 
-    /// Clear a texture channel (set it back to using default value).
-    #[allow(dead_code)]
-    pub fn clear_texture(&mut self, gl: &glow::Context, channel: TextureChannel) {
-        let slot = &mut self.slots[channel as usize];
-        unsafe {
-            if let Some(tex) = slot.texture.take() {
-                gl.delete_texture(tex);
-            }
-        }
-        slot.change_id = None;
-    }
-
     /// Returns true if a channel's texture needs re-uploading.
     pub fn needs_update(&self, channel: TextureChannel, change_id: &str) -> bool {
         self.slots[channel as usize].change_id.as_deref() != Some(change_id)
@@ -426,20 +414,6 @@ impl GlRenderer {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn destroy(&self, gl: &glow::Context) {
-        unsafe {
-            gl.delete_program(self.program);
-            gl.delete_vertex_array(self.vao);
-            gl.delete_buffer(self._vbo);
-            gl.delete_buffer(self._ebo);
-            for slot in &self.slots {
-                if let Some(tex) = slot.texture {
-                    gl.delete_texture(tex);
-                }
-            }
-        }
-    }
 }
 
 // --- Helpers ---

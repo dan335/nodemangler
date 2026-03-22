@@ -71,21 +71,6 @@ fn clear_assignment() {
 }
 
 #[test]
-fn clear_all_assignments() {
-    let mut assignments = MaterialChannelAssignments::new();
-    for channel in MaterialChannel::ALL {
-        assignments.set(channel, MaterialAssignment {
-            node_id: "n".to_string(),
-            output_index: 0,
-        });
-    }
-    assignments.clear_all();
-    for channel in MaterialChannel::ALL {
-        assert!(assignments.get(channel).is_none());
-    }
-}
-
-#[test]
 fn auto_detect_by_output_name() {
     let graph = make_graph_with_named_outputs(vec![
         ("n1", "Generator", "Normal"),

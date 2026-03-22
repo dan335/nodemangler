@@ -122,26 +122,6 @@ impl Viewer3d {
         ui.painter().add(callback);
     }
 
-    /// Show the 3D viewer with a single image as albedo (backward compat for simple viewing).
-    #[allow(dead_code)]
-    pub fn show(
-        &mut self,
-        ui: &mut egui::Ui,
-        float_image: &FloatImage,
-        change_id: &str,
-        theme: &Theme,
-    ) {
-        let material = MaterialData {
-            albedo: Some((float_image.clone(), change_id.to_string())),
-            normal: None,
-            roughness: None,
-            metallic: None,
-            height: None,
-            ao: None,
-        };
-        self.show_material(ui, &material, theme);
-    }
-
     fn stage_material_uploads(&self, material: &MaterialData) {
         let renderer = self.renderer.lock().unwrap();
         let mut uploads = self.pending_uploads.lock().unwrap();

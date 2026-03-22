@@ -1,5 +1,3 @@
-use super::*;
-
 use tokio::sync::mpsc;
 
 use crate::{
@@ -637,7 +635,7 @@ async fn test_save_to_file_subgraph_is_noop() {
 
 #[tokio::test]
 async fn test_save_to_file_no_path_is_noop() {
-    let mut graph = create_test_graph();
+    let graph = create_test_graph();
     assert!(graph.save_path.is_none());
     // Should be a no-op, not panic
     graph.save_to_file();

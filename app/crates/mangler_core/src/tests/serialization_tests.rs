@@ -12,7 +12,7 @@ mod serialization_tests {
         get_id,
         node::Node,
         operations::Operation,
-        value::{Value, ColorFormat, ImageType},
+        value::{Value, ColorFormat},
         AddNodeType, GraphSaveData,
     };
 

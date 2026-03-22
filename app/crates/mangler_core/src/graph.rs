@@ -825,63 +825,6 @@ impl Graph {
         }
     }
 
-    /// Topological sort that returns levels for parallel execution.
-    /// Each level contains nodes that are independent and can run concurrently.
-    #[allow(dead_code)]
-    fn topological_sort_levels(
-        &self,
-        nodes: &HashMap<String, Node>,
-        dirty_nodes: &HashSet<String>,
-    ) -> Vec<Vec<String>> {
-        // Build adjacency and in-degree maps restricted to dirty_nodes
-        let mut in_degree: HashMap<String, usize> = HashMap::new();
-        let mut adjacency: HashMap<String, Vec<String>> = HashMap::new();
-
-        for node_id in dirty_nodes {
-            in_degree.entry(node_id.clone()).or_insert(0);
-            adjacency.entry(node_id.clone()).or_default();
-        }
-
-        for node_id in dirty_nodes {
-            if let Some(node) = nodes.get(node_id) {
-                for output in &node.outputs {
-                    if let Some(connections) = &output.connection {
-                        for (connected_id, _) in connections {
-                            if dirty_nodes.contains(connected_id) {
-                                *in_degree.entry(connected_id.clone()).or_insert(0) += 1;
-                                adjacency.entry(node_id.clone()).or_default().push(connected_id.clone());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        let mut levels: Vec<Vec<String>> = Vec::new();
-        let mut queue: Vec<String> = in_degree.iter()
-            .filter(|(_, &deg)| deg == 0)
-            .map(|(id, _)| id.clone())
-            .collect();
-
-        while !queue.is_empty() {
-            levels.push(queue.clone());
-            let mut next_queue = Vec::new();
-            for node_id in &queue {
-                if let Some(neighbors) = adjacency.get(node_id) {
-                    for neighbor in neighbors {
-                        let deg = in_degree.get_mut(neighbor).unwrap();
-                        *deg -= 1;
-                        if *deg == 0 {
-                            next_queue.push(neighbor.clone());
-                        }
-                    }
-                }
-            }
-            queue = next_queue;
-        }
-
-        levels
-    }
 
     /// Perform a depth-first topological sort on the dirty nodes, returning them
     /// in dependency order (upstream nodes first) so that each node runs after

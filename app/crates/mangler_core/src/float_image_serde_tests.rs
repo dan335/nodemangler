@@ -1,6 +1,5 @@
 //! Tests for FloatImage serialization and deserialization.
 
-use super::*;
 use crate::float_image::FloatImage;
 use std::sync::Arc;
 

@@ -68,13 +68,14 @@ Operations define what nodes do. Each operation is a struct that implements:
 
 Operations are registered in the `operations!` macro, which generates the `Operation` enum and all dispatch `match` arms automatically.
 
-Operations are organized into three categories:
+Operations are organized into four categories:
 
 | Category | Modules |
 |----------|---------|
-| **numbers** | `inputs`, `arithmetic`, `random` |
-| **colors** | `inputs` (9 color spaces), `outputs` (9 color spaces), `blend`, `sample_image` |
-| **images** | `inputs`, `outputs`, `transform`, `adjustments`, `combine`, `noise` (14 noise types) |
+| **numbers** | `inputs`, `arithmetic`, `interpolation`, `algebra`, `trigonometry`, `random`, `cast`, `logarithmic`, `bitwise` |
+| **colors** | `inputs` (9 color spaces), `outputs` (9 color spaces), `blend`, `analysis` (`sample_image`), `cast` |
+| **images** | `inputs`, `outputs`, `transform`, `adjustments`, `combine`, `blur`, `filter`, `noise` (14 types), `channels`, `shapes`, `patterns`, `pbr` |
+| **logic** | `inputs`, `comparison`, `boolean`, `flow` (`select`) |
 
 ### Message-Driven Communication (`lib.rs`)
 

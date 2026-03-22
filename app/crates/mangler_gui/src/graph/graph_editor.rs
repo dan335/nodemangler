@@ -636,10 +636,6 @@ pub struct TempConnection {
 
 pub struct GraphEditorResponse {
     pub new_connection: Option<NewConnection>,
-    #[allow(dead_code)]
-    pub is_left_click_node_id: Option<String>, // if a node was clicked on return it's id
-    #[allow(dead_code)]
-    pub is_right_click_node_id: Option<String>,
     pub request_redraw: bool,
     pub editing_node_id: Option<String>,
     pub viewing_node_id_index: Option<(String, usize)>,   // node id, output index
@@ -655,8 +651,6 @@ impl GraphEditorResponse {
     fn default() -> GraphEditorResponse {
         GraphEditorResponse {
             new_connection: None,
-            is_left_click_node_id: None,
-            is_right_click_node_id: None,
             request_redraw: false,
             editing_node_id: None,
             viewing_node_id_index: None,

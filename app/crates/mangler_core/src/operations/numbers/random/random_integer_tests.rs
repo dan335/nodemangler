@@ -71,7 +71,7 @@ async fn test_random_integer_min_greater_than_max_clamped() {
 #[tokio::test]
 async fn test_random_integer_unit_range() {
     // min=0, max=1: result should always be 0
-    let mut inputs = vec![
+    let inputs = vec![
         Input::new("generate".to_string(), Value::Trigger, None, None),
         Input::new("min".to_string(), Value::Integer(0), None, None),
         Input::new("max".to_string(), Value::Integer(1), None, None),

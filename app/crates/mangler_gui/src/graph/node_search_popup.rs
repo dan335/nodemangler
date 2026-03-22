@@ -26,8 +26,6 @@ pub struct SearchResult {
 pub struct NodeSearchPopupResponse {
     /// If the user selected an operation, it's returned here.
     pub selected_operation: Option<Operation>,
-    /// Whether the user selected the subgraph entry.
-    pub selected_subgraph: bool,
     /// Whether the popup was closed (by Escape or clicking outside).
     pub closed: bool,
 }
@@ -136,7 +134,6 @@ impl NodeSearchPopup {
     pub fn show(&mut self, ctx: &egui::Context, theme: &Theme) -> NodeSearchPopupResponse {
         let mut response = NodeSearchPopupResponse {
             selected_operation: None,
-            selected_subgraph: false,
             closed: false,
         };
 

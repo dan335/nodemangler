@@ -6,12 +6,6 @@ use crate::input::Input;
 use crate::value::Value;
 use std::sync::Arc;
 
-fn test_image(w: u32, h: u32) -> Arc<FloatImage> {
-    let mut img = FloatImage::new(w, h, 4);
-    for y in 0..h { for x in 0..w { img.put_pixel(x, y, &[x as f32 / w.max(1) as f32, y as f32 / h.max(1) as f32, 0.5, 1.0]); } }
-    Arc::new(img)
-}
-
 #[tokio::test]
 async fn test_shuffle_settings() { assert_eq!(OpImageChannelShuffle::settings().name, "channel shuffle"); assert_eq!(OpImageChannelShuffle::create_inputs().len(), 5); }
 

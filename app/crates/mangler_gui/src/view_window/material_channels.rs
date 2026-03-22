@@ -82,12 +82,6 @@ impl MaterialChannelAssignments {
         self.assignments.remove(&channel);
     }
 
-    #[allow(dead_code)]
-    pub fn clear_all(&mut self) {
-        self.assignments.clear();
-        self.auto_detected_for = None;
-    }
-
     /// Auto-detect channel assignments by scanning all graph node output names.
     /// Only runs once per viewed node (tracked by node_id).
     pub fn auto_detect(
