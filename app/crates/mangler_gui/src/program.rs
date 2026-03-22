@@ -543,6 +543,7 @@ impl Program {
                     theme,
                     view_in_separate_window,
                     self.pointer_position,
+                    &self.graph_editor.graph_nodes,
                 );
 
                 if !view_in_separate_window && view_panel_response.is_mouse_over {

@@ -7,7 +7,9 @@ edition = "2021"
 
 [dependencies]
 eframe = { version = "0.33", features = [] }
+egui_glow = "0.33"
 epaint = "0.33"
+glow = "0.16"
 image = "0.24"
 mangler_core = { path = "../mangler_core" }
 puffin = "0.19"

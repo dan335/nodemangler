@@ -2,3 +2,7 @@ pub mod view_panel;
 pub mod text_viewer;
 pub mod image_viewer;
 pub mod color_viewer;
+pub mod arcball_camera;
+pub mod gl_renderer;
+pub mod material_channels;
+pub mod viewer_3d;
