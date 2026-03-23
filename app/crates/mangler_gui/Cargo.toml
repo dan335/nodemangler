@@ -12,6 +12,8 @@ epaint = "0.33"
 glow = "0.16"
 image = "0.24"
 mangler_core = { path = "../mangler_core" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 puffin = "0.19"
 rfd = "0.17"
 sanitize-filename = "0.6"
@@ -21,6 +23,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 egui-phosphor = "0.11"
 fastrand = "2.0"
 egui_extras = "0.33"
+dirs = "6"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.9", features = ["winuser", "windef"] }

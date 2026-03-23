@@ -19,6 +19,8 @@ Examples:
   mangle show-types blendmode                    List enum variants
   mangle show-values                            JSON value format reference
   mangle graph.json add-node --type images/combine/blend
+  mangle graph.json add-node --type images/combine/blend --name \"My Blend\"
+  mangle graph.json set-name --node <id> --name \"My Node\"
   mangle graph.json set-input --node <id> --input 0 --value decimal:3.14
   mangle graph.json set-input --node <id> --input 0 --value decimal:1.0 --input 1 --value decimal:2.0
   mangle graph.json set-input --node <id> --input 0 --value color:1.0,0.0,0.0,1.0
@@ -104,6 +106,9 @@ Use `mangle show-ops --compact` for a quick summary."
         /// Node ID — used to reference this node in connect, set-input, etc. Auto-generated if omitted
         #[arg(long)]
         id: Option<String>,
+        /// Custom display name for the node (shown instead of the operation name)
+        #[arg(long)]
+        name: Option<String>,
     },
 
     /// Remove a node and all its connections from a graph
@@ -148,6 +153,17 @@ Use `mangle show-ops --compact` for a quick summary."
         /// Value in Type:value format (repeat for batch, paired with --input)
         #[arg(long, required = true)]
         value: Vec<String>,
+    },
+
+    /// Set or clear a custom display name for a node
+    #[command(override_usage = "mangle <PATH> set-name --node <NODE> --name <NAME>")]
+    SetName {
+        /// ID of the target node
+        #[arg(long)]
+        node: String,
+        /// Custom display name, or empty string to clear
+        #[arg(long)]
+        name: String,
     },
 
     /// Enable or disable a node (disabled nodes pass inputs through unchanged)

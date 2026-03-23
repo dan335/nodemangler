@@ -89,6 +89,13 @@ pub enum ChangeNodeMessage {
         /// `true` to enable, `false` to disable.
         set_to: bool,
     },
+    /// Set or clear the user-defined custom name for a node.
+    SetCustomName {
+        /// The target node's unique identifier.
+        node_id: String,
+        /// The new custom name, or `None` to clear it.
+        name: Option<String>,
+    },
 }
 
 /// Messages sent from the engine to the UI when a node's state changes.
@@ -195,6 +202,10 @@ pub enum ChangeGraphMessage {
         node_type: AddNodeType,
         /// Initial canvas position.
         position: Vec2,
+        /// Whether the node starts enabled. Defaults to `true`.
+        is_enabled: bool,
+        /// Optional user-defined display name.
+        custom_name: Option<String>,
     },
     /// Remove a node and clean up all its connections.
     RemoveNode {
@@ -244,6 +255,10 @@ pub enum GraphChangedMessage {
         is_subgraph: bool,
         /// The node type used to create this node (for copy/paste).
         node_type: AddNodeType,
+        /// Whether this node is enabled.
+        is_enabled: bool,
+        /// Optional user-defined display name.
+        custom_name: Option<String>,
     },
     /// A node was restored from a saved graph file.
     LoadedNode {
@@ -276,7 +291,7 @@ pub enum GraphChangedMessage {
 }
 
 /// Specifies what kind of node to create when adding to a graph.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AddNodeType {
     /// A concrete operation node that performs computation.
     Operation(Operation),

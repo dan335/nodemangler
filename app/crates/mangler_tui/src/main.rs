@@ -55,11 +55,12 @@ async fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
         Commands::New => commands::cmd_new(path, json),
         Commands::Info { node, compact } => commands::cmd_info(path, node, compact, json),
-        Commands::AddNode { op_type, id } => commands::cmd_add_node(path, op_type, id, json).await,
+        Commands::AddNode { op_type, id, name } => commands::cmd_add_node(path, op_type, id, name, json).await,
         Commands::RemoveNode { id } => commands::cmd_remove_node(path, id, json).await,
         Commands::Connect { from, to } => commands::cmd_connect(path, from, to, json).await,
         Commands::Disconnect { node, input } => commands::cmd_disconnect(path, node, input, json).await,
         Commands::SetInput { node, input, value } => commands::cmd_set_input(path, node, input, value, json),
+        Commands::SetName { node, name } => commands::cmd_set_name(path, node, name, json),
         Commands::SetEnabled { node, enabled } => commands::cmd_set_enabled(path, node, enabled, json),
         Commands::Run => commands::cmd_run(path, json).await,
         Commands::ShowOutput { node, output, stats, sample, save } => {

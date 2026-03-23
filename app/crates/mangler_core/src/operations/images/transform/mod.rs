@@ -18,3 +18,4 @@ pub mod directional_warp;
 pub mod safe_transform;
 pub mod make_tile;
 pub mod mirror;
+pub mod seam_carve;

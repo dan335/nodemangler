@@ -57,8 +57,10 @@ impl App {
                                     node_id,
                                     node_type,
                                     position,
+                                    is_enabled,
+                                    custom_name,
                                 } => {
-                                    graph.add_node(node_id, node_type, position).await;
+                                    graph.add_node(node_id, node_type, position, is_enabled, custom_name).await;
                                     needs_to_save = true;
                                 }
                                 ChangeGraphMessage::RemoveNode { node_id } => {
@@ -152,6 +154,15 @@ impl App {
                                         node.is_enabled = set_to;
                                         node.is_dirty = true;
                                         node.cached_input_hash = None;
+                                        needs_to_save = true;
+                                    }
+                                }
+                                ChangeNodeMessage::SetCustomName {
+                                    node_id,
+                                    name,
+                                } => {
+                                    if let Some(node) = graph.nodes.get_mut(&node_id) {
+                                        node.custom_name = name;
                                         needs_to_save = true;
                                     }
                                 }

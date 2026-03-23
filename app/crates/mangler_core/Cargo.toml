@@ -12,9 +12,10 @@ serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 glam = { version = "0.32", features = ["serde"] }
 async-recursion = "1.0.4"
-reqwest = "0.13"
+reqwest = { version = "0.13", features = ["multipart", "json"] }
 imageproc = "0.23"
 fastrand = "2"
 noise = "0"
 ab_glyph = "0.2"
 rayon = "1"
+base64 = "0.22"

@@ -531,7 +531,7 @@ async fn save_graph_load_graph_round_trip_with_nodes() {
     let path = create_temp_graph("roundtrip_nodes");
     let mut graph = load_graph(&path).unwrap();
     // Add a node to the graph.
-    crate::commands::do_add_node(&mut graph, "numbers/arithmetic/add", Some("rt-node".to_string())).await.unwrap();
+    crate::commands::do_add_node(&mut graph, "numbers/arithmetic/add", Some("rt-node".to_string()), None).await.unwrap();
     save_graph(&graph, &path).unwrap();
     // Reload and verify.
     let reloaded = load_graph(&path).unwrap();

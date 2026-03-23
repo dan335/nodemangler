@@ -25,6 +25,8 @@ pub mod colors;
 pub mod logic;
 /// Text operations (clipboard).
 pub mod text;
+/// AI-powered image operations (generate, edit, variation) via external APIs.
+pub mod ai;
 
 /// Describes a single input or output connection slot on a node.
 ///
@@ -346,6 +348,7 @@ operations! {
     OpImageTransformSafeTransform(crate::operations::images::transform::safe_transform::OpImageTransformSafeTransform),
     OpImageTransformMakeTile(crate::operations::images::transform::make_tile::OpImageTransformMakeTile),
     OpImageTransformMirror(crate::operations::images::transform::mirror::OpImageTransformMirror),
+    OpImageTransformSeamCarve(crate::operations::images::transform::seam_carve::OpImageTransformSeamCarve),
 
     // blur
     OpImageAdjustmentBlur(crate::operations::images::blur::blur::OpImageAdjustmentBlur),
@@ -458,6 +461,11 @@ operations! {
     OpNumberBitwiseNot(crate::operations::numbers::bitwise::bit_not::OpNumberBitwiseNot),
     OpNumberBitwiseShiftLeft(crate::operations::numbers::bitwise::bit_shift_left::OpNumberBitwiseShiftLeft),
     OpNumberBitwiseShiftRight(crate::operations::numbers::bitwise::bit_shift_right::OpNumberBitwiseShiftRight),
+
+    // ai
+    OpAiGenerate(crate::operations::ai::generate::OpAiGenerate),
+    OpAiEdit(crate::operations::ai::edit::OpAiEdit),
+    OpAiVariation(crate::operations::ai::variation::OpAiVariation),
 }
 
 /// Returns the full hierarchical menu of available operations.
@@ -637,6 +645,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageTransformSafeTransform },
                 OperationListItem::Operation { operation: Operation::OpImageTransformMakeTile },
                 OperationListItem::Operation { operation: Operation::OpImageTransformMirror },
+                OperationListItem::Operation { operation: Operation::OpImageTransformSeamCarve },
             ]},
             OperationListItem::Category { name: "adjustments".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentContrast },
@@ -754,6 +763,11 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpTextToUppercase },
                 OperationListItem::Operation { operation: Operation::OpTextToLowercase },
             ]},
+        ]},
+        OperationListItem::Category { name: "ai".to_string(), operation_list_items: vec![
+            OperationListItem::Operation { operation: Operation::OpAiGenerate },
+            OperationListItem::Operation { operation: Operation::OpAiEdit },
+            OperationListItem::Operation { operation: Operation::OpAiVariation },
         ]},
         //OperationListItem::Subgraph,
     ];

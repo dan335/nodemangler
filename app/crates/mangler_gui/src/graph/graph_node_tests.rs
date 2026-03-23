@@ -20,6 +20,8 @@ fn make_test_node(id: &str, num_inputs: usize, num_outputs: usize) -> GraphNode 
         outputs,
         false,
         None,
+        true,
+        None,
     )
 }
 

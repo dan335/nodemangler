@@ -7,8 +7,9 @@ use mangler_core::{
 };
 
 use crate::helpers::{
-    accepted_conversions, collect_categories, enum_variants, flatten_ops, op_variant_name,
-    output_conversions, resolve_enum_type_name, score_op, value_type_enum_name, value_type_name,
+    accepted_conversions, collect_categories, enum_variants, flatten_ops, node_not_found_error,
+    op_variant_name, output_conversions, resolve_enum_type_name, score_op, value_type_enum_name,
+    value_type_name,
 };
 use crate::value_parse::display_value;
 
@@ -111,7 +112,7 @@ pub(crate) fn format_info_human(graph: &Graph, filter_node: Option<&str>, compac
     // Validate filter node exists.
     if let Some(nid) = filter_node {
         if !graph.nodes.contains_key(nid) {
-            return Err(format!("node '{nid}' not found"));
+            return Err(node_not_found_error(graph, nid));
         }
     }
 
@@ -138,7 +139,13 @@ pub(crate) fn format_info_human(graph: &Graph, filter_node: Option<&str>, compac
         };
 
         let disabled_tag = if !node.is_enabled { " [DISABLED]" } else { "" };
-        out.push_str(&format!("\n  [{}] {}{} ({})\n", node_id, node.settings.name, disabled_tag, type_label));
+        // Show custom name as primary label if set, with operation name in parens.
+        let display_name = if let Some(ref custom) = node.custom_name {
+            format!("\"{}\" ({})", custom, node.settings.name)
+        } else {
+            node.settings.name.clone()
+        };
+        out.push_str(&format!("\n  [{}] {}{} ({})\n", node_id, display_name, disabled_tag, type_label));
 
         // Show description unless compact.
         if !compact && !node.settings.description.is_empty() {
@@ -214,7 +221,7 @@ pub(crate) fn format_info_human(graph: &Graph, filter_node: Option<&str>, compac
 pub(crate) fn format_info_json(graph: &Graph, filter_node: Option<&str>) -> Result<serde_json::Value, String> {
     if let Some(nid) = filter_node {
         if !graph.nodes.contains_key(nid) {
-            return Err(format!("node '{nid}' not found"));
+            return Err(node_not_found_error(graph, nid));
         }
     }
 
@@ -277,6 +284,7 @@ pub(crate) fn format_info_json(graph: &Graph, filter_node: Option<&str>) -> Resu
         let mut node_obj = serde_json::json!({
             "id": node_id,
             "name": node.settings.name,
+            "custom_name": node.custom_name,
             "type": type_label,
             "description": node.settings.description,
             "enabled": node.is_enabled,
@@ -664,6 +672,7 @@ pub(crate) fn show_values_text() -> &'static str {
 }
 
 /// Format show-values as a JSON value.
+#[allow(clippy::approx_constant)]
 pub(crate) fn format_show_values_json() -> serde_json::Value {
     serde_json::json!({
         "bool": {"typed": "bool:true", "json": {"Bool": true}},

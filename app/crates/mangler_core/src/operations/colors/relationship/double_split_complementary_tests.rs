@@ -36,7 +36,7 @@ async fn test_double_split_complementary_red() {
 #[tokio::test]
 async fn test_settings() {
     let s = OpColorHarmonyDoubleSplitComplementary::settings();
-    assert_eq!(s.name, "double split complementary");
+    assert_eq!(s.name, "double split comp");
     assert_eq!(OpColorHarmonyDoubleSplitComplementary::create_inputs().len(), 1);
     assert_eq!(OpColorHarmonyDoubleSplitComplementary::create_outputs().len(), 4);
 }

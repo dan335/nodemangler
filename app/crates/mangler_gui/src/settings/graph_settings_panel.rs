@@ -57,12 +57,21 @@ pub fn show(
         }
     //});
 
+    ui.add_space(20.0);
+    ui.separator();
+    ui.add_space(12.0);
+
+    if ui.add(Button::new(egui::RichText::new("auto arrange"))).clicked() {
+        graph_settings_response.auto_arrange = true;
+    }
+
     graph_settings_response
 }
 
 pub struct GraphSettingsResponse {
     pub new_save_path: Option<PathBuf>,
     pub new_name: Option<String>,
+    pub auto_arrange: bool,
 }
 
 impl GraphSettingsResponse {
@@ -70,6 +79,7 @@ impl GraphSettingsResponse {
         Self {
             new_save_path: None,
             new_name: None,
+            auto_arrange: false,
         }
     }
 }

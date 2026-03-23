@@ -31,6 +31,18 @@ pub struct ThemeValues {
     pub node_header_selected_border: Color32,
     pub text_faint: Color32,
 
+    // Histogram visualization colors
+    /// Background color for the histogram chart area.
+    pub histogram_bg: Color32,
+    /// Luminance histogram bar color (also used as grayscale fallback).
+    pub histogram_luminance: Color32,
+    /// Red channel histogram bar color (should include alpha for overlay blending).
+    pub histogram_red: Color32,
+    /// Green channel histogram bar color (should include alpha for overlay blending).
+    pub histogram_green: Color32,
+    /// Blue channel histogram bar color (should include alpha for overlay blending).
+    pub histogram_blue: Color32,
+
     pub window_corner_radius: CornerRadius,
     pub window_shadow: Shadow,
     pub window_fill: Color32,
@@ -93,6 +105,27 @@ impl Theme {
             Theme::DarkGreen => "dark green".to_string(),
             Theme::Dark => "dark".to_string(),
             Theme::LightBlue => "light blue".to_string(),
+        }
+    }
+
+    /// Config-safe name for serialization (no spaces).
+    pub fn config_name(&self) -> &str {
+        match self {
+            Theme::Light => "light",
+            Theme::DarkGreen => "dark_green",
+            Theme::Dark => "dark",
+            Theme::LightBlue => "light_blue",
+        }
+    }
+
+    /// Resolve a theme from its config name. Returns None if unrecognized.
+    pub fn from_name(name: &str) -> Option<Theme> {
+        match name {
+            "light" => Some(Theme::Light),
+            "dark_green" | "dark green" => Some(Theme::DarkGreen),
+            "dark" => Some(Theme::Dark),
+            "light_blue" | "light blue" => Some(Theme::LightBlue),
+            _ => None,
         }
     }
 

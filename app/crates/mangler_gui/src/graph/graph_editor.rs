@@ -519,6 +519,8 @@ impl GraphEditor {
         position_graph_space: Pos2,
         is_subgraph: bool,
         node_type: Option<AddNodeType>,
+        is_enabled: bool,
+        custom_name: Option<String>,
     ) {
         let node = GraphNode::new(
             node_id.clone(),
@@ -528,6 +530,8 @@ impl GraphEditor {
             outputs,
             is_subgraph,
             node_type,
+            is_enabled,
+            custom_name,
         );
 
         self.graph_nodes.insert(node_id, node);
@@ -539,9 +543,8 @@ impl GraphEditor {
 
     /// Automatically layout nodes if they all share the same position (e.g. all at origin).
     ///
-    /// Uses a topological sort based on connections to arrange nodes in columns
-    /// by depth, with vertical spacing within each column. Returns a list of
-    /// (node_id, new_position) pairs for nodes that were moved.
+    /// Checks whether all nodes overlap and, if so, runs the auto-arrange layout.
+    /// Returns a list of (node_id, new_position) pairs for nodes that were moved.
     pub fn auto_layout_if_needed(&mut self) -> Vec<(String, Pos2)> {
         if self.graph_nodes.len() < 2 {
             return Vec::new();
@@ -555,6 +558,21 @@ impl GraphEditor {
         });
 
         if !all_overlapping {
+            return Vec::new();
+        }
+
+        self.auto_arrange()
+    }
+
+    /// Arrange all nodes using a connection-aware layout algorithm.
+    ///
+    /// Uses a topological sort to assign nodes to columns by depth, then applies
+    /// a barycenter heuristic to order nodes within each column so that connected
+    /// nodes are vertically adjacent, minimizing edge crossings. Each node is
+    /// positioned at the average y of its upstream neighbors for clean horizontal
+    /// connections. Returns a list of (node_id, new_position) pairs.
+    pub fn auto_arrange(&mut self) -> Vec<(String, Pos2)> {
+        if self.graph_nodes.len() < 2 {
             return Vec::new();
         }
 
@@ -606,6 +624,35 @@ impl GraphEditor {
             }
         }
 
+        // Build downstream map for tightening and barycenter backward sweep.
+        let mut downstream: HashMap<String, Vec<String>> = HashMap::new();
+        for (node_id, ups) in upstream.iter() {
+            for up_id in ups {
+                downstream.entry(up_id.clone()).or_default().push(node_id.clone());
+            }
+        }
+
+        // Tighten: push each node as far right as possible so it sits just
+        // before its earliest downstream consumer. This eliminates long-range
+        // connections that skip many empty columns (e.g. a source in column 0
+        // whose only consumer is in column 6 gets moved to column 5).
+        for id in node_ids.iter() {
+            if let Some(downs) = downstream.get(id) {
+                let min_downstream_depth = downs.iter()
+                    .filter_map(|did| depth.get(did))
+                    .min()
+                    .copied();
+                if let Some(min_dd) = min_downstream_depth {
+                    if min_dd > 0 {
+                        let tight_depth = min_dd - 1;
+                        if tight_depth > depth[id] {
+                            depth.insert(id.clone(), tight_depth);
+                        }
+                    }
+                }
+            }
+        }
+
         // Group nodes by depth (column).
         let max_depth = depth.values().max().copied().unwrap_or(0);
         let mut columns: Vec<Vec<String>> = vec![Vec::new(); max_depth + 1];
@@ -614,8 +661,16 @@ impl GraphEditor {
             columns[d].push(id.clone());
         }
 
-        // Sort nodes within each column alphabetically by name for deterministic layout.
-        for col in columns.iter_mut() {
+        // Build node_id -> column index lookup.
+        let mut node_column: HashMap<String, usize> = HashMap::new();
+        for (col_idx, col) in columns.iter().enumerate() {
+            for node_id in col {
+                node_column.insert(node_id.clone(), col_idx);
+            }
+        }
+
+        // Sort column 0 alphabetically as a stable baseline (no upstream info).
+        if let Some(col) = columns.get_mut(0) {
             col.sort_by(|a, b| {
                 let name_a = self.graph_nodes.get(a).map(|n| &n.settings.name).unwrap();
                 let name_b = self.graph_nodes.get(b).map(|n| &n.settings.name).unwrap();
@@ -623,36 +678,145 @@ impl GraphEditor {
             });
         }
 
-        // Assign positions: horizontal spacing by column, vertical spacing within column.
-        // Node header is 40px tall, thumbnail is 150x150, plus ~20px info text below.
-        // Total visual height per node is ~210px, so use 230px vertical spacing.
-        let h_spacing = 250.0;
-        let v_spacing = 230.0;
+        // Barycenter heuristic: order nodes within each column by the average
+        // position of their connected neighbors in the adjacent column.
+        // Two full passes (forward + backward) minimizes edge crossings.
+        for _pass in 0..2 {
+            // Forward sweep: columns 1..max, sort by upstream neighbor positions.
+            for col_idx in 1..columns.len() {
+                let prev_col = columns[col_idx - 1].clone();
+                let col = &mut columns[col_idx];
+                col.sort_by(|a, b| {
+                    let bc_a = barycenter(a, upstream.get(a).map(|v| v.as_slice()).unwrap_or(&[]), &prev_col, col_idx - 1, &node_column);
+                    let bc_b = barycenter(b, upstream.get(b).map(|v| v.as_slice()).unwrap_or(&[]), &prev_col, col_idx - 1, &node_column);
+                    bc_a.partial_cmp(&bc_b).unwrap_or(std::cmp::Ordering::Equal)
+                });
+            }
+
+            // Backward sweep: columns (max-1)..0, sort by downstream neighbor positions.
+            for col_idx in (0..columns.len().saturating_sub(1)).rev() {
+                let next_col = columns[col_idx + 1].clone();
+                let col = &mut columns[col_idx];
+                col.sort_by(|a, b| {
+                    let bc_a = barycenter(a, downstream.get(a).map(|v| v.as_slice()).unwrap_or(&[]), &next_col, col_idx + 1, &node_column);
+                    let bc_b = barycenter(b, downstream.get(b).map(|v| v.as_slice()).unwrap_or(&[]), &next_col, col_idx + 1, &node_column);
+                    bc_a.partial_cmp(&bc_b).unwrap_or(std::cmp::Ordering::Equal)
+                });
+            }
+        }
+
+        // Assign positions using connection-aware placement.
+        // Node visual height is ~210px (40px header + 150px thumbnail + 20px info).
+        let h_spacing = 280.0;
+        let v_spacing = 280.0;
         let start_x = 100.0;
         let start_y = 100.0;
 
-        let mut moved: Vec<(String, Pos2)> = Vec::new();
-
-        for (col_index, col) in columns.iter().enumerate() {
-            // Center the column vertically.
+        // First pass: place column 0 on a regular grid.
+        let mut node_positions: HashMap<String, Pos2> = HashMap::new();
+        if let Some(col) = columns.first() {
             let col_height = (col.len() as f32 - 1.0) * v_spacing;
             let col_start_y = start_y - col_height * 0.5;
-
             for (row_index, node_id) in col.iter().enumerate() {
-                let new_pos = Pos2::new(
-                    start_x + col_index as f32 * h_spacing,
-                    col_start_y + row_index as f32 * v_spacing,
+                node_positions.insert(
+                    node_id.clone(),
+                    Pos2::new(start_x, col_start_y + row_index as f32 * v_spacing),
                 );
+            }
+        }
 
-                if let Some(node) = self.graph_nodes.get_mut(node_id) {
-                    node.position = new_pos;
-                    moved.push((node_id.clone(), new_pos));
+        // Subsequent columns: position each node at the average y of its upstream
+        // neighbors so connections stay as horizontal as possible. Then enforce
+        // minimum vertical spacing to prevent overlap.
+        for col_index in 1..columns.len() {
+            let col = &columns[col_index];
+            let x = start_x + col_index as f32 * h_spacing;
+
+            // Compute ideal y for each node based on upstream neighbor positions.
+            let mut ideal_ys: Vec<(String, f32)> = Vec::new();
+            for node_id in col {
+                let ups = upstream.get(node_id).cloned().unwrap_or_default();
+                let upstream_ys: Vec<f32> = ups.iter()
+                    .filter_map(|uid| node_positions.get(uid).map(|p| p.y))
+                    .collect();
+
+                let ideal_y = if upstream_ys.is_empty() {
+                    // Orphan in this column — will be placed after connected nodes.
+                    f32::MAX
+                } else {
+                    // Average y of all upstream neighbors.
+                    upstream_ys.iter().sum::<f32>() / upstream_ys.len() as f32
+                };
+                ideal_ys.push((node_id.clone(), ideal_y));
+            }
+
+            // Resolve overlaps: walk top to bottom, push nodes down if they're
+            // too close to the previous node. Preserves the barycenter ordering.
+            for i in 1..ideal_ys.len() {
+                // Handle orphans (f32::MAX): place them relative to the last real node.
+                if ideal_ys[i].1 == f32::MAX {
+                    ideal_ys[i].1 = ideal_ys[i - 1].1 + v_spacing;
+                }
+                let min_y = ideal_ys[i - 1].1 + v_spacing;
+                if ideal_ys[i].1 < min_y {
+                    ideal_ys[i].1 = min_y;
+                }
+            }
+
+            // Center the column around the average y of the previous column,
+            // to keep the graph visually centered.
+            let prev_col = &columns[col_index - 1];
+            let prev_avg_y: f32 = prev_col.iter()
+                .filter_map(|id| node_positions.get(id).map(|p| p.y))
+                .sum::<f32>() / prev_col.len().max(1) as f32;
+            let col_avg_y: f32 = ideal_ys.iter().map(|(_, y)| *y).sum::<f32>()
+                / ideal_ys.len().max(1) as f32;
+            let y_offset = prev_avg_y - col_avg_y;
+
+            for (node_id, y) in &ideal_ys {
+                node_positions.insert(node_id.clone(), Pos2::new(x, y + y_offset));
+            }
+        }
+
+        // Apply positions to nodes.
+        let mut moved: Vec<(String, Pos2)> = Vec::new();
+        for col in columns.iter() {
+            for node_id in col {
+                if let Some(pos) = node_positions.get(node_id) {
+                    if let Some(node) = self.graph_nodes.get_mut(node_id) {
+                        node.position = *pos;
+                        moved.push((node_id.clone(), *pos));
+                    }
                 }
             }
         }
 
         moved
     }
+}
+
+/// Compute the barycenter (average position index) of a node's neighbors
+/// that reside in the specified adjacent column. Returns f32::MAX if no
+/// neighbors are found in that column, pushing orphans to the bottom.
+fn barycenter(
+    _node_id: &str,
+    neighbors: &[String],
+    adj_col: &[String],
+    adj_col_idx: usize,
+    node_column: &HashMap<String, usize>,
+) -> f32 {
+    let mut sum = 0.0f32;
+    let mut count = 0u32;
+    for neighbor in neighbors {
+        // Only consider neighbors actually in the adjacent column.
+        if node_column.get(neighbor) == Some(&adj_col_idx) {
+            if let Some(pos) = adj_col.iter().position(|id| id == neighbor) {
+                sum += pos as f32;
+                count += 1;
+            }
+        }
+    }
+    if count > 0 { sum / count as f32 } else { f32::MAX }
 }
 
 // connection that is being created

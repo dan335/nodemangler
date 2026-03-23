@@ -68,6 +68,10 @@ pub struct Node {
     /// pass the first type-matching input through to each output (passthrough).
     #[serde(default = "default_true")]
     pub is_enabled: bool,
+    /// Optional user-defined display name. When set, this is shown as the
+    /// primary label on the node; the operation name becomes a secondary label.
+    #[serde(default)]
+    pub custom_name: Option<String>,
 }
 
 /// Nodes are compared by identity (ID) only, ignoring all other fields.
@@ -99,6 +103,7 @@ impl Node {
                 error_message: None,
                 cached_input_hash: None,
                 is_enabled: true,
+                custom_name: None,
             },
             AddNodeType::Subgraph => Node {
                 id,
@@ -121,6 +126,7 @@ impl Node {
                 error_message: None,
                 cached_input_hash: None,
                 is_enabled: true,
+                custom_name: None,
             },
         }
     }

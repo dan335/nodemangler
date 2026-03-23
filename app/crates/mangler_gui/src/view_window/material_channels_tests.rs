@@ -29,6 +29,8 @@ fn make_node(id: &str, name: &str, outputs: Vec<Output>) -> GraphNode {
         outputs,
         false,
         None,
+        true,
+        None,
     )
 }
 

@@ -29,7 +29,7 @@ impl OpColorHarmonyDoubleSplitComplementary {
     /// Returns the node metadata (name and description) for this operation.
     pub fn settings() -> NodeSettings {
         NodeSettings {
-            name: "double split complementary".to_string(),
+            name: "double split comp".to_string(),
             description: "Generates four harmony colors at +30°, -30°, +150°, and +210° hue offsets from the input, forming a six-color double split-complementary scheme.".to_string(),
         }
     }

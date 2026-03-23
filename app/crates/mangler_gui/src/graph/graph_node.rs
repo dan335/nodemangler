@@ -3,19 +3,41 @@ use crate::graph::graph_node_header::show_graph_node_header;
 use crate::graph::graph_node_info::show_graph_node_info;
 use crate::graph::graph_output::draw_graph_output;
 use crate::themes::theme::Theme;
-use crate::{graph_to_view_space_pos2, view_to_graph_space_pos2, graph_to_view_space, NODE_SIZE};
+use crate::{graph_to_view_space, graph_to_view_space_pos2, view_to_graph_space_pos2, NODE_SIZE};
 use eframe::egui;
 use egui::{Pos2, Rect, Vec2};
 use mangler_core::input::Input;
 use mangler_core::node_settings::NodeSettings;
 use mangler_core::output::Output;
 use mangler_core::AddNodeType;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::time::Duration;
 
 use super::graph_editor::TempConnection;
 use super::graph_node_thumbnail::GraphNodeThumbnail;
 use super::graph_output::draw_graph_output_highlighted;
+
+/// Cached 256-bin histogram for an image output.
+/// Stores luminance and per-channel (R, G, B) distributions.
+/// Keyed by output index on the node; recomputed when the image's change_id differs.
+#[derive(Clone)]
+pub struct HistogramCache {
+    /// 256 bins representing the luminance distribution.
+    pub bins: [u32; 256],
+    /// 256 bins for the red channel.
+    pub bins_r: [u32; 256],
+    /// 256 bins for the green channel.
+    pub bins_g: [u32; 256],
+    /// 256 bins for the blue channel.
+    pub bins_b: [u32; 256],
+    /// The maximum bin count across all histograms (for shared vertical scale).
+    pub max_count: u32,
+    /// Number of channels in the source image (determines RGB vs grayscale display).
+    pub channels: u32,
+    /// The change_id of the image this histogram was computed from.
+    pub image_change_id: String,
+}
 
 #[derive(Clone)]
 pub struct GraphNode {
@@ -33,8 +55,13 @@ pub struct GraphNode {
     pub is_error: bool,
     pub error_message: Option<String>,
     pub is_enabled: bool,
+    /// Optional user-defined display name for this node.
+    pub custom_name: Option<String>,
     /// The node type used to create this node (for copy/paste).
     pub node_type: Option<AddNodeType>,
+    /// Cached histograms for image outputs, keyed by output index.
+    /// Recomputed automatically when the image's change_id differs from the cached one.
+    pub histogram_cache: HashMap<usize, HistogramCache>,
 }
 
 impl GraphNode {
@@ -46,6 +73,8 @@ impl GraphNode {
         outputs: Vec<Output>,
         is_subgraph: bool,
         node_type: Option<AddNodeType>,
+        is_enabled: bool,
+        custom_name: Option<String>,
     ) -> GraphNode {
         GraphNode {
             id,
@@ -61,8 +90,10 @@ impl GraphNode {
             is_busy: false,
             is_error: false,
             error_message: None,
-            is_enabled: true,
+            is_enabled,
+            custom_name,
             node_type,
+            histogram_cache: HashMap::new(),
         }
     }
 
@@ -74,9 +105,13 @@ impl GraphNode {
             graph_view_pos.x + node_view_pos.x,
             graph_view_pos.y + node_view_pos.y,
         );
-        //println!("graph pos node {:?}", graph_pos);
-        //let view_pos = graph_to_view_space_pos2(graph_zoom, graph_pos);
-        let view_size = graph_to_view_space_pos2(graph_zoom, NODE_SIZE.to_pos2());
+        // Add extra height for the operation type row when a custom name is set.
+        let node_size = if self.custom_name.is_some() {
+            Vec2::new(NODE_SIZE.x, NODE_SIZE.y + 12.0)
+        } else {
+            NODE_SIZE
+        };
+        let view_size = graph_to_view_space_pos2(graph_zoom, node_size.to_pos2());
         Rect::from_center_size(graph_pos, view_size.to_vec2())
     }
 
@@ -134,6 +169,7 @@ impl GraphNode {
         show_graph_node_header(
             ui,
             &self.settings.name,
+            self.custom_name.as_deref(),
             node_rect,
             is_editing,
             self.is_subgraph,
@@ -146,7 +182,12 @@ impl GraphNode {
         show_graph_node_info(ui, self.time, node_rect, graph_zoom, theme);
 
         if let Some(thumbnail) = &self.thumbnail {
-            thumbnail.show(ui, self.get_rect(graph_position, graph_zoom).center_bottom(), graph_zoom, theme);
+            thumbnail.show(
+                ui,
+                self.get_rect(graph_position, graph_zoom).center_bottom(),
+                graph_zoom,
+                theme,
+            );
         }
 
         // ------------
@@ -207,7 +248,7 @@ impl GraphNode {
                 bg_response.hovered(),
                 temp_connection.as_ref(),
                 theme,
-                graph_zoom
+                graph_zoom,
             );
 
             if let Some(view_output_index) = input_output_response.view_output {
@@ -237,7 +278,12 @@ impl GraphNode {
 
             if let Some(viewing_index) = is_viewing {
                 if viewing_index == index {
-                    draw_graph_output_highlighted(self.get_output_position(index, node_rect, graph_zoom), ui, theme, graph_zoom);
+                    draw_graph_output_highlighted(
+                        self.get_output_position(index, node_rect, graph_zoom),
+                        ui,
+                        theme,
+                        graph_zoom,
+                    );
                 }
             }
 
@@ -265,14 +311,18 @@ impl GraphNode {
     pub fn get_input_position(&self, index: usize, node_rect: Rect, graph_zoom: f32) -> Pos2 {
         Pos2::new(
             node_rect.left() - graph_to_view_space(graph_zoom, 14.0),
-            node_rect.top() + graph_to_view_space(graph_zoom, 12.0) + graph_to_view_space(graph_zoom, 20.0) * index as f32,
+            node_rect.top()
+                + graph_to_view_space(graph_zoom, 12.0)
+                + graph_to_view_space(graph_zoom, 20.0) * index as f32,
         )
     }
 
     pub fn get_output_position(&self, index: usize, node_rect: Rect, graph_zoom: f32) -> Pos2 {
         Pos2::new(
             node_rect.right() + graph_to_view_space(graph_zoom, 14.0),
-            node_rect.top() + graph_to_view_space(graph_zoom, 12.0) + graph_to_view_space(graph_zoom, 20.0) * index as f32,
+            node_rect.top()
+                + graph_to_view_space(graph_zoom, 12.0)
+                + graph_to_view_space(graph_zoom, 20.0) * index as f32,
         )
     }
 
@@ -353,7 +403,7 @@ pub struct GraphNodeResponse {
     pub temp_connection: Option<TempConnection>,
     pub has_stopped_creating_connection: bool,
     pub connection_to_position: Pos2,
-    pub view_node: Option<usize>,   // usize = output index to view
+    pub view_node: Option<usize>, // usize = output index to view
     pub is_right_click: bool,
     pub is_left_click: bool,
     pub is_cursor_inside: bool,

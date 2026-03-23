@@ -145,8 +145,17 @@ impl Graph {
     ///
     /// For subgraph nodes, a file path input is created so the user can select
     /// which `.mangle.json` file to load. Returns the node ID.
-    pub async fn add_node(&mut self, node_id: String, node_type: AddNodeType, position: Vec2) -> String {
+    pub async fn add_node(
+        &mut self,
+        node_id: String,
+        node_type: AddNodeType,
+        position: Vec2,
+        is_enabled: bool,
+        custom_name: Option<String>,
+    ) -> String {
         let mut node = Node::new(node_id.clone(), node_type.clone(), position);
+        node.is_enabled = is_enabled;
+        node.custom_name = custom_name.clone();
         let mut is_subgraph = false;
 
         if let AddNodeType::Subgraph = node_type {
@@ -174,6 +183,8 @@ impl Graph {
                 outputs: node.outputs.clone(),
                 is_subgraph,
                 node_type: node_type.clone(),
+                is_enabled,
+                custom_name,
             };
 
             match tx.try_send(message) {

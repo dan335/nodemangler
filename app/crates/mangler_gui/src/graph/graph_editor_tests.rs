@@ -15,6 +15,8 @@ fn add_node(editor: &mut GraphEditor, id: &str, pos: Pos2) {
         pos,
         false,
         None,
+        true,
+        None,
     );
 }
 
@@ -40,7 +42,148 @@ fn add_node_with_io(
         pos,
         false,
         None,
+        true,
+        None,
     );
+}
+
+/// Helper to add a node at origin (0,0) with configurable inputs/outputs and connections.
+/// `connected_inputs` is a list of (upstream_node_id, output_index) for each input that should
+/// be connected. Unconnected inputs use None.
+fn add_connected_node(
+    editor: &mut GraphEditor,
+    id: &str,
+    name: &str,
+    num_inputs: usize,
+    num_outputs: usize,
+    connected_inputs: Vec<Option<(String, usize)>>,
+) {
+    let inputs: Vec<Input> = (0..num_inputs)
+        .map(|i| {
+            let mut input = Input::new(format!("in_{}", i), Value::Integer(0), None, None);
+            if let Some(conn) = connected_inputs.get(i).cloned().flatten() {
+                input.connection = Some(conn);
+            }
+            input
+        })
+        .collect();
+    let outputs: Vec<Output> = (0..num_outputs)
+        .map(|i| Output::new(format!("out_{}", i), Value::Integer(0), None))
+        .collect();
+    let mut settings = NodeSettings::default();
+    settings.name = name.to_string();
+    editor.add_node(
+        id.to_string(),
+        settings,
+        inputs,
+        outputs,
+        Pos2::new(0.0, 0.0), // All at origin to trigger auto-layout.
+        false,
+        None,
+        true,
+        None,
+    );
+}
+
+// -- auto_layout tests --
+
+#[test]
+fn test_auto_layout_linear_chain_left_to_right() {
+    // A -> B -> C should lay out in three columns, left to right.
+    let mut editor = GraphEditor::new();
+    add_connected_node(&mut editor, "a", "A", 0, 1, vec![]);
+    add_connected_node(&mut editor, "b", "B", 1, 1, vec![Some(("a".into(), 0))]);
+    add_connected_node(&mut editor, "c", "C", 1, 0, vec![Some(("b".into(), 0))]);
+
+    let moved = editor.auto_layout_if_needed();
+    assert_eq!(moved.len(), 3);
+
+    let pos_a = editor.graph_nodes["a"].position;
+    let pos_b = editor.graph_nodes["b"].position;
+    let pos_c = editor.graph_nodes["c"].position;
+
+    // A is in column 0, B in column 1, C in column 2.
+    assert!(pos_a.x < pos_b.x, "A should be left of B");
+    assert!(pos_b.x < pos_c.x, "B should be left of C");
+
+    // All on the same row (single node per column, centered at same y).
+    assert!((pos_a.y - pos_b.y).abs() < 1.0, "A and B should be at same y");
+    assert!((pos_b.y - pos_c.y).abs() < 1.0, "B and C should be at same y");
+}
+
+#[test]
+fn test_auto_layout_fan_out_groups_downstream() {
+    // A fans out to B and C. D is connected to B only.
+    // A -> B -> D
+    // A -> C
+    // B should be closer to D's upstream, and C should be near B (both from A).
+    let mut editor = GraphEditor::new();
+    add_connected_node(&mut editor, "a", "A", 0, 1, vec![]);
+    add_connected_node(&mut editor, "b", "B", 1, 1, vec![Some(("a".into(), 0))]);
+    add_connected_node(&mut editor, "c", "C", 1, 0, vec![Some(("a".into(), 0))]);
+    add_connected_node(&mut editor, "d", "D", 1, 0, vec![Some(("b".into(), 0))]);
+
+    editor.auto_layout_if_needed();
+
+    let pos_b = editor.graph_nodes["b"].position;
+    let pos_c = editor.graph_nodes["c"].position;
+    let pos_d = editor.graph_nodes["d"].position;
+
+    // B and C are in the same column (column 1).
+    assert!((pos_b.x - pos_c.x).abs() < 1.0, "B and C should be in same column");
+
+    // D is in column 2, to the right of B.
+    assert!(pos_d.x > pos_b.x, "D should be right of B");
+
+    // After barycenter: B should be vertically closer to D than C is to D,
+    // because B connects to D.
+    let b_to_d = (pos_b.y - pos_d.y).abs();
+    let c_to_d = (pos_c.y - pos_d.y).abs();
+    assert!(b_to_d <= c_to_d, "B (connected to D) should be closer to D than C");
+}
+
+#[test]
+fn test_auto_layout_orphans_at_bottom() {
+    // A -> B, and an orphan node Z with no connections.
+    // Z should be placed below A (both in column 0).
+    let mut editor = GraphEditor::new();
+    add_connected_node(&mut editor, "a", "A", 0, 1, vec![]);
+    add_connected_node(&mut editor, "z", "Z_orphan", 0, 0, vec![]);
+    add_connected_node(&mut editor, "b", "B", 1, 0, vec![Some(("a".into(), 0))]);
+
+    editor.auto_layout_if_needed();
+
+    let pos_a = editor.graph_nodes["a"].position;
+    let pos_z = editor.graph_nodes["z"].position;
+
+    // Both A and Z are in column 0 (same x).
+    assert!((pos_a.x - pos_z.x).abs() < 1.0, "A and Z should be in same column");
+
+    // Z (orphan) should be below A after barycenter sorting,
+    // because A has downstream connections and gets a real barycenter,
+    // while Z gets f32::MAX.
+    assert!(pos_z.y > pos_a.y, "Orphan Z should be below connected node A");
+}
+
+#[test]
+fn test_auto_layout_no_layout_when_not_overlapping() {
+    // Nodes at different positions should not be auto-laid out.
+    let mut editor = GraphEditor::new();
+    add_node(&mut editor, "a", Pos2::new(100.0, 100.0));
+    add_node(&mut editor, "b", Pos2::new(300.0, 300.0));
+
+    let moved = editor.auto_layout_if_needed();
+    assert!(moved.is_empty());
+}
+
+#[test]
+fn test_auto_layout_single_node_no_layout() {
+    // A single node should not trigger layout.
+    let mut editor = GraphEditor::new();
+    add_node(&mut editor, "a", Pos2::new(0.0, 0.0));
+
+    let moved = editor.auto_layout_if_needed();
+    assert!(moved.is_empty());
 }
 
 // -- apply_multi_drag tests --

@@ -19,6 +19,8 @@ fn make_node(id: &str, pos: Pos2, inputs: Vec<Input>, outputs: Vec<Output>) -> G
         outputs,
         false,
         Some(AddNodeType::Operation(Operation::OpNumberInputInteger)),
+        true,
+        None,
     )
 }
 
@@ -179,6 +181,7 @@ fn test_centroid_single_node() {
             position: Pos2::new(100.0, 200.0),
             input_values: vec![],
             is_enabled: true,
+            custom_name: None,
         }],
         connections: vec![],
     };
@@ -198,6 +201,7 @@ fn test_centroid_multiple_nodes() {
                 position: Pos2::new(0.0, 0.0),
                 input_values: vec![],
                 is_enabled: true,
+                custom_name: None,
             },
             ClipboardNode {
                 original_id: "b".to_string(),
@@ -205,6 +209,7 @@ fn test_centroid_multiple_nodes() {
                 position: Pos2::new(200.0, 100.0),
                 input_values: vec![],
                 is_enabled: true,
+                custom_name: None,
             },
         ],
         connections: vec![],
@@ -262,6 +267,7 @@ fn test_clipboard_clone() {
             position: Pos2::new(10.0, 20.0),
             input_values: vec![(0, Value::Integer(7))],
             is_enabled: true,
+            custom_name: None,
         }],
         connections: vec![ClipboardConnection {
             output_node_id: "a".to_string(),
@@ -275,4 +281,91 @@ fn test_clipboard_clone() {
     assert_eq!(cb2.nodes.len(), 1);
     assert_eq!(cb2.connections.len(), 1);
     assert_eq!(cb2.nodes[0].original_id, "a");
+}
+
+// === System clipboard serialization ===
+
+#[test]
+fn test_clipboard_string_roundtrip() {
+    // Serialize a clipboard to a string and deserialize it back.
+    let cb = Clipboard {
+        nodes: vec![ClipboardNode {
+            original_id: "x".to_string(),
+            node_type: AddNodeType::Operation(Operation::OpNumberInputInteger),
+            position: Pos2::new(42.0, 99.0),
+            input_values: vec![(0, Value::Integer(7))],
+            is_enabled: false,
+            custom_name: Some("my node".to_string()),
+        }],
+        connections: vec![],
+    };
+
+    let text = cb.to_clipboard_string();
+    assert!(text.starts_with("NODEMANGLER:"));
+
+    let cb2 = Clipboard::from_clipboard_string(&text).expect("should deserialize");
+    assert_eq!(cb2.nodes.len(), 1);
+    assert_eq!(cb2.nodes[0].original_id, "x");
+    assert!((cb2.nodes[0].position.x - 42.0).abs() < 0.001);
+    assert!((cb2.nodes[0].position.y - 99.0).abs() < 0.001);
+    assert_eq!(cb2.nodes[0].input_values.len(), 1);
+    assert!(!cb2.nodes[0].is_enabled);
+    assert_eq!(cb2.nodes[0].custom_name.as_deref(), Some("my node"));
+}
+
+#[test]
+fn test_clipboard_string_roundtrip_with_connections() {
+    let cb = Clipboard {
+        nodes: vec![
+            ClipboardNode {
+                original_id: "a".to_string(),
+                node_type: AddNodeType::Operation(Operation::OpNumberInputInteger),
+                position: Pos2::new(0.0, 0.0),
+                input_values: vec![],
+                is_enabled: true,
+                custom_name: None,
+            },
+            ClipboardNode {
+                original_id: "b".to_string(),
+                node_type: AddNodeType::Operation(Operation::OpNumberInputInteger),
+                position: Pos2::new(200.0, 0.0),
+                input_values: vec![],
+                is_enabled: true,
+                custom_name: None,
+            },
+        ],
+        connections: vec![ClipboardConnection {
+            output_node_id: "a".to_string(),
+            output_index: 0,
+            input_node_id: "b".to_string(),
+            input_index: 0,
+        }],
+    };
+
+    let text = cb.to_clipboard_string();
+    let cb2 = Clipboard::from_clipboard_string(&text).expect("should deserialize");
+    assert_eq!(cb2.nodes.len(), 2);
+    assert_eq!(cb2.connections.len(), 1);
+    assert_eq!(cb2.connections[0].output_node_id, "a");
+    assert_eq!(cb2.connections[0].input_node_id, "b");
+}
+
+#[test]
+fn test_from_clipboard_string_rejects_random_text() {
+    assert!(Clipboard::from_clipboard_string("hello world").is_none());
+}
+
+#[test]
+fn test_from_clipboard_string_rejects_malformed_json() {
+    assert!(Clipboard::from_clipboard_string("NODEMANGLER:{bad json}").is_none());
+}
+
+#[test]
+fn test_from_clipboard_string_rejects_empty() {
+    assert!(Clipboard::from_clipboard_string("").is_none());
+}
+
+#[test]
+fn test_from_clipboard_string_rejects_marker_only() {
+    assert!(Clipboard::from_clipboard_string("NODEMANGLER:").is_none());
 }

@@ -1,4 +1,4 @@
-use crate::{app_menu::app_menu::AppMenu, graph::clipboard::Clipboard, themes::theme::{Theme, set_theme}};
+use crate::{app_menu::app_menu::AppMenu, config::AppConfig, settings::api_keys_panel::ApiKeysPanel, themes::theme::{Theme, set_theme}};
 use eframe::egui;
 use epaint::CornerRadius;
 use crate::program::Program;
@@ -16,8 +16,8 @@ pub struct App {
     current_program: Option<String>,
     theme: Theme,
     view_in_separate_window: bool,
-    /// Shared clipboard for copy/paste across tabs.
-    clipboard: Option<Clipboard>,
+    /// API keys settings panel (modal window).
+    api_keys_panel: ApiKeysPanel,
 }
 
 impl eframe::App for App {
@@ -27,8 +27,6 @@ impl eframe::App for App {
             puffin::GlobalProfiler::lock().new_frame(); // call once per frame!
             // puffin_egui::profiler_window(ctx); // disabled: puffin_egui not compatible with egui 0.33
         }
-
-        ctx.request_repaint();
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // bg
@@ -53,11 +51,24 @@ impl eframe::App for App {
             if let Some(theme) = bar_response.theme_changed_to {
                 set_theme(ctx, theme.clone());
                 self.theme = theme.clone();
+
+                // Persist theme choice to config.
+                let mut config = AppConfig::load();
+                config.theme = Some(theme.config_name().to_string());
+                config.save();
             }
+
+            // Open API keys panel if requested from the menu.
+            if bar_response.show_api_keys {
+                self.api_keys_panel.open = true;
+            }
+
+            // Show the API keys panel window (renders only when open).
+            self.api_keys_panel.show(ctx);
 
             if let Some(current_program) = &self.current_program {
                 if let Some(program) = self.programs.get_mut(current_program) {
-                    program.show(ctx, ui, &self.theme, self.view_in_separate_window, &mut self.clipboard);
+                    program.show(ctx, ui, &self.theme, self.view_in_separate_window);
                 }
             }
 
@@ -101,8 +112,17 @@ impl eframe::App for App {
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         setup_fonts(&cc.egui_ctx);
-        set_theme(&cc.egui_ctx, crate::DEFAULT_THEME);
-        
+
+        // Load persistent config and apply API keys to environment.
+        let config = AppConfig::load();
+        config.apply_api_keys_to_env();
+
+        // Restore theme from config, or use default.
+        let theme = config.theme.as_deref()
+            .and_then(Theme::from_name)
+            .unwrap_or(crate::DEFAULT_THEME);
+        set_theme(&cc.egui_ctx, theme.clone());
+
         let mut programs = HashMap::new();
         let mut current_program: Option<String> = None;
 
@@ -115,9 +135,9 @@ impl App {
             app_menu: AppMenu::new(),
             programs: programs,
             current_program: current_program,
-            theme: crate::DEFAULT_THEME,
+            theme: theme,
             view_in_separate_window: true,
-            clipboard: None,
+            api_keys_panel: ApiKeysPanel::new(),
         }
     }
 }

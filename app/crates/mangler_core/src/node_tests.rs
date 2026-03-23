@@ -263,3 +263,73 @@ fn test_set_output_connection_out_of_bounds_panics() {
     let mut node = make_node_with_io("n", 0, 1);
     node.set_output_connection(5, "x".to_string(), 0);
 }
+
+// === custom_name ===
+
+#[test]
+fn test_custom_name_defaults_to_none() {
+    let node = make_operation_node();
+    assert!(node.custom_name.is_none());
+}
+
+#[test]
+fn test_custom_name_defaults_to_none_subgraph() {
+    let node = make_subgraph_node();
+    assert!(node.custom_name.is_none());
+}
+
+#[test]
+fn test_custom_name_can_be_set() {
+    let mut node = make_operation_node();
+    node.custom_name = Some("mountains image".to_string());
+    assert_eq!(node.custom_name.as_deref(), Some("mountains image"));
+}
+
+#[test]
+fn test_custom_name_can_be_cleared() {
+    let mut node = make_operation_node();
+    node.custom_name = Some("test".to_string());
+    node.custom_name = None;
+    assert!(node.custom_name.is_none());
+}
+
+#[test]
+fn test_custom_name_serialization_roundtrip_with_name() {
+    // Serialize a node with a custom name, then deserialize and verify it persists.
+    let mut node = make_operation_node();
+    node.custom_name = Some("my special node".to_string());
+    let json = serde_json::to_string(&node).unwrap();
+    let deserialized: Node = serde_json::from_str(&json).unwrap();
+    assert_eq!(deserialized.custom_name.as_deref(), Some("my special node"));
+}
+
+#[test]
+fn test_custom_name_serialization_roundtrip_without_name() {
+    // Serialize a node without a custom name, then deserialize and verify it stays None.
+    let node = make_operation_node();
+    let json = serde_json::to_string(&node).unwrap();
+    let deserialized: Node = serde_json::from_str(&json).unwrap();
+    assert!(deserialized.custom_name.is_none());
+}
+
+#[test]
+fn test_custom_name_serde_default_compat() {
+    // Simulate loading an old save file that has no custom_name field.
+    // The #[serde(default)] attribute should make it deserialize as None.
+    let node = make_operation_node();
+    let mut json: serde_json::Value = serde_json::to_value(&node).unwrap();
+    // Remove the custom_name field to simulate an old save format.
+    json.as_object_mut().unwrap().remove("custom_name");
+    let deserialized: Node = serde_json::from_value(json).unwrap();
+    assert!(deserialized.custom_name.is_none());
+}
+
+#[test]
+fn test_custom_name_does_not_affect_equality() {
+    // Node equality is based on ID only, so different custom names should still be equal.
+    let mut a = make_operation_node();
+    let mut b = a.clone();
+    a.custom_name = Some("name A".to_string());
+    b.custom_name = Some("name B".to_string());
+    assert_eq!(a, b);
+}

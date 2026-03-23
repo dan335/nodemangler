@@ -203,7 +203,7 @@ fn show_op_unknown_returns_err() {
 async fn info_shows_disabled_tag() {
     let path = create_temp_graph("info_disabled");
     let node_id = format!("dis-{}", std::process::id());
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()), false).await.unwrap();
+    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()), None, false).await.unwrap();
     cmd_set_enabled(path.clone(), node_id.clone(), false, false).unwrap();
     let graph = load_graph(&path).unwrap();
     let text = format_info_human(&graph, Some(&node_id), false).unwrap();
@@ -216,7 +216,7 @@ async fn info_shows_disabled_tag() {
 async fn info_json_includes_enabled_field() {
     let path = create_temp_graph("info_json_en");
     let node_id = format!("jen-{}", std::process::id());
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()), false).await.unwrap();
+    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()), None, false).await.unwrap();
     cmd_set_enabled(path.clone(), node_id.clone(), false, false).unwrap();
     let graph = load_graph(&path).unwrap();
     let val = format_info_json(&graph, Some(&node_id)).unwrap();
@@ -232,7 +232,7 @@ async fn info_json_includes_enabled_field() {
 async fn show_output_json_format_non_image() {
     let path = create_temp_graph("so_json_ni");
     let node_id = format!("so_jni-{}", std::process::id());
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()), false).await.unwrap();
+    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()), None, false).await.unwrap();
     crate::commands::cmd_set_input(path.clone(), node_id.clone(), vec![0, 1], vec!["decimal:2.0".into(), "decimal:5.0".into()], false).unwrap();
 
     // Run the graph to compute outputs, then format the JSON.
@@ -315,8 +315,8 @@ fn format_info_human_empty_graph() {
 #[tokio::test]
 async fn format_info_human_multiple_nodes_sorted() {
     let path = create_temp_graph("info_multi");
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("zzz".into()), false).await.unwrap();
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("aaa".into()), false).await.unwrap();
+    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("zzz".into()), None, false).await.unwrap();
+    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("aaa".into()), None, false).await.unwrap();
     let graph = load_graph(&path).unwrap();
     let _ = std::fs::remove_file(&path);
     let text = format_info_human(&graph, None, false).unwrap();
@@ -330,7 +330,7 @@ async fn format_info_human_multiple_nodes_sorted() {
 #[tokio::test]
 async fn format_info_human_compact_mode() {
     let path = create_temp_graph("info_compact");
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("cmp".into()), false).await.unwrap();
+    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("cmp".into()), None, false).await.unwrap();
     let graph = load_graph(&path).unwrap();
     let _ = std::fs::remove_file(&path);
     let verbose = format_info_human(&graph, Some("cmp"), false).unwrap();
@@ -343,8 +343,8 @@ async fn format_info_human_compact_mode() {
 #[tokio::test]
 async fn format_info_human_connections_displayed() {
     let path = create_temp_graph("info_conn");
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("src".into()), false).await.unwrap();
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("dst".into()), false).await.unwrap();
+    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("src".into()), None, false).await.unwrap();
+    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("dst".into()), None, false).await.unwrap();
     crate::commands::cmd_connect(path.clone(), "src:0".into(), "dst:0".into(), false).await.unwrap();
     let graph = load_graph(&path).unwrap();
     let _ = std::fs::remove_file(&path);
@@ -376,8 +376,8 @@ fn format_info_json_empty_graph() {
 #[tokio::test]
 async fn format_info_json_multiple_nodes() {
     let path = create_temp_graph("info_json_multi");
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("n1".into()), false).await.unwrap();
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("n2".into()), false).await.unwrap();
+    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("n1".into()), None, false).await.unwrap();
+    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("n2".into()), None, false).await.unwrap();
     let graph = load_graph(&path).unwrap();
     let _ = std::fs::remove_file(&path);
     let val = format_info_json(&graph, None).unwrap();
@@ -389,8 +389,8 @@ async fn format_info_json_multiple_nodes() {
 #[tokio::test]
 async fn format_info_json_connections_present() {
     let path = create_temp_graph("info_json_conn");
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("s".into()), false).await.unwrap();
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("d".into()), false).await.unwrap();
+    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("s".into()), None, false).await.unwrap();
+    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("d".into()), None, false).await.unwrap();
     crate::commands::cmd_connect(path.clone(), "s:0".into(), "d:0".into(), false).await.unwrap();
     let graph = load_graph(&path).unwrap();
     let _ = std::fs::remove_file(&path);

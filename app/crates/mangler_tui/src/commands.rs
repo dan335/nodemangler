@@ -15,25 +15,25 @@ use crate::format::{
     format_show_types_human, format_show_types_json, format_show_values_json, show_values_text,
 };
 use crate::helpers::{
-    load_graph, parse_slot, resolve_op, save_graph, value_type_enum_name, value_type_name,
-    enum_variants,
+    load_graph, node_not_found_error, parse_slot, resolve_op, save_graph, value_type_enum_name,
+    value_type_name, enum_variants,
 };
 use crate::value_parse::parse_typed_value;
 
 // ── Graph mutation helpers ────────────────────────────────────────────────────
 
 /// Add a node to an in-memory graph. Returns the node ID.
-pub(crate) async fn do_add_node(graph: &mut Graph, op_type: &str, id: Option<String>) -> Result<String, String> {
+pub(crate) async fn do_add_node(graph: &mut Graph, op_type: &str, id: Option<String>, custom_name: Option<String>) -> Result<String, String> {
     let operation = resolve_op(op_type)?;
     let node_id = id.unwrap_or_else(get_id);
-    graph.add_node(node_id.clone(), AddNodeType::Operation(operation), glam::Vec2::ZERO).await;
+    graph.add_node(node_id.clone(), AddNodeType::Operation(operation), glam::Vec2::ZERO, true, custom_name).await;
     Ok(node_id)
 }
 
 /// Remove a node from an in-memory graph. Returns the removed node ID.
 pub(crate) async fn do_remove_node(graph: &mut Graph, id: &str) -> Result<String, String> {
     if !graph.nodes.contains_key(id) {
-        return Err(format!("node '{id}' not found"));
+        return Err(node_not_found_error(&graph, id));
     }
     graph.remove_node(id.to_string()).await;
     Ok(id.to_string())
@@ -47,7 +47,7 @@ pub(crate) async fn do_connect(graph: &mut Graph, from: &str, to: &str) -> Resul
 
     // Validate source node and output index.
     let src_node = graph.nodes.get(&output_node_id)
-        .ok_or_else(|| format!("source node '{}' not found", output_node_id))?;
+        .ok_or_else(|| node_not_found_error(&graph, &output_node_id))?;
     if output_index >= src_node.outputs.len() {
         return Err(format!(
             "output index {} out of range on node '{}' (has {} outputs)",
@@ -57,7 +57,7 @@ pub(crate) async fn do_connect(graph: &mut Graph, from: &str, to: &str) -> Resul
 
     // Validate destination node and input index.
     let dst_node = graph.nodes.get(&input_node_id)
-        .ok_or_else(|| format!("destination node '{}' not found", input_node_id))?;
+        .ok_or_else(|| node_not_found_error(&graph, &input_node_id))?;
     if input_index >= dst_node.inputs.len() {
         return Err(format!(
             "input index {} out of range on node '{}' (has {} inputs)",
@@ -72,7 +72,7 @@ pub(crate) async fn do_connect(graph: &mut Graph, from: &str, to: &str) -> Resul
 /// Disconnect a node input in an in-memory graph. Returns a description string.
 pub(crate) async fn do_disconnect(graph: &mut Graph, node: &str, input: usize) -> Result<String, String> {
     if !graph.nodes.contains_key(node) {
-        return Err(format!("node '{node}' not found"));
+        return Err(node_not_found_error(&graph, node));
     }
     graph.remove_connection(node.to_string(), input).await;
     Ok(format!("disconnected {node}:{input}"))
@@ -84,7 +84,7 @@ pub(crate) async fn do_disconnect(graph: &mut Graph, node: &str, input: usize) -
 pub(crate) fn do_set_input(graph: &mut Graph, node: &str, index: usize, value: &str) -> Result<String, String> {
     // Validate node exists.
     let n = graph.nodes.get(node)
-        .ok_or_else(|| format!("node '{node}' not found"))?;
+        .ok_or_else(|| node_not_found_error(&graph, node))?;
 
     // Validate input index is in bounds.
     if index >= n.inputs.len() {
@@ -218,10 +218,10 @@ pub(crate) fn cmd_show_op(op_type: String, json_output: bool) -> Result<(), Stri
     Ok(())
 }
 
-/// `mangle add-node <path> --type <type> [--id <id>]` — add a node to the graph.
-pub(crate) async fn cmd_add_node(path: PathBuf, op_type: String, id: Option<String>, json_output: bool) -> Result<(), String> {
+/// `mangle add-node <path> --type <type> [--id <id>] [--name <name>]` — add a node to the graph.
+pub(crate) async fn cmd_add_node(path: PathBuf, op_type: String, id: Option<String>, custom_name: Option<String>, json_output: bool) -> Result<(), String> {
     let mut graph = load_graph(&path)?;
-    let node_id = do_add_node(&mut graph, &op_type, id).await?;
+    let node_id = do_add_node(&mut graph, &op_type, id, custom_name).await?;
     save_graph(&graph, &path)?;
     if json_output {
         println!("{}", serde_json::json!({"node_id": node_id}));
@@ -310,11 +310,37 @@ pub(crate) fn cmd_set_input(path: PathBuf, node: String, inputs: Vec<usize>, val
     Ok(())
 }
 
+/// `mangle set-name <path> --node <id> --name <name>` — set or clear a custom display name.
+///
+/// An empty string clears the custom name, reverting to the operation name.
+pub(crate) fn cmd_set_name(path: PathBuf, node: String, name: String, json_output: bool) -> Result<(), String> {
+    let mut graph = load_graph(&path)?;
+    if !graph.nodes.contains_key(&node) {
+        return Err(node_not_found_error(&graph, &node));
+    }
+    let n = graph.nodes.get_mut(&node).unwrap();
+    let custom_name = if name.is_empty() { None } else { Some(name.clone()) };
+    n.custom_name = custom_name.clone();
+    save_graph(&graph, &path)?;
+    if json_output {
+        println!("{}", serde_json::json!({"node": node, "name": custom_name}));
+    } else {
+        if let Some(ref n) = custom_name {
+            println!("set name of {node} to \"{n}\"");
+        } else {
+            println!("cleared name of {node}");
+        }
+    }
+    Ok(())
+}
+
 /// `mangle set-enabled <path> --node <id> --enabled <bool>` — enable or disable a node.
 pub(crate) fn cmd_set_enabled(path: PathBuf, node: String, enabled: bool, json_output: bool) -> Result<(), String> {
     let mut graph = load_graph(&path)?;
-    let n = graph.nodes.get_mut(&node)
-        .ok_or_else(|| format!("node '{node}' not found"))?;
+    if !graph.nodes.contains_key(&node) {
+        return Err(node_not_found_error(&graph, &node));
+    }
+    let n = graph.nodes.get_mut(&node).unwrap();
     n.is_enabled = enabled;
     n.is_dirty = true;
     n.cached_input_hash = None;
@@ -358,7 +384,7 @@ pub(crate) async fn cmd_show_output(
 
     // Validate node exists before running.
     if !graph.nodes.contains_key(&node) {
-        return Err(format!("node '{}' not found", node));
+        return Err(node_not_found_error(&graph, &node));
     }
 
     // Run the graph to compute output values.

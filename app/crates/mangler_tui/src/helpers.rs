@@ -26,6 +26,39 @@ pub(crate) fn save_value_to_file(value: &mangler_core::value::Value, path: &Path
     std::fs::write(path, json_str).map_err(|e| format!("failed to write file: {}", e))
 }
 
+// ── Node lookup helpers ───────────────────────────────────────────────────
+
+/// Build a "node not found" error message.
+///
+/// If the given `id` matches a node's custom display name, the error suggests
+/// using the actual node ID instead. Otherwise it lists available node IDs.
+pub(crate) fn node_not_found_error(graph: &Graph, id: &str) -> String {
+    // Check if the user passed a display name instead of a node ID.
+    for (node_id, node) in &graph.nodes {
+        if let Some(ref name) = node.custom_name {
+            if name.eq_ignore_ascii_case(id) {
+                return format!(
+                    "node '{}' not found — '{}' is a display name, use node ID '{}' instead",
+                    id, name, node_id
+                );
+            }
+        }
+    }
+
+    // Generic message with available node IDs.
+    if graph.nodes.is_empty() {
+        format!("node '{}' not found — graph has no nodes", id)
+    } else {
+        let mut ids: Vec<&str> = graph.nodes.keys().map(|s| s.as_str()).collect();
+        ids.sort();
+        format!(
+            "node '{}' not found — available node IDs: {}",
+            id,
+            ids.join(", ")
+        )
+    }
+}
+
 // ── Operation & type conversion helpers ───────────────────────────────────
 
 /// Get the serde variant name for an Operation (e.g. "OpNumberMathAdd").

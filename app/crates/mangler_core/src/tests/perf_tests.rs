@@ -79,7 +79,7 @@ mod perf_tests {
             .add_node(
                 get_id(),
                 AddNodeType::Operation(Operation::OpImageAdjustmentBlur),
-                glam::Vec2::ZERO,
+                glam::Vec2::ZERO, true, None,
             )
             .await;
 
@@ -124,7 +124,7 @@ mod perf_tests {
             .add_node(
                 get_id(),
                 AddNodeType::Operation(Operation::OpImageAdjustmentBlur),
-                glam::Vec2::new(0.0, 0.0),
+                glam::Vec2::new(0.0, 0.0), true, None,
             )
             .await;
 
@@ -135,7 +135,7 @@ mod perf_tests {
                 .add_node(
                     get_id(),
                     AddNodeType::Operation(Operation::OpImageAdjustmentBlur),
-                    glam::Vec2::new(i as f32 * 200.0, 0.0),
+                    glam::Vec2::new(i as f32 * 200.0, 0.0), true, None,
                 )
                 .await;
 
@@ -189,7 +189,7 @@ mod perf_tests {
             .add_node(
                 get_id(),
                 AddNodeType::Operation(Operation::OpImageAdjustmentBlur),
-                glam::Vec2::new(0.0, 0.0),
+                glam::Vec2::new(0.0, 0.0), true, None,
             )
             .await;
 
@@ -201,7 +201,7 @@ mod perf_tests {
                 .add_node(
                     get_id(),
                     AddNodeType::Operation(Operation::OpImageAdjustmentBlur),
-                    glam::Vec2::new(200.0, i as f32 * 100.0),
+                    glam::Vec2::new(200.0, i as f32 * 100.0), true, None,
                 )
                 .await;
 

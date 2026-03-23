@@ -5,6 +5,7 @@ use epaint::Vec2;
 use themes::theme::Theme;
 use std::path::Path;
 mod app_menu;
+mod config;
 mod graph;
 mod node_menu;
 mod program;

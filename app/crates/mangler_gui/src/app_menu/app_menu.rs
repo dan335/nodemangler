@@ -100,6 +100,10 @@ impl AppMenu {
                                         }
                                     }
                                 });
+                                if ui.button("api keys").clicked() {
+                                    bar_response.show_api_keys = true;
+                                    ui.close();
+                                }
                                 ui.checkbox(view_in_separate_window, "viewer in separate window");
                             });
                         });
@@ -243,6 +247,8 @@ pub struct BarResponse {
     pub current_program: Option<String>,
     pub program_to_close: Option<String>,
     pub theme_changed_to: Option<Theme>,
+    /// Whether to open the API keys settings window.
+    pub show_api_keys: bool,
 }
 
 impl BarResponse {
@@ -252,6 +258,7 @@ impl BarResponse {
             current_program: None,
             program_to_close: None,
             theme_changed_to: None,
+            show_api_keys: false,
         }
     }
 }

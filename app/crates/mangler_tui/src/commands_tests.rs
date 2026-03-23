@@ -2,7 +2,7 @@ use super::*;
 
 use mangler_core::value::{Value, ValueType};
 
-use crate::helpers::{create_temp_graph, load_graph};
+use crate::helpers::{create_temp_graph, load_graph, save_graph};
 
 // ── cmd_new ───────────────────────────────────────────────────────────────
 
@@ -87,7 +87,7 @@ fn cmd_set_input_unknown_node_returns_err() {
 async fn cmd_add_node_persists_to_file() {
     let path = create_temp_graph("addnode");
     let node_id = format!("test-node-{}", std::process::id());
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".to_string(), Some(node_id.clone()), None, false).await.unwrap();
     let graph = load_graph(&path).unwrap();
     let _ = std::fs::remove_file(&path);
     assert!(graph.nodes.contains_key(&node_id));
@@ -97,7 +97,7 @@ async fn cmd_add_node_persists_to_file() {
 async fn cmd_add_then_remove_node_leaves_graph_empty() {
     let path = create_temp_graph("addremove");
     let node_id = format!("addremove-{}", std::process::id());
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".to_string(), Some(node_id.clone()), None, false).await.unwrap();
     cmd_remove_node(path.clone(), node_id.clone(), false).await.unwrap();
     let graph = load_graph(&path).unwrap();
     let _ = std::fs::remove_file(&path);
@@ -116,7 +116,7 @@ async fn cmd_remove_node_unknown_returns_err() {
 async fn cmd_set_input_on_real_node_succeeds() {
     let path = create_temp_graph("setinput_valid");
     let node_id = format!("add-node-{}", std::process::id());
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".to_string(), Some(node_id.clone()), None, false).await.unwrap();
     let result = cmd_set_input(path.clone(), node_id.clone(), vec![0], vec![r#"{"Decimal":7.0}"#.to_string()], false);
     assert!(result.is_ok());
     let graph = load_graph(&path).unwrap();
@@ -128,9 +128,9 @@ async fn cmd_set_input_on_real_node_succeeds() {
 #[tokio::test]
 async fn cmd_connect_stores_connection_on_consumer() {
     let path = create_temp_graph("connect");
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some("producer".to_string()), false).await.unwrap();
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some("consumer".to_string()), false).await.unwrap();
-    cmd_connect(path.clone(), "producer:0".to_string(), "consumer:0".to_string(), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".to_string(), Some("producer".to_string()), None, false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".to_string(), Some("consumer".to_string()), None, false).await.unwrap();
+    cmd_connect(path.clone(),"producer:0".to_string(), "consumer:0".to_string(), false).await.unwrap();
     let graph = load_graph(&path).unwrap();
     let _ = std::fs::remove_file(&path);
     assert_eq!(graph.nodes["consumer"].inputs[0].connection, Some(("producer".to_string(), 0)));
@@ -139,9 +139,9 @@ async fn cmd_connect_stores_connection_on_consumer() {
 #[tokio::test]
 async fn cmd_disconnect_removes_connection() {
     let path = create_temp_graph("disconnect");
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some("src".to_string()), false).await.unwrap();
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some("dst".to_string()), false).await.unwrap();
-    cmd_connect(path.clone(), "src:0".to_string(), "dst:0".to_string(), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".to_string(), Some("src".to_string()), None, false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".to_string(), Some("dst".to_string()), None, false).await.unwrap();
+    cmd_connect(path.clone(),"src:0".to_string(), "dst:0".to_string(), false).await.unwrap();
     cmd_disconnect(path.clone(), "dst".to_string(), 0, false).await.unwrap();
     let graph = load_graph(&path).unwrap();
     let _ = std::fs::remove_file(&path);
@@ -159,8 +159,8 @@ async fn cmd_disconnect_unknown_node_returns_err() {
 #[tokio::test]
 async fn cmd_add_node_auto_id_is_unique_across_calls() {
     let path = create_temp_graph("autoid");
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), None, false).await.unwrap();
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), None, false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".to_string(), None, None, false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".to_string(), None, None, false).await.unwrap();
     let graph = load_graph(&path).unwrap();
     let _ = std::fs::remove_file(&path);
     assert_eq!(graph.nodes.len(), 2, "expected exactly 2 distinct nodes");
@@ -172,7 +172,7 @@ async fn cmd_add_node_auto_id_is_unique_across_calls() {
 async fn do_add_node_invalid_op_returns_err() {
     let path = create_temp_graph("do_addnode_bad");
     let mut graph = load_graph(&path).unwrap();
-    assert!(do_add_node(&mut graph, "not/a/real/op", None).await.is_err());
+    assert!(do_add_node(&mut graph,"not/a/real/op", None, None).await.is_err());
     let _ = std::fs::remove_file(&path);
 }
 
@@ -232,7 +232,7 @@ async fn set_input_missing_node_error() {
 async fn set_input_out_of_bounds_error() {
     let path = create_temp_graph("setinput_oob");
     let mut graph = load_graph(&path).unwrap();
-    do_add_node(&mut graph, "numbers/arithmetic/add", Some("oob1".to_string())).await.unwrap();
+    do_add_node(&mut graph,"numbers/arithmetic/add", Some("oob1".to_string()), None).await.unwrap();
     let result = do_set_input(&mut graph, "oob1", 999, r#"{"Integer":1}"#);
     let _ = std::fs::remove_file(&path);
     assert!(result.unwrap_err().contains("out of range"));
@@ -242,7 +242,7 @@ async fn set_input_out_of_bounds_error() {
 async fn set_input_enum_error_includes_valid_values() {
     let path = create_temp_graph("setinput_enum");
     let mut graph = load_graph(&path).unwrap();
-    do_add_node(&mut graph, "colors/manipulation/blend", Some("blend1".to_string())).await.unwrap();
+    do_add_node(&mut graph,"colors/manipulation/blend", Some("blend1".to_string()), None).await.unwrap();
     let blend_node = &graph.nodes["blend1"];
     let blend_idx = blend_node.inputs.iter().position(|i| matches!(i.value.value_type(), ValueType::BlendMode));
     if let Some(idx) = blend_idx {
@@ -256,8 +256,8 @@ async fn set_input_enum_error_includes_valid_values() {
 async fn connect_missing_source_node_error() {
     let path = create_temp_graph("conn_src_miss");
     let mut graph = load_graph(&path).unwrap();
-    do_add_node(&mut graph, "numbers/arithmetic/add", Some("dst".to_string())).await.unwrap();
-    assert!(do_connect(&mut graph, "ghost:0", "dst:0").await.unwrap_err().contains("source node"));
+    do_add_node(&mut graph,"numbers/arithmetic/add", Some("dst".to_string()), None).await.unwrap();
+    assert!(do_connect(&mut graph, "ghost:0", "dst:0").await.unwrap_err().contains("node 'ghost' not found"));
     let _ = std::fs::remove_file(&path);
 }
 
@@ -265,8 +265,8 @@ async fn connect_missing_source_node_error() {
 async fn connect_missing_dest_node_error() {
     let path = create_temp_graph("conn_dst_miss");
     let mut graph = load_graph(&path).unwrap();
-    do_add_node(&mut graph, "numbers/arithmetic/add", Some("src".to_string())).await.unwrap();
-    assert!(do_connect(&mut graph, "src:0", "ghost:0").await.unwrap_err().contains("destination node"));
+    do_add_node(&mut graph,"numbers/arithmetic/add", Some("src".to_string()), None).await.unwrap();
+    assert!(do_connect(&mut graph, "src:0", "ghost:0").await.unwrap_err().contains("node 'ghost' not found"));
     let _ = std::fs::remove_file(&path);
 }
 
@@ -274,8 +274,8 @@ async fn connect_missing_dest_node_error() {
 async fn connect_output_out_of_bounds_error() {
     let path = create_temp_graph("conn_out_oob");
     let mut graph = load_graph(&path).unwrap();
-    do_add_node(&mut graph, "numbers/arithmetic/add", Some("a".to_string())).await.unwrap();
-    do_add_node(&mut graph, "numbers/arithmetic/add", Some("b".to_string())).await.unwrap();
+    do_add_node(&mut graph,"numbers/arithmetic/add", Some("a".to_string()), None).await.unwrap();
+    do_add_node(&mut graph,"numbers/arithmetic/add", Some("b".to_string()), None).await.unwrap();
     let err = do_connect(&mut graph, "a:999", "b:0").await.unwrap_err();
     assert!(err.contains("output index") && err.contains("out of range"));
     let _ = std::fs::remove_file(&path);
@@ -285,8 +285,8 @@ async fn connect_output_out_of_bounds_error() {
 async fn connect_input_out_of_bounds_error() {
     let path = create_temp_graph("conn_in_oob");
     let mut graph = load_graph(&path).unwrap();
-    do_add_node(&mut graph, "numbers/arithmetic/add", Some("a".to_string())).await.unwrap();
-    do_add_node(&mut graph, "numbers/arithmetic/add", Some("b".to_string())).await.unwrap();
+    do_add_node(&mut graph,"numbers/arithmetic/add", Some("a".to_string()), None).await.unwrap();
+    do_add_node(&mut graph,"numbers/arithmetic/add", Some("b".to_string()), None).await.unwrap();
     let err = do_connect(&mut graph, "a:0", "b:999").await.unwrap_err();
     assert!(err.contains("input index") && err.contains("out of range"));
     let _ = std::fs::remove_file(&path);
@@ -296,8 +296,8 @@ async fn connect_input_out_of_bounds_error() {
 async fn connect_valid_still_works() {
     let path = create_temp_graph("conn_valid");
     let mut graph = load_graph(&path).unwrap();
-    do_add_node(&mut graph, "numbers/arithmetic/add", Some("v1".to_string())).await.unwrap();
-    do_add_node(&mut graph, "numbers/arithmetic/add", Some("v2".to_string())).await.unwrap();
+    do_add_node(&mut graph,"numbers/arithmetic/add", Some("v1".to_string()), None).await.unwrap();
+    do_add_node(&mut graph,"numbers/arithmetic/add", Some("v2".to_string()), None).await.unwrap();
     assert!(do_connect(&mut graph, "v1:0", "v2:0").await.is_ok());
     let _ = std::fs::remove_file(&path);
 }
@@ -309,7 +309,7 @@ async fn connect_valid_still_works() {
 async fn set_input_typed_value_decimal_on_real_node() {
     let path = create_temp_graph("typed_decimal");
     let mut graph = load_graph(&path).unwrap();
-    do_add_node(&mut graph, "numbers/arithmetic/add", Some("n1".to_string())).await.unwrap();
+    do_add_node(&mut graph,"numbers/arithmetic/add", Some("n1".to_string()), None).await.unwrap();
     let result = do_set_input(&mut graph, "n1", 0, "decimal:7.5");
     assert!(result.is_ok());
     let stored = &graph.nodes["n1"].inputs[0].value;
@@ -322,7 +322,7 @@ async fn set_input_typed_value_decimal_on_real_node() {
 async fn set_input_typed_value_blend_mode_on_real_node() {
     let path = create_temp_graph("typed_blend");
     let mut graph = load_graph(&path).unwrap();
-    do_add_node(&mut graph, "colors/manipulation/blend", Some("b1".to_string())).await.unwrap();
+    do_add_node(&mut graph,"colors/manipulation/blend", Some("b1".to_string()), None).await.unwrap();
     let blend_node = &graph.nodes["b1"];
     let blend_idx = blend_node.inputs.iter().position(|i| matches!(i.value.value_type(), ValueType::BlendMode));
     if let Some(idx) = blend_idx {
@@ -339,7 +339,7 @@ async fn set_input_typed_value_blend_mode_on_real_node() {
 async fn cmd_set_input_batch_multiple_pairs() {
     let path = create_temp_graph("batch_multi");
     let node_id = format!("batch-{}", std::process::id());
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".to_string(), Some(node_id.clone()), None, false).await.unwrap();
     let result = cmd_set_input(
         path.clone(),
         node_id.clone(),
@@ -376,7 +376,7 @@ fn cmd_set_input_batch_mismatched_counts() {
 async fn cmd_set_input_batch_fails_fast_on_bad_value() {
     let path = create_temp_graph("batch_failfast");
     let node_id = format!("failfast-{}", std::process::id());
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".to_string(), Some(node_id.clone()), None, false).await.unwrap();
     // First value is valid, second is garbage — should fail and NOT save.
     let result = cmd_set_input(
         path.clone(),
@@ -399,7 +399,7 @@ async fn cmd_set_input_batch_fails_fast_on_bad_value() {
 async fn cmd_set_input_single_pair_backward_compat() {
     let path = create_temp_graph("batch_single");
     let node_id = format!("single-{}", std::process::id());
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".to_string(), Some(node_id.clone()), None, false).await.unwrap();
     let result = cmd_set_input(
         path.clone(),
         node_id.clone(),
@@ -420,7 +420,7 @@ async fn cmd_set_input_single_pair_backward_compat() {
 async fn cmd_set_enabled_disables_node() {
     let path = create_temp_graph("set_enabled_off");
     let node_id = format!("en-{}", std::process::id());
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".to_string(), Some(node_id.clone()), None, false).await.unwrap();
     cmd_set_enabled(path.clone(), node_id.clone(), false, false).unwrap();
     let graph = load_graph(&path).unwrap();
     let _ = std::fs::remove_file(&path);
@@ -432,7 +432,7 @@ async fn cmd_set_enabled_disables_node() {
 async fn cmd_set_enabled_re_enables_node() {
     let path = create_temp_graph("set_enabled_on");
     let node_id = format!("en2-{}", std::process::id());
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".to_string(), Some(node_id.clone()), None, false).await.unwrap();
     cmd_set_enabled(path.clone(), node_id.clone(), false, false).unwrap();
     cmd_set_enabled(path.clone(), node_id.clone(), true, false).unwrap();
     let graph = load_graph(&path).unwrap();
@@ -455,7 +455,7 @@ fn cmd_set_enabled_missing_node_returns_err() {
 async fn node_defaults_to_enabled() {
     let path = create_temp_graph("default_enabled");
     let node_id = format!("def-{}", std::process::id());
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".to_string(), Some(node_id.clone()), None, false).await.unwrap();
     let graph = load_graph(&path).unwrap();
     let _ = std::fs::remove_file(&path);
     assert!(graph.nodes[&node_id].is_enabled);
@@ -478,7 +478,7 @@ async fn show_output_node_not_found() {
 async fn show_output_index_out_of_range() {
     let path = create_temp_graph("so_oor");
     let node_id = format!("so_oor-{}", std::process::id());
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".to_string(), Some(node_id.clone()), None, false).await.unwrap();
     let result = cmd_show_output(path.clone(), node_id, Some(99), false, vec![], None, false).await;
     let _ = std::fs::remove_file(&path);
     assert!(result.is_err());
@@ -490,7 +490,7 @@ async fn show_output_index_out_of_range() {
 async fn show_output_non_image_value() {
     let path = create_temp_graph("so_nonimg");
     let node_id = format!("so_ni-{}", std::process::id());
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some(node_id.clone()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".to_string(), Some(node_id.clone()), None, false).await.unwrap();
     cmd_set_input(path.clone(), node_id.clone(), vec![0, 1], vec!["decimal:3.0".into(), "decimal:7.0".into()], false).unwrap();
     // Run show-output and check it succeeds.
     let result = cmd_show_output(path.clone(), node_id.clone(), Some(0), false, vec![], None, false).await;
@@ -513,7 +513,7 @@ fn cmd_info_empty_graph_succeeds() {
 #[tokio::test]
 async fn cmd_info_single_node_succeeds() {
     let path = create_temp_graph("info_single");
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("n1".into()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".into(), Some("n1".into()), None, false).await.unwrap();
     let result = cmd_info(path.clone(), None, false, false);
     let _ = std::fs::remove_file(&path);
     assert!(result.is_ok());
@@ -523,7 +523,7 @@ async fn cmd_info_single_node_succeeds() {
 #[tokio::test]
 async fn cmd_info_compact_mode() {
     let path = create_temp_graph("info_compact");
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("c1".into()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".into(), Some("c1".into()), None, false).await.unwrap();
     let result = cmd_info(path.clone(), None, true, false);
     let _ = std::fs::remove_file(&path);
     assert!(result.is_ok());
@@ -533,7 +533,7 @@ async fn cmd_info_compact_mode() {
 #[tokio::test]
 async fn cmd_info_filter_node() {
     let path = create_temp_graph("info_filter");
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("f1".into()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".into(), Some("f1".into()), None, false).await.unwrap();
     let result = cmd_info(path.clone(), Some("f1".into()), false, false);
     let _ = std::fs::remove_file(&path);
     assert!(result.is_ok());
@@ -603,7 +603,7 @@ async fn cmd_run_empty_graph() {
 #[tokio::test]
 async fn cmd_run_graph_with_node() {
     let path = create_temp_graph("run_node");
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("r1".into()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".into(), Some("r1".into()), None, false).await.unwrap();
     cmd_set_input(path.clone(), "r1".into(), vec![0, 1], vec!["decimal:3.0".into(), "decimal:4.0".into()], false).unwrap();
     let result = cmd_run(path.clone(), false).await;
     let _ = std::fs::remove_file(&path);
@@ -617,7 +617,7 @@ async fn cmd_run_graph_with_node() {
 async fn cmd_show_output_all_outputs() {
     let path = create_temp_graph("so_all");
     let nid = format!("so_all-{}", std::process::id());
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some(nid.clone()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".into(), Some(nid.clone()), None, false).await.unwrap();
     // output_index=None means show all.
     let result = cmd_show_output(path.clone(), nid, None, false, vec![], None, false).await;
     let _ = std::fs::remove_file(&path);
@@ -629,7 +629,7 @@ async fn cmd_show_output_all_outputs() {
 async fn cmd_show_output_sample_non_image_returns_err() {
     let path = create_temp_graph("so_sample_ni");
     let nid = format!("so_sni-{}", std::process::id());
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some(nid.clone()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".into(), Some(nid.clone()), None, false).await.unwrap();
     let result = cmd_show_output(path.clone(), nid, Some(0), false, vec!["center".into()], None, false).await;
     let _ = std::fs::remove_file(&path);
     assert!(result.is_err());
@@ -643,7 +643,7 @@ async fn cmd_show_output_sample_non_image_returns_err() {
 async fn do_add_node_custom_id_matches() {
     let path = create_temp_graph("do_add_custom");
     let mut graph = load_graph(&path).unwrap();
-    let id = do_add_node(&mut graph, "numbers/arithmetic/add", Some("my-custom-id".into())).await.unwrap();
+    let id = do_add_node(&mut graph,"numbers/arithmetic/add", Some("my-custom-id".into()), None).await.unwrap();
     let _ = std::fs::remove_file(&path);
     assert_eq!(id, "my-custom-id");
 }
@@ -653,7 +653,7 @@ async fn do_add_node_custom_id_matches() {
 async fn do_add_node_auto_id_not_empty() {
     let path = create_temp_graph("do_add_auto");
     let mut graph = load_graph(&path).unwrap();
-    let id = do_add_node(&mut graph, "numbers/arithmetic/add", None).await.unwrap();
+    let id = do_add_node(&mut graph,"numbers/arithmetic/add", None, None).await.unwrap();
     let _ = std::fs::remove_file(&path);
     assert!(!id.is_empty(), "auto-generated ID should not be empty");
 }
@@ -663,8 +663,8 @@ async fn do_add_node_auto_id_not_empty() {
 async fn do_connect_returns_description() {
     let path = create_temp_graph("do_conn_desc");
     let mut graph = load_graph(&path).unwrap();
-    do_add_node(&mut graph, "numbers/arithmetic/add", Some("a".into())).await.unwrap();
-    do_add_node(&mut graph, "numbers/arithmetic/add", Some("b".into())).await.unwrap();
+    do_add_node(&mut graph,"numbers/arithmetic/add", Some("a".into()), None).await.unwrap();
+    do_add_node(&mut graph,"numbers/arithmetic/add", Some("b".into()), None).await.unwrap();
     let msg = do_connect(&mut graph, "a:0", "b:0").await.unwrap();
     let _ = std::fs::remove_file(&path);
     assert!(msg.contains("connected"), "expected 'connected' in: {msg}");
@@ -675,8 +675,8 @@ async fn do_connect_returns_description() {
 async fn do_disconnect_returns_description() {
     let path = create_temp_graph("do_disc_desc");
     let mut graph = load_graph(&path).unwrap();
-    do_add_node(&mut graph, "numbers/arithmetic/add", Some("a".into())).await.unwrap();
-    do_add_node(&mut graph, "numbers/arithmetic/add", Some("b".into())).await.unwrap();
+    do_add_node(&mut graph,"numbers/arithmetic/add", Some("a".into()), None).await.unwrap();
+    do_add_node(&mut graph,"numbers/arithmetic/add", Some("b".into()), None).await.unwrap();
     do_connect(&mut graph, "a:0", "b:0").await.unwrap();
     let msg = do_disconnect(&mut graph, "b", 0).await.unwrap();
     let _ = std::fs::remove_file(&path);
@@ -690,12 +690,12 @@ async fn do_disconnect_returns_description() {
 async fn workflow_create_add_connect_run() {
     let path = create_temp_graph("wf_full");
     // Add two add nodes.
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("a".into()), false).await.unwrap();
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("b".into()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".into(), Some("a".into()), None, false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".into(), Some("b".into()), None, false).await.unwrap();
     // Set inputs on node "a".
     cmd_set_input(path.clone(), "a".into(), vec![0, 1], vec!["decimal:2.0".into(), "decimal:3.0".into()], false).unwrap();
     // Connect a:0 (output) -> b:0 (input).
-    cmd_connect(path.clone(), "a:0".into(), "b:0".into(), false).await.unwrap();
+    cmd_connect(path.clone(),"a:0".into(), "b:0".into(), false).await.unwrap();
     // Run the graph.
     let result = cmd_run(path.clone(), false).await;
     let _ = std::fs::remove_file(&path);
@@ -706,10 +706,10 @@ async fn workflow_create_add_connect_run() {
 #[tokio::test]
 async fn workflow_connect_disconnect_reconnect() {
     let path = create_temp_graph("wf_reconn");
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("x".into()), false).await.unwrap();
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("y".into()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".into(), Some("x".into()), None, false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".into(), Some("y".into()), None, false).await.unwrap();
     // Connect.
-    cmd_connect(path.clone(), "x:0".into(), "y:0".into(), false).await.unwrap();
+    cmd_connect(path.clone(),"x:0".into(), "y:0".into(), false).await.unwrap();
     let g1 = load_graph(&path).unwrap();
     assert_eq!(g1.nodes["y"].inputs[0].connection, Some(("x".into(), 0)));
     // Disconnect.
@@ -717,7 +717,7 @@ async fn workflow_connect_disconnect_reconnect() {
     let g2 = load_graph(&path).unwrap();
     assert_eq!(g2.nodes["y"].inputs[0].connection, None);
     // Reconnect.
-    cmd_connect(path.clone(), "x:0".into(), "y:0".into(), false).await.unwrap();
+    cmd_connect(path.clone(),"x:0".into(), "y:0".into(), false).await.unwrap();
     let g3 = load_graph(&path).unwrap();
     let _ = std::fs::remove_file(&path);
     assert_eq!(g3.nodes["y"].inputs[0].connection, Some(("x".into(), 0)));
@@ -727,14 +727,14 @@ async fn workflow_connect_disconnect_reconnect() {
 #[tokio::test]
 async fn workflow_three_node_chain() {
     let path = create_temp_graph("wf_chain");
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("a".into()), false).await.unwrap();
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("b".into()), false).await.unwrap();
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some("c".into()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".into(), Some("a".into()), None, false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".into(), Some("b".into()), None, false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".into(), Some("c".into()), None, false).await.unwrap();
     // Set initial values on node a.
     cmd_set_input(path.clone(), "a".into(), vec![0, 1], vec!["decimal:1.0".into(), "decimal:2.0".into()], false).unwrap();
     // Chain: a:0 -> b:0, b:0 -> c:0.
-    cmd_connect(path.clone(), "a:0".into(), "b:0".into(), false).await.unwrap();
-    cmd_connect(path.clone(), "b:0".into(), "c:0".into(), false).await.unwrap();
+    cmd_connect(path.clone(),"a:0".into(), "b:0".into(), false).await.unwrap();
+    cmd_connect(path.clone(),"b:0".into(), "c:0".into(), false).await.unwrap();
     // Run.
     let result = cmd_run(path.clone(), false).await;
     let _ = std::fs::remove_file(&path);
@@ -746,7 +746,7 @@ async fn workflow_three_node_chain() {
 async fn workflow_set_input_then_run_verifies_output() {
     let path = create_temp_graph("wf_verify");
     let nid = format!("verify-{}", std::process::id());
-    cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), Some(nid.clone()), false).await.unwrap();
+    cmd_add_node(path.clone(),"numbers/arithmetic/add".into(), Some(nid.clone()), None, false).await.unwrap();
     cmd_set_input(path.clone(), nid.clone(), vec![0, 1], vec!["decimal:10.0".into(), "decimal:20.0".into()], false).unwrap();
     // Load and run in-memory to inspect computed outputs (saved graphs don't persist output values).
     let mut graph = load_graph(&path).unwrap();
@@ -755,4 +755,234 @@ async fn workflow_set_input_then_run_verifies_output() {
     let output = &graph.nodes[&nid].outputs[0].value;
     // Add operation: 10.0 + 20.0 = 30.0
     assert!(matches!(output, Value::Decimal(v) if (*v - 30.0).abs() < 0.01), "expected 30.0, got: {:?}", output);
+}
+
+// === add_node with is_enabled and custom_name ===
+
+/// do_add_node creates a node that is enabled by default with no custom name.
+#[tokio::test]
+async fn do_add_node_default_enabled_and_no_name() {
+    let path = create_temp_graph("add_defaults");
+    let mut graph = load_graph(&path).unwrap();
+    let id = do_add_node(&mut graph,"numbers/arithmetic/add", Some("n1".into()), None).await.unwrap();
+    let _ = std::fs::remove_file(&path);
+
+    let node = graph.nodes.get(&id).unwrap();
+    assert!(node.is_enabled, "node should be enabled by default");
+    assert!(node.custom_name.is_none(), "node should have no custom name by default");
+}
+
+/// custom_name persists through save and reload.
+#[tokio::test]
+async fn custom_name_persists_through_save_reload() {
+    let path = create_temp_graph("name_persist");
+    let mut graph = load_graph(&path).unwrap();
+    let id = do_add_node(&mut graph,"numbers/arithmetic/add", Some("named".into()), None).await.unwrap();
+
+    // Set a custom name directly on the node and save.
+    graph.nodes.get_mut(&id).unwrap().custom_name = Some("mountains image".to_string());
+    save_graph(&graph, &path).unwrap();
+
+    // Reload and verify.
+    let reloaded = load_graph(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(
+        reloaded.nodes.get(&id).unwrap().custom_name.as_deref(),
+        Some("mountains image"),
+    );
+}
+
+/// is_enabled persists through save and reload.
+#[tokio::test]
+async fn is_enabled_persists_through_save_reload() {
+    let path = create_temp_graph("enabled_persist");
+    let mut graph = load_graph(&path).unwrap();
+    let id = do_add_node(&mut graph,"numbers/arithmetic/add", Some("dis".into()), None).await.unwrap();
+
+    // Disable the node and save.
+    graph.nodes.get_mut(&id).unwrap().is_enabled = false;
+    save_graph(&graph, &path).unwrap();
+
+    // Reload and verify.
+    let reloaded = load_graph(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+    assert!(!reloaded.nodes.get(&id).unwrap().is_enabled);
+}
+
+/// Old save files without custom_name field load with None.
+#[tokio::test]
+async fn old_save_without_custom_name_loads_as_none() {
+    let path = create_temp_graph("old_compat");
+    let mut graph = load_graph(&path).unwrap();
+    do_add_node(&mut graph,"numbers/arithmetic/add", Some("old".into()), None).await.unwrap();
+    save_graph(&graph, &path).unwrap();
+
+    // Remove the custom_name field from the JSON to simulate an old save file.
+    let json_str = std::fs::read_to_string(&path).unwrap();
+    let cleaned = json_str.replace(r#","custom_name":null"#, "");
+    std::fs::write(&path, cleaned).unwrap();
+
+    // Reload — should still work with custom_name defaulting to None.
+    let reloaded = load_graph(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+    assert!(reloaded.nodes.get("old").unwrap().custom_name.is_none());
+}
+
+// === do_add_node with custom_name ===
+
+/// do_add_node with a custom name sets the name on the created node.
+#[tokio::test]
+async fn do_add_node_with_custom_name() {
+    let path = create_temp_graph("add_with_name");
+    let mut graph = load_graph(&path).unwrap();
+    let id = do_add_node(&mut graph, "numbers/arithmetic/add", Some("n1".into()), Some("My Adder".into())).await.unwrap();
+    let _ = std::fs::remove_file(&path);
+
+    let node = graph.nodes.get(&id).unwrap();
+    assert_eq!(node.custom_name.as_deref(), Some("My Adder"));
+}
+
+// === cmd_set_name ===
+
+/// cmd_set_name sets a custom name on an existing node.
+#[tokio::test]
+async fn cmd_set_name_sets_custom_name() {
+    let path = create_temp_graph("set_name_basic");
+    let mut graph = load_graph(&path).unwrap();
+    do_add_node(&mut graph, "numbers/arithmetic/add", Some("n1".into()), None).await.unwrap();
+    save_graph(&graph, &path).unwrap();
+
+    cmd_set_name(path.clone(), "n1".to_string(), "My Node".to_string(), false).unwrap();
+    let reloaded = load_graph(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(reloaded.nodes.get("n1").unwrap().custom_name.as_deref(), Some("My Node"));
+}
+
+/// cmd_set_name with empty string clears the custom name.
+#[tokio::test]
+async fn cmd_set_name_empty_clears_name() {
+    let path = create_temp_graph("set_name_clear");
+    let mut graph = load_graph(&path).unwrap();
+    do_add_node(&mut graph, "numbers/arithmetic/add", Some("n1".into()), Some("Old Name".into())).await.unwrap();
+    save_graph(&graph, &path).unwrap();
+
+    cmd_set_name(path.clone(), "n1".to_string(), "".to_string(), false).unwrap();
+    let reloaded = load_graph(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+    assert!(reloaded.nodes.get("n1").unwrap().custom_name.is_none());
+}
+
+/// cmd_set_name on a missing node returns an error.
+#[test]
+fn cmd_set_name_missing_node_returns_err() {
+    let path = create_temp_graph("set_name_miss");
+    let result = cmd_set_name(path.clone(), "ghost".to_string(), "Boo".to_string(), false);
+    let _ = std::fs::remove_file(&path);
+    assert!(result.is_err());
+}
+
+// ── AI operations TUI tests ─────────────────────────────────────────────────
+
+/// show-ops with --group ai lists AI operations.
+#[test]
+fn cmd_show_ops_ai_category() {
+    let result = cmd_show_ops(Some("ai".to_string()), None, false, false);
+    assert!(result.is_ok());
+}
+
+/// show-op for ai/ai_generate returns Ok.
+#[test]
+fn cmd_show_op_ai_generate() {
+    let result = cmd_show_op("ai/ai_generate".to_string(), false);
+    assert!(result.is_ok());
+}
+
+/// show-op for ai/ai_edit returns Ok.
+#[test]
+fn cmd_show_op_ai_edit() {
+    let result = cmd_show_op("ai/ai_edit".to_string(), false);
+    assert!(result.is_ok());
+}
+
+/// show-op for ai/ai_variation returns Ok.
+#[test]
+fn cmd_show_op_ai_variation() {
+    let result = cmd_show_op("ai/ai_variation".to_string(), false);
+    assert!(result.is_ok());
+}
+
+/// Can add an ai/ai_generate node to a graph.
+#[tokio::test]
+async fn cmd_add_ai_generate_node() {
+    let path = create_temp_graph("ai_gen_add");
+    let node_id = format!("ai-gen-{}", std::process::id());
+    let result = cmd_add_node(path.clone(), "ai/ai_generate".to_string(), Some(node_id.clone()), None, false).await;
+    assert!(result.is_ok(), "add ai/ai_generate failed: {:?}", result.err());
+    let graph = load_graph(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+    assert!(graph.nodes.contains_key(&node_id));
+}
+
+/// Can add an ai/ai_edit node to a graph.
+#[tokio::test]
+async fn cmd_add_ai_edit_node() {
+    let path = create_temp_graph("ai_edit_add");
+    let node_id = format!("ai-edit-{}", std::process::id());
+    let result = cmd_add_node(path.clone(), "ai/ai_edit".to_string(), Some(node_id.clone()), None, false).await;
+    assert!(result.is_ok(), "add ai/ai_edit failed: {:?}", result.err());
+    let graph = load_graph(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+    assert!(graph.nodes.contains_key(&node_id));
+}
+
+/// Can add an ai/ai_variation node to a graph.
+#[tokio::test]
+async fn cmd_add_ai_variation_node() {
+    let path = create_temp_graph("ai_var_add");
+    let node_id = format!("ai-var-{}", std::process::id());
+    let result = cmd_add_node(path.clone(), "ai/ai_variation".to_string(), Some(node_id.clone()), None, false).await;
+    assert!(result.is_ok(), "add ai/ai_variation failed: {:?}", result.err());
+    let graph = load_graph(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+    assert!(graph.nodes.contains_key(&node_id));
+}
+
+/// Can set a text prompt on an AI generate node.
+#[tokio::test]
+async fn cmd_set_ai_prompt_input() {
+    let path = create_temp_graph("ai_prompt_set");
+    let node_id = format!("ai-prompt-{}", std::process::id());
+    cmd_add_node(path.clone(), "ai/ai_generate".to_string(), Some(node_id.clone()), None, false).await.unwrap();
+    let result = cmd_set_input(path.clone(), node_id.clone(), vec![0], vec!["text:a beautiful landscape".to_string()], false);
+    assert!(result.is_ok());
+    let graph = load_graph(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+    let stored = &graph.nodes[&node_id].inputs[0].value;
+    assert!(matches!(stored, Value::Text(s) if s == "a beautiful landscape"));
+}
+
+/// Can set an API key on an AI generate node.
+#[tokio::test]
+async fn cmd_set_ai_api_key_input() {
+    let path = create_temp_graph("ai_key_set");
+    let node_id = format!("ai-key-{}", std::process::id());
+    cmd_add_node(path.clone(), "ai/ai_generate".to_string(), Some(node_id.clone()), None, false).await.unwrap();
+    // api key is input index 4 on ai_generate
+    let result = cmd_set_input(path.clone(), node_id.clone(), vec![4], vec!["text:sk-test-key".to_string()], false);
+    assert!(result.is_ok());
+    let graph = load_graph(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+    let stored = &graph.nodes[&node_id].inputs[4].value;
+    assert!(matches!(stored, Value::Text(s) if s == "sk-test-key"));
+}
+
+/// AI nodes appear correctly in graph info output.
+#[tokio::test]
+async fn cmd_ai_node_in_graph_info() {
+    let path = create_temp_graph("ai_info");
+    let node_id = format!("ai-info-{}", std::process::id());
+    cmd_add_node(path.clone(), "ai/ai_generate".to_string(), Some(node_id.clone()), None, false).await.unwrap();
+    let result = cmd_info(path.clone(), None, false, false);
+    let _ = std::fs::remove_file(&path);
+    assert!(result.is_ok());
 }

@@ -1,24 +1,46 @@
 use eframe::egui::Pos2;
 use mangler_core::value::Value;
 use mangler_core::AddNodeType;
+use serde::{Serialize, Deserialize};
+
+/// Prefix used to identify NodeMangler clipboard data in the system clipboard.
+const CLIPBOARD_MARKER: &str = "NODEMANGLER:";
+
+/// Serde helper to serialize/deserialize egui's `Pos2` as `[f32; 2]`.
+mod pos2_serde {
+    use eframe::egui::Pos2;
+    use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S: Serializer>(pos: &Pos2, s: S) -> Result<S::Ok, S::Error> {
+        [pos.x, pos.y].serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Pos2, D::Error> {
+        let [x, y] = <[f32; 2]>::deserialize(d)?;
+        Ok(Pos2::new(x, y))
+    }
+}
 
 /// A snapshot of a single node captured during a copy operation.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ClipboardNode {
     /// Original node ID (used to remap connections when pasting).
     pub original_id: String,
     /// The operation/subgraph type needed to recreate this node.
     pub node_type: AddNodeType,
     /// Position in graph space at copy time.
+    #[serde(with = "pos2_serde")]
     pub position: Pos2,
     /// Input values at copy time (index, value). Images are excluded to avoid memory bloat.
     pub input_values: Vec<(usize, Value)>,
     /// Whether the node was enabled when copied.
     pub is_enabled: bool,
+    /// User-defined custom name, if any.
+    pub custom_name: Option<String>,
 }
 
 /// A connection between two copied nodes (both endpoints are in the clipboard).
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ClipboardConnection {
     /// Original source (upstream) node ID.
     pub output_node_id: String,
@@ -31,7 +53,7 @@ pub struct ClipboardConnection {
 }
 
 /// The full clipboard contents from a copy operation.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Clipboard {
     /// The copied nodes.
     pub nodes: Vec<ClipboardNode>,
@@ -80,6 +102,7 @@ impl Clipboard {
                 position: node.position,
                 input_values,
                 is_enabled: node.is_enabled,
+                custom_name: node.custom_name.clone(),
             });
 
             // Capture internal connections (where the output node is also selected).
@@ -110,6 +133,20 @@ impl Clipboard {
         let sum_x: f32 = self.nodes.iter().map(|n| n.position.x).sum();
         let sum_y: f32 = self.nodes.iter().map(|n| n.position.y).sum();
         Pos2::new(sum_x / n, sum_y / n)
+    }
+
+    /// Serialize the clipboard to a string for the system clipboard.
+    /// Prepends a marker so we can quickly identify our data on paste.
+    pub fn to_clipboard_string(&self) -> String {
+        let json = serde_json::to_string(self).unwrap_or_default();
+        format!("{}{}", CLIPBOARD_MARKER, json)
+    }
+
+    /// Try to deserialize a clipboard from system clipboard text.
+    /// Returns `None` if the text doesn't start with our marker or JSON is invalid.
+    pub fn from_clipboard_string(text: &str) -> Option<Clipboard> {
+        let json = text.strip_prefix(CLIPBOARD_MARKER)?;
+        serde_json::from_str(json).ok()
     }
 }
 

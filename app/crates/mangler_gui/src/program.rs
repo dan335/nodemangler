@@ -99,34 +99,19 @@ impl Program {
         ui: &mut egui::Ui,
         theme: &Theme,
         view_in_separate_window: bool,
-        clipboard: &mut Option<Clipboard>,
     ) {
         puffin::profile_scope!("central panel show");
 
-        // Copy/paste keyboard shortcuts — checked early before widgets consume the events.
-        // On Windows, Ctrl+C arrives as Event::Copy and Ctrl+V arrives as a Key release
-        // event with modifiers.command set, so we check both event types.
-        {
-            let (ctrl_c, ctrl_v) = ctx.input(|i| {
-                let mut copy = false;
-                let mut paste = false;
-                for event in &i.events {
-                    match event {
-                        egui::Event::Copy => copy = true,
-                        egui::Event::Paste(_) => paste = true,
-                        egui::Event::Key { key, modifiers, .. } => {
-                            if modifiers.command {
-                                if *key == egui::Key::C { copy = true; }
-                                if *key == egui::Key::V { paste = true; }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                (copy, paste)
-            });
+        // Update pointer position early so paste places nodes at the current cursor.
+        if let Some(pos) = ctx.pointer_latest_pos() {
+            self.pointer_position = pos;
+        }
 
-            // Ctrl+C: copy selected nodes
+        // Copy/paste keyboard shortcuts.
+        {
+            let (ctrl_c, paste_text) = ctx.input(|i| detect_copy_paste(&i.events));
+
+            // Ctrl+C: copy selected nodes to system clipboard
             if ctrl_c {
                 let mut selection = self.graph_editor.selected_node_ids.clone();
                 if selection.is_empty() {
@@ -137,12 +122,12 @@ impl Program {
 
                 if selection.is_empty() {
                     self.status_message = Some(("Nothing to copy — select a node first".to_string(), std::time::Instant::now()));
-                } else if let Some(new_clipboard) = Clipboard::from_selection(
+                } else if let Some(cb) = Clipboard::from_selection(
                     &selection,
                     &self.graph_editor.graph_nodes,
                 ) {
-                    let count = new_clipboard.nodes.len();
-                    *clipboard = Some(new_clipboard);
+                    let count = cb.nodes.len();
+                    ctx.copy_text(cb.to_clipboard_string());
                     self.status_message = Some((
                         format!("Copied {} node{}", count, if count == 1 { "" } else { "s" }),
                         std::time::Instant::now(),
@@ -150,22 +135,23 @@ impl Program {
                 }
             }
 
-            // Ctrl+V: paste from clipboard
-            if ctrl_v {
-                if let Some(cb) = clipboard.clone() {
+            // Ctrl+V: paste nodes from system clipboard
+            if let Some(text) = paste_text {
+                if let Some(cb) = Clipboard::from_clipboard_string(&text) {
                     let count = cb.nodes.len();
                     self.paste_clipboard(&cb);
                     self.status_message = Some((
                         format!("Pasted {} node{}", count, if count == 1 { "" } else { "s" }),
                         std::time::Instant::now(),
                     ));
-                } else {
-                    self.status_message = Some(("Nothing to paste — copy nodes first".to_string(), std::time::Instant::now()));
                 }
+                // Non-node clipboard content is silently ignored.
             }
         }
 
+        let mut received_messages = false;
         while let Ok(graph_changed_message) = self.rx_graph_changed.try_recv() {
+            received_messages = true;
             match graph_changed_message {
                 GraphChangedMessage::AddedNode {
                     node_id,
@@ -175,6 +161,8 @@ impl Program {
                     position,
                     is_subgraph,
                     node_type,
+                    is_enabled,
+                    custom_name,
                 } => {
                     self.graph_editor.add_node(
                         node_id,
@@ -184,9 +172,9 @@ impl Program {
                         Pos2::new(position.x, position.y),
                         is_subgraph,
                         Some(node_type),
+                        is_enabled,
+                        custom_name,
                     );
-
-                    //self.needs_to_save = true;
                 }
                 GraphChangedMessage::LoadedNode { node } => {
                     let (is_subgraph, add_node_type) = match &node.node_type {
@@ -198,7 +186,7 @@ impl Program {
                         }
                     };
 
-                    let mut graph_node = GraphNode::new(
+                    let graph_node = GraphNode::new(
                         node.id.clone(),
                         Pos2::new(node.position.x, node.position.y),
                         node.settings,
@@ -206,8 +194,9 @@ impl Program {
                         node.outputs,
                         is_subgraph,
                         add_node_type,
+                        node.is_enabled,
+                        node.custom_name,
                     );
-                    graph_node.is_enabled = node.is_enabled;
 
                     self.graph_editor.graph_nodes.insert(node.id, graph_node);
                 }
@@ -290,6 +279,7 @@ impl Program {
         }
 
         while let Ok(node_changed_message) = self.rx_node_changed.try_recv() {
+            received_messages = true;
             match node_changed_message {
                 NodeChangedMessage::InputChanged {
                     node_id,
@@ -455,10 +445,6 @@ impl Program {
 
         let app_rect = ctx.content_rect();
 
-        if let Some(pos) = ctx.pointer_latest_pos() {
-            self.pointer_position = pos;
-        }
-
         // dropped files
         // can't figure out  how to get pointer position
         // so just put in middle of screen
@@ -476,7 +462,7 @@ impl Program {
                                                 let x = app_rect.center().x + fastrand::f32() * random_size - random_size * 0.5;
                                                 let y = app_rect.center().y + fastrand::f32() * random_size - random_size * 0.5;
                                                 let pos = view_to_graph_space_pos2(self.graph_editor.zoom, Pos2::new(x, y)) - self.graph_editor.position.to_vec2();
-                                                if let Ok(node_id) = self.add_node(AddNodeType::Operation(mangler_core::operations::Operation::OpImageInputFile), pos) {
+                                                if let Ok(node_id) = self.add_node(AddNodeType::Operation(mangler_core::operations::Operation::OpImageInputFile), pos, true, None) {
 
                                                     let message = ChangeNodeMessage::SetInput { node_id, input_index: 0, value: Value::Path(path.clone()) };
 
@@ -561,6 +547,7 @@ impl Program {
                         show_graph_settings = false;
 
                         if node_settings_response.deselect_node {
+                            self.graph_editor.selected_node_ids.remove(editing_node_id);
                             self.editing_node_id = None;
                         }
                     }
@@ -581,6 +568,18 @@ impl Program {
                             Err(err) => {
                                 println!("Error sending graph_message: {:?}", err);
                             }
+                        }
+                    }
+
+                    // auto arrange requested
+                    if graph_settings_response.auto_arrange {
+                        let moved_nodes = self.graph_editor.auto_arrange();
+                        for (node_id, new_pos) in moved_nodes {
+                            let message = ChangeNodeMessage::SetPosition {
+                                node_id,
+                                position: glam::f32::vec2(new_pos.x, new_pos.y),
+                            };
+                            let _ = self.tx_change_node.try_send(message);
                         }
                     }
 
@@ -708,13 +707,15 @@ impl Program {
             }
         }
 
-        // Delete selected node on Delete key
-        if let Some(node_id) = &self.editing_node_id {
-            let delete_pressed = ctx.input(|i| i.key_pressed(egui::Key::Delete));
-            if delete_pressed {
-                let node_id = node_id.clone();
+        // Delete all selected nodes on Delete key
+        let delete_pressed = ctx.input(|i| i.key_pressed(egui::Key::Delete));
+        if delete_pressed {
+            let node_ids = collect_selected_nodes_to_delete(
+                &mut self.graph_editor.selected_node_ids,
+                &mut self.editing_node_id,
+            );
+            for node_id in node_ids {
                 self.remove_node(node_id);
-                self.editing_node_id = None;
             }
         }
 
@@ -732,7 +733,7 @@ impl Program {
                 let from_connection = self.node_search_popup.from_connection.clone();
 
                 if let Ok(new_node_id) =
-                    self.add_node(AddNodeType::Operation(operation.clone()), graph_pos)
+                    self.add_node(AddNodeType::Operation(operation.clone()), graph_pos, true, None)
                 {
                     self.edit_node(new_node_id.clone());
 
@@ -766,6 +767,8 @@ impl Program {
                             AddNodeType::Operation(operation.clone()),
                             view_to_graph_space_pos2(self.graph_editor.zoom, self.pointer_position)
                                 - self.graph_editor.position.to_vec2(),
+                            true,
+                            None,
                         ) {
                             self.edit_node(node_id);
                         }
@@ -776,6 +779,8 @@ impl Program {
                             AddNodeType::Subgraph,
                             view_to_graph_space_pos2(self.graph_editor.zoom, self.pointer_position)
                                 - self.graph_editor.position.to_vec2(),
+                            true,
+                            None,
                         ) {
                             self.edit_node(node_id);
                         }
@@ -870,19 +875,25 @@ impl Program {
             egui::Color32::from(theme.get().text_faint),
         );
 
-        // // if a node is busy request redraw
-        // for (_, node) in self.graph_editor.graph_nodes.iter() {
-        //     if node.is_busy {
-        //         ctx.request_repaint();
-        //         break;
-        //     }
-        // }
+        // Request repaint only when needed:
+        // - Immediately if we received engine messages this frame
+        // - Immediately if a status message animation is active
+        // - Otherwise poll at 10fps for new engine messages
+        if received_messages {
+            ctx.request_repaint();
+        } else if self.status_message.is_some() {
+            ctx.request_repaint();
+        } else {
+            ctx.request_repaint_after(Duration::from_millis(100));
+        }
     }
 
     pub fn add_node(
         &mut self,
         node_type: AddNodeType,
         position_graph_space: Pos2,
+        is_enabled: bool,
+        custom_name: Option<String>,
     ) -> Result<String, ManglerError> {
         let node_id = get_id();
 
@@ -890,6 +901,8 @@ impl Program {
             node_id: node_id.clone(),
             node_type,
             position: glam::f32::Vec2::new(position_graph_space.x, position_graph_space.y),
+            is_enabled,
+            custom_name,
         };
 
         match self.tx_change_graph.try_send(add_node_message) {
@@ -986,7 +999,12 @@ impl Program {
                 clipboard_node.position.y + offset.y,
             );
 
-            if let Ok(new_id) = self.add_node(clipboard_node.node_type.clone(), new_pos) {
+            if let Ok(new_id) = self.add_node(
+                clipboard_node.node_type.clone(),
+                new_pos,
+                clipboard_node.is_enabled,
+                clipboard_node.custom_name.clone(),
+            ) {
                 id_map.insert(clipboard_node.original_id.clone(), new_id.clone());
 
                 // Restore input values.
@@ -996,16 +1014,9 @@ impl Program {
                         input_index: *input_index,
                         value: value.clone(),
                     };
-                    let _ = self.tx_change_node.try_send(message);
-                }
-
-                // Restore enabled state.
-                if !clipboard_node.is_enabled {
-                    let message = ChangeNodeMessage::SetEnabled {
-                        node_id: new_id.clone(),
-                        set_to: false,
-                    };
-                    let _ = self.tx_change_node.try_send(message);
+                    if let Err(err) = self.tx_change_node.try_send(message) {
+                        println!("Error sending SetInput during paste: {:?}", err);
+                    }
                 }
             }
         }
@@ -1110,3 +1121,44 @@ impl NewConnection {
         }
     }
 }
+
+/// Drain the selected-node set and clear the editing node, returning the IDs to delete.
+///
+/// Returns an empty vec when there is nothing selected.
+fn collect_selected_nodes_to_delete(
+    selected_node_ids: &mut std::collections::HashSet<String>,
+    editing_node_id: &mut Option<String>,
+) -> Vec<String> {
+    if selected_node_ids.is_empty() {
+        return Vec::new();
+    }
+    let ids: Vec<String> = selected_node_ids.drain().collect();
+    *editing_node_id = None;
+    ids
+}
+
+/// Scan a frame's events and return `(copy, paste_text)`.
+///
+/// - `copy` is true when `Event::Copy` fires (Ctrl/Cmd+C).
+/// - `paste_text` contains the system clipboard text when `Event::Paste` fires (Ctrl/Cmd+V).
+///   Returns `None` if no paste event occurred.
+///
+/// We rely entirely on `Event::Copy` and `Event::Paste` which are emitted by egui-winit.
+/// `Event::Key` is not used because egui-winit intercepts Ctrl+C/V on key-down and only
+/// emits key-release events with unreliable modifier state.
+fn detect_copy_paste(events: &[egui::Event]) -> (bool, Option<String>) {
+    let mut copy = false;
+    let mut paste_text: Option<String> = None;
+    for event in events {
+        match event {
+            egui::Event::Copy => copy = true,
+            egui::Event::Paste(text) => paste_text = Some(text.clone()),
+            _ => {}
+        }
+    }
+    (copy, paste_text)
+}
+
+#[cfg(test)]
+#[path = "program_tests.rs"]
+mod tests;
