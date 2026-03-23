@@ -7,6 +7,7 @@ use mangler_core::{
     AddNodeType, ChangeGraphMessage, ChangeNodeMessage, GraphChangedMessage, NewGraphError,
     NodeChangedMessage,
 };
+use crate::graph::clipboard::Clipboard;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -43,6 +44,8 @@ pub struct Program {
     pointer_position: Pos2,
     graph_run_time: Duration,
     node_search_popup: NodeSearchPopup,
+    /// Temporary status message shown on screen (text, expiry time).
+    status_message: Option<(String, std::time::Instant)>,
 }
 
 impl Program {
@@ -77,6 +80,7 @@ impl Program {
                 pointer_position: Pos2::ZERO,
                 graph_run_time: Duration::ZERO,
                 node_search_popup: NodeSearchPopup::new(),
+                status_message: None,
             }),
             Err(error) => Err(NewGraphError(format!(
                 "Error creating program. {:?}",
@@ -95,8 +99,71 @@ impl Program {
         ui: &mut egui::Ui,
         theme: &Theme,
         view_in_separate_window: bool,
+        clipboard: &mut Option<Clipboard>,
     ) {
         puffin::profile_scope!("central panel show");
+
+        // Copy/paste keyboard shortcuts — checked early before widgets consume the events.
+        // On Windows, Ctrl+C arrives as Event::Copy and Ctrl+V arrives as a Key release
+        // event with modifiers.command set, so we check both event types.
+        {
+            let (ctrl_c, ctrl_v) = ctx.input(|i| {
+                let mut copy = false;
+                let mut paste = false;
+                for event in &i.events {
+                    match event {
+                        egui::Event::Copy => copy = true,
+                        egui::Event::Paste(_) => paste = true,
+                        egui::Event::Key { key, modifiers, .. } => {
+                            if modifiers.command {
+                                if *key == egui::Key::C { copy = true; }
+                                if *key == egui::Key::V { paste = true; }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                (copy, paste)
+            });
+
+            // Ctrl+C: copy selected nodes
+            if ctrl_c {
+                let mut selection = self.graph_editor.selected_node_ids.clone();
+                if selection.is_empty() {
+                    if let Some(editing_id) = &self.editing_node_id {
+                        selection.insert(editing_id.clone());
+                    }
+                }
+
+                if selection.is_empty() {
+                    self.status_message = Some(("Nothing to copy — select a node first".to_string(), std::time::Instant::now()));
+                } else if let Some(new_clipboard) = Clipboard::from_selection(
+                    &selection,
+                    &self.graph_editor.graph_nodes,
+                ) {
+                    let count = new_clipboard.nodes.len();
+                    *clipboard = Some(new_clipboard);
+                    self.status_message = Some((
+                        format!("Copied {} node{}", count, if count == 1 { "" } else { "s" }),
+                        std::time::Instant::now(),
+                    ));
+                }
+            }
+
+            // Ctrl+V: paste from clipboard
+            if ctrl_v {
+                if let Some(cb) = clipboard.clone() {
+                    let count = cb.nodes.len();
+                    self.paste_clipboard(&cb);
+                    self.status_message = Some((
+                        format!("Pasted {} node{}", count, if count == 1 { "" } else { "s" }),
+                        std::time::Instant::now(),
+                    ));
+                } else {
+                    self.status_message = Some(("Nothing to paste — copy nodes first".to_string(), std::time::Instant::now()));
+                }
+            }
+        }
 
         while let Ok(graph_changed_message) = self.rx_graph_changed.try_recv() {
             match graph_changed_message {
@@ -107,6 +174,7 @@ impl Program {
                     outputs,
                     position,
                     is_subgraph,
+                    node_type,
                 } => {
                     self.graph_editor.add_node(
                         node_id,
@@ -115,21 +183,20 @@ impl Program {
                         outputs,
                         Pos2::new(position.x, position.y),
                         is_subgraph,
+                        Some(node_type),
                     );
 
                     //self.needs_to_save = true;
                 }
                 GraphChangedMessage::LoadedNode { node } => {
-                    let mut is_subgraph = false;
-
-                    if let NodeType::Subgraph {
-                        path: _,
-                        graph: _,
-                        rx_node_changed: _,
-                    } = node.node_type
-                    {
-                        is_subgraph = true;
-                    }
+                    let (is_subgraph, add_node_type) = match &node.node_type {
+                        NodeType::Operation { operation } => {
+                            (false, Some(AddNodeType::Operation(operation.clone())))
+                        }
+                        NodeType::Subgraph { .. } => {
+                            (true, Some(AddNodeType::Subgraph))
+                        }
+                    };
 
                     let mut graph_node = GraphNode::new(
                         node.id.clone(),
@@ -138,6 +205,7 @@ impl Program {
                         node.inputs,
                         node.outputs,
                         is_subgraph,
+                        add_node_type,
                     );
                     graph_node.is_enabled = node.is_enabled;
 
@@ -150,6 +218,7 @@ impl Program {
                     if self.viewing_node_id_index.as_ref().map(|(id, _)| id) == Some(&node_id) {
                         self.viewing_node_id_index = None;
                     }
+                    self.graph_editor.selected_node_ids.remove(&node_id);
                     self.graph_editor.remove_node(&node_id);
                     //self.needs_to_save = true;
                 }
@@ -571,10 +640,10 @@ impl Program {
                 self.node_search_popup.is_open,
             );
 
-            if let Some(new_node_position) = graph_editor_response.new_node_position {
+            for (node_id, pos) in graph_editor_response.new_node_positions {
                 let node_position_message = ChangeNodeMessage::SetPosition {
-                    node_id: new_node_position.0,
-                    position: glam::f32::vec2(new_node_position.1.x, new_node_position.1.y),
+                    node_id,
+                    position: glam::f32::vec2(pos.x, pos.y),
                 };
 
                 match self.tx_change_node.try_send(node_position_message) {
@@ -749,6 +818,29 @@ impl Program {
             );
         }
 
+        // show status message (copy/paste feedback)
+        if let Some((msg, created)) = &self.status_message {
+            let elapsed = created.elapsed();
+            if elapsed < std::time::Duration::from_secs(2) {
+                // Fade out over the last 0.5s
+                let alpha = if elapsed.as_secs_f32() > 1.5 {
+                    ((2.0 - elapsed.as_secs_f32()) / 0.5 * 255.0) as u8
+                } else {
+                    255
+                };
+                let pos = Pos2::new(app_rect.center().x, app_rect.bottom() - 40.0);
+                ui.painter().text(
+                    pos,
+                    egui::Align2::CENTER_BOTTOM,
+                    msg,
+                    egui::FontId::proportional(14.0),
+                    egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha),
+                );
+            } else {
+                self.status_message = None;
+            }
+        }
+
         // show timing in bottom right corner
         {
             let graph_ms = self.graph_run_time.as_secs_f64() * 1000.0;
@@ -769,7 +861,7 @@ impl Program {
             app_rect.bottom() - 10.0,
         );
         let txt =
-            "left click: edit      right click: view      ctrl + left click: delete      delete: delete selected".to_string();
+            "left click: edit      right click: view      ctrl + left click: delete      delete: delete selected      shift + click: multi-select      ctrl+c: copy      ctrl+v: paste".to_string();
         ui.painter().text(
             pos,
             egui::Align2::LEFT_BOTTOM,
@@ -863,6 +955,85 @@ impl Program {
                     err
                 );
             }
+        }
+    }
+
+    /// Paste nodes from the clipboard into the graph.
+    ///
+    /// Creates new nodes at positions offset from the cursor, restores input values
+    /// and internal connections, then selects all newly pasted nodes.
+    fn paste_clipboard(&mut self, cb: &Clipboard) {
+        use std::collections::HashMap;
+
+        // Compute paste offset: center the pasted nodes on the current pointer position.
+        let centroid = cb.centroid();
+        let paste_target = view_to_graph_space_pos2(
+            self.graph_editor.zoom,
+            self.pointer_position,
+        ) - self.graph_editor.position.to_vec2();
+        let offset = egui::Vec2::new(
+            paste_target.x - centroid.x,
+            paste_target.y - centroid.y,
+        );
+
+        // Map old node IDs to new node IDs.
+        let mut id_map: HashMap<String, String> = HashMap::new();
+
+        // Create nodes.
+        for clipboard_node in &cb.nodes {
+            let new_pos = Pos2::new(
+                clipboard_node.position.x + offset.x,
+                clipboard_node.position.y + offset.y,
+            );
+
+            if let Ok(new_id) = self.add_node(clipboard_node.node_type.clone(), new_pos) {
+                id_map.insert(clipboard_node.original_id.clone(), new_id.clone());
+
+                // Restore input values.
+                for (input_index, value) in &clipboard_node.input_values {
+                    let message = ChangeNodeMessage::SetInput {
+                        node_id: new_id.clone(),
+                        input_index: *input_index,
+                        value: value.clone(),
+                    };
+                    let _ = self.tx_change_node.try_send(message);
+                }
+
+                // Restore enabled state.
+                if !clipboard_node.is_enabled {
+                    let message = ChangeNodeMessage::SetEnabled {
+                        node_id: new_id.clone(),
+                        set_to: false,
+                    };
+                    let _ = self.tx_change_node.try_send(message);
+                }
+            }
+        }
+
+        // Recreate internal connections using remapped IDs.
+        for conn in &cb.connections {
+            if let (Some(new_output_id), Some(new_input_id)) = (
+                id_map.get(&conn.output_node_id),
+                id_map.get(&conn.input_node_id),
+            ) {
+                self.add_connection(
+                    new_input_id.clone(),
+                    conn.input_index,
+                    new_output_id.clone(),
+                    conn.output_index,
+                );
+            }
+        }
+
+        // Select all newly pasted nodes.
+        self.graph_editor.selected_node_ids.clear();
+        for new_id in id_map.values() {
+            self.graph_editor.selected_node_ids.insert(new_id.clone());
+        }
+
+        // Edit the first pasted node.
+        if let Some(first_id) = id_map.values().next() {
+            self.editing_node_id = Some(first_id.clone());
         }
     }
 

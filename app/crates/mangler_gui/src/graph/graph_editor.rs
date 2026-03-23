@@ -9,8 +9,8 @@ use eframe::{
 };
 use egui::epaint::CubicBezierShape;
 use egui::Pos2;
-use mangler_core::{input::Input, node_settings::NodeSettings, output::Output, value::ValueType};
-use std::{collections::HashMap, time::Instant};
+use mangler_core::{input::Input, node_settings::NodeSettings, output::Output, value::ValueType, AddNodeType};
+use std::{collections::{HashMap, HashSet}, time::Instant};
 
 const ZOOM_MULTIPLIER: f32 = 0.001;
 const ZOOM_BOUNDS: [f32; 2] = [0.15, 5.0];
@@ -27,6 +27,9 @@ pub struct GraphEditor {
     // if a node was clicked on when was it clicked and what is it's node_id
     // used to check for click or double click
     last_node_click: Option<(Instant, String)>,
+
+    /// Set of currently selected node IDs (for multi-selection and copy/paste).
+    pub selected_node_ids: HashSet<String>,
 }
 
 impl GraphEditor {
@@ -40,6 +43,7 @@ impl GraphEditor {
             temp_connection: None,
             last_node_click: None,
             previous_cursor_primary_down: None,
+            selected_node_ids: HashSet::new(),
         }
     }
 
@@ -59,7 +63,7 @@ impl GraphEditor {
 
         let editor_rect = ui.max_rect();
         let editor_bg_response =
-            ui.allocate_rect(editor_rect, egui::Sense::drag().union(egui::Sense::hover()));
+            ui.allocate_rect(editor_rect, egui::Sense::click().union(egui::Sense::drag()).union(egui::Sense::hover()));
         //let panel_cursor_position = Pos2::new(cursor_position.x - editor_rect.min.x, cursor_position.y - editor_rect.min.y);
 
         if editor_rect.contains(cursor_position) && !is_mouse_over_viewer && !is_popup_open {
@@ -155,6 +159,8 @@ impl GraphEditor {
 
         // draw nodes
         let mut has_stopped_creating_connection = false;
+        // If a selected node is dragged, we apply the same delta to all other selected nodes after the loop.
+        let mut multi_drag: Option<(String, egui::Vec2)> = None;
         //let mut connection_to_position = Pos2::ZERO;
 
         // connections
@@ -193,13 +199,9 @@ impl GraphEditor {
         for (graph_node_id, graph_node) in self.graph_nodes.iter_mut() {
             puffin::profile_scope!("graph panel.graph_nodes.iter()");
 
-            // are we editing node
-            let mut is_editing = false;
-            if let Some(n) = editing_node_id {
-                if n == graph_node_id {
-                    is_editing = true;
-                }
-            }
+            // are we editing or selected
+            let is_editing = editing_node_id.as_ref() == Some(graph_node_id);
+            let is_selected = self.selected_node_ids.contains(graph_node_id.as_str());
 
             // are we viewing node
             let mut is_viewing: Option<usize> = None;
@@ -209,22 +211,24 @@ impl GraphEditor {
                 }
             }
 
-            // draw node
+            // draw node (highlight if editing or selected)
             let graph_node_response = graph_node.show(
                 ui,
                 self.position,
                 self.zoom,
                 cursor_position,
-                is_editing,
+                is_editing || is_selected,
                 is_viewing,
                 self.temp_connection.clone(),
                 theme,
             );
 
-            // node moved
-            if let Some(new_position) = graph_node_response.new_position {
-                graph_editor_response.new_node_position =
-                    Some((graph_node_id.clone(), new_position));
+            // node moved — record delta to apply to other selected nodes after the loop
+            if let Some(delta) = graph_node_response.drag_delta {
+                graph_editor_response.new_node_positions.push((graph_node_id.clone(), graph_node.position));
+                if self.selected_node_ids.contains(graph_node_id.as_str()) {
+                    multi_drag = Some((graph_node_id.clone(), delta));
+                }
             }
 
             // mouse over it?
@@ -249,11 +253,8 @@ impl GraphEditor {
             // click on node
             // edit or delete node
             if graph_node_response.is_left_click {
-                let mut is_command_down = false;
-                ui.input(|i| {
-                    if i.modifiers.command {
-                        is_command_down = true;
-                    }
+                let (is_command_down, is_shift_down) = ui.input(|i| {
+                    (i.modifiers.command, i.modifiers.shift)
                 });
 
                 if is_command_down {
@@ -261,8 +262,20 @@ impl GraphEditor {
                     graph_editor_response
                         .nodes_to_delete
                         .push(graph_node_id.clone());
+                } else if is_shift_down {
+                    // shift+click: toggle node in multi-selection
+                    if self.selected_node_ids.contains(graph_node_id.as_str()) {
+                        self.selected_node_ids.remove(graph_node_id.as_str());
+                    } else {
+                        self.selected_node_ids.insert(graph_node_id.clone());
+                    }
+
                 } else {
+                    // plain click: select only this node, edit it
+                    self.selected_node_ids.clear();
+                    self.selected_node_ids.insert(graph_node_id.clone());
                     graph_editor_response.editing_node_id = Some(graph_node_id.clone());
+
                 }
             }
 
@@ -271,6 +284,12 @@ impl GraphEditor {
             if graph_node_response.is_right_click {
                 graph_editor_response.viewing_node_id_index = Some((graph_node_id.clone(), 0));
             }
+        }
+
+        // Apply drag delta to all other selected nodes (multi-node drag).
+        if let Some((dragged_node_id, delta)) = multi_drag {
+            let moved = self.apply_multi_drag(&dragged_node_id, delta);
+            graph_editor_response.new_node_positions.extend(moved);
         }
 
         // ------------------------
@@ -345,6 +364,7 @@ impl GraphEditor {
 
         if editor_bg_response.clicked_by(egui::PointerButton::Primary) && !is_cursor_over_node {
             graph_editor_response.clear_editing_node = true;
+            self.selected_node_ids.clear();
         } else if editor_bg_response.clicked_by(egui::PointerButton::Secondary)
             && !is_cursor_over_node
         {
@@ -475,6 +495,21 @@ impl GraphEditor {
         self.last_drag_position = None;
     }
 
+    /// Apply a drag delta to all selected nodes except the one already dragged.
+    /// Returns (node_id, new_position) for each node that was moved.
+    pub fn apply_multi_drag(&mut self, dragged_node_id: &str, delta: egui::Vec2) -> Vec<(String, Pos2)> {
+        let mut moved = Vec::new();
+        for other_id in self.selected_node_ids.iter() {
+            if other_id.as_str() != dragged_node_id {
+                if let Some(other_node) = self.graph_nodes.get_mut(other_id) {
+                    other_node.position += delta;
+                    moved.push((other_id.clone(), other_node.position));
+                }
+            }
+        }
+        moved
+    }
+
     pub fn add_node(
         &mut self,
         node_id: String,
@@ -483,10 +518,8 @@ impl GraphEditor {
         outputs: Vec<Output>,
         position_graph_space: Pos2,
         is_subgraph: bool,
+        node_type: Option<AddNodeType>,
     ) {
-        //let inverse_zoom = 1.0 / self.zoom;
-        //let position = Pos2::new(position_graph_space.x, position_graph_space.y);
-
         let node = GraphNode::new(
             node_id.clone(),
             position_graph_space,
@@ -494,6 +527,7 @@ impl GraphEditor {
             inputs,
             outputs,
             is_subgraph,
+            node_type,
         );
 
         self.graph_nodes.insert(node_id, node);
@@ -643,7 +677,8 @@ pub struct GraphEditorResponse {
     pub clear_viewing_node: bool,
     pub nodes_to_delete: Vec<String>,
     pub connections_to_delete: Vec<(String, usize)>, // node id, input index
-    pub new_node_position: Option<(String, Pos2)>,
+    /// Positions of all nodes that moved this frame (node_id, new_position).
+    pub new_node_positions: Vec<(String, Pos2)>,
     pub dropped_connection: Option<TempConnection>,
 }
 
@@ -658,7 +693,7 @@ impl GraphEditorResponse {
             connections_to_delete: Vec::new(),
             clear_editing_node: false, // should editing node be cleared.  clicked on graph bg
             clear_viewing_node: false,
-            new_node_position: None,
+            new_node_positions: Vec::new(),
             dropped_connection: None,
         }
     }
@@ -716,3 +751,7 @@ fn distance_to_cubic_bezier_curve(point: Pos2, points: [Pos2; 4]) -> f32 {
         Pos2 { x, y }
     }
 }
+
+#[cfg(test)]
+#[path = "graph_editor_tests.rs"]
+mod tests;

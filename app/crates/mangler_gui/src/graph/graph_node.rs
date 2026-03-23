@@ -9,6 +9,7 @@ use egui::{Pos2, Rect, Vec2};
 use mangler_core::input::Input;
 use mangler_core::node_settings::NodeSettings;
 use mangler_core::output::Output;
+use mangler_core::AddNodeType;
 use std::fmt::Debug;
 use std::time::Duration;
 
@@ -32,6 +33,8 @@ pub struct GraphNode {
     pub is_error: bool,
     pub error_message: Option<String>,
     pub is_enabled: bool,
+    /// The node type used to create this node (for copy/paste).
+    pub node_type: Option<AddNodeType>,
 }
 
 impl GraphNode {
@@ -42,6 +45,7 @@ impl GraphNode {
         inputs: Vec<Input>,
         outputs: Vec<Output>,
         is_subgraph: bool,
+        node_type: Option<AddNodeType>,
     ) -> GraphNode {
         GraphNode {
             id,
@@ -58,6 +62,7 @@ impl GraphNode {
             is_error: false,
             error_message: None,
             is_enabled: true,
+            node_type,
         }
     }
 
@@ -91,12 +96,13 @@ impl GraphNode {
 
         if self.is_dragging {
             if let Some(last_drag_position) = self.last_drag_position {
-                self.position += view_to_graph_space_pos2(
+                let delta = view_to_graph_space_pos2(
                     graph_zoom,
                     panel_cursor_position - last_drag_position.to_vec2(),
                 )
                 .to_vec2();
-                graph_node_response.new_position = Some(self.position);
+                self.position += delta;
+                graph_node_response.drag_delta = Some(delta);
             }
 
             self.last_drag_position = Some(panel_cursor_position);
@@ -351,7 +357,8 @@ pub struct GraphNodeResponse {
     pub is_right_click: bool,
     pub is_left_click: bool,
     pub is_cursor_inside: bool,
-    pub new_position: Option<Pos2>,
+    /// The movement delta in graph space applied this frame (for multi-node drag).
+    pub drag_delta: Option<Vec2>,
 }
 
 impl GraphNodeResponse {
@@ -364,7 +371,7 @@ impl GraphNodeResponse {
             is_right_click: false,
             is_left_click: false,
             is_cursor_inside: false,
-            new_position: None,
+            drag_delta: None,
         }
     }
 }

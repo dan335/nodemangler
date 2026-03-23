@@ -35,17 +35,6 @@ impl MaterialChannel {
         }
     }
 
-    /// Keywords that indicate this channel when found in an output name.
-    fn keywords(&self) -> &[&str] {
-        match self {
-            MaterialChannel::Albedo => &["albedo", "base_color", "basecolor", "diffuse", "color"],
-            MaterialChannel::Normal => &["normal"],
-            MaterialChannel::Roughness => &["roughness", "rough"],
-            MaterialChannel::Metallic => &["metallic", "metal"],
-            MaterialChannel::Height => &["height", "displacement", "bump"],
-            MaterialChannel::AmbientOcclusion => &["ao", "ambient_occlusion", "occlusion"],
-        }
-    }
 }
 
 /// Points to a specific output on a specific node.
@@ -58,15 +47,12 @@ pub struct MaterialAssignment {
 /// Stores assignments from PBR channels to graph node outputs.
 pub struct MaterialChannelAssignments {
     pub assignments: HashMap<MaterialChannel, MaterialAssignment>,
-    /// Whether auto-detection has been run for the current viewed node.
-    auto_detected_for: Option<String>,
 }
 
 impl MaterialChannelAssignments {
     pub fn new() -> Self {
         Self {
             assignments: HashMap::new(),
-            auto_detected_for: None,
         }
     }
 
@@ -82,25 +68,6 @@ impl MaterialChannelAssignments {
         self.assignments.remove(&channel);
     }
 
-    /// Auto-detect channel assignments by scanning all graph node output names.
-    /// Only runs once per viewed node (tracked by node_id).
-    pub fn auto_detect(
-        &mut self,
-        viewed_node_id: &str,
-        graph_nodes: &HashMap<String, GraphNode>,
-    ) {
-        if self.auto_detected_for.as_deref() == Some(viewed_node_id) {
-            return;
-        }
-        self.auto_detected_for = Some(viewed_node_id.to_string());
-        self.assignments.clear();
-
-        for channel in MaterialChannel::ALL {
-            if let Some(assignment) = find_best_match(channel, graph_nodes) {
-                self.assignments.insert(channel, assignment);
-            }
-        }
-    }
 }
 
 /// Resolved material data ready for the 3D renderer.
@@ -163,37 +130,6 @@ fn resolve_image(
     } else {
         None
     }
-}
-
-/// Find the best matching output for a channel by scanning output names.
-fn find_best_match(
-    channel: MaterialChannel,
-    graph_nodes: &HashMap<String, GraphNode>,
-) -> Option<MaterialAssignment> {
-    let keywords = channel.keywords();
-
-    for (node_id, node) in graph_nodes {
-        for (output_index, output) in node.outputs.iter().enumerate() {
-            // Only consider image outputs
-            if !matches!(&output.value, mangler_core::value::Value::Image { .. }) {
-                continue;
-            }
-
-            let name_lower = output.name.to_lowercase();
-            let node_name_lower = node.settings.name.to_lowercase();
-
-            for keyword in keywords {
-                if name_lower.contains(keyword) || node_name_lower.contains(keyword) {
-                    return Some(MaterialAssignment {
-                        node_id: node_id.clone(),
-                        output_index,
-                    });
-                }
-            }
-        }
-    }
-
-    None
 }
 
 /// Collect all image-type outputs across all graph nodes.

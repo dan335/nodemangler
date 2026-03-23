@@ -28,6 +28,7 @@ fn make_node(id: &str, name: &str, outputs: Vec<Output>) -> GraphNode {
         vec![],
         outputs,
         false,
+        None,
     )
 }
 
@@ -68,72 +69,6 @@ fn clear_assignment() {
 
     assignments.clear(MaterialChannel::Normal);
     assert!(assignments.get(MaterialChannel::Normal).is_none());
-}
-
-#[test]
-fn auto_detect_by_output_name() {
-    let graph = make_graph_with_named_outputs(vec![
-        ("n1", "Generator", "Normal"),
-        ("n2", "Generator", "Height"),
-        ("n3", "Generator", "Albedo"),
-    ]);
-
-    let mut assignments = MaterialChannelAssignments::new();
-    assignments.auto_detect("viewed", &graph);
-
-    assert!(assignments.get(MaterialChannel::Normal).is_some());
-    assert!(assignments.get(MaterialChannel::Height).is_some());
-    assert!(assignments.get(MaterialChannel::Albedo).is_some());
-    // These have no matching outputs
-    assert!(assignments.get(MaterialChannel::Roughness).is_none());
-    assert!(assignments.get(MaterialChannel::Metallic).is_none());
-}
-
-#[test]
-fn auto_detect_by_node_name() {
-    let graph = make_graph_with_named_outputs(vec![
-        ("n1", "Normal From Height", "Output"),
-        ("n2", "AO From Height", "Output"),
-    ]);
-
-    let mut assignments = MaterialChannelAssignments::new();
-    assignments.auto_detect("viewed", &graph);
-
-    assert!(assignments.get(MaterialChannel::Normal).is_some());
-    assert!(assignments.get(MaterialChannel::AmbientOcclusion).is_some());
-}
-
-#[test]
-fn auto_detect_skips_non_image_outputs() {
-    let mut nodes = HashMap::new();
-    let output = make_output("Normal", Value::Decimal(0.5));
-    let node = make_node("n1", "Node", vec![output]);
-    nodes.insert("n1".to_string(), node);
-
-    let mut assignments = MaterialChannelAssignments::new();
-    assignments.auto_detect("viewed", &nodes);
-
-    assert!(assignments.get(MaterialChannel::Normal).is_none());
-}
-
-#[test]
-fn auto_detect_only_runs_once_per_node() {
-    let graph = make_graph_with_named_outputs(vec![
-        ("n1", "Gen", "Albedo"),
-    ]);
-
-    let mut assignments = MaterialChannelAssignments::new();
-    assignments.auto_detect("node_a", &graph);
-    assert!(assignments.get(MaterialChannel::Albedo).is_some());
-
-    // Clear manually, then auto_detect with same node_id — should not re-detect
-    assignments.clear(MaterialChannel::Albedo);
-    assignments.auto_detect("node_a", &graph);
-    assert!(assignments.get(MaterialChannel::Albedo).is_none());
-
-    // Different node_id — should re-detect
-    assignments.auto_detect("node_b", &graph);
-    assert!(assignments.get(MaterialChannel::Albedo).is_some());
 }
 
 #[test]

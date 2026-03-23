@@ -1,4 +1,4 @@
-use crate::{app_menu::app_menu::AppMenu, themes::theme::{Theme, set_theme}};
+use crate::{app_menu::app_menu::AppMenu, graph::clipboard::Clipboard, themes::theme::{Theme, set_theme}};
 use eframe::egui;
 use epaint::CornerRadius;
 use crate::program::Program;
@@ -16,6 +16,8 @@ pub struct App {
     current_program: Option<String>,
     theme: Theme,
     view_in_separate_window: bool,
+    /// Shared clipboard for copy/paste across tabs.
+    clipboard: Option<Clipboard>,
 }
 
 impl eframe::App for App {
@@ -55,7 +57,7 @@ impl eframe::App for App {
 
             if let Some(current_program) = &self.current_program {
                 if let Some(program) = self.programs.get_mut(current_program) {
-                    program.show(ctx, ui, &self.theme, self.view_in_separate_window);
+                    program.show(ctx, ui, &self.theme, self.view_in_separate_window, &mut self.clipboard);
                 }
             }
 
@@ -115,6 +117,7 @@ impl App {
             current_program: current_program,
             theme: crate::DEFAULT_THEME,
             view_in_separate_window: true,
+            clipboard: None,
         }
     }
 }

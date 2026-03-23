@@ -173,6 +173,7 @@ impl Graph {
                 inputs: node.inputs.clone(),
                 outputs: node.outputs.clone(),
                 is_subgraph,
+                node_type: node_type.clone(),
             };
 
             match tx.try_send(message) {

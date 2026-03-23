@@ -165,21 +165,13 @@ impl ViewPanel {
                         self.image_viewer.show(ui, graph_node.id.clone(), output_index, change_id.clone(), data, cursor_position, theme);
                     }
                     ViewTab::Material3D => {
-                        // Run auto-detection on first switch to 3D
-                        self.material_assignments.auto_detect(&graph_node.id, graph_nodes);
-
                         // Show material assignment UI
                         self.show_material_ui(ui, graph_nodes);
 
                         ui.add_space(4.0);
 
                         // Resolve assignments to actual image data
-                        let mut material = resolve_material(&self.material_assignments, graph_nodes);
-
-                        // If no albedo is assigned, use the currently viewed output
-                        if material.albedo.is_none() {
-                            material.albedo = Some((data.as_ref().clone(), change_id.clone()));
-                        }
+                        let material = resolve_material(&self.material_assignments, graph_nodes);
 
                         self.viewer_3d.show_material(ui, &material, theme);
                     }

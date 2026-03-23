@@ -242,6 +242,8 @@ pub enum GraphChangedMessage {
         position: Vec2,
         /// Whether this node is a subgraph container.
         is_subgraph: bool,
+        /// The node type used to create this node (for copy/paste).
+        node_type: AddNodeType,
     },
     /// A node was restored from a saved graph file.
     LoadedNode {
