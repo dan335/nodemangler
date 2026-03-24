@@ -54,7 +54,7 @@ impl OpNumberMathExp {
 
         let result = (input as f64).exp() as f32;
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Decimal(result),

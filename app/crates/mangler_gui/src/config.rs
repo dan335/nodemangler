@@ -15,6 +15,10 @@ pub struct AppConfig {
     /// API keys for external services.
     #[serde(default)]
     pub api_keys: ApiKeys,
+
+    /// Per-session AI cost limit in USD. 0 means no limit.
+    #[serde(default)]
+    pub ai_cost_limit: f64,
 }
 
 /// API keys for AI providers.
@@ -62,6 +66,11 @@ impl AppConfig {
         if let Ok(json) = serde_json::to_string_pretty(self) {
             let _ = std::fs::write(&path, json);
         }
+    }
+
+    /// Apply the AI cost limit from config to the shared atomic.
+    pub fn apply_ai_cost_limit(&self) {
+        mangler_core::operations::ai::shared::set_cost_limit(self.ai_cost_limit);
     }
 
     /// Set the OPENAI_API_KEY env var from config if it's non-empty

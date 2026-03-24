@@ -90,7 +90,7 @@ impl OpColorAnalysisDominantHue {
         // Convert to 1-based index for output (Value::Integer stores i32).
         let dominant_index_1based = (dominant_index + 1) as i32;
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Color(dominant_color) },

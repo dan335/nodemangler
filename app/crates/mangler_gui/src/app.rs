@@ -116,6 +116,7 @@ impl App {
         // Load persistent config and apply API keys to environment.
         let config = AppConfig::load();
         config.apply_api_keys_to_env();
+        config.apply_ai_cost_limit();
 
         // Restore theme from config, or use default.
         let theme = config.theme.as_deref()

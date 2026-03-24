@@ -1,11 +1,118 @@
 /// Shared utilities for AI operations: HTTP helpers, API key resolution,
-/// and base64 image encode/decode.
+/// base64 image encode/decode, and cost estimation.
 
 use crate::float_image::FloatImage;
 use std::io::Cursor;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Timeout for AI API requests (120 seconds).
 const AI_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
+// ─── Cost Estimation ────────────────────────────────────────────────────────
+
+/// Per-token rates for gpt-image-1 (USD).
+const GPT_IMAGE_1_INPUT_TOKEN_COST: f64 = 0.00001;
+const GPT_IMAGE_1_OUTPUT_TOKEN_COST: f64 = 0.00004;
+
+/// Estimate cost from an OpenAI image API response.
+///
+/// For gpt-image-1: reads the `usage` field and computes from token counts.
+/// For DALL-E 2/3: uses a static per-image pricing table.
+pub fn estimate_cost_from_response(
+    json: &serde_json::Value,
+    model: &str,
+    size: &str,
+    quality: &str,
+) -> f64 {
+    // gpt-image-1 returns token-based usage in the response.
+    if let Some(usage) = json.get("usage") {
+        let input_tokens = usage["input_tokens"].as_f64().unwrap_or(0.0);
+        let output_tokens = usage["output_tokens"].as_f64().unwrap_or(0.0);
+        return input_tokens * GPT_IMAGE_1_INPUT_TOKEN_COST
+            + output_tokens * GPT_IMAGE_1_OUTPUT_TOKEN_COST;
+    }
+
+    // DALL-E 2/3: fixed per-image pricing by model, size, and quality.
+    dalle_fixed_cost(model, size, quality)
+}
+
+/// Static pricing table for DALL-E 2 and DALL-E 3 (USD per image).
+fn dalle_fixed_cost(model: &str, size: &str, quality: &str) -> f64 {
+    match model {
+        "dall-e-3" => match (size, quality) {
+            ("1024x1024", "standard") => 0.040,
+            ("1024x1024", "hd") => 0.080,
+            ("1024x1792" | "1792x1024", "standard") => 0.080,
+            ("1024x1792" | "1792x1024", "hd") => 0.120,
+            _ => 0.040, // fallback to standard 1024x1024
+        },
+        "dall-e-2" => match size {
+            "1024x1024" => 0.020,
+            "512x512" => 0.018,
+            "256x256" => 0.016,
+            _ => 0.020,
+        },
+        // Unknown model — return 0 rather than guessing.
+        _ => 0.0,
+    }
+}
+
+// ─── Session Cost Tracking (thread-safe) ────────────────────────────────────
+
+/// Atomic storage for session cost in USD (f64 stored as u64 bits).
+static SESSION_COST_BITS: AtomicU64 = AtomicU64::new(0);
+/// Atomic storage for cost limit in USD (f64 stored as u64 bits). 0 = no limit.
+static COST_LIMIT_BITS: AtomicU64 = AtomicU64::new(0);
+
+/// Get the current session cost in USD.
+pub fn get_session_cost() -> f64 {
+    f64::from_bits(SESSION_COST_BITS.load(Ordering::Relaxed))
+}
+
+/// Add cost to the session total. Returns the new total.
+pub fn add_session_cost(cost: f64) -> f64 {
+    loop {
+        let old_bits = SESSION_COST_BITS.load(Ordering::Relaxed);
+        let new_val = f64::from_bits(old_bits) + cost;
+        if SESSION_COST_BITS
+            .compare_exchange(old_bits, new_val.to_bits(), Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+        {
+            return new_val;
+        }
+    }
+}
+
+/// Reset session cost to zero (called on app startup).
+pub fn reset_session_cost() {
+    SESSION_COST_BITS.store(0u64, Ordering::Relaxed);
+}
+
+/// Get the current cost limit in USD. 0 means no limit.
+pub fn get_cost_limit() -> f64 {
+    f64::from_bits(COST_LIMIT_BITS.load(Ordering::Relaxed))
+}
+
+/// Set the cost limit in USD. 0 means no limit.
+pub fn set_cost_limit(limit: f64) {
+    COST_LIMIT_BITS.store(limit.to_bits(), Ordering::Relaxed);
+}
+
+/// Check whether a new AI request would exceed the session cost limit.
+/// Returns `Ok(())` if within budget, or an error message if the limit would be exceeded.
+pub fn check_cost_limit() -> Result<(), String> {
+    let limit = get_cost_limit();
+    let spent = get_session_cost();
+    if limit > 0.0 && spent >= limit {
+        Err(format!(
+            "AI cost limit of ${:.2} reached (spent ${:.2} this session). \
+             Increase the limit in Settings to continue.",
+            limit, spent
+        ))
+    } else {
+        Ok(())
+    }
+}
 
 // ─── API Key Resolution ──────────────────────────────────────────────────────
 

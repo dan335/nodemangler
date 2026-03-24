@@ -201,7 +201,7 @@ impl OpImageNoiseReactionDiffusion {
             }
         }
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Image { data: Arc::new(float_image), change_id: get_id() } },

@@ -184,6 +184,15 @@ pub enum NodeChangedMessage {
         /// How long the node's operation took to execute.
         time: Duration,
     },
+    /// An AI operation completed and incurred a cost.
+    AiCost {
+        /// The affected node's unique identifier.
+        node_id: String,
+        /// Cost in USD for this operation.
+        cost_usd: f64,
+        /// Cumulative session cost in USD after this operation.
+        session_cost_usd: f64,
+    },
     /// The entire graph run completed.
     GraphRunCompleted {
         /// Total wall-clock time for the graph execution pass.

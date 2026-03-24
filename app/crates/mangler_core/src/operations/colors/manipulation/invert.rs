@@ -65,7 +65,7 @@ impl OpColorManipulationInvert {
 
         let result = Color::from_srgb_float(new_r, new_g, new_b, new_a);
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Color(result),

@@ -61,7 +61,7 @@ impl OpColorAnalysisLuminance {
         // BT.709 relative luminance: weighted sum of linearised RGB channels.
         let luminance = (0.2126 * lin.0 + 0.7152 * lin.1 + 0.0722 * lin.2).clamp(0.0, 1.0);
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Decimal(luminance) },

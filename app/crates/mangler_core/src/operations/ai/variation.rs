@@ -104,6 +104,11 @@ impl OpAiVariation {
             Err(msg) => return Err(OperationError { input_errors: vec![], node_error: Some(msg) }),
         };
 
+        // Check cost limit before making the API call.
+        if let Err(msg) = shared::check_cost_limit() {
+            return Err(OperationError { input_errors: vec![], node_error: Some(msg) });
+        }
+
         // Build and send the request.
         let form = Self::build_multipart_form(png_bytes, &model, &size);
         let json = match shared::make_ai_multipart_request(OPENAI_VARIATIONS_URL, &api_key, form).await {
@@ -117,7 +122,12 @@ impl OpAiVariation {
             Err(msg) => return Err(OperationError { input_errors: vec![], node_error: Some(msg) }),
         };
 
+        // Estimate and record cost.
+        let cost = shared::estimate_cost_from_response(&json, &model, &size, "standard");
+        shared::add_session_cost(cost);
+
         Ok(OperationResponse {
+            ai_cost_usd: Some(cost),
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Image { data: Arc::new(image), change_id: get_id() } },

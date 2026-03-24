@@ -70,7 +70,7 @@ impl OpColorHarmonyComplementary {
         let split_a = Color::from_hsl(rotate_hue(h, 150.0), s, l, a);
         let split_b = Color::from_hsl(rotate_hue(h, 210.0), s, l, a);
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Color(complementary) },

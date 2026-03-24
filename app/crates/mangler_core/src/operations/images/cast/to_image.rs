@@ -51,7 +51,7 @@ impl OpImageCastToImage {
         let result = inputs[0].value.try_convert_to(ValueType::Image);
 
         match result {
-            Ok(image_value) => Ok(OperationResponse {
+            Ok(image_value) => Ok(OperationResponse { ai_cost_usd: None,
                 time: Instant::now().duration_since(start_time),
                 responses: vec![OutputResponse { value: image_value }],
             }),

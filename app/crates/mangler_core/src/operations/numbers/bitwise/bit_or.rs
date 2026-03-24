@@ -51,7 +51,7 @@ impl OpNumberBitwiseOr {
         let Value::Integer(a) = a_converted.unwrap() else { unreachable!() };
         let Value::Integer(b) = b_converted.unwrap() else { unreachable!() };
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Integer(a | b),

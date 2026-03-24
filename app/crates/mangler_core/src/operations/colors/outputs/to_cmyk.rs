@@ -61,7 +61,7 @@ impl OpColorOutputCmyk {
         // run node
         let (c, m, y, k, a) = color.to_cmyk();
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse {value: Value::Decimal(c)},

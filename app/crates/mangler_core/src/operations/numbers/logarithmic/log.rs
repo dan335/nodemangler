@@ -64,7 +64,7 @@ impl OpNumberMathLog {
 
         let result = (input as f64).log(base as f64) as f32;
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Decimal(result),

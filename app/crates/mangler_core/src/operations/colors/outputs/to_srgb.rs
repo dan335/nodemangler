@@ -59,7 +59,7 @@ impl OpColorOutputRgb {
 
         let (r, g, b, a) = color.to_srgb_float();
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse {value: Value::Decimal(r)},

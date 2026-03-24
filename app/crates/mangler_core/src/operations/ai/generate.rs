@@ -103,6 +103,11 @@ impl OpAiGenerate {
             Err(msg) => return Err(OperationError { input_errors: vec![], node_error: Some(msg) }),
         };
 
+        // Check cost limit before making the API call.
+        if let Err(msg) = shared::check_cost_limit() {
+            return Err(OperationError { input_errors: vec![], node_error: Some(msg) });
+        }
+
         // Build request body and send.
         let body = Self::build_request_body(&prompt, &model, &size, &quality);
         let json = match shared::make_ai_request(OPENAI_IMAGES_URL, &api_key, body).await {
@@ -116,7 +121,12 @@ impl OpAiGenerate {
             Err(msg) => return Err(OperationError { input_errors: vec![], node_error: Some(msg) }),
         };
 
+        // Estimate and record cost.
+        let cost = shared::estimate_cost_from_response(&json, &model, &size, &quality);
+        shared::add_session_cost(cost);
+
         Ok(OperationResponse {
+            ai_cost_usd: Some(cost),
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Image { data: Arc::new(image), change_id: get_id() } },

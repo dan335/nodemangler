@@ -69,6 +69,9 @@ pub struct OperationResponse {
     pub responses: Vec<OutputResponse>,
     /// Wall-clock time the operation took to execute.
     pub time: Duration,
+    /// Cost in USD for AI operations. `None` for non-AI operations.
+    #[serde(skip)]
+    pub ai_cost_usd: Option<f64>,
 }
 
 /// A single output value produced by an operation.

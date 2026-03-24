@@ -86,7 +86,7 @@ impl OpImageTransformRotateAroundCenter {
         // Convert the rotated RGBA8 result back to FloatImage
         let output = FloatImage::from_dynamic(&image::DynamicImage::ImageRgba8(adjusted));
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse {value: Value::Image { data: Arc::new(output), change_id:get_id() }},

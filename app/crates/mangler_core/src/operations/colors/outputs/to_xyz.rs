@@ -59,7 +59,7 @@ impl OpColorOutputXyz {
 
         let (x, y, z, alpha) = color.to_xyz();
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse {value: Value::Decimal(x)},

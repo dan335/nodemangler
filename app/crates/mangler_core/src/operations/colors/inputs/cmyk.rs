@@ -70,7 +70,7 @@ impl OpColorInputCmyk {
         // run node
         let color = Color::from_cmyk(c, m, y, k, alpha);
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Color(color),

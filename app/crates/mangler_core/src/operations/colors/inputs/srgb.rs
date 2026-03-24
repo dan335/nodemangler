@@ -66,7 +66,7 @@ impl OpColorInputRgba {
         // run node
         let color = Color::from_srgb_float(red, green, blue, alpha);
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Color(color),
