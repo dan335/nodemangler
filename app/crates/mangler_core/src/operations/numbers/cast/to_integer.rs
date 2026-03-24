@@ -57,7 +57,7 @@ impl OpNumberCastToInteger {
 
         let Ok(Value::Integer(n)) = inputs[0].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { input_errors: vec![(0, "Unable to convert to integer.".to_string())], node_error: None })};
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Integer(n),

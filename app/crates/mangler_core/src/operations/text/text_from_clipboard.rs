@@ -44,7 +44,7 @@
 
 //     if let Ok(mut clipboard) = Clipboard::new() {
 //         if let Ok(text) = clipboard.get_text() {
-//             let node_output_message = OperationResponse {
+//             let node_output_message = OperationResponse { ai_cost_usd: None,
 //                 time: Instant::now().duration_since(start_time),
 //                 outputs: vec![OutputResponse {
 //                     value: Value::String(text),

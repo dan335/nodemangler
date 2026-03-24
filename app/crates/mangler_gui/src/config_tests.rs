@@ -16,6 +16,7 @@ fn test_serialize_deserialize_roundtrip() {
         api_keys: ApiKeys {
             openai: "sk-test-key-12345".to_string(),
         },
+        ai_cost_limit: 5.0,
     };
 
     let json = serde_json::to_string(&config).unwrap();
@@ -23,6 +24,7 @@ fn test_serialize_deserialize_roundtrip() {
 
     assert_eq!(restored.theme.as_deref(), Some("dark_green"));
     assert_eq!(restored.api_keys.openai, "sk-test-key-12345");
+    assert_eq!(restored.ai_cost_limit, 5.0);
 }
 
 /// Missing file returns default config (load gracefully handles missing file).
@@ -80,6 +82,7 @@ fn test_save_and_load_roundtrip() {
         api_keys: ApiKeys {
             openai: "sk-round-trip-test".to_string(),
         },
+        ai_cost_limit: 0.0,
     };
 
     let json = serde_json::to_string_pretty(&config).unwrap();

@@ -39,7 +39,7 @@ impl OpNumberInputTau {
     pub async fn run(_inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Decimal(std::f32::consts::TAU),

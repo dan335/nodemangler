@@ -65,7 +65,7 @@ impl OpNumberRandomInteger {
         // run node
         maximum = maximum.max(minimum.saturating_add(1));
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Integer(fastrand::i32(minimum..maximum)),

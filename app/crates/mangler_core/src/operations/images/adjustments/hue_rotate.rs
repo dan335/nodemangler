@@ -64,7 +64,7 @@ impl OpImageAdjustmentHueRotate {
         let ch = data.channels() as usize;
         if ch < 3 {
             // 1 or 2 channel image (grayscale), no hue to rotate
-            return Ok(OperationResponse {
+            return Ok(OperationResponse { ai_cost_usd: None,
                 time: Instant::now().duration_since(start_time),
                 responses: vec![
                     OutputResponse {value: Value::Image { data, change_id:get_id() }},
@@ -88,7 +88,7 @@ impl OpImageAdjustmentHueRotate {
             // Alpha (if present) is unchanged
         }
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse {value: Value::Image { data:Arc::new(result), change_id:get_id() }},

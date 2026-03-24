@@ -77,7 +77,7 @@ impl OpImageInputUrl {
                     let width = float_img.width() as i32;
                     let height = float_img.height() as i32;
 
-                    Ok(OperationResponse {
+                    Ok(OperationResponse { ai_cost_usd: None,
                         time: Instant::now().duration_since(start_time),
                         responses: vec![
                             OutputResponse { value: Value::Image { data: Arc::new(float_img), change_id: get_id() } },

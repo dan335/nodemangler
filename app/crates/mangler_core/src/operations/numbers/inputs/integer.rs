@@ -62,7 +62,7 @@ impl OpNumberInputInteger {
         let Value::Integer(input) = input_converted.unwrap() else { unreachable!() };
 
         // run node
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Integer(input),

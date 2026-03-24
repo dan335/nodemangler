@@ -56,7 +56,7 @@ impl OpNumberTrigAtan2 {
 
         let result = y.atan2(x);
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Decimal(result),

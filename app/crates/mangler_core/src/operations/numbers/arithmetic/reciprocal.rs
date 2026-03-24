@@ -67,7 +67,7 @@ impl OpNumberMathReciprocal {
         // run node
         let value = Value::Decimal(1.0 / input);
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value,

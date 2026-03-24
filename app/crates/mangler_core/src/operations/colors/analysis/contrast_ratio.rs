@@ -78,7 +78,7 @@ impl OpColorAnalysisContrastRatio {
         // WCAG AAA requires a minimum ratio of 7:1 for enhanced contrast.
         let passes_aaa = ratio >= 7.0;
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Decimal(ratio) },

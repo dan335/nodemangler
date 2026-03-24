@@ -59,7 +59,7 @@ impl OpColorOutputHsl {
 
         let (h, s, l, a) = color.to_hsl();
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse {value: Value::Decimal(h)},

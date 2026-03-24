@@ -349,7 +349,7 @@ impl OpImageInputText {
         // Convert the grayscale DynamicImage to a 1-channel FloatImage
         let float_img = FloatImage::from_dynamic(&dynamic_image);
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse {

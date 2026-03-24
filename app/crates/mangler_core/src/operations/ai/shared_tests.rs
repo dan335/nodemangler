@@ -168,3 +168,120 @@ fn test_parse_openai_image_response_no_revised_prompt() {
     let (_, _, _, revised) = parse_openai_image_response(&json).unwrap();
     assert!(revised.is_none());
 }
+
+// ─── Cost Estimation Tests ──────────────────────────────────────────────────
+
+/// DALL-E 3 standard 1024x1024 costs $0.04.
+#[test]
+fn test_dalle3_standard_cost() {
+    let json = serde_json::json!({"data": [{}]});
+    let cost = estimate_cost_from_response(&json, "dall-e-3", "1024x1024", "standard");
+    assert!((cost - 0.04).abs() < 1e-6);
+}
+
+/// DALL-E 3 HD 1024x1024 costs $0.08.
+#[test]
+fn test_dalle3_hd_cost() {
+    let json = serde_json::json!({"data": [{}]});
+    let cost = estimate_cost_from_response(&json, "dall-e-3", "1024x1024", "hd");
+    assert!((cost - 0.08).abs() < 1e-6);
+}
+
+/// DALL-E 3 HD 1792x1024 costs $0.12.
+#[test]
+fn test_dalle3_hd_wide_cost() {
+    let json = serde_json::json!({"data": [{}]});
+    let cost = estimate_cost_from_response(&json, "dall-e-3", "1792x1024", "hd");
+    assert!((cost - 0.12).abs() < 1e-6);
+}
+
+/// DALL-E 2 1024x1024 costs $0.02.
+#[test]
+fn test_dalle2_cost() {
+    let json = serde_json::json!({"data": [{}]});
+    let cost = estimate_cost_from_response(&json, "dall-e-2", "1024x1024", "standard");
+    assert!((cost - 0.02).abs() < 1e-6);
+}
+
+/// DALL-E 2 256x256 costs $0.016.
+#[test]
+fn test_dalle2_small_cost() {
+    let json = serde_json::json!({"data": [{}]});
+    let cost = estimate_cost_from_response(&json, "dall-e-2", "256x256", "standard");
+    assert!((cost - 0.016).abs() < 1e-6);
+}
+
+/// gpt-image-1 with usage tokens computes cost from token counts.
+#[test]
+fn test_gpt_image_1_token_cost() {
+    let json = serde_json::json!({
+        "data": [{}],
+        "usage": {
+            "input_tokens": 100,
+            "output_tokens": 4000,
+            "total_tokens": 4100
+        }
+    });
+    // 100 * 0.00001 + 4000 * 0.00004 = 0.001 + 0.16 = 0.161
+    let cost = estimate_cost_from_response(&json, "gpt-image-1", "1024x1024", "standard");
+    assert!((cost - 0.161).abs() < 1e-6);
+}
+
+/// Unknown model without usage returns 0.
+#[test]
+fn test_unknown_model_cost() {
+    let json = serde_json::json!({"data": [{}]});
+    let cost = estimate_cost_from_response(&json, "unknown-model", "1024x1024", "standard");
+    assert!((cost - 0.0).abs() < 1e-6);
+}
+
+// ─── Session Cost Tracking Tests ────────────────────────────────────────────
+
+/// Session cost starts at zero and accumulates.
+#[test]
+fn test_session_cost_tracking() {
+    reset_session_cost();
+    assert!((get_session_cost() - 0.0).abs() < 1e-6);
+
+    add_session_cost(0.04);
+    assert!((get_session_cost() - 0.04).abs() < 1e-6);
+
+    add_session_cost(0.08);
+    assert!((get_session_cost() - 0.12).abs() < 1e-6);
+
+    reset_session_cost();
+    assert!((get_session_cost() - 0.0).abs() < 1e-6);
+}
+
+/// Cost limit check passes when under limit.
+#[test]
+fn test_cost_limit_under() {
+    reset_session_cost();
+    set_cost_limit(1.0);
+    assert!(check_cost_limit().is_ok());
+    reset_session_cost();
+    set_cost_limit(0.0);
+}
+
+/// Cost limit check fails when at or over limit.
+#[test]
+fn test_cost_limit_exceeded() {
+    reset_session_cost();
+    set_cost_limit(0.10);
+    add_session_cost(0.10);
+    let result = check_cost_limit();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("$0.10"));
+    reset_session_cost();
+    set_cost_limit(0.0);
+}
+
+/// Zero cost limit means no limit (always passes).
+#[test]
+fn test_cost_limit_zero_means_unlimited() {
+    reset_session_cost();
+    set_cost_limit(0.0);
+    add_session_cost(1000.0);
+    assert!(check_cost_limit().is_ok());
+    reset_session_cost();
+}

@@ -134,7 +134,7 @@ impl OpImageAdjustmentDistance {
         let output = FloatImage::from_raw(width as u32, height as u32, 4, pixels)
             .expect("distance field pixel count mismatch");
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse {value: Value::Image { data:Arc::new(output), change_id:get_id() }},

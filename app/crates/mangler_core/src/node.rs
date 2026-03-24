@@ -287,6 +287,27 @@ impl Node {
                             }
                         }
 
+                        // Send AI cost message if this was an AI operation.
+                        if let Some(cost) = operation_response.ai_cost_usd {
+                            if let Some(tx) = tx_node_changed.clone() {
+                                let message = NodeChangedMessage::AiCost {
+                                    node_id: self.id.clone(),
+                                    cost_usd: cost,
+                                    session_cost_usd: crate::operations::ai::shared::get_session_cost(),
+                                };
+
+                                match tx.try_send(message) {
+                                    Ok(_) => {}
+                                    Err(err) => {
+                                        println!(
+                                            "Error sending NodeChangedMessage::AiCost: {:?}",
+                                            err
+                                        );
+                                    }
+                                }
+                            }
+                        }
+
                         // TODO: change response to a Result?
                         for (index, response) in operation_response.responses.into_iter().enumerate() {
                             // send messages to ui that outputs changed

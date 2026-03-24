@@ -70,7 +70,7 @@ impl OpImageOutputClipboard {
         
         if let Ok(mut clipboard) = Clipboard::new() {
             if clipboard.set_image(image_data).is_ok() {
-                Ok(OperationResponse {
+                Ok(OperationResponse { ai_cost_usd: None,
                     time: Instant::now().duration_since(start_time),
                     responses: vec![],
                 })

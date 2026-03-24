@@ -51,7 +51,7 @@ impl OpLogicCompareNotEqual {
 
         // Text != Text: direct comparison without numeric coercion
         if let (Value::Text(a), Value::Text(b)) = (&inputs[0].value, &inputs[1].value) {
-            return Ok(OperationResponse {
+            return Ok(OperationResponse { ai_cost_usd: None,
                 time: Instant::now().duration_since(start_time),
                 responses: vec![OutputResponse { value: Value::Bool(*a != *b) }],
             });
@@ -69,7 +69,7 @@ impl OpLogicCompareNotEqual {
         let Value::Decimal(a) = a.unwrap() else { unreachable!() };
         let Value::Decimal(b) = b.unwrap() else { unreachable!() };
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse { value: Value::Bool(a != b) }],
         })

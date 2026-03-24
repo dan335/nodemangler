@@ -98,7 +98,7 @@ impl OpColorAnalysisHarmonyScore {
             .fold(0.0_f32, f32::max)
             .clamp(0.0, 1.0);
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Decimal(score) },

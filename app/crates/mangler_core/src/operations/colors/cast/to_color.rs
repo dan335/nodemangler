@@ -51,7 +51,7 @@ impl OpColorCastToColor {
         let result = inputs[0].value.try_convert_to(ValueType::Color);
 
         match result {
-            Ok(color_value) => Ok(OperationResponse {
+            Ok(color_value) => Ok(OperationResponse { ai_cost_usd: None,
                 time: Instant::now().duration_since(start_time),
                 responses: vec![OutputResponse { value: color_value }],
             }),

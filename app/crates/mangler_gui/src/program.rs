@@ -46,6 +46,10 @@ pub struct Program {
     node_search_popup: NodeSearchPopup,
     /// Temporary status message shown on screen (text, expiry time).
     status_message: Option<(String, std::time::Instant)>,
+    /// Cumulative AI cost this session (USD), mirrored from engine-side atomic.
+    session_ai_cost: f64,
+    /// Number of AI API calls this session.
+    session_ai_requests: u32,
 }
 
 impl Program {
@@ -81,6 +85,8 @@ impl Program {
                 graph_run_time: Duration::ZERO,
                 node_search_popup: NodeSearchPopup::new(),
                 status_message: None,
+                session_ai_cost: 0.0,
+                session_ai_requests: 0,
             }),
             Err(error) => Err(NewGraphError(format!(
                 "Error creating program. {:?}",
@@ -426,6 +432,11 @@ impl Program {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
                         node.time = Some(time);
                     }
+                }
+                NodeChangedMessage::AiCost { node_id: _, cost_usd, session_cost_usd } => {
+                    self.session_ai_cost = session_cost_usd;
+                    self.session_ai_requests += 1;
+                    let _ = cost_usd; // per-node cost available if needed later
                 }
                 NodeChangedMessage::GraphRunCompleted { total_time } => {
                     self.graph_run_time = total_time;
@@ -846,15 +857,22 @@ impl Program {
             }
         }
 
-        // show timing in bottom right corner
+        // show timing and AI cost in bottom right corner
         {
             let graph_ms = self.graph_run_time.as_secs_f64() * 1000.0;
-            let graph_txt = format!("graph: {:.1}ms", graph_ms);
+            let status_txt = if self.session_ai_requests > 0 {
+                format!(
+                    "graph: {:.1}ms | AI: ${:.2} ({} calls)",
+                    graph_ms, self.session_ai_cost, self.session_ai_requests
+                )
+            } else {
+                format!("graph: {:.1}ms", graph_ms)
+            };
             let pos = Pos2::new(app_rect.right() - 10.0, app_rect.bottom() - 10.0);
             ui.painter().text(
                 pos,
                 egui::Align2::RIGHT_BOTTOM,
-                graph_txt,
+                status_txt,
                 egui::FontId::monospace(10.0),
                 egui::Color32::from(theme.get().text_faint),
             );

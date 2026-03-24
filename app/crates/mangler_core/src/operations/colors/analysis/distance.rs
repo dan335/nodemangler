@@ -69,7 +69,7 @@ impl OpColorAnalysisDistance {
         // Euclidean RGB distance: straight-line distance in sRGB channel space.
         let rgb_distance = ((b.r - a.r).powi(2) + (b.g - a.g).powi(2) + (b.b - a.b).powi(2)).sqrt();
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Decimal(delta_e) },

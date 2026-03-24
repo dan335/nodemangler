@@ -60,7 +60,7 @@ impl OpNumberMathAverage {
         // run node
         let value = Value::Decimal((a + b) / 2.0);
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value,

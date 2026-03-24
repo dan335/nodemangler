@@ -67,7 +67,7 @@ impl OpColorInputXyz {
         // run node
         let color = Color::from_xyz(x, y, z, alpha);
 
-        Ok(OperationResponse {
+        Ok(OperationResponse { ai_cost_usd: None,
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Color(color),
