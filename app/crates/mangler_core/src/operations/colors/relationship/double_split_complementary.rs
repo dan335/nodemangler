@@ -81,7 +81,7 @@ impl OpColorHarmonyDoubleSplitComplementary {
         // split_comp_b sits +210° away, flanking the complementary on the negative side.
         let split_comp_b = Color::from_hsl(rotate_hue(h, 210.0), s, l, a);
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Color(split_base_a) },

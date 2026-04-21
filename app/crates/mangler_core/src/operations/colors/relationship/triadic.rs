@@ -66,7 +66,7 @@ impl OpColorHarmonyTriadic {
         let triadic_a = Color::from_hsl(rotate_hue(h, 120.0), s, l, a);
         let triadic_b = Color::from_hsl(rotate_hue(h, 240.0), s, l, a);
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Color(triadic_a) },

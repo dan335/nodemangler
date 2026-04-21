@@ -66,7 +66,7 @@ impl OpColorManipulationGrayscale {
 
         let gray_color = Color::from_srgb_float(srgb, srgb, srgb, alpha);
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Color(gray_color) },

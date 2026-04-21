@@ -12,6 +12,26 @@ const SPHERE_STACKS: u32 = 32;
 /// Number of floats per vertex: pos(3) + normal(3) + uv(2) + tangent(4) = 12
 pub const VERTEX_STRIDE: usize = 12;
 
+/// Which preview mesh to draw in the 3D viewer.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum MeshKind {
+    Plane,
+    Sphere,
+    Cube,
+}
+
+impl MeshKind {
+    pub const ALL: [MeshKind; 3] = [MeshKind::Plane, MeshKind::Sphere, MeshKind::Cube];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            MeshKind::Plane => "Plane",
+            MeshKind::Sphere => "Sphere",
+            MeshKind::Cube => "Cube",
+        }
+    }
+}
+
 /// Index of each PBR texture channel (used as array index and GL texture unit).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TextureChannel {
@@ -32,12 +52,18 @@ struct TextureSlot {
     u_has: Option<glow::UniformLocation>,
 }
 
-pub struct GlRenderer {
-    program: glow::Program,
+struct Mesh {
     vao: glow::VertexArray,
     _vbo: glow::Buffer,
     _ebo: glow::Buffer,
     index_count: i32,
+}
+
+pub struct GlRenderer {
+    program: glow::Program,
+    plane: Mesh,
+    sphere: Mesh,
+    cube: Mesh,
     // Uniform locations (Option because the GLSL compiler may optimize out unused uniforms)
     u_model: Option<glow::UniformLocation>,
     u_view: Option<glow::UniformLocation>,
@@ -46,6 +72,9 @@ pub struct GlRenderer {
     u_camera_pos: Option<glow::UniformLocation>,
     // PBR texture slots
     slots: Vec<TextureSlot>,
+    // Max anisotropic filter level. 1.0 means anisotropic is unavailable and
+    // we fall back to trilinear.
+    max_anisotropy: f32,
 }
 
 impl GlRenderer {
@@ -78,60 +107,29 @@ impl GlRenderer {
                 });
             }
 
-            let (vertices, indices) = generate_sphere(SPHERE_SLICES, SPHERE_STACKS);
+            let plane = upload_mesh(gl, &generate_plane());
+            let sphere = upload_mesh(gl, &generate_sphere(SPHERE_SLICES, SPHERE_STACKS));
+            let cube = upload_mesh(gl, &generate_cube());
 
-            let vao = gl.create_vertex_array().unwrap();
-            gl.bind_vertex_array(Some(vao));
-
-            let vbo = gl.create_buffer().unwrap();
-            gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
-            gl.buffer_data_u8_slice(
-                glow::ARRAY_BUFFER,
-                cast_slice_to_bytes(&vertices),
-                glow::STATIC_DRAW,
-            );
-
-            let ebo = gl.create_buffer().unwrap();
-            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
-            gl.buffer_data_u8_slice(
-                glow::ELEMENT_ARRAY_BUFFER,
-                cast_slice_to_bytes(&indices),
-                glow::STATIC_DRAW,
-            );
-
-            let stride = VERTEX_STRIDE as i32 * std::mem::size_of::<f32>() as i32;
-
-            // position (location 0)
-            gl.enable_vertex_attrib_array(0);
-            gl.vertex_attrib_pointer_f32(0, 3, glow::FLOAT, false, stride, 0);
-
-            // normal (location 1)
-            gl.enable_vertex_attrib_array(1);
-            gl.vertex_attrib_pointer_f32(1, 3, glow::FLOAT, false, stride, 3 * 4);
-
-            // uv (location 2)
-            gl.enable_vertex_attrib_array(2);
-            gl.vertex_attrib_pointer_f32(2, 2, glow::FLOAT, false, stride, 6 * 4);
-
-            // tangent (location 3)
-            gl.enable_vertex_attrib_array(3);
-            gl.vertex_attrib_pointer_f32(3, 4, glow::FLOAT, false, stride, 8 * 4);
-
-            gl.bind_vertex_array(None);
-            gl.bind_buffer(glow::ARRAY_BUFFER, None);
+            // Query max anisotropy. Core since GL 4.6, ubiquitously available
+            // via GL_EXT_texture_filter_anisotropic before that (same enum value).
+            // If unsupported the query leaves the value at 0; treat anything
+            // below 2.0 as "not available" and stay on trilinear.
+            let queried = gl.get_parameter_f32(glow::MAX_TEXTURE_MAX_ANISOTROPY);
+            let max_anisotropy = if queried >= 2.0 { queried.min(16.0) } else { 1.0 };
 
             Self {
                 program,
-                vao,
-                _vbo: vbo,
-                _ebo: ebo,
-                index_count: indices.len() as i32,
+                plane,
+                sphere,
+                cube,
                 u_model,
                 u_view,
                 u_projection,
                 u_light_dir,
                 u_camera_pos,
                 slots,
+                max_anisotropy,
             }
         }
     }
@@ -161,6 +159,13 @@ impl GlRenderer {
             gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::REPEAT as i32);
             gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::LINEAR_MIPMAP_LINEAR as i32);
             gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
+            if self.max_anisotropy > 1.0 {
+                gl.tex_parameter_f32(
+                    glow::TEXTURE_2D,
+                    glow::TEXTURE_MAX_ANISOTROPY,
+                    self.max_anisotropy,
+                );
+            }
 
             let width = image.width() as i32;
             let height = image.height() as i32;
@@ -192,7 +197,13 @@ impl GlRenderer {
     }
 
     /// Render the scene. `viewport` is [x, y, width, height] in physical pixels.
-    pub fn render(&self, gl: &glow::Context, viewport: [i32; 4], camera: &ArcballCamera) {
+    pub fn render(
+        &self,
+        gl: &glow::Context,
+        viewport: [i32; 4],
+        camera: &ArcballCamera,
+        mesh_kind: MeshKind,
+    ) {
         let [vp_x, vp_y, vp_w, vp_h] = viewport;
         if vp_w <= 0 || vp_h <= 0 {
             return;
@@ -205,6 +216,11 @@ impl GlRenderer {
             gl.depth_func(glow::LESS);
             gl.enable(glow::CULL_FACE);
             gl.cull_face(glow::BACK);
+            // Explicit front-face winding: egui_glow may leave this set to CW
+            // between frames, which silently inverts cull results.
+            gl.front_face(glow::CCW);
+            // MSAA on the default framebuffer (sample count set in NativeOptions).
+            gl.enable(glow::MULTISAMPLE);
             gl.disable(glow::BLEND);
 
             // Clear depth in our region
@@ -246,9 +262,13 @@ impl GlRenderer {
                 gl.uniform_1_i32(slot.u_has.as_ref(), has);
             }
 
-            // Draw sphere
-            gl.bind_vertex_array(Some(self.vao));
-            gl.draw_elements(glow::TRIANGLES, self.index_count, glow::UNSIGNED_INT, 0);
+            let mesh = match mesh_kind {
+                MeshKind::Plane => &self.plane,
+                MeshKind::Sphere => &self.sphere,
+                MeshKind::Cube => &self.cube,
+            };
+            gl.bind_vertex_array(Some(mesh.vao));
+            gl.draw_elements(glow::TRIANGLES, mesh.index_count, glow::UNSIGNED_INT, 0);
 
             // Restore state for egui's glow renderer
             gl.bind_vertex_array(None);
@@ -296,6 +316,124 @@ unsafe fn create_program(gl: &glow::Context, vert_src: &str, frag_src: &str) -> 
     gl.delete_shader(frag);
 
     program
+}
+
+/// Upload interleaved vertex/index data as a `Mesh` with all attrib pointers set.
+/// Vertex layout matches [`VERTEX_STRIDE`]: pos(3) + normal(3) + uv(2) + tangent(4).
+unsafe fn upload_mesh(gl: &glow::Context, data: &(Vec<f32>, Vec<u32>)) -> Mesh {
+    let (vertices, indices) = data;
+
+    let vao = gl.create_vertex_array().unwrap();
+    gl.bind_vertex_array(Some(vao));
+
+    let vbo = gl.create_buffer().unwrap();
+    gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+    gl.buffer_data_u8_slice(
+        glow::ARRAY_BUFFER,
+        cast_slice_to_bytes(vertices),
+        glow::STATIC_DRAW,
+    );
+
+    let ebo = gl.create_buffer().unwrap();
+    gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
+    gl.buffer_data_u8_slice(
+        glow::ELEMENT_ARRAY_BUFFER,
+        cast_slice_to_bytes(indices),
+        glow::STATIC_DRAW,
+    );
+
+    let stride = VERTEX_STRIDE as i32 * std::mem::size_of::<f32>() as i32;
+    gl.enable_vertex_attrib_array(0);
+    gl.vertex_attrib_pointer_f32(0, 3, glow::FLOAT, false, stride, 0);
+    gl.enable_vertex_attrib_array(1);
+    gl.vertex_attrib_pointer_f32(1, 3, glow::FLOAT, false, stride, 3 * 4);
+    gl.enable_vertex_attrib_array(2);
+    gl.vertex_attrib_pointer_f32(2, 2, glow::FLOAT, false, stride, 6 * 4);
+    gl.enable_vertex_attrib_array(3);
+    gl.vertex_attrib_pointer_f32(3, 4, glow::FLOAT, false, stride, 8 * 4);
+
+    gl.bind_vertex_array(None);
+    gl.bind_buffer(glow::ARRAY_BUFFER, None);
+
+    Mesh {
+        vao,
+        _vbo: vbo,
+        _ebo: ebo,
+        index_count: indices.len() as i32,
+    }
+}
+
+/// 2x2 plane centered at origin, facing +Z. Single-sided; back-face cull hides
+/// it when the camera orbits behind.
+fn generate_plane() -> (Vec<f32>, Vec<u32>) {
+    // CCW from +Z: BL, BR, TR, TL. Tangent along +X.
+    //
+    // UVs flip V: FloatImage stores rows top-to-bottom but OpenGL samples v=0
+    // from the first uploaded row (texel y=0), so a naïve (0,0) at BL would
+    // put the image's top row along the plane's bottom edge (upside-down).
+    // Assign (0,0) to TL instead so the image renders right-side-up.
+    let vertices = vec![
+        // pos           normal       uv         tangent(w=1)
+        -1.0, -1.0, 0.0,  0.0, 0.0, 1.0,  0.0, 1.0,  1.0, 0.0, 0.0, 1.0,
+         1.0, -1.0, 0.0,  0.0, 0.0, 1.0,  1.0, 1.0,  1.0, 0.0, 0.0, 1.0,
+         1.0,  1.0, 0.0,  0.0, 0.0, 1.0,  1.0, 0.0,  1.0, 0.0, 0.0, 1.0,
+        -1.0,  1.0, 0.0,  0.0, 0.0, 1.0,  0.0, 0.0,  1.0, 0.0, 0.0, 1.0,
+    ];
+    let indices = vec![0, 1, 2, 0, 2, 3];
+    (vertices, indices)
+}
+
+/// Cube with extents ±1 (matches sphere diameter). Each face is a separate quad
+/// so UVs/normals/tangents don't cross seams. Windings are CCW from outside.
+fn generate_cube() -> (Vec<f32>, Vec<u32>) {
+    // For each face: normal, tangent (along +U), and four corners (BL, BR, TR, TL)
+    // in CCW order as seen from outside the cube.
+    let faces: [([f32; 3], [f32; 3], [[f32; 3]; 4]); 6] = [
+        // +X
+        ([1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [
+            [1.0, -1.0,  1.0], [1.0, -1.0, -1.0], [1.0,  1.0, -1.0], [1.0,  1.0,  1.0],
+        ]),
+        // -X
+        ([-1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [
+            [-1.0, -1.0, -1.0], [-1.0, -1.0,  1.0], [-1.0,  1.0,  1.0], [-1.0,  1.0, -1.0],
+        ]),
+        // +Y
+        ([0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [
+            [-1.0, 1.0,  1.0], [ 1.0, 1.0,  1.0], [ 1.0, 1.0, -1.0], [-1.0, 1.0, -1.0],
+        ]),
+        // -Y
+        ([0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [
+            [-1.0, -1.0, -1.0], [ 1.0, -1.0, -1.0], [ 1.0, -1.0,  1.0], [-1.0, -1.0,  1.0],
+        ]),
+        // +Z
+        ([0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [
+            [-1.0, -1.0, 1.0], [ 1.0, -1.0, 1.0], [ 1.0,  1.0, 1.0], [-1.0,  1.0, 1.0],
+        ]),
+        // -Z
+        ([0.0, 0.0, -1.0], [-1.0, 0.0, 0.0], [
+            [ 1.0, -1.0, -1.0], [-1.0, -1.0, -1.0], [-1.0,  1.0, -1.0], [ 1.0,  1.0, -1.0],
+        ]),
+    ];
+
+    // V flipped (TL=0, BL=1) to compensate for OpenGL's v=0-at-first-row
+    // sampling so textures render right-side-up on each face.
+    let uvs: [[f32; 2]; 4] = [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
+
+    let mut vertices = Vec::with_capacity(faces.len() * 4 * VERTEX_STRIDE);
+    let mut indices = Vec::with_capacity(faces.len() * 6);
+
+    for (normal, tangent, corners) in &faces {
+        let base = (vertices.len() / VERTEX_STRIDE) as u32;
+        for (pos, uv) in corners.iter().zip(uvs.iter()) {
+            vertices.extend_from_slice(pos);
+            vertices.extend_from_slice(normal);
+            vertices.extend_from_slice(uv);
+            vertices.extend_from_slice(&[tangent[0], tangent[1], tangent[2], 1.0]);
+        }
+        indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
+
+    (vertices, indices)
 }
 
 /// Generate a UV sphere with tangent vectors.
@@ -355,13 +493,14 @@ fn generate_sphere(slices: u32, stacks: u32) -> (Vec<f32>, Vec<u32>) {
             let first = stack * (slices + 1) + slice;
             let second = first + slices + 1;
 
+            // CCW from outside the sphere (matches glFrontFace(CCW) + cull BACK).
             indices.push(first);
-            indices.push(second);
             indices.push(first + 1);
+            indices.push(second);
 
             indices.push(second);
-            indices.push(second + 1);
             indices.push(first + 1);
+            indices.push(second + 1);
         }
     }
 

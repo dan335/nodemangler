@@ -11,6 +11,7 @@ use super::{
     image_viewer::ImageViewer,
     color_viewer::ColorViewer,
     viewer_3d::Viewer3d,
+    gl_renderer::MeshKind,
     material_channels::{
         MaterialChannel, MaterialChannelAssignments, MaterialAssignment,
         list_image_outputs, resolve_material,
@@ -209,51 +210,77 @@ impl ViewPanel {
     ) {
         let available_outputs = list_image_outputs(graph_nodes);
 
+        ui.horizontal(|ui| {
+            ui.label("Mesh");
+            egui::ComboBox::from_id_salt("viewer_3d_mesh_kind")
+                .selected_text(self.viewer_3d.mesh_kind.label())
+                .show_ui(ui, |ui| {
+                    ui.with_layout(
+                        egui::Layout::top_down(egui::Align::Min).with_cross_justify(true),
+                        |ui| {
+                            for kind in MeshKind::ALL {
+                                ui.selectable_value(&mut self.viewer_3d.mesh_kind, kind, kind.label());
+                            }
+                        },
+                    );
+                });
+        });
+
         egui::CollapsingHeader::new("Material Channels")
             .default_open(false)
             .show(ui, |ui| {
-                for channel in MaterialChannel::ALL {
-                    ui.horizontal(|ui| {
-                        ui.label(format!("{:>10}", channel.label()));
+                egui::Grid::new("material_channels_grid")
+                    .num_columns(2)
+                    .spacing([8.0, 4.0])
+                    .show(ui, |ui| {
+                        for channel in MaterialChannel::ALL {
+                            ui.label(channel.label());
 
-                        // Clone current assignment to avoid borrow conflict with the closure
-                        let current = self.material_assignments.get(channel).cloned();
-                        let current_label = current.as_ref()
-                            .and_then(|a| {
-                                available_outputs.iter().find(|(nid, oi, _)| {
-                                    nid == &a.node_id && *oi == a.output_index
+                            // Clone current assignment to avoid borrow conflict with the closure
+                            let current = self.material_assignments.get(channel).cloned();
+                            let current_label = current.as_ref()
+                                .and_then(|a| {
+                                    available_outputs.iter().find(|(nid, oi, _)| {
+                                        nid == &a.node_id && *oi == a.output_index
+                                    })
                                 })
-                            })
-                            .map(|(_, _, label)| label.as_str())
-                            .unwrap_or("None");
+                                .map(|(_, _, label)| label.as_str())
+                                .unwrap_or("None");
 
-                        let is_none = current.is_none();
+                            let is_none = current.is_none();
 
-                        egui::ComboBox::from_id_salt(format!("mat_{:?}", channel))
-                            .selected_text(current_label)
-                            .width(200.0)
-                            .show_ui(ui, |ui| {
-                                if ui.selectable_label(is_none, "None").clicked() {
-                                    self.material_assignments.clear(channel);
-                                }
+                            egui::ComboBox::from_id_salt(format!("mat_{:?}", channel))
+                                .selected_text(current_label)
+                                .width(200.0)
+                                .show_ui(ui, |ui| {
+                                    ui.with_layout(
+                                        egui::Layout::top_down(egui::Align::Min).with_cross_justify(true),
+                                        |ui| {
+                                            if ui.selectable_label(is_none, "None").clicked() {
+                                                self.material_assignments.clear(channel);
+                                            }
 
-                                for (node_id, output_index, label) in &available_outputs {
-                                    let is_selected = current.as_ref().map_or(false, |a| {
-                                        &a.node_id == node_id && a.output_index == *output_index
-                                    });
-                                    if ui.selectable_label(is_selected, label).clicked() {
-                                        self.material_assignments.set(
-                                            channel,
-                                            MaterialAssignment {
-                                                node_id: node_id.clone(),
-                                                output_index: *output_index,
-                                            },
-                                        );
-                                    }
-                                }
-                            });
+                                            for (node_id, output_index, label) in &available_outputs {
+                                                let is_selected = current.as_ref().map_or(false, |a| {
+                                                    &a.node_id == node_id && a.output_index == *output_index
+                                                });
+                                                if ui.selectable_label(is_selected, label).clicked() {
+                                                    self.material_assignments.set(
+                                                        channel,
+                                                        MaterialAssignment {
+                                                            node_id: node_id.clone(),
+                                                            output_index: *output_index,
+                                                        },
+                                                    );
+                                                }
+                                            }
+                                        },
+                                    );
+                                });
+
+                            ui.end_row();
+                        }
                     });
-                }
             });
     }
 }

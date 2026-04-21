@@ -52,7 +52,7 @@ impl OpNumberMathLog2 {
             return Err(OperationError { input_errors: vec![], node_error: Some("Input must be greater than 0.".to_string()) });
         }
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Decimal(input.log2()),

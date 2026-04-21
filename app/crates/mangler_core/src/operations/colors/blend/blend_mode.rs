@@ -83,7 +83,7 @@ impl OpColorBlendMode {
             ColorSpace::Cmyk => Color::blend_cmyk(a, b, &blend_mode, amount),
         };
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Color(color),

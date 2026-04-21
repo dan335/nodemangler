@@ -169,7 +169,7 @@ impl NodeSearchPopup {
                             .inner_margin(4.0)
                             .show(ui, |ui| {
                                 let text_edit = egui::TextEdit::singleline(&mut self.search_text)
-                                    .frame(false)
+                                    .frame(egui::Frame::NONE)
                                     .desired_width(popup_width - 24.0)
                                     .hint_text("Search nodes...");
                                 ui.add(text_edit)
@@ -228,56 +228,71 @@ impl NodeSearchPopup {
                         egui::ScrollArea::vertical()
                             .max_height(scroll_area_max_height)
                             .show(ui, |ui| {
-                                ui.with_layout(
-                                    egui::Layout::top_down_justified(egui::Align::LEFT),
-                                    |ui| {
-                                        for (i, result) in self.filtered_results.iter().enumerate()
-                                        {
-                                            let is_selected = i == self.selected_index;
+                                // Manually render each row at a fixed size, because
+                                // selectable_label in egui 0.34 applies per-widget styling
+                                // that can shift row metrics between hover states, causing
+                                // rows to jump as the mouse crosses them.
+                                let row_height = ui.text_style_height(&egui::TextStyle::Body) + 4.0;
+                                let row_width = ui.available_width();
+                                let selection_fill = ui.visuals().selection.bg_fill;
+                                let text_color = ui.visuals().text_color();
+                                let weak_color = ui.visuals().weak_text_color();
 
-                                            let mut job = egui::text::LayoutJob::default();
-                                            job.append(
-                                                &format!("{}  ", result.name),
-                                                0.0,
-                                                egui::TextFormat::simple(
-                                                    egui::FontId::default(),
-                                                    ui.visuals().text_color(),
-                                                ),
-                                            );
-                                            job.append(
-                                                &result.category_path,
-                                                0.0,
-                                                egui::TextFormat::simple(
-                                                    egui::FontId::default(),
-                                                    ui.visuals().weak_text_color(),
-                                                ),
-                                            );
-                                            let display_text = egui::WidgetText::from(job);
+                                for (i, result) in self.filtered_results.iter().enumerate() {
+                                    let is_selected = i == self.selected_index;
 
-                                            let selectable =
-                                                ui.selectable_label(is_selected, display_text);
+                                    let (rect, row_response) = ui.allocate_exact_size(
+                                        egui::vec2(row_width, row_height),
+                                        egui::Sense::click(),
+                                    );
 
-                                            if selectable.clicked() {
-                                                response.selected_operation =
-                                                    Some(result.operation.clone());
-                                                response.closed = true;
-                                                return;
-                                            }
+                                    if is_selected {
+                                        ui.painter().rect_filled(rect, 0.0, selection_fill);
+                                    }
 
-                                            if selectable.hovered() {
-                                                self.selected_index = i;
-                                            }
-                                        }
+                                    let mut job = egui::text::LayoutJob::default();
+                                    job.append(
+                                        &format!("{}  ", result.name),
+                                        0.0,
+                                        egui::TextFormat::simple(
+                                            egui::FontId::default(),
+                                            text_color,
+                                        ),
+                                    );
+                                    job.append(
+                                        &result.category_path,
+                                        0.0,
+                                        egui::TextFormat::simple(
+                                            egui::FontId::default(),
+                                            weak_color,
+                                        ),
+                                    );
+                                    let galley = ui.painter().layout_job(job);
+                                    let text_pos = egui::pos2(
+                                        rect.left() + 4.0,
+                                        rect.center().y - galley.size().y * 0.5,
+                                    );
+                                    ui.painter().galley(text_pos, galley, text_color);
 
-                                        if self.filtered_results.is_empty() {
-                                            ui.label(
-                                                egui::RichText::new("No matching nodes")
-                                                    .weak()
-                                                    .italics(),
-                                            );
-                                        }
-                                    },
-                                );
+                                    if row_response.clicked() {
+                                        response.selected_operation =
+                                            Some(result.operation.clone());
+                                        response.closed = true;
+                                        return;
+                                    }
+
+                                    if row_response.hovered() {
+                                        self.selected_index = i;
+                                    }
+                                }
+
+                                if self.filtered_results.is_empty() {
+                                    ui.label(
+                                        egui::RichText::new("No matching nodes")
+                                            .weak()
+                                            .italics(),
+                                    );
+                                }
                             });
                     });
             });

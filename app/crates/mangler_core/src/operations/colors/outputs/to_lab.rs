@@ -59,7 +59,7 @@ impl OpColorOutputLab {
 
         let (l, a, b, alpha) = color.to_lab();
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse {value: Value::Decimal(l)},

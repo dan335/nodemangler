@@ -11,22 +11,6 @@ pub struct AppConfig {
     /// The theme name to restore on startup (e.g. "dark_green").
     #[serde(default)]
     pub theme: Option<String>,
-
-    /// API keys for external services.
-    #[serde(default)]
-    pub api_keys: ApiKeys,
-
-    /// Per-session AI cost limit in USD. 0 means no limit.
-    #[serde(default)]
-    pub ai_cost_limit: f64,
-}
-
-/// API keys for AI providers.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ApiKeys {
-    /// OpenAI API key (used for DALL-E, GPT-Image, etc.).
-    #[serde(default)]
-    pub openai: String,
 }
 
 impl AppConfig {
@@ -65,24 +49,6 @@ impl AppConfig {
 
         if let Ok(json) = serde_json::to_string_pretty(self) {
             let _ = std::fs::write(&path, json);
-        }
-    }
-
-    /// Apply the AI cost limit from config to the shared atomic.
-    pub fn apply_ai_cost_limit(&self) {
-        mangler_core::operations::ai::shared::set_cost_limit(self.ai_cost_limit);
-    }
-
-    /// Set the OPENAI_API_KEY env var from config if it's non-empty
-    /// and the env var isn't already set.
-    pub fn apply_api_keys_to_env(&self) {
-        let key = self.api_keys.openai.trim();
-        if !key.is_empty() {
-            // Only set if not already provided by the user's environment.
-            if std::env::var("OPENAI_API_KEY").is_err() {
-                // SAFETY: single-threaded at startup before tokio runtime spawns tasks.
-                unsafe { std::env::set_var("OPENAI_API_KEY", key); }
-            }
         }
     }
 }

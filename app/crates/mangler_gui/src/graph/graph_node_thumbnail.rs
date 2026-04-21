@@ -44,9 +44,14 @@ impl GraphNodeThumbnail {
                     Color32::WHITE,
                 );
 
+                // Scale font and gap with zoom so the info text tracks node size,
+                // matching the timing text drawn above the node.
+                let font_size = graph_to_view_space(graph_zoom, 10.0);
+                let gap = graph_to_view_space(graph_zoom, 10.0);
+
                 let info_pos = Pos2::new(
                     top_center_pos.x - thumb_size.x * 0.5,
-                    top_center_pos.y + thumb_size.y + 10.0,
+                    top_center_pos.y + thumb_size.y + gap,
                 );
 
                 let channels_pos = Pos2 {
@@ -69,16 +74,16 @@ impl GraphNodeThumbnail {
                     channels_pos,
                     Align2::LEFT_TOP,
                     ch_label,
-                    egui::FontId::monospace(10.0),
+                    egui::FontId::monospace(font_size),
                     Color32::from(theme.get().text_faint),
                 );
 
-                // image res                
+                // image res
                 ui.painter().text(
                     res_pos,
                     Align2::RIGHT_TOP,
                     format!("{}x{}", width, height),
-                    egui::FontId::monospace(10.0),
+                    egui::FontId::monospace(font_size),
                     Color32::from(theme.get().text_faint),
                 );
             },

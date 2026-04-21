@@ -75,7 +75,7 @@ impl OpNumberMathNthRt {
 
             let nth_root = num.powf(1.0 / n);
 
-            Ok(OperationResponse { ai_cost_usd: None,
+            Ok(OperationResponse { 
                 time: Instant::now().duration_since(start_time),
                 responses: vec![OutputResponse {
                     value: Value::Decimal(nth_root),

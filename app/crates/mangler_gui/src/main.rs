@@ -2,8 +2,9 @@
 
 use eframe::egui::{self};
 use epaint::Vec2;
-use themes::theme::Theme;
 use std::path::Path;
+use themes::theme::Theme;
+mod app;
 mod app_menu;
 mod config;
 mod graph;
@@ -12,13 +13,12 @@ mod program;
 mod settings;
 mod themes;
 mod view_window;
-mod app;
 use egui::Pos2;
 
 pub const PROFILE: bool = false;
 pub const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
 pub const DEFAULT_WINDOW_HEIGHT: f32 = 800.0;
-pub const APP_MENU_HEIGHT: f32 = 35.0;
+pub const APP_MENU_HEIGHT: f32 = 40.0;
 pub const NODE_MENU_WIDTH: f32 = 250.0;
 pub const SETTINGS_PANEL_WIDTH: f32 = 300.0;
 pub const DEFAULT_THEME: Theme = Theme::DarkGreen;
@@ -32,6 +32,8 @@ async fn main() -> Result<(), eframe::Error> {
     let icon_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/mangler_icon.png");
 
     let options = eframe::NativeOptions {
+        // 4x MSAA on the main framebuffer so the 3D viewer gets geometry AA.
+        multisampling: 4,
         viewport: egui::ViewportBuilder::default()
             .with_maximized(true)
             .with_resizable(true)
@@ -43,12 +45,9 @@ async fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Mangler",
         options,
-        Box::new(|cc| {
-            Ok(Box::<app::App>::new(app::App::new(cc)))
-        }),
+        Box::new(|cc| Ok(Box::<app::App>::new(app::App::new(cc)))),
     )
 }
-
 
 // do this without image crate?
 fn load_icon(path: &str) -> egui::IconData {
@@ -67,12 +66,6 @@ fn load_icon(path: &str) -> egui::IconData {
         height: icon_height,
     }
 }
-
-
-
-
-
-
 
 pub fn view_to_graph_space(zoom: f32, n: f32) -> f32 {
     n * zoom
@@ -95,8 +88,6 @@ pub fn graph_to_view_space_pos2(zoom: f32, n: Pos2) -> Pos2 {
         graph_to_view_space(zoom, n.y),
     )
 }
-
-
 
 // generic error
 pub struct ManglerError(pub String);

@@ -59,7 +59,7 @@ impl OpColorOutputLch {
 
         let (l, c, h, a) = color.to_lch();
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse {value: Value::Decimal(l)},

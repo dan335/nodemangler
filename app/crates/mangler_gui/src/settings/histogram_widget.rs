@@ -24,9 +24,17 @@ pub fn compute_histogram(data: &FloatImage) -> HistogramCache {
     let mut bins_g = [0u32; 256];
     let mut bins_b = [0u32; 256];
     let ch = data.channels() as usize;
-    let color_ch = if ch == 2 || ch == 4 { ch - 1 } else { ch };
+    let has_alpha = ch == 2 || ch == 4;
+    let color_ch = if has_alpha { ch - 1 } else { ch };
 
     for pixel in data.pixels() {
+        // Skip fully transparent pixels. Operations like rotate fill the
+        // uncovered corners with alpha=0, and counting those RGB=0 samples
+        // would spike bin 0 of every channel and drown out the real content.
+        if has_alpha && pixel[ch - 1] <= 0.0 {
+            continue;
+        }
+
         if color_ch >= 3 {
             // Per-channel bins
             let r_bin = (pixel[0] * 255.0).clamp(0.0, 255.0) as usize;

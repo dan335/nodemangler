@@ -53,7 +53,7 @@ impl OpTextInput {
 
         let Value::Text(text) = input_converted.unwrap() else { unreachable!() };
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Text(text),

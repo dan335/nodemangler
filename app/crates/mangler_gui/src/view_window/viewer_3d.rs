@@ -8,13 +8,14 @@ use crate::themes::theme::Theme;
 
 use super::{
     arcball_camera::ArcballCamera,
-    gl_renderer::{GlRenderer, TextureChannel},
+    gl_renderer::{GlRenderer, MeshKind, TextureChannel},
     material_channels::MaterialData,
 };
 
 pub struct Viewer3d {
     renderer: Arc<Mutex<Option<GlRenderer>>>,
     camera: ArcballCamera,
+    pub mesh_kind: MeshKind,
     pending_uploads: Arc<Mutex<Vec<PendingUpload>>>,
 }
 
@@ -29,6 +30,7 @@ impl Viewer3d {
         Self {
             renderer: Arc::new(Mutex::new(None)),
             camera: ArcballCamera::new(),
+            mesh_kind: MeshKind::Sphere,
             pending_uploads: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -72,6 +74,7 @@ impl Viewer3d {
             yaw: self.camera.yaw,
             pitch: self.camera.pitch,
         };
+        let mesh_kind = self.mesh_kind;
 
         let renderer = self.renderer.clone();
         let pending_uploads = self.pending_uploads.clone();
@@ -115,7 +118,7 @@ impl Viewer3d {
                     fov_y: camera_snapshot.projection_fov_y,
                 };
 
-                r.render(gl, [vp_x, vp_y, vp_w, vp_h], &camera);
+                r.render(gl, [vp_x, vp_y, vp_w, vp_h], &camera, mesh_kind);
             })),
         };
 

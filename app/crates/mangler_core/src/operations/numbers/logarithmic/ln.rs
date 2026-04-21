@@ -57,7 +57,7 @@ impl OpNumberMathLn {
 
         let result = (input as f64).ln() as f32;
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Decimal(result),

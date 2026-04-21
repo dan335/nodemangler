@@ -88,7 +88,7 @@ impl OpColorAnalysisColorTemperature {
         // Normalize to a 0.0 (cool, ~20000K) to 1.0 (warm, ~1000K) scale.
         let warm_cool = (1.0 - (kelvin - 1000.0) / 19000.0).clamp(0.0, 1.0);
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Decimal(kelvin) },

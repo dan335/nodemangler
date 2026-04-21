@@ -59,7 +59,7 @@ impl OpColorOutputYuv {
 
         let (y, u, v, alpha) = color.to_yuv();
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse {value: Value::Decimal(y)},

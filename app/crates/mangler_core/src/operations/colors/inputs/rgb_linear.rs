@@ -66,7 +66,7 @@ impl OpColorInputRgbaLinear {
         // run node
         let color = Color::from_rgb_linear(red, green, blue, alpha);
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Color(color),

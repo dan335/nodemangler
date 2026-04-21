@@ -74,7 +74,7 @@ impl OpColorHarmonyAnalogous {
         let analogous_a = Color::from_hsl(rotate_hue(h, angle), s, l, a);
         let analogous_b = Color::from_hsl(rotate_hue(h, -angle), s, l, a);
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Color(analogous_a) },

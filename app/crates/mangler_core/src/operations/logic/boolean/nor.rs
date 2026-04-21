@@ -54,7 +54,7 @@ impl OpLogicBoolNor {
         let Value::Bool(a) = a_converted.unwrap() else { unreachable!() };
         let Value::Bool(b) = b_converted.unwrap() else { unreachable!() };
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Bool(!(a || b)),

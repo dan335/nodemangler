@@ -2,7 +2,7 @@
 
 ## Context
 
-NodeMangler has a solid async graph engine, 14 noise generators, 9 color spaces, and subgraph support. Phases 1-4 added blend modes, channel ops, distortion/tiling, shapes/patterns, and advanced filters. Phases 5-7 mostly complete (PBR pipeline, logic nodes, text rendering). This plan covers remaining work.
+NodeMangler has a solid async graph engine, 24 noise generators, 9 color spaces, and subgraph support. Phases 1-4 added blend modes, channel ops, distortion/tiling, shapes/patterns, and advanced filters. Phases 6, 7, and 9 are complete (logic nodes, text rendering, CLI polish). This plan covers remaining work.
 
 ---
 
@@ -11,27 +11,15 @@ NodeMangler has a solid async graph engine, 14 noise generators, 9 color spaces,
 **Status:** 4 of 5 nodes implemented (normal_from_height, ao_from_height, curvature, height_blend). Remaining:
 
 ### 5E. PBR Material Export
-- **New file:** `app/crates/mangler/src/operations/images/outputs/pbr_export.rs`
+- **New file:** `app/crates/mangler_core/src/operations/images/outputs/pbr_export.rs`
 - Package BaseColor + Normal + Roughness + Metallic + Height + AO into standard formats
 - Export to folder with naming conventions (Unity, Unreal, glTF)
 
 ---
 
-## Phase 6: Logic Nodes ✅ COMPLETE
-
-14 logic operations implemented across 4 subcategories: input (bool), comparison (equal, not_equal, less_than, less_equal, greater_than, greater_equal), boolean (and, or, not, xor, nand, nor), flow (select). All tests passing.
-
----
-
-## Phase 7: Text Rendering ✅ COMPLETE
-
-Text node implemented in `app/crates/mangler/src/operations/images/inputs/text.rs`. Uses embedded Manrope-Regular font via `ab_glyph`. Inputs: text, font_size, image_width, image_height, x_position, y_position. 7 tests passing.
-
----
-
 ## Phase 8: UI Improvements
 
-**Scope:** All changes in `app/crates/nodemangler/` (GUI crate).
+**Scope:** All changes in `app/crates/mangler_gui/` (GUI crate).
 
 ### 8A. Frame / Comment Nodes
 - Allow users to draw labeled rectangles around groups of nodes for organization
@@ -51,91 +39,9 @@ Text node implemented in `app/crates/mangler/src/operations/images/inputs/text.r
 
 ---
 
-## Phase 9: CLI Polish & Discoverability ✅ COMPLETE
-
-**Status:** All items implemented. 161 tests passing.
-
-**Scope:** All changes in `app/crates/mangler_tui/src/main.rs` unless noted.
-
-### 9A. `list-ops` filtering and search
-
-Currently `list-ops` dumps 200+ ops. Add `--search` for fuzzy/substring matching and make `--group` more discoverable.
-
-- Add `--search <term>` arg (case-insensitive substring match against path, variant name, and description)
-- Enhance `--group`: when called with no value or a non-matching value, list available categories with counts (e.g. `numbers (82)`, `images (150)`) instead of showing nothing
-
-```rust
-// In Commands::ListOps, add:
-#[arg(long)]
-search: Option<String>,
-```
-
-In `cmd_list_ops`: if `--group` matches no ops, collect unique top-level prefixes from `flatten_ops()` and print with counts as a helpful fallback. If `--search`, filter where path/variant/description contains the term.
-
-### 9B. Enum/type value discovery
-
-No way to see valid enum values without triggering an error. Add a `list-types` command.
-
-- Add `Commands::ListTypes { type_name: Option<String> }` subcommand
-- If no arg: list all enum-like Value variants (`BlendMode`, `ColorSpace`, `FilterType`, `ImageType`, `TextHAlign`, `TextVAlign`, `ColorFormat`, `NoiseWorleyDistanceFunction`)
-- If arg given: print all valid variants for that type
-- Implementation: for each enum type, create a helper that returns `&[&str]` of variant names. Can use serde to introspect or hardcode. Simplest approach: match on type name string, return known variants
-
-```
-$ mangler_tui list-types
-BlendMode, ColorSpace, FilterType, ImageType, TextHAlign, TextVAlign, ColorFormat
-
-$ mangler_tui list-types BlendMode
-Over, Multiply, Screen, Overlay, Darken, Lighten, ColorDodge, ColorBurn, ...
-```
-
-Also improve `set-input` error messages: when JSON parse fails on an enum, detect the Value variant from the node's input type and include valid values in the error.
-
-### 9C. Richer `info` output
-
-Make `info` more useful at a glance.
-
-- Show node description below the node header: `    "Adds two numbers together."`
-- Show default values alongside current values when they differ: `in[0] a (Decimal) = 10.0 (default: 0.0)`
-- Show accepted enum values inline for enum-typed inputs: `in[4] blend mode (BlendMode: Over|Multiply|Screen|...) = Over`
-- Add `--node <id>` flag to show only a single node
-- Add `--compact` flag that omits default values and descriptions (current behavior)
-
-```rust
-// In Commands::Info, add:
-#[arg(long)]
-node: Option<String>,
-#[arg(long)]
-compact: bool,
-```
-
-### 9D. Flag naming consistency
-
-Unify the `--index` vs `--input` inconsistency and the slot reference style.
-
-- `set-input`: rename `--index` to `--input` (both `set-input` and `disconnect` refer to input slots, so `--input` is clearer and consistent)
-
-```rust
-// In Commands::SetInput:
-#[arg(long)]
-input: usize,
-```
-
-### 9E. Better error messages
-
-Silent failures are the biggest pain point. Nodes that fail should report why.
-
-- **`set-input`**: when JSON parse fails, detect the expected Value type from the node's input at that index and include it in the error: `"input 'blend mode' (index 4) on node 'comp' expects BlendMode — valid values: Over, Multiply, Screen, ..."`
-- **`run`**: after `graph.run()`, check each node's `is_error` and `error_message` fields. If any node errored, print `[node_id] ERROR: <message>` and exit with code 1
-- **`connect`**: validate that source node/output index and dest node/input index exist before calling `graph.add_connection()`. Currently bad indices are silently accepted.
-- **`set-input`**: validate that the input index exists on the node (bounds check `node.inputs.len()`)
-- **`image to file` node bug**: this is a core issue — the node silently produces 0-byte JPGs when fed RGBA images. Fix in `mangler_core`: either auto-convert RGBA→RGB before JPEG encoding, or return an `OperationError` explaining the format incompatibility
-
----
-
 ## Phase 10: New CLI Commands
 
-**Scope:** `app/crates/mangler_tui/src/main.rs`
+**Scope:** `app/crates/mangler_cli/src/main.rs`
 
 ### 10A. `validate` command
 
@@ -217,13 +123,13 @@ Change `set-input --value` to auto-detect type based on the target input's `Valu
 
 ```bash
 # Current (still works — any value starting with { is parsed as JSON)
-mangler_tui set-input --node a1 --index 0 --value '{"Decimal":3.14}' graph.mangle.json
+mangler_cli set-input --node a1 --index 0 --value '{"Decimal":3.14}' graph.mangle.json
 
 # New (auto-detects Decimal because input 0 expects Decimal)
-mangler_tui set-input --node a1 --index 0 --value 3.14 graph.mangle.json
+mangler_cli set-input --node a1 --index 0 --value 3.14 graph.mangle.json
 
 # Enum inputs auto-resolve variant names
-mangler_tui set-input --node comp --index 4 --value Screen graph.mangle.json
+mangler_cli set-input --node comp --index 4 --value Screen graph.mangle.json
 ```
 
 Implementation in `cmd_set_input`:
@@ -237,8 +143,8 @@ Implementation in `cmd_set_input`:
 Add `--raw <value>` as alternative to `--value <json>`:
 
 ```bash
-mangler_tui set-input --node a1 --index 0 --raw 3.14 graph.mangle.json
-mangler_tui set-input --node comp --index 4 --raw Screen graph.mangle.json
+mangler_cli set-input --node a1 --index 0 --raw 3.14 graph.mangle.json
+mangler_cli set-input --node comp --index 4 --raw Screen graph.mangle.json
 ```
 
 **Recommended: Option A** — auto-detect with `{` prefix as JSON escape hatch. It's technically breaking but no existing valid input starts with anything other than `{`, so in practice nothing breaks.
@@ -254,12 +160,12 @@ Every new operation follows the established pattern:
 3. Implement `create_inputs()` → `Vec<Input>` with `InputSettings` (Slider, DragValue, etc.)
 4. Implement `create_outputs()` → `Vec<Output>`
 5. Implement `async fn run(inputs)` using `convert_input()` + the 5-step pattern
-6. Register in `operations!` macro in `app/crates/mangler/src/operations/mod.rs`
+6. Register in `operations!` macro in `app/crates/mangler_core/src/operations/mod.rs`
 7. Add to `operation_list()` in appropriate category
 8. Add `pub mod` in parent `mod.rs` files
 
 **Key files to modify for every operation:**
-- `app/crates/mangler/src/operations/mod.rs` — macro registration + menu
+- `app/crates/mangler_core/src/operations/mod.rs` — macro registration + menu
 - Parent category `mod.rs` — module declaration
 
 ---
@@ -268,8 +174,8 @@ Every new operation follows the established pattern:
 
 After each phase (from `app/` directory):
 - `cargo build` — must compile cleanly
-- `cargo test -p mangler` — all existing tests pass
-- `cargo run -p nodemangler` — new nodes appear in menu, can be placed and connected
+- `cargo test -p mangler_core` — all existing tests pass
+- `cargo run -p mangler_gui` — new nodes appear in menu, can be placed and connected
 - Manual test: create a small graph exercising the new nodes, verify output images are correct
 
 ---
@@ -279,10 +185,7 @@ After each phase (from `app/` directory):
 | Phase | Description | Complexity | Status |
 |-------|-------------|------------|--------|
 | 5     | PBR Pipeline (1 remaining) | High | In Progress |
-| 6     | Logic Nodes (14) | Medium | ✅ Complete |
-| 7     | Text Rendering (1) | Medium | ✅ Complete |
 | 8     | GUI Improvements (~3+) | High | |
-| 9     | CLI Polish & Discoverability (5 items) | Medium | ✅ Complete |
 | 10    | New CLI Commands (3 commands) | Medium | |
 | 11    | Simplified Value Syntax | Low | |
 

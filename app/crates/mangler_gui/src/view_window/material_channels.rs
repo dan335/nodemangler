@@ -144,7 +144,10 @@ pub fn list_image_outputs(graph_nodes: &HashMap<String, GraphNode>) -> Vec<(Stri
             }
         }
     }
-    result.sort_by(|a, b| a.2.cmp(&b.2));
+    // Sort by label, then by (node_id, output_index) so the list ordering is
+    // fully deterministic — without the tiebreaker, items sharing a label would
+    // fall back to HashMap iteration order and could swap positions.
+    result.sort_by(|a, b| a.2.cmp(&b.2).then(a.0.cmp(&b.0)).then(a.1.cmp(&b.1)));
     result
 }
 

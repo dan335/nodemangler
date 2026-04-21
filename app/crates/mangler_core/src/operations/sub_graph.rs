@@ -147,7 +147,7 @@ impl OperationSubgraph {
                         });
                     }).join().expect("Thread panicked");
 
-                    return Ok(OperationResponse { ai_cost_usd: None,
+                    return Ok(OperationResponse { 
                         time: Instant::now().duration_since(start_time),
                         responses: vec![],
                     });
@@ -197,7 +197,7 @@ impl OperationSubgraph {
         //                 println!("Async function completed synchronously.");
         //             });
 
-        //             return Ok(OperationResponse { ai_cost_usd: None,
+        //             return Ok(OperationResponse { 
         //                 time: Instant::now().duration_since(start_time),
         //                 responses: vec![],
         //             });

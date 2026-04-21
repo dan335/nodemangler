@@ -62,11 +62,19 @@ fn show_enum_combo<T: Clone + PartialEq>(
     egui::ComboBox::from_id_salt(format!("{}_{}", label, input_index))
         .selected_text(display_name(&selected))
         .show_ui(ui, |ui| {
-            for variant in variants {
-                if ui.selectable_value(&mut selected, variant.clone(), display_name(variant)).changed() {
-                    change_value(tx_change_node, node_id, input_index, input, to_value(variant));
-                }
-            }
+            // Justify so every item fills the full popup width — keeps the
+            // hover highlight a consistent size as the mouse moves between
+            // items that have differently-sized labels.
+            ui.with_layout(
+                egui::Layout::top_down(egui::Align::Min).with_cross_justify(true),
+                |ui| {
+                    for variant in variants {
+                        if ui.selectable_value(&mut selected, variant.clone(), display_name(variant)).changed() {
+                            change_value(tx_change_node, node_id, input_index, input, to_value(variant));
+                        }
+                    }
+                },
+            );
         });
 }
 
@@ -103,55 +111,6 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: &Sender<Cha
     ui.label(egui::RichText::new(format!("{}", node.settings.description)).color(theme.get().text_faint));
 
     ui.add_space(12.0);
-
-    // Manual-run controls: Run/Cancel buttons and status log.
-    if node.is_manual_run {
-        ui.horizontal(|ui| {
-            // Run button — disabled while the node is already running.
-            let run_button = egui::Button::new(
-                RichText::new("Run").strong()
-            );
-            if ui.add_enabled(!node.is_busy, run_button).clicked() {
-                let _ = tx_change_node.try_send(ChangeNodeMessage::ManualRun {
-                    node_id: node.id.clone(),
-                });
-            }
-
-            // Cancel button — only enabled while running.
-            let cancel_button = egui::Button::new("Cancel");
-            if ui.add_enabled(node.is_busy, cancel_button).clicked() {
-                let _ = tx_change_node.try_send(ChangeNodeMessage::CancelRun {
-                    node_id: node.id.clone(),
-                });
-            }
-
-            // Status indicator text.
-            if node.is_busy {
-                ui.label(RichText::new("Running...").color(theme.get().grid_connection_line));
-            } else if node.is_dirty {
-                ui.label(RichText::new("Inputs changed").color(theme.get().node_header_dirty_bg));
-            }
-        });
-
-        // Status log — scrollable read-only text area.
-        if !node.status_log.is_empty() {
-            ui.add_space(4.0);
-            let log_text = node.status_log.join("\n");
-            egui::ScrollArea::vertical()
-                .max_height(120.0)
-                .stick_to_bottom(true)
-                .show(ui, |ui| {
-                    ui.add(
-                        TextEdit::multiline(&mut log_text.as_str())
-                            .desired_width(f32::INFINITY)
-                            .desired_rows(4)
-                            .interactive(false)
-                            .font(egui::TextStyle::Monospace),
-                    );
-                });
-        }
-        ui.add_space(12.0);
-    }
 
     ui.heading("inputs");
     ui.add_space(12.0);
@@ -529,11 +488,16 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 egui::ComboBox::from_id_salt(format!("text_dropdown_{}", input_index))
                     .selected_text(&selected)
                     .show_ui(ui, |ui| {
-                        for option in &options {
-                            if ui.selectable_value(&mut selected, option.clone(), option).changed() {
-                                change_value(tx_change_node, node_id, input_index, input, Value::Text(selected.clone()));
-                            }
-                        }
+                        ui.with_layout(
+                            egui::Layout::top_down(egui::Align::Min).with_cross_justify(true),
+                            |ui| {
+                                for option in &options {
+                                    if ui.selectable_value(&mut selected, option.clone(), option).changed() {
+                                        change_value(tx_change_node, node_id, input_index, input, Value::Text(selected.clone()));
+                                    }
+                                }
+                            },
+                        );
                     });
             } else if let Some(InputSettings::MultiLineText) = &input.settings {
                 // Multi-line text area.
@@ -587,17 +551,22 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 egui::ComboBox::from_id_salt(format!("color_format_{}", input_index))
                     .selected_text(format!("{:?}", x))
                     .show_ui(ui, |ui| {
-                        for color_format in ColorFormat::types().iter() {
-                            let compatible = sibling_image_format
-                                .as_ref()
-                                .map(|fmt| color_format.is_compatible_with_image_format(fmt))
-                                .unwrap_or(true);
-                            ui.add_enabled_ui(compatible, |ui| {
-                                if ui.selectable_value(&mut x, color_format.clone(), format!("{:?}", color_format)).changed() {
-                                    change_value(tx_change_node, node_id, input_index, input, Value::ColorFormat(color_format.clone()));
+                        ui.with_layout(
+                            egui::Layout::top_down(egui::Align::Min).with_cross_justify(true),
+                            |ui| {
+                                for color_format in ColorFormat::types().iter() {
+                                    let compatible = sibling_image_format
+                                        .as_ref()
+                                        .map(|fmt| color_format.is_compatible_with_image_format(fmt))
+                                        .unwrap_or(true);
+                                    ui.add_enabled_ui(compatible, |ui| {
+                                        if ui.selectable_value(&mut x, color_format.clone(), format!("{:?}", color_format)).changed() {
+                                            change_value(tx_change_node, node_id, input_index, input, Value::ColorFormat(color_format.clone()));
+                                        }
+                                    });
                                 }
-                            });
-                        }
+                            },
+                        );
                     });
             }
         }
@@ -659,11 +628,16 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 egui::ComboBox::from_id_salt(format!("image_format_{}", input_index))
                     .selected_text(format!("{:?}", x))
                     .show_ui(ui, |ui| {
-                        for image_type in mangler_core::value::ImageType::types().iter() {
-                            if ui.selectable_value(&mut x, image_type.format(), image_type.format().extensions_str()[0].to_string()).changed() {
-                                change_value(tx_change_node, node_id, input_index, input, Value::ImageType(image_type.format()));
-                            }
-                        }
+                        ui.with_layout(
+                            egui::Layout::top_down(egui::Align::Min).with_cross_justify(true),
+                            |ui| {
+                                for image_type in mangler_core::value::ImageType::types().iter() {
+                                    if ui.selectable_value(&mut x, image_type.format(), image_type.format().extensions_str()[0].to_string()).changed() {
+                                        change_value(tx_change_node, node_id, input_index, input, Value::ImageType(image_type.format()));
+                                    }
+                                }
+                            },
+                        );
                     });
             }
         },

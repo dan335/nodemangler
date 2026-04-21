@@ -25,8 +25,6 @@ pub mod colors;
 pub mod logic;
 /// Text operations (clipboard).
 pub mod text;
-/// AI-powered image operations (generate, edit, variation) via external APIs.
-pub mod ai;
 
 /// Describes a single input or output connection slot on a node.
 ///
@@ -69,9 +67,6 @@ pub struct OperationResponse {
     pub responses: Vec<OutputResponse>,
     /// Wall-clock time the operation took to execute.
     pub time: Duration,
-    /// Cost in USD for AI operations. `None` for non-AI operations.
-    #[serde(skip)]
-    pub ai_cost_usd: Option<f64>,
 }
 
 /// A single output value produced by an operation.
@@ -193,14 +188,6 @@ macro_rules! operations {
                 match self {
                     $(Operation::$variant => <$inner>::run(inputs).await,)*
                 }
-            }
-
-            /// Whether this operation requires a manual "Run" button press instead
-            /// of auto-executing when inputs change. Defaults to `false`; AI operations
-            /// override this to `true` to prevent expensive API calls on every keystroke.
-            pub fn requires_manual_run(&self) -> bool {
-                // Only AI operations require manual run; all others auto-execute.
-                matches!(self, Operation::OpAiGenerate | Operation::OpAiEdit | Operation::OpAiVariation)
             }
         }
     };
@@ -473,11 +460,6 @@ operations! {
     OpNumberBitwiseNot(crate::operations::numbers::bitwise::bit_not::OpNumberBitwiseNot),
     OpNumberBitwiseShiftLeft(crate::operations::numbers::bitwise::bit_shift_left::OpNumberBitwiseShiftLeft),
     OpNumberBitwiseShiftRight(crate::operations::numbers::bitwise::bit_shift_right::OpNumberBitwiseShiftRight),
-
-    // ai
-    OpAiGenerate(crate::operations::ai::generate::OpAiGenerate),
-    OpAiEdit(crate::operations::ai::edit::OpAiEdit),
-    OpAiVariation(crate::operations::ai::variation::OpAiVariation),
 }
 
 /// Returns the full hierarchical menu of available operations.
@@ -776,11 +758,6 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpTextToUppercase },
                 OperationListItem::Operation { operation: Operation::OpTextToLowercase },
             ]},
-        ]},
-        OperationListItem::Category { name: "ai".to_string(), operation_list_items: vec![
-            OperationListItem::Operation { operation: Operation::OpAiGenerate },
-            OperationListItem::Operation { operation: Operation::OpAiEdit },
-            OperationListItem::Operation { operation: Operation::OpAiVariation },
         ]},
         //OperationListItem::Subgraph,
     ];

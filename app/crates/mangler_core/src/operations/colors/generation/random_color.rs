@@ -74,7 +74,7 @@ impl OpColorGenerationRandomColor {
 
         let color = Color::from_hsl(hue, sat, lightness, 1.0);
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Color(color),

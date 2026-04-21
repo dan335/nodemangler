@@ -190,3 +190,47 @@ fn test_compute_histogram_shared_max_count() {
     // max_count should be at least 4 (from the R spike)
     assert!(cache.max_count >= 4, "max_count should be >= 4, got {}", cache.max_count);
 }
+
+/// Fully transparent pixels (alpha=0) should be skipped. Rotation fills
+/// uncovered corners with alpha=0; counting them would spike bin 0 of every
+/// channel and drown out the real content.
+#[test]
+fn test_compute_histogram_skips_transparent_rgba() {
+    // 10 pixels: 4 opaque red + 6 transparent black (simulating rotation corners)
+    let mut img = FloatImage::new(10, 1, 4);
+    for (i, pixel) in img.pixels_mut().enumerate() {
+        if i < 4 {
+            pixel[0] = 1.0; pixel[1] = 0.0; pixel[2] = 0.0; pixel[3] = 1.0;
+        } else {
+            pixel[0] = 0.0; pixel[1] = 0.0; pixel[2] = 0.0; pixel[3] = 0.0;
+        }
+    }
+
+    let cache = compute_histogram(&img);
+
+    // Only the 4 opaque red pixels should be counted.
+    assert_eq!(cache.bins_r[255], 4);
+    assert_eq!(cache.bins_g[0], 4);
+    assert_eq!(cache.bins_b[0], 4);
+    // Transparent pixels must not inflate bin 0.
+    let r_total: u32 = cache.bins_r.iter().sum();
+    assert_eq!(r_total, 4, "transparent pixels should not be counted");
+}
+
+/// Same skip for 2-channel grayscale+alpha images.
+#[test]
+fn test_compute_histogram_skips_transparent_grayscale_alpha() {
+    let mut img = FloatImage::new(5, 1, 2);
+    for (i, pixel) in img.pixels_mut().enumerate() {
+        if i < 2 {
+            pixel[0] = 0.5; pixel[1] = 1.0; // opaque mid-gray
+        } else {
+            pixel[0] = 0.0; pixel[1] = 0.0; // transparent
+        }
+    }
+
+    let cache = compute_histogram(&img);
+
+    let total: u32 = cache.bins.iter().sum();
+    assert_eq!(total, 2, "only the 2 opaque pixels should be counted");
+}

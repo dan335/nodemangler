@@ -70,7 +70,7 @@ impl OpColorManipulationSetAlpha {
 
         let result = Color::from_srgb_float(color.r, color.g, color.b, new_alpha);
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Color(result),

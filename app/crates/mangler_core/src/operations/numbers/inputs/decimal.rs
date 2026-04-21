@@ -61,7 +61,7 @@ impl OpNumberInputDecimal {
         let Value::Decimal(input) = input_converted.unwrap() else { unreachable!() };
 
         // run node
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Decimal(input),

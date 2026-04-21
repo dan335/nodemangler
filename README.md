@@ -15,12 +15,13 @@ The repository is organized as a monorepo:
 
 | Crate | Path | Purpose |
 |-------|------|---------|
-| **mangler** | `app/crates/mangler/` | Core library — value system, node graph engine, operations, color spaces |
-| **nodemangler** | `app/crates/nodemangler/` | GUI application built with egui/eframe |
+| **mangler_core** | `app/crates/mangler_core/` | Core library — value system, node graph engine, operations, color spaces |
+| **mangler_gui** | `app/crates/mangler_gui/` | Desktop GUI application built with egui/eframe |
+| **mangler_cli** | `app/crates/mangler_cli/` | Headless CLI for running graphs without the GUI |
 
 See each crate's README for details:
-- [mangler README](app/crates/mangler/README.md) — the engine and operation library
-- [nodemangler README](app/crates/nodemangler/README.md) — the desktop application
+- [mangler_core README](app/crates/mangler_core/README.md) — the engine and operation library
+- [mangler_gui README](app/crates/mangler_gui/README.md) — the desktop application
 
 ## Requirements
 
@@ -35,7 +36,10 @@ cd app
 cargo build
 
 # Run the GUI application
-cargo run -p nodemangler
+cargo run -p mangler_gui
+
+# Run a graph headless from the CLI
+cargo run -p mangler_cli
 
 # Run tests
 cargo test
@@ -43,7 +47,7 @@ cargo test
 
 ## How It Works
 
-1. **Values** flow between nodes. The type system includes: Bool, Integer, Decimal, String, Color, Image, Path, FilterType, ColorFormat, ImageType, ColorSpace, BlendMode, NoiseWorleyDistanceFunction, and Trigger. Values auto-convert where possible (e.g. Integer to Decimal, Bool to Color).
+1. **Values** flow between nodes. The type system includes: Bool, Integer, Decimal, String, Color, Image, Path, FilterType, ImageType, ColorFormat, ColorSpace, BlendMode, NoiseWorleyDistanceFunction, and Trigger. Values auto-convert where possible (e.g. Integer to Decimal, Bool to Color). Images are stored internally as `FloatImage` — 1–4 channel `f32` data — and only converted at I/O boundaries.
 
 2. **Nodes** are created from operations. Each operation defines its inputs, outputs, and processing logic. Operations are registered via the `operations!` macro which generates the `Operation` enum and dispatch code.
 
@@ -54,42 +58,49 @@ cargo test
 ## Available Operations
 
 ### Numbers
-- **Input:** Integer, Decimal
-- **Arithmetic:** Add, Subtract, Multiply, Divide, Modulo, Power, Abs, Negate
-- **Interpolation:** Lerp, Smoothstep, Clamp, Remap
-- **Algebra:** Floor, Ceil, Round, Fract, Sign, Min, Max
-- **Trigonometry:** Sin, Cos, Tan, Asin, Acos, Atan, Atan2
-- **Logarithmic:** Log, Log2, Log10, Exp
+- **Input:** Integer, Decimal, Pi, Tau, E
+- **Arithmetic:** Add, Subtract, Multiply, Divide, Increment, Decrement, Max, Min, Clamp, Modulus, Round, Sign, Negate, Reciprocal, Average, Ceil, Floor, Trunc, Frac
+- **Interpolation:** Step, Smoothstep, Lerp, Map Range
+- **Trigonometry:** Sin, Cos, Tan, Asin, Acos, Atan, Atan2, Sinh, Cosh, Tanh
+- **Algebra:** Abs, Sqrt, Cbrt, Nth Root, Pow, Factorial, GCD, LCM
+- **Logarithmic:** Log, Ln, Exp, Log2, Log10
 - **Random:** Random Integer, Random Decimal
-- **Cast:** To Integer, To Decimal, To Bool, To String
+- **Cast:** To Integer, To Decimal
 - **Bitwise:** And, Or, Xor, Not, Left Shift, Right Shift
 
 ### Colors
 - **Input:** from 9 color spaces — sRGB, Linear RGB, HSL, HSV, Lab, LCH, CMYK, XYZ, YUV
 - **Output:** decompose to any of those same 9 color spaces
-- **Blend:** 17 blend modes (Normal, Lerp, Multiply, Screen, Overlay, SoftLight, HardLight, ColorDodge, ColorBurn, Darken, Lighten, Difference, Exclusion, LinearBurn, LinearDodge, Divide, Subtract)
-- **Analysis:** Sample Most Common Colors from an image
-- **Cast:** Color from/to other value types
+- **Generation:** From Hex, To Hex, Random Color
+- **Manipulation:** Invert, Grayscale, Adjust HSV, Clamp, Set Alpha, Blend Mode (17 modes: Normal, Lerp, Multiply, Screen, Overlay, SoftLight, HardLight, ColorDodge, ColorBurn, Darken, Lighten, Difference, Exclusion, LinearBurn, LinearDodge, Divide, Subtract)
+- **Analysis:** Most Common Colors (sampled from image), Distance, Luminance, Contrast Ratio, Color Temperature, Dominant Hue, Harmony Score, Mix Ratio
+- **Harmony:** Complementary, Triadic, Analogous, Tetradic, Double Split Complementary, Monochromatic
+- **Cast:** To Color
 
 ### Images
 - **Input:** File, URL, Clipboard, Solid Color, Gradient, Text
 - **Output:** File, Clipboard
-- **Combine:** Blit, Blend (17 blend modes)
-- **Transform:** Crop, Resize, Flip H/V, Rotate 90/180/270, Rotate Around Center, Warp, Directional Warp, Safe Transform, Make Tile, Mirror
-- **Adjustments:** Contrast, Grayscale, Invert, Brighten, Hue Rotate, Posterize, Levels, Auto Levels, Curves, Gradient Map, Histogram Scan, Histogram Range, Distance
+- **Combine:** Blit, Blend (17 blend modes), Compare
+- **Transform:** Crop, Resize, Resize Exact, Resize Fill, Flip H/V, Rotate 90/180/270, Rotate Around Center, Warp, Directional Warp, Safe Transform, Make Tile, Mirror, Seam Carve
+- **Adjustments:** Contrast, Grayscale, Invert, Brighten, Hue Rotate, Levels, Auto Levels, Curves, Gradient Map, Posterize, Histogram Scan, Histogram Range, Distance
 - **Blur:** Gaussian Blur, Directional Blur, Radial Blur, Slope Blur, Non-Uniform Blur
 - **Filter:** Edge Detect, Emboss, Sharpen, Unsharpen
 - **Channels:** Split, Merge, Shuffle
 - **Shapes:** Rectangle, Ellipse, Polygon, Star, Line
 - **Patterns:** Brick, Hexagonal, Weave, Tile Sampler
 - **PBR:** Normal from Height, AO from Height, Curvature, Height Blend
-- **Noise:** Perlin, Simplex, OpenSimplex, SuperSimplex, Perlin Surflet, Worley (Distance/Value), Billow, Cylinders, FBM, Heterogeneous Multifractal, Hybrid Multifractal, Ridged Multifractal, Value
+- **Noise:** OpenSimplex, SuperSimplex, Perlin, Worley Distance, Worley Value, Billow, Cylinders, Domain Warp FBM, FBM, Heterogeneous Multifractal, Hybrid Multifractal, Ridged Multifractal, Value, Voronoi Crack, Voronoise, Reaction Diffusion, Erosion, Gabor, Gaussian, Crystal, Clouds, Plasma, Anisotropic, Dirt
+- **Cast:** To Image
 
 ### Logic
 - **Input:** Bool
 - **Comparison:** Equal, Not Equal, Less Than, Less Equal, Greater Than, Greater Equal
 - **Boolean:** And, Or, Not, Xor, Nand, Nor
 - **Flow:** Select (mux — picks between two values based on a bool condition)
+
+### Text
+- **Input:** Text
+- **Manipulation:** Append, Length, To Uppercase, To Lowercase
 
 ## Subgraphs
 
