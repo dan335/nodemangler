@@ -83,7 +83,8 @@
       "Bash(2)",
       "Read(//c/Users/danph/.cargo/**)",
       "Bash(tar -xzf egui_extras-0.33.3.crate egui_extras-0.33.3/src/table.rs)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(gh api *)"
     ]
   }
 }

@@ -104,6 +104,55 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: &Sender<Cha
 
     ui.add_space(12.0);
 
+    // Manual-run controls: Run/Cancel buttons and status log.
+    if node.is_manual_run {
+        ui.horizontal(|ui| {
+            // Run button — disabled while the node is already running.
+            let run_button = egui::Button::new(
+                RichText::new("Run").strong()
+            );
+            if ui.add_enabled(!node.is_busy, run_button).clicked() {
+                let _ = tx_change_node.try_send(ChangeNodeMessage::ManualRun {
+                    node_id: node.id.clone(),
+                });
+            }
+
+            // Cancel button — only enabled while running.
+            let cancel_button = egui::Button::new("Cancel");
+            if ui.add_enabled(node.is_busy, cancel_button).clicked() {
+                let _ = tx_change_node.try_send(ChangeNodeMessage::CancelRun {
+                    node_id: node.id.clone(),
+                });
+            }
+
+            // Status indicator text.
+            if node.is_busy {
+                ui.label(RichText::new("Running...").color(theme.get().grid_connection_line));
+            } else if node.is_dirty {
+                ui.label(RichText::new("Inputs changed").color(theme.get().node_header_dirty_bg));
+            }
+        });
+
+        // Status log — scrollable read-only text area.
+        if !node.status_log.is_empty() {
+            ui.add_space(4.0);
+            let log_text = node.status_log.join("\n");
+            egui::ScrollArea::vertical()
+                .max_height(120.0)
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    ui.add(
+                        TextEdit::multiline(&mut log_text.as_str())
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(4)
+                            .interactive(false)
+                            .font(egui::TextStyle::Monospace),
+                    );
+                });
+        }
+        ui.add_space(12.0);
+    }
+
     ui.heading("inputs");
     ui.add_space(12.0);
 
@@ -473,7 +522,27 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
         Value::Text(a) => {
             if input.connection.is_some() {
                 ui.label(a);
+            } else if let Some(InputSettings::Dropdown { options }) = &input.settings {
+                // Dropdown selector for predefined text options.
+                let options = options.clone();
+                let mut selected = a.clone();
+                egui::ComboBox::from_id_salt(format!("text_dropdown_{}", input_index))
+                    .selected_text(&selected)
+                    .show_ui(ui, |ui| {
+                        for option in &options {
+                            if ui.selectable_value(&mut selected, option.clone(), option).changed() {
+                                change_value(tx_change_node, node_id, input_index, input, Value::Text(selected.clone()));
+                            }
+                        }
+                    });
+            } else if let Some(InputSettings::MultiLineText) = &input.settings {
+                // Multi-line text area.
+                let mut x = a;
+                if ui.add(TextEdit::multiline(&mut x).hint_text("text")).changed() {
+                    change_value(tx_change_node, node_id, input_index, input, Value::Text(x));
+                }
             } else {
+                // Single-line text field (default).
                 let mut x = a;
                 if ui.add(TextEdit::singleline(&mut x).hint_text("text")).changed() {
                     change_value(tx_change_node, node_id, input_index, input, Value::Text(x));

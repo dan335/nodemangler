@@ -20,7 +20,7 @@ const OPENAI_IMAGES_URL: &str = "https://api.openai.com/v1/images/generations";
 
 /// Operation that generates an image from a text prompt via the OpenAI API.
 ///
-/// Inputs: prompt, model, size, quality, api key.
+/// Inputs: prompt, model, size, quality.
 /// Outputs: generated image, width, height, revised prompt.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpAiGenerate {}
@@ -38,10 +38,15 @@ impl OpAiGenerate {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("prompt".to_string(), Value::Text(String::new()), Some(InputSettings::MultiLineText), None),
-            Input::new("model".to_string(), Value::Text("dall-e-3".to_string()), Some(InputSettings::SingleLineText), None),
-            Input::new("size".to_string(), Value::Text("1024x1024".to_string()), Some(InputSettings::SingleLineText), None),
-            Input::new("quality".to_string(), Value::Text("standard".to_string()), Some(InputSettings::SingleLineText), None),
-            Input::new("api key".to_string(), Value::Text(String::new()), Some(InputSettings::SingleLineText), None),
+            Input::new("model".to_string(), Value::Text("gpt-image-1".to_string()), Some(InputSettings::Dropdown {
+                options: vec!["gpt-image-1".to_string(), "dall-e-3".to_string(), "dall-e-2".to_string()],
+            }), None),
+            Input::new("size".to_string(), Value::Text("1024x1024".to_string()), Some(InputSettings::Dropdown {
+                options: vec!["1024x1024".to_string(), "1024x1792".to_string(), "1792x1024".to_string(), "512x512".to_string(), "256x256".to_string()],
+            }), None),
+            Input::new("quality".to_string(), Value::Text("standard".to_string()), Some(InputSettings::Dropdown {
+                options: vec!["standard".to_string(), "hd".to_string()],
+            }), None),
         ]
     }
 
@@ -56,15 +61,29 @@ impl OpAiGenerate {
     }
 
     /// Builds the JSON request body for the OpenAI images/generations endpoint.
+    ///
+    /// gpt-image-1 returns base64 by default and doesn't support `response_format`.
+    /// DALL-E 2/3 require `response_format: "b64_json"` to get base64 instead of URLs.
+    /// DALL-E 2 doesn't support the `quality` parameter (only DALL-E 3 and gpt-image-1 do).
     pub fn build_request_body(prompt: &str, model: &str, size: &str, quality: &str) -> serde_json::Value {
-        serde_json::json!({
+        let mut body = serde_json::json!({
             "model": model,
             "prompt": prompt,
             "n": 1,
             "size": size,
-            "quality": quality,
-            "response_format": "b64_json"
-        })
+        });
+
+        // DALL-E 2 doesn't support the quality parameter.
+        if model != "dall-e-2" {
+            body["quality"] = serde_json::json!(quality);
+        }
+
+        // Only DALL-E 2/3 support the response_format parameter.
+        if model != "gpt-image-1" {
+            body["response_format"] = serde_json::json!("b64_json");
+        }
+
+        body
     }
 
     /// Executes the operation: sends prompt to OpenAI and decodes the returned image.
@@ -77,7 +96,6 @@ impl OpAiGenerate {
         let model_converted = convert_input(inputs, 1, ValueType::Text, &mut input_errors);
         let size_converted = convert_input(inputs, 2, ValueType::Text, &mut input_errors);
         let quality_converted = convert_input(inputs, 3, ValueType::Text, &mut input_errors);
-        let api_key_converted = convert_input(inputs, 4, ValueType::Text, &mut input_errors);
 
         if !input_errors.is_empty() {
             return Err(OperationError { input_errors, node_error: None });
@@ -87,7 +105,6 @@ impl OpAiGenerate {
         let Value::Text(model) = model_converted.unwrap() else { unreachable!() };
         let Value::Text(size) = size_converted.unwrap() else { unreachable!() };
         let Value::Text(quality) = quality_converted.unwrap() else { unreachable!() };
-        let Value::Text(api_key_input) = api_key_converted.unwrap() else { unreachable!() };
 
         // Validate prompt is not empty.
         if prompt.trim().is_empty() {
@@ -97,8 +114,8 @@ impl OpAiGenerate {
             });
         }
 
-        // Resolve API key.
-        let api_key = match shared::resolve_api_key(&api_key_input, "OPENAI_API_KEY") {
+        // Resolve API key from environment.
+        let api_key = match shared::resolve_api_key("OPENAI_API_KEY") {
             Ok(key) => key,
             Err(msg) => return Err(OperationError { input_errors: vec![], node_error: Some(msg) }),
         };

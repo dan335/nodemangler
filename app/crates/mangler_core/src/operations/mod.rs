@@ -194,6 +194,14 @@ macro_rules! operations {
                     $(Operation::$variant => <$inner>::run(inputs).await,)*
                 }
             }
+
+            /// Whether this operation requires a manual "Run" button press instead
+            /// of auto-executing when inputs change. Defaults to `false`; AI operations
+            /// override this to `true` to prevent expensive API calls on every keystroke.
+            pub fn requires_manual_run(&self) -> bool {
+                // Only AI operations require manual run; all others auto-execute.
+                matches!(self, Operation::OpAiGenerate | Operation::OpAiEdit | Operation::OpAiVariation)
+            }
         }
     };
 }
@@ -334,6 +342,7 @@ operations! {
 
     OpImageCombineBlit(crate::operations::images::combine::blit::OpImageCombineBlit),
     OpImageCombineBlend(crate::operations::images::combine::blend::OpImageCombineBlend),
+    OpImageCombineCompare(crate::operations::images::combine::compare::OpImageCombineCompare),
 
     OpImageTransformCrop(crate::operations::images::transform::crop::OpImageTransformCrop),
     OpImageTransformResize(crate::operations::images::transform::resize::OpImageTransformResize),
@@ -631,6 +640,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
             OperationListItem::Category { name: "combine".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageCombineBlit },
                 OperationListItem::Operation { operation: Operation::OpImageCombineBlend },
+                OperationListItem::Operation { operation: Operation::OpImageCombineCompare },
             ]},
             OperationListItem::Category { name: "transform".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageTransformCrop },

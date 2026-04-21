@@ -64,6 +64,7 @@ pub fn theme_dark_green() -> ThemeValues {
         grid_connection_dot_disabled: Hsva::new(0.522, 0.1, 0.2, 1.0).into(),
         grid_connection_dot_error: rose_accent,
 
+        node_header_dirty_bg: Hsva::new(0.08, 0.7, 0.55, 1.0).into(),
         node_header_bg: Hsva::new(
             0.5126944764641147,
             0.40537363922409836,

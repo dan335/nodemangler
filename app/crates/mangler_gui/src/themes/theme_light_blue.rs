@@ -26,6 +26,7 @@ pub fn theme_light_blue() -> ThemeValues
         grid_connection_dot_disabled: Hsva::new(0.565, 0.1, 0.62, 1.0).into(),
         grid_connection_dot_error: pink_accent,
 
+        node_header_dirty_bg: Hsva::new(0.08, 0.55, 0.9, 1.0).into(),
         node_header_bg: Hsva::new(0.565, 0.25, 0.88, 1.0).into(),
         node_header_selected_border: pink_accent,
 

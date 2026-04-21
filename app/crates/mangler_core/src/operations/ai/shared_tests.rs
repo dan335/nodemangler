@@ -3,42 +3,14 @@ use crate::float_image::FloatImage;
 
 // ─── API Key Resolution Tests ────────────────────────────────────────────────
 
-/// Non-empty input string is returned directly.
-#[test]
-fn test_resolve_api_key_from_input() {
-    let result = resolve_api_key("sk-my-key", "OPENAI_API_KEY");
-    assert_eq!(result.unwrap(), "sk-my-key");
-}
-
-/// Input takes precedence even when env var is set.
-#[test]
-fn test_resolve_api_key_input_takes_precedence() {
-    let result = resolve_api_key("sk-node-key", "NONEXISTENT_VAR_12345");
-    assert_eq!(result.unwrap(), "sk-node-key");
-}
-
-/// Whitespace-only input is treated as empty.
-#[test]
-fn test_resolve_api_key_whitespace_only() {
-    let result = resolve_api_key("   ", "NONEXISTENT_VAR_12345");
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("API key required"));
-}
-
-/// Empty input + no env var returns error.
+/// Missing env var returns error with the var name in the message.
 #[test]
 fn test_resolve_api_key_missing() {
-    let result = resolve_api_key("", "NONEXISTENT_VAR_12345");
+    let result = resolve_api_key("NONEXISTENT_VAR_12345");
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(err.contains("NONEXISTENT_VAR_12345"));
-}
-
-/// Input string is trimmed of whitespace.
-#[test]
-fn test_resolve_api_key_trims_input() {
-    let result = resolve_api_key("  sk-trimmed  ", "OPENAI_API_KEY");
-    assert_eq!(result.unwrap(), "sk-trimmed");
+    assert!(err.contains("API key required"));
 }
 
 // ─── Base64 Image Tests ─────────────────────────────────────────────────────

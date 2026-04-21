@@ -96,6 +96,16 @@ pub enum ChangeNodeMessage {
         /// The new custom name, or `None` to clear it.
         name: Option<String>,
     },
+    /// Manually trigger execution of a node that requires manual run (e.g. AI nodes).
+    ManualRun {
+        /// The target node's unique identifier.
+        node_id: String,
+    },
+    /// Cancel an in-flight execution of a manual-run node.
+    CancelRun {
+        /// The target node's unique identifier.
+        node_id: String,
+    },
 }
 
 /// Messages sent from the engine to the UI when a node's state changes.
@@ -192,6 +202,20 @@ pub enum NodeChangedMessage {
         cost_usd: f64,
         /// Cumulative session cost in USD after this operation.
         session_cost_usd: f64,
+    },
+    /// A manual-run node's dirty state changed (inputs changed but not yet executed).
+    DirtyChanged {
+        /// The affected node's unique identifier.
+        node_id: String,
+        /// Whether the node has pending input changes that require a manual run.
+        is_dirty: bool,
+    },
+    /// A status log entry for a manual-run node (e.g. "Sending request...", errors, cost).
+    StatusLog {
+        /// The affected node's unique identifier.
+        node_id: String,
+        /// The log message to append.
+        message: String,
     },
     /// The entire graph run completed.
     GraphRunCompleted {

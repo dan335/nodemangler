@@ -451,6 +451,16 @@ impl Program {
                         node.error_message = message;
                     }
                 }
+                NodeChangedMessage::DirtyChanged { node_id, is_dirty } => {
+                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
+                        node.is_dirty = is_dirty;
+                    }
+                }
+                NodeChangedMessage::StatusLog { node_id, message } => {
+                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
+                        node.status_log.push(message);
+                    }
+                }
             }
         }
 

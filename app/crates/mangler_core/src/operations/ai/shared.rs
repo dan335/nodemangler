@@ -116,22 +116,15 @@ pub fn check_cost_limit() -> Result<(), String> {
 
 // ─── API Key Resolution ──────────────────────────────────────────────────────
 
-/// Resolve an API key from the node input or environment variable.
+/// Resolve an API key from an environment variable.
 ///
-/// Priority:
-/// 1. If `key_input` is non-empty (after trimming), use it directly.
-/// 2. Otherwise, check `std::env::var(env_var_name)`.
-/// 3. If neither is available, return a descriptive error.
-pub fn resolve_api_key(key_input: &str, env_var_name: &str) -> Result<String, String> {
-    let trimmed = key_input.trim();
-    if !trimmed.is_empty() {
-        return Ok(trimmed.to_string());
-    }
-
+/// Checks `std::env::var(env_var_name)` for a non-empty value.
+/// The env var is set by the API Keys settings panel on app startup.
+pub fn resolve_api_key(env_var_name: &str) -> Result<String, String> {
     match std::env::var(env_var_name) {
         Ok(val) if !val.trim().is_empty() => Ok(val.trim().to_string()),
         _ => Err(format!(
-            "API key required. Set the 'api key' input, the {} env var, or configure it in Settings > API Keys.",
+            "API key required. Configure it in Settings > API Keys, or set the {} env var.",
             env_var_name
         )),
     }
@@ -170,19 +163,7 @@ pub async fn make_ai_request(
         .await
         .map_err(|e| format!("Failed to read response body: {}", e))?;
 
-    // Parse response JSON.
-    let json: serde_json::Value = serde_json::from_str(&response_text)
-        .map_err(|e| format!("Failed to parse JSON response: {}", e))?;
-
-    // Check for API error responses.
-    if !status.is_success() {
-        let error_msg = json["error"]["message"]
-            .as_str()
-            .unwrap_or("Unknown API error");
-        return Err(format!("API error ({}): {}", status.as_u16(), error_msg));
-    }
-
-    Ok(json)
+    parse_api_response(status, &response_text)
 }
 
 /// POST multipart form data with Bearer auth, return parsed JSON response.
@@ -207,9 +188,39 @@ pub async fn make_ai_multipart_request(
         .await
         .map_err(|e| format!("Failed to read response body: {}", e))?;
 
-    let json: serde_json::Value = serde_json::from_str(&response_text)
-        .map_err(|e| format!("Failed to parse JSON response: {}", e))?;
+    // Parse and return, checking status.
+    parse_api_response(status, &response_text)
+}
 
+/// Parse an API response body as JSON, with proper error handling for empty
+/// or non-JSON responses. Checks HTTP status and extracts error messages.
+fn parse_api_response(
+    status: reqwest::StatusCode,
+    response_text: &str,
+) -> Result<serde_json::Value, String> {
+    // Handle empty response bodies.
+    if response_text.trim().is_empty() {
+        if !status.is_success() {
+            return Err(format!("API error ({}): empty response.", status.as_u16()));
+        }
+        return Err("API returned an empty response.".to_string());
+    }
+
+    // Try to parse as JSON.
+    let json: serde_json::Value = match serde_json::from_str(response_text) {
+        Ok(json) => json,
+        Err(_) => {
+            // Show a snippet of the raw response so the user can diagnose the issue.
+            let snippet: String = response_text.chars().take(200).collect();
+            return Err(format!(
+                "API error ({}): response is not JSON. Body: {}",
+                status.as_u16(),
+                snippet
+            ));
+        }
+    };
+
+    // Check for API error responses.
     if !status.is_success() {
         let error_msg = json["error"]["message"]
             .as_str()

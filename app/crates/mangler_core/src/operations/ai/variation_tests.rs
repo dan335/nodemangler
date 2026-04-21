@@ -9,15 +9,14 @@ fn test_settings() {
     assert!(!settings.description.is_empty());
 }
 
-/// Has 4 inputs with correct names.
+/// Has 3 inputs with correct names.
 #[test]
 fn test_create_inputs() {
     let inputs = OpAiVariation::create_inputs();
-    assert_eq!(inputs.len(), 4);
+    assert_eq!(inputs.len(), 3);
     assert_eq!(inputs[0].name, "image");
     assert_eq!(inputs[1].name, "model");
     assert_eq!(inputs[2].name, "size");
-    assert_eq!(inputs[3].name, "api key");
 }
 
 /// Has 3 outputs: image, width, height.
@@ -37,7 +36,6 @@ fn test_input_types() {
     assert!(matches!(inputs[0].value, Value::Image { .. }), "image input should be Image");
     assert!(matches!(inputs[1].value, Value::Text(_)), "model should be Text");
     assert!(matches!(inputs[2].value, Value::Text(_)), "size should be Text");
-    assert!(matches!(inputs[3].value, Value::Text(_)), "api key should be Text");
 }
 
 /// Output types are correct.
@@ -65,23 +63,3 @@ fn test_default_size() {
     assert_eq!(size, "1024x1024");
 }
 
-/// No API key returns descriptive node error.
-#[tokio::test]
-async fn test_no_api_key_error() {
-    let mut inputs = OpAiVariation::create_inputs();
-    // api key is empty
-
-    let result = OpAiVariation::run(&mut inputs).await;
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(err.node_error.is_some());
-    assert!(err.node_error.unwrap().contains("API key required"));
-}
-
-/// API key default is empty.
-#[test]
-fn test_api_key_default_empty() {
-    let inputs = OpAiVariation::create_inputs();
-    let Value::Text(key) = &inputs[3].value else { panic!("Expected Text") };
-    assert!(key.is_empty());
-}

@@ -1,6 +1,7 @@
 use std::{path::PathBuf, time::Duration};
 use tokio::{sync::mpsc, time::Instant, task::JoinHandle};
 use crate::{ChangeGraphMessage, ChangeNodeMessage, NodeChangedMessage, GraphChangedMessage, graph::Graph, get_id};
+use crate::node_type::NodeType;
 
 /// Engine-side application wrapper. Owns a `Graph` and runs it on a dedicated
 /// tokio task, continuously draining UI change messages and re-executing dirty
@@ -109,7 +110,28 @@ impl App {
                                     input_index,
                                     value,
                                 } => {
-                                    graph.set_input(node_id, input_index, value);
+                                    // For manual-run nodes, mark dirty but don't clear the
+                                    // cached input hash — the node won't auto-execute.
+                                    // Send DirtyChanged so the UI shows the dirty indicator.
+                                    let is_manual = graph.nodes.get(&node_id).is_some_and(|n| {
+                                        matches!(&n.node_type, NodeType::Operation { operation } if operation.requires_manual_run())
+                                    });
+                                    graph.set_input(node_id.clone(), input_index, value);
+                                    if is_manual {
+                                        // Restore cached_input_hash so graph.run() skips this node
+                                        // (set_input clears it, but we want manual-run nodes to wait).
+                                        if let Some(node) = graph.nodes.get_mut(&node_id) {
+                                            // Keep dirty flag but don't let it auto-execute:
+                                            // we rely on manual_run_requested instead.
+                                            node.is_dirty = false;
+                                        }
+                                        if let Some(tx) = &graph.tx_node_changed {
+                                            let _ = tx.try_send(NodeChangedMessage::DirtyChanged {
+                                                node_id,
+                                                is_dirty: true,
+                                            });
+                                        }
+                                    }
                                     needs_to_save = true;
                                 }
                                 ChangeNodeMessage::SetPosition {
@@ -164,6 +186,50 @@ impl App {
                                     if let Some(node) = graph.nodes.get_mut(&node_id) {
                                         node.custom_name = name;
                                         needs_to_save = true;
+                                    }
+                                }
+                                ChangeNodeMessage::ManualRun { node_id } => {
+                                    if let Some(node) = graph.nodes.get_mut(&node_id) {
+                                        node.manual_run_requested = true;
+                                        node.is_dirty = true;
+                                        node.cached_input_hash = None;
+                                        // Send status log: starting
+                                        if let Some(tx) = &graph.tx_node_changed {
+                                            let _ = tx.try_send(NodeChangedMessage::StatusLog {
+                                                node_id: node_id.clone(),
+                                                message: "Sending request...".to_string(),
+                                            });
+                                            let _ = tx.try_send(NodeChangedMessage::DirtyChanged {
+                                                node_id,
+                                                is_dirty: false,
+                                            });
+                                        }
+                                    }
+                                }
+                                ChangeNodeMessage::CancelRun { node_id } => {
+                                    if let Some(node) = graph.nodes.get_mut(&node_id) {
+                                        if node.is_busy {
+                                            // Abort the running task if we have a handle
+                                            if let Some(handle) = node.abort_handle.take() {
+                                                handle.abort();
+                                            }
+                                            node.is_busy = false;
+                                            node.manual_run_requested = false;
+                                            if let Some(tx) = &graph.tx_node_changed {
+                                                let _ = tx.try_send(NodeChangedMessage::Busy {
+                                                    node_id: node_id.clone(),
+                                                    is_busy: false,
+                                                });
+                                                let _ = tx.try_send(NodeChangedMessage::StatusLog {
+                                                    node_id: node_id.clone(),
+                                                    message: "Cancelled.".to_string(),
+                                                });
+                                                let _ = tx.try_send(NodeChangedMessage::DirtyChanged {
+                                                    node_id,
+                                                    is_dirty: true,
+                                                });
+                                            }
+                                        }
                                     }
                                 }
                             }

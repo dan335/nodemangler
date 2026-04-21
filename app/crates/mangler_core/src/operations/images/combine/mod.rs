@@ -8,3 +8,5 @@
 pub mod blit;
 /// Blend-mode compositing with alpha mask, amount control, and color space selection.
 pub mod blend;
+/// Pixel-by-pixel image comparison producing a greyscale difference map.
+pub mod compare;

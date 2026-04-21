@@ -30,6 +30,9 @@ pub struct GraphEditor {
 
     /// Set of currently selected node IDs (for multi-selection and copy/paste).
     pub selected_node_ids: HashSet<String>,
+
+    /// When true, center the view on (0,0) on the next frame.
+    needs_center: bool,
 }
 
 impl GraphEditor {
@@ -44,6 +47,7 @@ impl GraphEditor {
             last_node_click: None,
             previous_cursor_primary_down: None,
             selected_node_ids: HashSet::new(),
+            needs_center: true,
         }
     }
 
@@ -62,6 +66,17 @@ impl GraphEditor {
         let mut graph_editor_response = GraphEditorResponse::default();
 
         let editor_rect = ui.max_rect();
+
+        // Center the view on graph origin (0,0) on the first frame.
+        if self.needs_center {
+            let center = editor_rect.center();
+            self.position = Pos2::new(
+                view_to_graph_space(self.zoom, center.x),
+                view_to_graph_space(self.zoom, center.y),
+            );
+            self.needs_center = false;
+        }
+
         let editor_bg_response =
             ui.allocate_rect(editor_rect, egui::Sense::click().union(egui::Sense::drag()).union(egui::Sense::hover()));
         //let panel_cursor_position = Pos2::new(cursor_position.x - editor_rect.min.x, cursor_position.y - editor_rect.min.y);
