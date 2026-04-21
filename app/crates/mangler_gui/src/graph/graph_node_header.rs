@@ -16,6 +16,7 @@ pub fn show_graph_node_header(
     theme: &Theme,
     is_busy: bool,
     is_enabled: bool,
+    is_dirty: bool,
 ) {
     /// Dim a color by reducing its alpha to indicate a disabled state.
     fn dim(color: Color32) -> Color32 {
@@ -25,6 +26,8 @@ pub fn show_graph_node_header(
     // bg
     let bg_color = if is_busy {
         theme.get().grid_connection_line
+    } else if is_dirty {
+        theme.get().node_header_dirty_bg
     } else {
         theme.get().node_header_bg
     };

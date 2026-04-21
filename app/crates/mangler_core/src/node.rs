@@ -72,6 +72,15 @@ pub struct Node {
     /// primary label on the node; the operation name becomes a secondary label.
     #[serde(default)]
     pub custom_name: Option<String>,
+    /// Whether the user has clicked the manual "Run" button, requesting execution.
+    /// Only meaningful for operations that return `requires_manual_run() == true`.
+    /// Cleared after the node finishes running.
+    #[serde(skip)]
+    pub manual_run_requested: bool,
+    /// Handle to abort a running async task (e.g. in-flight AI API call).
+    /// Set when a manual-run node begins execution, cleared on completion or cancel.
+    #[serde(skip)]
+    pub abort_handle: Option<tokio::task::AbortHandle>,
 }
 
 /// Nodes are compared by identity (ID) only, ignoring all other fields.
@@ -104,6 +113,8 @@ impl Node {
                 cached_input_hash: None,
                 is_enabled: true,
                 custom_name: None,
+                manual_run_requested: false,
+                abort_handle: None,
             },
             AddNodeType::Subgraph => Node {
                 id,
@@ -127,6 +138,8 @@ impl Node {
                 cached_input_hash: None,
                 is_enabled: true,
                 custom_name: None,
+                manual_run_requested: false,
+                abort_handle: None,
             },
         }
     }

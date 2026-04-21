@@ -28,6 +28,8 @@ pub struct ThemeValues {
     pub grid_connection_dot_error: Color32,
     //pub grid_connection_dot_viewing: HsvaGamma,
     pub node_header_bg: Color32,
+    /// Header background for manual-run nodes with pending input changes.
+    pub node_header_dirty_bg: Color32,
     pub node_header_selected_border: Color32,
     pub text_faint: Color32,
 

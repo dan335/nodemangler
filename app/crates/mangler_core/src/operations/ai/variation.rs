@@ -21,7 +21,7 @@ const OPENAI_VARIATIONS_URL: &str = "https://api.openai.com/v1/images/variations
 
 /// Operation that creates a variation of an input image via the OpenAI API.
 ///
-/// Inputs: image, model, size, api key.
+/// Inputs: image, model, size.
 /// Outputs: variation image, width, height.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpAiVariation {}
@@ -39,9 +39,12 @@ impl OpAiVariation {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("model".to_string(), Value::Text("dall-e-2".to_string()), Some(InputSettings::SingleLineText), None),
-            Input::new("size".to_string(), Value::Text("1024x1024".to_string()), Some(InputSettings::SingleLineText), None),
-            Input::new("api key".to_string(), Value::Text(String::new()), Some(InputSettings::SingleLineText), None),
+            Input::new("model".to_string(), Value::Text("dall-e-2".to_string()), Some(InputSettings::Dropdown {
+                options: vec!["dall-e-2".to_string()],
+            }), None),
+            Input::new("size".to_string(), Value::Text("1024x1024".to_string()), Some(InputSettings::Dropdown {
+                options: vec!["1024x1024".to_string(), "512x512".to_string(), "256x256".to_string()],
+            }), None),
         ]
     }
 
@@ -81,7 +84,6 @@ impl OpAiVariation {
         let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
         let model_converted = convert_input(inputs, 1, ValueType::Text, &mut input_errors);
         let size_converted = convert_input(inputs, 2, ValueType::Text, &mut input_errors);
-        let api_key_converted = convert_input(inputs, 3, ValueType::Text, &mut input_errors);
 
         if !input_errors.is_empty() {
             return Err(OperationError { input_errors, node_error: None });
@@ -90,10 +92,9 @@ impl OpAiVariation {
         let Value::Image { data: image_data, .. } = image_converted.unwrap() else { unreachable!() };
         let Value::Text(model) = model_converted.unwrap() else { unreachable!() };
         let Value::Text(size) = size_converted.unwrap() else { unreachable!() };
-        let Value::Text(api_key_input) = api_key_converted.unwrap() else { unreachable!() };
 
-        // Resolve API key.
-        let api_key = match shared::resolve_api_key(&api_key_input, "OPENAI_API_KEY") {
+        // Resolve API key from environment.
+        let api_key = match shared::resolve_api_key("OPENAI_API_KEY") {
             Ok(key) => key,
             Err(msg) => return Err(OperationError { input_errors: vec![], node_error: Some(msg) }),
         };

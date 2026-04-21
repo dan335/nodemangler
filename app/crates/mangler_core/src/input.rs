@@ -140,6 +140,11 @@ pub enum InputSettings {
     SingleLineText,
     /// A multi-line text area.
     MultiLineText,
+    /// A dropdown list of predefined text options.
+    Dropdown {
+        /// The allowed values shown in the dropdown.
+        options: Vec<String>,
+    },
 }
 
 /// The type of file dialog to present when an input uses `InputSettings::Path`.

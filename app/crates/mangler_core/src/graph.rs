@@ -759,12 +759,84 @@ impl Graph {
                 continue;
             }
 
+            // Skip manual-run nodes unless the user has clicked "Run".
+            let is_manual_skip = if let Some(node) = self.nodes.get(&node_id) {
+                if let NodeType::Operation { operation } = &node.node_type {
+                    operation.requires_manual_run() && !node.manual_run_requested
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+            if is_manual_skip {
+                // Notify UI that this manual-run node has pending changes.
+                if let Some(tx) = &self.tx_node_changed {
+                    let _ = tx.try_send(NodeChangedMessage::DirtyChanged {
+                        node_id: node_id.clone(),
+                        is_dirty: true,
+                    });
+                }
+                // Propagate existing outputs downstream without re-executing.
+                let mut output_data: Vec<(String, usize, Value)> = Vec::new();
+                if let Some(node) = self.nodes.get(&node_id) {
+                    for output in node.outputs.iter() {
+                        if let Some(connections) = &output.connection {
+                            for (connected_node_id, input_index) in connections.iter() {
+                                output_data.push((
+                                    connected_node_id.clone(),
+                                    *input_index,
+                                    output.value.clone(),
+                                ));
+                            }
+                        }
+                    }
+                }
+                for (connected_node_id, input_index, value) in output_data.into_iter() {
+                    if let Some(connected_node) = self.nodes.get_mut(&connected_node_id) {
+                        connected_node.inputs[input_index].value = value;
+                    }
+                }
+                continue;
+            }
+
             // Run node
             let mut output_data: Vec<(String, usize, Value)> = Vec::new();
 
+            // Check if this is a manual-run operation (for status log messages).
+            let is_manual_run_op = self.nodes.get(&node_id).is_some_and(|n| {
+                matches!(&n.node_type, NodeType::Operation { operation } if operation.requires_manual_run())
+            });
+
             if let Some(node) = self.nodes.get_mut(&node_id) {
+                // Clear manual_run_requested before execution.
+                node.manual_run_requested = false;
                 node.run(self.tx_node_changed.clone()).await;
                 node.cached_input_hash = Some(input_hash);
+
+                // Send status log and dirty state for manual-run nodes after execution.
+                if is_manual_run_op {
+                    if let Some(tx) = &self.tx_node_changed {
+                        // Clear dirty state in UI.
+                        let _ = tx.try_send(NodeChangedMessage::DirtyChanged {
+                            node_id: node_id.clone(),
+                            is_dirty: false,
+                        });
+                        if node.is_error {
+                            let msg = node.error_message.clone().unwrap_or_else(|| "Error.".to_string());
+                            let _ = tx.try_send(NodeChangedMessage::StatusLog {
+                                node_id: node_id.clone(),
+                                message: format!("Error: {}", msg),
+                            });
+                        } else {
+                            let time_str = node.time.map(|t| format!("{:.1}s", t.as_secs_f64())).unwrap_or_default();
+                            let _ = tx.try_send(NodeChangedMessage::StatusLog {
+                                node_id: node_id.clone(),
+                                message: format!("Completed ({})", time_str),
+                            });
+                        }
+                    }
+                }
 
                 // gather data to pass to connections
                 for output in node.outputs.iter() {

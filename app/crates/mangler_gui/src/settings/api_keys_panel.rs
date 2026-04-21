@@ -68,11 +68,11 @@ impl ApiKeysPanel {
                     ui.label("API Key:");
                     if self.show_key {
                         // Show key in plain text.
-                        ui.text_edit_singleline(&mut self.openai_key);
+                        ui.add(egui::TextEdit::singleline(&mut self.openai_key).desired_width(300.0));
                     } else {
                         // Show masked version — use a password field.
                         let mut masked = self.openai_key.clone();
-                        let response = ui.add(egui::TextEdit::singleline(&mut masked).password(true));
+                        let response = ui.add(egui::TextEdit::singleline(&mut masked).password(true).desired_width(300.0));
                         if response.changed() {
                             self.openai_key = masked;
                         }

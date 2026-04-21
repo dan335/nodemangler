@@ -961,21 +961,6 @@ async fn cmd_set_ai_prompt_input() {
     assert!(matches!(stored, Value::Text(s) if s == "a beautiful landscape"));
 }
 
-/// Can set an API key on an AI generate node.
-#[tokio::test]
-async fn cmd_set_ai_api_key_input() {
-    let path = create_temp_graph("ai_key_set");
-    let node_id = format!("ai-key-{}", std::process::id());
-    cmd_add_node(path.clone(), "ai/ai_generate".to_string(), Some(node_id.clone()), None, false).await.unwrap();
-    // api key is input index 4 on ai_generate
-    let result = cmd_set_input(path.clone(), node_id.clone(), vec![4], vec!["text:sk-test-key".to_string()], false);
-    assert!(result.is_ok());
-    let graph = load_graph(&path).unwrap();
-    let _ = std::fs::remove_file(&path);
-    let stored = &graph.nodes[&node_id].inputs[4].value;
-    assert!(matches!(stored, Value::Text(s) if s == "sk-test-key"));
-}
-
 /// AI nodes appear correctly in graph info output.
 #[tokio::test]
 async fn cmd_ai_node_in_graph_info() {

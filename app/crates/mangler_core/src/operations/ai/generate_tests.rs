@@ -9,16 +9,15 @@ fn test_settings() {
     assert!(!settings.description.is_empty());
 }
 
-/// Has 5 inputs with correct names.
+/// Has 4 inputs with correct names.
 #[test]
 fn test_create_inputs() {
     let inputs = OpAiGenerate::create_inputs();
-    assert_eq!(inputs.len(), 5);
+    assert_eq!(inputs.len(), 4);
     assert_eq!(inputs[0].name, "prompt");
     assert_eq!(inputs[1].name, "model");
     assert_eq!(inputs[2].name, "size");
     assert_eq!(inputs[3].name, "quality");
-    assert_eq!(inputs[4].name, "api key");
 }
 
 /// Has 4 outputs: image, width, height, revised prompt.
@@ -51,12 +50,12 @@ fn test_output_types() {
     assert!(matches!(outputs[3].value, Value::Text(_)));
 }
 
-/// Default model is "dall-e-3".
+/// Default model is "gpt-image-1".
 #[test]
 fn test_default_model() {
     let inputs = OpAiGenerate::create_inputs();
     let Value::Text(model) = &inputs[1].value else { panic!("Expected Text") };
-    assert_eq!(model, "dall-e-3");
+    assert_eq!(model, "gpt-image-1");
 }
 
 /// Default size is "1024x1024".
@@ -92,34 +91,12 @@ fn test_build_request_body() {
 async fn test_empty_prompt_error() {
     let mut inputs = OpAiGenerate::create_inputs();
     // prompt is already empty by default
-    // Set a dummy API key so we don't get key error first.
-    inputs[4].value = Value::Text("sk-test".to_string());
+    // Set env var so we don't get key error first.
+    std::env::set_var("OPENAI_API_KEY", "sk-test");
 
     let result = OpAiGenerate::run(&mut inputs).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(!err.input_errors.is_empty());
     assert_eq!(err.input_errors[0].0, 0); // index 0 = prompt
-}
-
-/// No API key returns descriptive node error.
-#[tokio::test]
-async fn test_no_api_key_error() {
-    let mut inputs = OpAiGenerate::create_inputs();
-    inputs[0].value = Value::Text("a sunset over mountains".to_string());
-    // api key is empty, env var should not be set for this test key name
-
-    let result = OpAiGenerate::run(&mut inputs).await;
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(err.node_error.is_some());
-    assert!(err.node_error.unwrap().contains("API key required"));
-}
-
-/// API key from input is used (prompt empty check triggers first though).
-#[test]
-fn test_api_key_input_default_empty() {
-    let inputs = OpAiGenerate::create_inputs();
-    let Value::Text(key) = &inputs[4].value else { panic!("Expected Text") };
-    assert!(key.is_empty());
 }
