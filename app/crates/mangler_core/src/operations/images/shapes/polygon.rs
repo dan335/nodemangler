@@ -135,7 +135,7 @@ impl OpImageShapePolygon {
             }
         }
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Image { data: Arc::new(image), change_id: get_id() } },

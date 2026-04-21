@@ -66,7 +66,7 @@ impl OpColorInputHsva {
         // run node
         let color = Color::from_hsv(hue, saturation, value, alpha);
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Color(color),

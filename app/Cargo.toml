@@ -3,7 +3,7 @@ resolver = "2"
 
 members = [
     "crates/mangler_core",
-    "crates/mangler_tui",
+    "crates/mangler_cli",
     "crates/mangler_gui",
 ]
 

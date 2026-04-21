@@ -51,7 +51,7 @@ impl OpLogicBoolNot {
 
         let Value::Bool(input) = input_converted.unwrap() else { unreachable!() };
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Bool(!input),

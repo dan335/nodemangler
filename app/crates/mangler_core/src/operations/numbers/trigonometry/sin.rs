@@ -50,7 +50,7 @@ impl OpNumberTrigSin {
 
         let result = input.sin();
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Decimal(result),

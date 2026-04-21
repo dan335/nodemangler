@@ -63,13 +63,18 @@ impl OpImageAdjustmentUnsharpen {
         let Value::Decimal(mut sigma) = sigma_converted.unwrap() else { unreachable!() };
         let Value::Integer(threshold) = threshold_converted.unwrap() else { unreachable!() };
 
-        // run node — use DynamicImage for unsharpen, then convert back
+        // run node — use DynamicImage for unsharpen, then convert back.
+        // image 0.25's blur rejects sigma=0/subnormal; unsharpen with sigma<=0 is a no-op so pass through.
         sigma = sigma.max(0.0);
-        let dynamic = data.to_dynamic();
-        let sharpened = dynamic.unsharpen(sigma, threshold);
-        let result = FloatImage::from_dynamic(&sharpened);
+        let result = if sigma <= f32::MIN_POSITIVE {
+            (*data).clone()
+        } else {
+            let dynamic = data.to_dynamic();
+            let sharpened = dynamic.unsharpen(sigma, threshold);
+            FloatImage::from_dynamic(&sharpened)
+        };
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse {value: Value::Image { data:Arc::new(result), change_id:get_id() }},

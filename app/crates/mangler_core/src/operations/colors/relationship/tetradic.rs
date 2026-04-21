@@ -68,7 +68,7 @@ impl OpColorHarmonyTetradic {
         let tetradic_c = Color::from_hsl(rotate_hue(h, 180.0), s, l, a);
         let tetradic_d = Color::from_hsl(rotate_hue(h, 270.0), s, l, a);
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Color(tetradic_b) },

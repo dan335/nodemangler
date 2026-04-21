@@ -160,7 +160,7 @@ impl OpImageOutputFile {
                                         gray.as_raw(),
                                         gray.width(),
                                         gray.height(),
-                                        image::ColorType::L8,
+                                        image::ExtendedColorType::L8,
                                     ).map_err(|e| e.to_string())
                                 }
                                 _ => {
@@ -169,7 +169,7 @@ impl OpImageOutputFile {
                                         rgb.as_raw(),
                                         rgb.width(),
                                         rgb.height(),
-                                        image::ColorType::Rgb8,
+                                        image::ExtendedColorType::Rgb8,
                                     ).map_err(|e| e.to_string())
                                 }
                             }
@@ -190,7 +190,7 @@ impl OpImageOutputFile {
             };
 
             match save_result {
-                Ok(_) => Ok(OperationResponse { ai_cost_usd: None,
+                Ok(_) => Ok(OperationResponse { 
                     time: Instant::now().duration_since(start_time),
                     responses: vec![OutputResponse {
                         value: Value::Path(folder_path),

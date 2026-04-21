@@ -76,7 +76,7 @@ impl OpNumberMathSmoothstep {
         let t = ((input - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
         let value = Value::Decimal(t * t * (3.0 - 2.0 * t));
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value,

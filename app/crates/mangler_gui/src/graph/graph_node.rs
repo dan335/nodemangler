@@ -59,10 +59,6 @@ pub struct GraphNode {
     pub custom_name: Option<String>,
     /// Whether this node has pending input changes requiring a manual run.
     pub is_dirty: bool,
-    /// Whether this node's operation requires manual run (e.g. AI nodes).
-    pub is_manual_run: bool,
-    /// Running status log messages for manual-run nodes.
-    pub status_log: Vec<String>,
     /// The node type used to create this node (for copy/paste).
     pub node_type: Option<AddNodeType>,
     /// Cached histograms for image outputs, keyed by output index.
@@ -82,12 +78,6 @@ impl GraphNode {
         is_enabled: bool,
         custom_name: Option<String>,
     ) -> GraphNode {
-        // Check if this operation requires manual run.
-        let is_manual_run = match &node_type {
-            Some(AddNodeType::Operation(op)) => op.requires_manual_run(),
-            _ => false,
-        };
-
         GraphNode {
             id,
             position,
@@ -102,8 +92,6 @@ impl GraphNode {
             is_busy: false,
             is_error: false,
             is_dirty: false,
-            is_manual_run,
-            status_log: Vec::new(),
             error_message: None,
             is_enabled,
             custom_name,

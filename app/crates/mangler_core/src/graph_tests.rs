@@ -1061,3 +1061,110 @@ async fn test_add_node_defaults() {
     assert!(node.is_enabled);
     assert!(node.custom_name.is_none());
 }
+
+// End-to-end subgraph integration test.
+//
+// Builds a tiny child graph (a single decimal passthrough with exposed I/O),
+// writes it to disk, loads it into a parent graph via a Subgraph node, drives
+// the parent's exposed input, runs the parent, and verifies the value flowed
+// all the way back out through the parent's exposed output.
+#[tokio::test]
+async fn test_subgraph_propagates_value_end_to_end() {
+    use std::fs;
+    use crate::GraphSaveData;
+
+    // Build a child graph containing one decimal passthrough node, with its
+    // input and output both marked exposed so the parent can surface them.
+    let (child_tx_nc, _child_rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
+    let (child_tx_gc, _child_rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut child = Graph::new(get_id(), child_tx_nc, child_tx_gc, true).unwrap();
+
+    let child_node_id = child
+        .add_node(
+            get_id(),
+            AddNodeType::Operation(Operation::OpNumberInputDecimal),
+            glam::Vec2::ZERO,
+            true,
+            None,
+        )
+        .await;
+
+    {
+        let node = child.nodes.get_mut(&child_node_id).unwrap();
+        node.inputs[0].is_exposed = true;
+        node.outputs[0].is_exposed = true;
+    }
+
+    // Persist the child graph to a unique tempfile.
+    let tmp_path = std::env::temp_dir()
+        .join(format!("mangler_subgraph_int_test_{}.mangle.json", get_id()));
+    let save_data = GraphSaveData {
+        id: child.id.clone(),
+        name: child.name.clone(),
+        nodes: child.nodes.clone(),
+    };
+    fs::write(&tmp_path, serde_json::to_string(&save_data).unwrap())
+        .expect("failed to write child graph tempfile");
+
+    // Build the parent graph and add an empty subgraph node.
+    let mut parent = create_test_graph();
+    let subgraph_node_id = parent
+        .add_node(
+            get_id(),
+            AddNodeType::Subgraph,
+            glam::Vec2::ZERO,
+            true,
+            None,
+        )
+        .await;
+
+    // Pointing the subgraph node at the tempfile triggers the load path:
+    // the child graph is parsed and the parent node's inputs/outputs are
+    // populated from the exposed child slots.
+    parent.set_input(
+        subgraph_node_id.clone(),
+        0,
+        Value::Path(tmp_path.clone()),
+    );
+
+    // After load the parent subgraph node has two inputs: the built-in
+    // "file path" picker at index 0, and the exposed child input at index 1.
+    // Outputs contain just the exposed child output.
+    {
+        let parent_node = parent.nodes.get(&subgraph_node_id).unwrap();
+        assert_eq!(
+            parent_node.inputs.len(),
+            2,
+            "parent should have file-path input plus one exposed input"
+        );
+        assert_eq!(
+            parent_node.outputs.len(),
+            1,
+            "exposed child output should surface as a parent output"
+        );
+        assert!(
+            parent_node.inputs[1].link.is_some(),
+            "exposed parent input must be linked back to the child node"
+        );
+    }
+
+    // Drive the exposed input (index 1). set_input forwards the value into
+    // the linked child input slot and marks the parent subgraph node dirty.
+    parent.set_input(subgraph_node_id.clone(), 1, Value::Decimal(42.0));
+
+    parent.run().await;
+
+    // The parent subgraph node's output should reflect the value that
+    // passed through the child decimal node.
+    let parent_node = parent.nodes.get(&subgraph_node_id).unwrap();
+    match &parent_node.outputs[0].value {
+        Value::Decimal(v) => assert!(
+            (*v - 42.0).abs() < 1e-6,
+            "expected 42.0 out of subgraph, got {}",
+            v
+        ),
+        other => panic!("expected Decimal output from subgraph, got {:?}", other),
+    }
+
+    let _ = fs::remove_file(&tmp_path);
+}

@@ -61,7 +61,7 @@ impl OpImageAdjustmentBlur {
 
         // Zero sigma means no blur — return the original image unchanged
         if sigma < f32::EPSILON {
-            return Ok(OperationResponse { ai_cost_usd: None,
+            return Ok(OperationResponse { 
                 time: Instant::now().duration_since(start_time),
                 responses: vec![
                     OutputResponse { value: Value::Image { data, change_id: get_id() } },
@@ -89,7 +89,7 @@ impl OpImageAdjustmentBlur {
         // Build the output FloatImage from the blurred flat buffer
         let output = FloatImage::from_raw(width, height, data.channels(), buf).unwrap();
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Image { data: Arc::new(output), change_id: get_id() } },

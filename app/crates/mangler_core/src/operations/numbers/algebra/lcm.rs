@@ -73,7 +73,7 @@ impl OpNumberMathLcm {
             ((a as i64) * (b as i64)).abs() as i32 / Self::gcd(a, b)
         };
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Integer(result),

@@ -90,19 +90,19 @@ Change a node's ID without rebuilding connections. Currently you'd need to remov
 
 ### Templates / scaffolding
 Pre-built graph fragments for common patterns:
-- `mangler_tui template "text on background" --text "hello" --bg "#0044CC" --fg "#00FF44"`
-- `mangler_tui template list` to show available templates
+- `mangler_cli template "text on background" --text "hello" --bg "#0044CC" --fg "#00FF44"`
+- `mangler_cli template list` to show available templates
 
 ### `diff` command
 Compare two graph files and show what changed — nodes added/removed, connections changed, values modified.
 
 ### `undo` support
-Keep a history of graph states (maybe as a `.mangler_history` file alongside the graph). `mangler_tui undo graph.json` reverts the last mutation.
+Keep a history of graph states (maybe as a `.mangler_history` file alongside the graph). `mangler_cli undo graph.json` reverts the last mutation.
 
 ### Batch mode / script file
 Accept a file of commands to execute in sequence:
 ```
-$ mangler_tui batch commands.txt graph.json
+$ mangler_cli batch commands.txt graph.json
 ```
 This would make graph construction reproducible and scriptable without shell scripting overhead.
 

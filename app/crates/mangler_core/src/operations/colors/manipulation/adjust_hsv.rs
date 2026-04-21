@@ -88,7 +88,7 @@ impl OpColorManipulationAdjustHsv {
 
         let result = Color::from_hsv(new_h, new_s, new_v, a);
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value: Value::Color(result),

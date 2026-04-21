@@ -9,11 +9,11 @@ use epaint::Stroke;
 
 #[derive(Clone)]
 pub struct ThemeValues {
-    pub panel_fill: Color32,  // bg of everything
+    pub panel_fill: Color32, // bg of everything
     pub extreme_bg_color: Color32,
     //pub panel_border_lines: HsvaGamma,
     pub override_text_color: Color32,
-    pub menu_bar: Color32,    // top bar with window controls
+    pub menu_bar: Color32, // top bar with window controls
     pub menu_bar_button: Color32,
     pub menu_bar_button_selected: Color32,
     // pub node_menu_bg: Color32,
@@ -88,7 +88,7 @@ pub enum Theme {
     Dark,
     DarkGreen,
     Light,
-    LightBlue, 
+    LightBlue,
 }
 
 impl Theme {
@@ -97,7 +97,7 @@ impl Theme {
             Theme::Dark,
             Theme::DarkGreen,
             Theme::Light,
-            Theme::LightBlue, 
+            Theme::LightBlue,
         ]
     }
 
@@ -141,9 +141,16 @@ impl Theme {
     }
 }
 
-
 pub fn set_theme(ctx: &egui::Context, theme: Theme) {
-    let old = ctx.style().visuals.clone();
+    ctx.style_mut(|style| {
+        style.spacing.item_spacing.y = 5.0;
+        style.spacing.button_padding = egui::vec2(13.0, 4.0);
+        style.spacing.interact_size.y = 20.0;
+        style.spacing.menu_margin = egui::Margin::same(16);
+        style.spacing.menu_spacing = 8.0;
+    });
+
+    let old = ctx.global_style().visuals.clone();
     let theme_values = theme.get();
 
     ctx.set_visuals(egui::Visuals {
@@ -159,13 +166,80 @@ pub fn set_theme(ctx: &egui::Context, theme: Theme) {
 
         menu_corner_radius: CornerRadius::same(1),
         popup_shadow: Shadow::NONE,
-        
+
         widgets: Widgets {
-            noninteractive: WidgetVisuals { bg_fill: Color32::from(theme_values.widgets_noninteractive_bg_fill), weak_bg_fill: Color32::from(theme_values.widgets_noninteractive_weak_bg_fill), bg_stroke: Stroke::new(theme_values.widgets_noninteractive_bg_stroke.0, theme_values.widgets_noninteractive_bg_stroke.1), corner_radius: CornerRadius::same(theme_values.widgets_noninteractive_rounding as u8), fg_stroke: Stroke::new(theme_values.widgets_noninteractive_fg_stroke.0, theme_values.widgets_noninteractive_fg_stroke.1), expansion: theme_values.widgets_noninteractive_expansion },
-            inactive: WidgetVisuals { bg_fill: Color32::from(theme_values.widgets_interactive_bg_fill), weak_bg_fill: Color32::from(theme_values.widgets_interactive_weak_bg_fill), bg_stroke: Stroke::new(theme_values.widgets_interactive_bg_stroke.0, theme_values.widgets_interactive_bg_stroke.1), corner_radius: CornerRadius::same(theme_values.widgets_interactive_rounding as u8), fg_stroke: Stroke::new(theme_values.widgets_interactive_fg_stroke.0, theme_values.widgets_interactive_fg_stroke.1), expansion: theme_values.widgets_interactive_expansion },
-            hovered: WidgetVisuals { bg_fill: Color32::from(theme_values.widgets_hovered_bg_fill), weak_bg_fill: Color32::from(theme_values.widgets_hovered_weak_bg_fill), bg_stroke: Stroke::new(theme_values.widgets_hovered_bg_stroke.0, theme_values.widgets_hovered_bg_stroke.1), corner_radius: CornerRadius::same(theme_values.widgets_hovered_rounding as u8), fg_stroke: Stroke::new(theme_values.widgets_hovered_fg_stroke.0, theme_values.widgets_hovered_fg_stroke.1), expansion: theme_values.widgets_hovered_expansion },
-            active: WidgetVisuals { bg_fill: Color32::from(theme_values.widgets_active_bg_fill), weak_bg_fill: Color32::from(theme_values.widgets_active_weak_bg_fill), bg_stroke: Stroke::new(theme_values.widgets_active_bg_stroke.0, theme_values.widgets_active_bg_stroke.1), corner_radius: CornerRadius::same(theme_values.widgets_active_rounding as u8), fg_stroke: Stroke::new(theme_values.widgets_active_fg_stroke.0, theme_values.widgets_active_fg_stroke.1), expansion: theme_values.widgets_active_expansion },
-            open: WidgetVisuals { bg_fill: Color32::from(theme_values.widgets_open_bg_fill), weak_bg_fill: Color32::from(theme_values.widgets_open_weak_bg_fill), bg_stroke: Stroke::new(theme_values.widgets_open_bg_stroke.0, theme_values.widgets_open_bg_stroke.1), corner_radius: CornerRadius::same(theme_values.widgets_open_rounding as u8), fg_stroke: Stroke::new(theme_values.widgets_open_fg_stroke.0, theme_values.widgets_open_fg_stroke.1), expansion: theme_values.widgets_open_expansion },
+            noninteractive: WidgetVisuals {
+                bg_fill: Color32::from(theme_values.widgets_noninteractive_bg_fill),
+                weak_bg_fill: Color32::from(theme_values.widgets_noninteractive_weak_bg_fill),
+                bg_stroke: Stroke::new(
+                    theme_values.widgets_noninteractive_bg_stroke.0,
+                    theme_values.widgets_noninteractive_bg_stroke.1,
+                ),
+                corner_radius: CornerRadius::same(
+                    theme_values.widgets_noninteractive_rounding as u8,
+                ),
+                fg_stroke: Stroke::new(
+                    theme_values.widgets_noninteractive_fg_stroke.0,
+                    theme_values.widgets_noninteractive_fg_stroke.1,
+                ),
+                expansion: theme_values.widgets_noninteractive_expansion,
+            },
+            inactive: WidgetVisuals {
+                bg_fill: Color32::from(theme_values.widgets_interactive_bg_fill),
+                weak_bg_fill: Color32::from(theme_values.widgets_interactive_weak_bg_fill),
+                bg_stroke: Stroke::new(
+                    theme_values.widgets_interactive_bg_stroke.0,
+                    theme_values.widgets_interactive_bg_stroke.1,
+                ),
+                corner_radius: CornerRadius::same(theme_values.widgets_interactive_rounding as u8),
+                fg_stroke: Stroke::new(
+                    theme_values.widgets_interactive_fg_stroke.0,
+                    theme_values.widgets_interactive_fg_stroke.1,
+                ),
+                expansion: theme_values.widgets_interactive_expansion,
+            },
+            hovered: WidgetVisuals {
+                bg_fill: Color32::from(theme_values.widgets_hovered_bg_fill),
+                weak_bg_fill: Color32::from(theme_values.widgets_hovered_weak_bg_fill),
+                bg_stroke: Stroke::new(
+                    theme_values.widgets_hovered_bg_stroke.0,
+                    theme_values.widgets_hovered_bg_stroke.1,
+                ),
+                corner_radius: CornerRadius::same(theme_values.widgets_hovered_rounding as u8),
+                fg_stroke: Stroke::new(
+                    theme_values.widgets_hovered_fg_stroke.0,
+                    theme_values.widgets_hovered_fg_stroke.1,
+                ),
+                expansion: theme_values.widgets_hovered_expansion,
+            },
+            active: WidgetVisuals {
+                bg_fill: Color32::from(theme_values.widgets_active_bg_fill),
+                weak_bg_fill: Color32::from(theme_values.widgets_active_weak_bg_fill),
+                bg_stroke: Stroke::new(
+                    theme_values.widgets_active_bg_stroke.0,
+                    theme_values.widgets_active_bg_stroke.1,
+                ),
+                corner_radius: CornerRadius::same(theme_values.widgets_active_rounding as u8),
+                fg_stroke: Stroke::new(
+                    theme_values.widgets_active_fg_stroke.0,
+                    theme_values.widgets_active_fg_stroke.1,
+                ),
+                expansion: theme_values.widgets_active_expansion,
+            },
+            open: WidgetVisuals {
+                bg_fill: Color32::from(theme_values.widgets_open_bg_fill),
+                weak_bg_fill: Color32::from(theme_values.widgets_open_weak_bg_fill),
+                bg_stroke: Stroke::new(
+                    theme_values.widgets_open_bg_stroke.0,
+                    theme_values.widgets_open_bg_stroke.1,
+                ),
+                corner_radius: CornerRadius::same(theme_values.widgets_open_rounding as u8),
+                fg_stroke: Stroke::new(
+                    theme_values.widgets_open_fg_stroke.0,
+                    theme_values.widgets_open_fg_stroke.1,
+                ),
+                expansion: theme_values.widgets_open_expansion,
+            },
         },
         ..old
     });

@@ -82,7 +82,7 @@ impl OpImageInputClipboard {
         }
 
         if let Some(value) = img {
-            Ok(OperationResponse { ai_cost_usd: None,
+            Ok(OperationResponse { 
                 time: Instant::now().duration_since(start_time),
                 responses: vec![
                     OutputResponse { value },

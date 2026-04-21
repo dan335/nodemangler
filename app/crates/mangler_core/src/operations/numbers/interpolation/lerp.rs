@@ -64,7 +64,7 @@ impl OpNumberMathLerp {
         // run node
         let value = Value::Decimal(a + (b - a) * t);
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
                 value,

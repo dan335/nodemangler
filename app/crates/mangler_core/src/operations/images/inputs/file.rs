@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
-use image::io::Reader as ImageReader;
+use image::ImageReader;
 
 /// Operation that loads an image from a file on disk.
 ///
@@ -89,7 +89,7 @@ impl OpImageInputFile {
         }
 
         if let Some(value) = img {
-            Ok(OperationResponse { ai_cost_usd: None,
+            Ok(OperationResponse { 
                 time: Instant::now().duration_since(start_time),
                 responses: vec![
                     OutputResponse { value: Value::Image { data: Arc::new(value), change_id: get_id() } },

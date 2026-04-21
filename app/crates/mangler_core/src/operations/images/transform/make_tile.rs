@@ -73,7 +73,7 @@ impl OpImageTransformMakeTile {
         let blend_h = (h as f32 * blend_size) as u32;
 
         if blend_w == 0 || blend_h == 0 {
-            return Ok(OperationResponse { ai_cost_usd: None,
+            return Ok(OperationResponse { 
                 time: Instant::now().duration_since(start_time),
                 responses: vec![
                     OutputResponse { value: Value::Image { data: Arc::new(output), change_id: get_id() } },
@@ -130,7 +130,7 @@ impl OpImageTransformMakeTile {
             }
         }
 
-        Ok(OperationResponse { ai_cost_usd: None,
+        Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Image { data: Arc::new(output), change_id: get_id() } },

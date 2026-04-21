@@ -10,7 +10,7 @@ Node-based visual programming tool for image and color manipulation.
 ## Project Structure
 
 - `app/crates/mangler_core/` — Core library: value system, node graph engine, operations, color spaces
-- `app/crates/mangler_tui/` — CLI tool for running graphs headless
+- `app/crates/mangler_cli/` — CLI tool for running graphs headless
 - `app/crates/mangler_gui/` — GUI application built with egui/eframe
 
 ## Build & Test
@@ -20,7 +20,7 @@ cd app
 cargo build          # Build all crates
 cargo test           # Run all tests
 cargo run -p mangler_gui  # Run the GUI app
-cargo run -p mangler_tui  # Run the CLI tool
+cargo run -p mangler_cli  # Run the CLI tool
 ```
 
 ## Key Conventions
