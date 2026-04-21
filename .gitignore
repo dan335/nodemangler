@@ -13,3 +13,5 @@ app/target/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+.env
