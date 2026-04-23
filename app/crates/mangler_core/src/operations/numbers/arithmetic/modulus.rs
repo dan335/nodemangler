@@ -65,7 +65,17 @@ impl OpNumberMathModulus {
         }
 
         let value = match &inputs[0].value {
-            Value::Integer(a) => Value::Integer(*a % n as i32),
+            Value::Integer(a) => {
+                // Integer path casts `n` to i32, so fractional divisors like 0.5 truncate to 0
+                // and would panic on integer %. Guard against it explicitly.
+                let n_int = n as i32;
+                if n_int == 0 {
+                    return Err(OperationError {
+                        input_errors: vec![(1, "Division by zero.".to_string())], node_error: None,
+                    });
+                }
+                Value::Integer(*a % n_int)
+            }
 
             Value::Decimal(a) => Value::Decimal(*a % n),
 

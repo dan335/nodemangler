@@ -46,6 +46,17 @@ pub struct Program {
     node_search_popup: NodeSearchPopup,
     /// Temporary status message shown on screen (text, expiry time).
     status_message: Option<(String, std::time::Instant)>,
+    /// State of an in-progress video render (if any). `None` when no render
+    /// is running.
+    render_state: Option<RenderProgressUiState>,
+}
+
+/// Snapshot of a render's progress for the inspector pane.
+#[derive(Debug, Clone)]
+pub struct RenderProgressUiState {
+    pub frame: u32,
+    pub total: u32,
+    pub started_at: std::time::Instant,
 }
 
 impl Program {
@@ -81,6 +92,7 @@ impl Program {
                 graph_run_time: Duration::ZERO,
                 node_search_popup: NodeSearchPopup::new(),
                 status_message: None,
+                render_state: None,
             }),
             Err(error) => Err(NewGraphError(format!(
                 "Error creating program. {:?}",
@@ -177,16 +189,21 @@ impl Program {
                     );
                 }
                 GraphChangedMessage::LoadedNode { node } => {
-                    let (is_subgraph, add_node_type) = match &node.node_type {
+                    let (is_subgraph, add_node_type, subgraph_path) = match &node.node_type {
                         NodeType::Operation { operation } => {
-                            (false, Some(AddNodeType::Operation(operation.clone())))
+                            (false, Some(AddNodeType::Operation(operation.clone())), None)
                         }
-                        NodeType::Subgraph { .. } => {
-                            (true, Some(AddNodeType::Subgraph))
+                        NodeType::Subgraph { path, .. } => {
+                            let path_opt = if path.as_os_str().is_empty() {
+                                None
+                            } else {
+                                Some(path.clone())
+                            };
+                            (true, Some(AddNodeType::Subgraph), path_opt)
                         }
                     };
 
-                    let graph_node = GraphNode::new(
+                    let mut graph_node = GraphNode::new(
                         node.id.clone(),
                         Pos2::new(node.position.x, node.position.y),
                         node.settings,
@@ -197,6 +214,7 @@ impl Program {
                         node.is_enabled,
                         node.custom_name,
                     );
+                    graph_node.subgraph_path = subgraph_path;
 
                     self.graph_editor.graph_nodes.insert(node.id, graph_node);
                 }
@@ -263,6 +281,35 @@ impl Program {
                     }
 
                     //self.needs_to_save = true;
+                }
+                GraphChangedMessage::RenderProgress { frame, total } => {
+                    match self.render_state.as_mut() {
+                        Some(rs) => {
+                            rs.frame = frame;
+                            rs.total = total;
+                        }
+                        None => {
+                            self.render_state = Some(RenderProgressUiState {
+                                frame,
+                                total,
+                                started_at: std::time::Instant::now(),
+                            });
+                        }
+                    }
+                }
+                GraphChangedMessage::RenderFinished { path, elapsed } => {
+                    self.render_state = None;
+                    self.status_message = Some((
+                        format!("Rendered to {} in {:.2}s", path.display(), elapsed.as_secs_f32()),
+                        std::time::Instant::now(),
+                    ));
+                }
+                GraphChangedMessage::RenderFailed { message } => {
+                    self.render_state = None;
+                    self.status_message = Some((
+                        format!("Render failed: {}", message),
+                        std::time::Instant::now(),
+                    ));
                 }
             }
         }
@@ -543,7 +590,14 @@ impl Program {
                 if let Some(editing_node_id) = &self.editing_node_id {
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(editing_node_id) {
                         let node_settings_response =
-                            node_settings_panel::show(ui, node, &self.tx_change_node, theme);
+                            node_settings_panel::show(
+                                ui,
+                                node,
+                                &self.tx_change_node,
+                                &self.tx_change_graph,
+                                self.render_state.as_ref(),
+                                theme,
+                            );
                         show_graph_settings = false;
 
                         if node_settings_response.deselect_node {

@@ -63,6 +63,20 @@ pub fn draw_graph_output(
     response.is_cursor_over = output_response.hovered();
     ui.painter().add(shape);
 
+    // Outline indicates this output is exposed for subgraph composition.
+    // Uses the theme's selected-border color so it matches the visual
+    // vocabulary already established for "this thing is highlighted."
+    if output.is_exposed {
+        ui.painter().add(Shape::circle_stroke(
+            output_position,
+            graph_to_view_space(graph_zoom, 7.0),
+            egui::Stroke::new(
+                graph_to_view_space(graph_zoom, 1.5),
+                theme.get().node_header_selected_border,
+            ),
+        ));
+    }
+
     // creating connections
     if output_response.drag_started() {
         response.has_started_creating_connection = true;

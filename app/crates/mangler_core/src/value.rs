@@ -80,6 +80,8 @@ pub enum Value {
     TextHAlign(TextHAlign),
     /// Vertical alignment for text rendering.
     TextVAlign(TextVAlign),
+    /// A video file container/codec identifier (MP4, WebM, etc.).
+    VideoType(VideoType),
 }
 
 /// Modes for file/folder picker dialogs.
@@ -140,6 +142,7 @@ impl Value {
             Value::BlendMode(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::TextHAlign(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::TextVAlign(value) => Some(Thumbnail::Text(format!("{:?}", value))),
+            Value::VideoType(value) => Some(Thumbnail::Text(format!("{:?}", value))),
         }
     }
 
@@ -172,6 +175,7 @@ impl Value {
             Value::BlendMode(bm) => format!("{:?}", bm).hash(&mut h),
             Value::TextHAlign(v) => format!("{:?}", v).hash(&mut h),
             Value::TextVAlign(v) => format!("{:?}", v).hash(&mut h),
+            Value::VideoType(v) => format!("{:?}", v).hash(&mut h),
         }
         h.finish()
     }
@@ -199,6 +203,7 @@ impl Value {
             Value::BlendMode(_) => ValueType::BlendMode,
             Value::TextHAlign(_) => ValueType::TextHAlign,
             Value::TextVAlign(_) => ValueType::TextVAlign,
+            Value::VideoType(_) => ValueType::VideoType,
         }
     }
 
@@ -380,6 +385,10 @@ impl Value {
                 ValueType::TextVAlign => Ok(Value::TextVAlign(*a)),
                 _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
             },
+            Value::VideoType(a) => match other {
+                ValueType::VideoType => Ok(Value::VideoType(*a)),
+                _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
+            },
             Value::Text(a) => match other {
                 ValueType::Text => Ok(Value::Text(a.clone())),
                 ValueType::Path => Ok(Value::Path(PathBuf::from(a))),
@@ -458,6 +467,8 @@ pub enum ValueType {
     TextHAlign,
     /// Vertical text alignment type.
     TextVAlign,
+    /// Video container/codec format type.
+    VideoType,
 }
 
 impl ValueType {
@@ -503,6 +514,7 @@ impl ValueType {
             ValueType::BlendMode => Value::BlendMode(crate::color::blend::BlendMode::Over),
             ValueType::TextHAlign => Value::TextHAlign(TextHAlign::Center),
             ValueType::TextVAlign => Value::TextVAlign(TextVAlign::Middle),
+            ValueType::VideoType => Value::VideoType(VideoType::Mp4),
         }
     }
 
@@ -525,6 +537,7 @@ impl ValueType {
             ValueType::BlendMode => "blend mode".to_string(),
             ValueType::TextHAlign => "text h-align".to_string(),
             ValueType::TextVAlign => "text v-align".to_string(),
+            ValueType::VideoType => "video format".to_string(),
         }
     }
 
@@ -607,6 +620,7 @@ impl ValueType {
             ValueType::BlendMode => vec![ValueType::BlendMode, ValueType::Trigger],
             ValueType::TextHAlign => vec![ValueType::TextHAlign, ValueType::Trigger],
             ValueType::TextVAlign => vec![ValueType::TextVAlign, ValueType::Trigger],
+            ValueType::VideoType => vec![ValueType::VideoType, ValueType::Trigger],
         }
     }
 
@@ -805,6 +819,40 @@ impl ImageType {
         ];
 
         types
+    }
+}
+
+/// Supported video container/codec formats for writing video files.
+///
+/// Each variant maps to a file extension and a codec preset selected by the
+/// `VideoEncoder` when a render is started. All formats are decoded via the
+/// `video-rs` input path and don't require a separate enum value for reading.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum VideoType {
+    /// H.264 video in an MP4 container.
+    Mp4,
+    /// VP9 video in a WebM container.
+    WebM,
+    /// H.264 video in a Matroska container.
+    Mkv,
+    /// H.264 video in a QuickTime container.
+    Mov,
+}
+
+impl VideoType {
+    /// Return the file extension (without dot) for this format.
+    pub fn extension(&self) -> &'static str {
+        match self {
+            VideoType::Mp4 => "mp4",
+            VideoType::WebM => "webm",
+            VideoType::Mkv => "mkv",
+            VideoType::Mov => "mov",
+        }
+    }
+
+    /// Return all available video type variants.
+    pub fn types() -> [VideoType; 4] {
+        [VideoType::Mp4, VideoType::WebM, VideoType::Mkv, VideoType::Mov]
     }
 }
 

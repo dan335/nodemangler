@@ -2,6 +2,7 @@
 //! or as an embedded subgraph.
 
 use std::path::PathBuf;
+use std::time::SystemTime;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{Receiver};
 use crate::{operations::Operation, graph::Graph, NodeChangedMessage};
@@ -28,6 +29,12 @@ pub enum NodeType {
         /// Channel receiver for node-changed messages from the child graph (not serialized).
         #[serde(skip)]
         rx_node_changed: Option<Receiver<NodeChangedMessage>>,
+        /// Modified-time of `path` at the moment the child was last loaded.
+        /// Used by `Graph::check_subgraphs_for_changes` to detect external edits
+        /// (e.g. the child being saved from another tab) and trigger a reload.
+        /// Not serialized — recomputed by `set_subgraph_path` on every load.
+        #[serde(skip)]
+        last_mtime: Option<SystemTime>,
     }
 }
 
@@ -39,9 +46,14 @@ impl Clone for NodeType {
             NodeType::Operation { operation } => {
                 NodeType::Operation { operation: operation.clone() }
             },
-            // Only clone the path; the graph and channel must be re-created
-            NodeType::Subgraph {path, graph:_, rx_node_changed:_ } => {
-                NodeType::Subgraph { path: path.clone(), graph: None, rx_node_changed: None }
+            // Only clone the path; the graph, channel, and mtime must be re-derived
+            NodeType::Subgraph { path, graph: _, rx_node_changed: _, last_mtime: _ } => {
+                NodeType::Subgraph {
+                    path: path.clone(),
+                    graph: None,
+                    rx_node_changed: None,
+                    last_mtime: None,
+                }
             }
         }
     }

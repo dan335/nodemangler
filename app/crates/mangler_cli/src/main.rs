@@ -61,6 +61,10 @@ async fn run(cli: Cli) -> Result<(), String> {
         Commands::Disconnect { node, input } => commands::cmd_disconnect(path, node, input, json).await,
         Commands::SetInput { node, input, value } => commands::cmd_set_input(path, node, input, value, json),
         Commands::SetName { node, name } => commands::cmd_set_name(path, node, name, json),
+        Commands::AddSubgraph { id, subgraph_file } => commands::cmd_add_subgraph(path, id, subgraph_file, json).await,
+        Commands::SetSubgraphPath { node, subgraph_file } => commands::cmd_set_subgraph_path(path, node, subgraph_file, json),
+        Commands::ExposeInput { node, input, expose } => commands::cmd_expose_input(path, node, input, expose, json),
+        Commands::ExposeOutput { node, output, expose } => commands::cmd_expose_output(path, node, output, expose, json),
         Commands::SetEnabled { node, enabled } => commands::cmd_set_enabled(path, node, enabled, json),
         Commands::Run => commands::cmd_run(path, json).await,
         Commands::ShowOutput { node, output, stats, sample, save } => {

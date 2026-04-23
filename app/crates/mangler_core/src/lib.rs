@@ -35,6 +35,9 @@ pub mod dynamic_image_serde;
 pub mod float_image;
 pub mod float_image_serde;
 pub mod color;
+pub mod video;
+#[cfg(feature = "video")]
+pub mod render;
 mod tests;
 
 /// Generate a unique identifier using nanoid.
@@ -95,6 +98,15 @@ pub enum ChangeNodeMessage {
         node_id: String,
         /// The new custom name, or `None` to clear it.
         name: Option<String>,
+    },
+    /// Point a Subgraph node at a `.mangle.json` file on disk. The engine
+    /// loads the child graph and populates the node's inputs/outputs from the
+    /// child's exposed slots.
+    SetSubgraphPath {
+        /// The target node's unique identifier.
+        node_id: String,
+        /// Path to the child `.mangle.json` file.
+        path: std::path::PathBuf,
     },
 }
 
@@ -234,6 +246,15 @@ pub enum ChangeGraphMessage {
     SetSavePath(PathBuf),
     /// Set the human-readable name for the graph.
     SetGraphName(String),
+    /// Begin rendering a video out of the graph. The engine snapshots the
+    /// graph and drives the render on a separate tokio task; the live engine
+    /// keeps running normally. Progress is reported via `RenderProgress` /
+    /// `RenderFinished` / `RenderFailed` on the graph-changed channel.
+    StartRender {
+        /// The Video Output node whose inputs (path, format, fps, duration)
+        /// drive the render and whose `image` input supplies each frame.
+        output_node_id: String,
+    },
 }
 
 /// Messages sent from the engine to the UI when graph structure changes.
@@ -287,6 +308,25 @@ pub enum GraphChangedMessage {
         node_id: String,
         /// Index of the disconnected input.
         input_index: usize,
+    },
+    /// A render task has advanced by one or more frames.
+    RenderProgress {
+        /// How many frames have been pushed to the encoder so far.
+        frame: u32,
+        /// Total number of frames the render will produce.
+        total: u32,
+    },
+    /// A render task has finished successfully.
+    RenderFinished {
+        /// The output file path that was written.
+        path: PathBuf,
+        /// Wall-clock time spent rendering.
+        elapsed: Duration,
+    },
+    /// A render task failed.
+    RenderFailed {
+        /// Human-readable description of the failure.
+        message: String,
     },
 }
 

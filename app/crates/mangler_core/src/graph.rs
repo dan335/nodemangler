@@ -7,7 +7,7 @@
 //! propagating output values through connections. An input-hash cache skips nodes
 //! whose inputs have not changed since the last run.
 
-use crate::input::{Input, InputLink, InputSettings};
+use crate::input::{Input, InputLink};
 use crate::node_type::NodeType;
 use crate::output::{Output, OutputLink};
 use crate::{AddNodeType, NodeChangedMessage, GraphChangedMessage};
@@ -98,6 +98,22 @@ impl Graph {
                     for (_node_id, node) in graph.nodes.iter_mut() {
                         node.is_dirty = true;
 
+                        // Restore Input.default_value and Output.value/default_value
+                        // from the operation definition. These fields are #[serde(skip)]
+                        // so they come back as Value::Bool(false) regardless of type
+                        // until we re-derive them from create_inputs/create_outputs.
+                        if let NodeType::Operation { operation } = &node.node_type {
+                            let fresh_inputs = operation.create_inputs();
+                            for (input, fresh) in node.inputs.iter_mut().zip(fresh_inputs.into_iter()) {
+                                input.default_value = fresh.default_value;
+                            }
+                            let fresh_outputs = operation.create_outputs();
+                            for (out, fresh) in node.outputs.iter_mut().zip(fresh_outputs.into_iter()) {
+                                out.value = fresh.value.clone();
+                                out.default_value = fresh.default_value;
+                            }
+                        }
+
                         // let ui know node was created
                         if let Some(tx) = &graph.tx_graph_changed {
                             let message = GraphChangedMessage::LoadedNode { node: node.clone() };
@@ -109,6 +125,23 @@ impl Graph {
                                 }
                             }
                         }
+                    }
+
+                    // Auto-reload any subgraph nodes that have a saved path.
+                    // Subgraph.graph/rx_node_changed are #[serde(skip)] so they
+                    // come back as None; re-running set_subgraph_path rebuilds
+                    // the child graph and repopulates exposed inputs/outputs.
+                    let subgraph_paths: Vec<(String, PathBuf)> = graph.nodes.iter()
+                        .filter_map(|(id, node)| match &node.node_type {
+                            NodeType::Subgraph { path, .. } if !path.as_os_str().is_empty() => {
+                                Some((id.clone(), path.clone()))
+                            }
+                            _ => None,
+                        })
+                        .collect();
+
+                    for (subgraph_node_id, path) in subgraph_paths {
+                        graph.set_subgraph_path(subgraph_node_id, path);
                     }
 
                     Ok(graph)
@@ -156,23 +189,7 @@ impl Graph {
         let mut node = Node::new(node_id.clone(), node_type.clone(), position);
         node.is_enabled = is_enabled;
         node.custom_name = custom_name.clone();
-        let mut is_subgraph = false;
-
-        if let AddNodeType::Subgraph = node_type {
-            node.inputs.clear();
-            node.outputs.clear();
-
-            let input_settings = Some(InputSettings::Path {
-                extension_filter: vec!["mangle".to_string()],
-                set_directory: None,
-                set_file_name: None,
-                set_title: Some("open subgraph".to_string()),
-                file_dialog_type: crate::input::FileDialogType::PickFile,
-            });
-
-            node.inputs.push(Input::new("file path".to_string(), Value::Path(PathBuf::new()), input_settings, None));
-            is_subgraph = true;
-        }
+        let is_subgraph = matches!(node_type, AddNodeType::Subgraph);
 
         if let Some(tx) = &self.tx_graph_changed {
             let message = GraphChangedMessage::AddedNode {
@@ -492,118 +509,193 @@ impl Graph {
     /// Set an input value directly (from user interaction, not from a connection).
     ///
     /// Marks the node as dirty and invalidates its cached input hash. If the input
-    /// has a subgraph link, the value is also forwarded into the child graph. If the
-    /// node is a subgraph and the value is a Path, the subgraph file is loaded and
-    /// the node's inputs/outputs are populated from the child graph's exposed I/O.
+    /// has a subgraph link, the value is also forwarded into the child graph's
+    /// linked input slot.
     pub fn set_input(&mut self, node_id: String, input_index: usize, value: Value) {
         if let Some(node) = self.nodes.get_mut(&node_id) {
             if let Some(input) = node.inputs.get_mut(input_index) {
-                // set value
                 input.value = value.clone();
-
-                // mark node as dirty so that it will run next time graph runs
                 node.is_dirty = true;
                 node.cached_input_hash = None;
 
-                // if input has a link then pass value to linked input
+                // If this input is linked to a subgraph's internal input, forward
+                // the value so the child graph sees the change on its next run.
                 if let Some(link) = &input.link {
-                    if let NodeType::Subgraph { path:_, graph:possible_subgraph, rx_node_changed:_ } = &mut node.node_type {
+                    if let NodeType::Subgraph { path: _, graph: possible_subgraph, rx_node_changed: _, last_mtime: _ } = &mut node.node_type {
                         if let Some(subgraph) = possible_subgraph {
                             if let Some(subgraph_node) = subgraph.nodes.get_mut(&link.node_id) {
-
                                 if let Some(i) = subgraph_node.inputs.iter_mut().position(|i| i.id == link.input_id) {
                                     subgraph_node.set_input_value(i, value.clone());
                                 }
                             }
-
                         }
                     }
                 }
             }
+        }
+    }
 
-            // if this node is a subgraph
-            if let NodeType::Subgraph { path:_, graph:_, rx_node_changed:_ } = &node.node_type {
-                // if value is subgraph location
-                // load subgraph
-                if let Value::Path(path) = value {
+    /// Load a child graph from `path` into the given subgraph node.
+    ///
+    /// Populates the parent node's inputs/outputs from the child graph's exposed
+    /// slots, stores the loaded child graph on the node, and emits a
+    /// `SubgraphLoaded` message so the UI can re-render the node. No-op if the
+    /// node does not exist or is not a subgraph node.
+    pub fn set_subgraph_path(&mut self, node_id: String, path: PathBuf) {
+        let Some(node) = self.nodes.get_mut(&node_id) else { return; };
+        if !matches!(node.node_type, NodeType::Subgraph { .. }) { return; }
 
-                    // create graph from path
-                    let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
-                    match Graph::load(path.clone(), Some(tx_node_changed), None, true) {
-                        Ok(subgraph) => {
-
-                            for (subgraph_node_id, subgraph_node) in subgraph.nodes.iter() {
-                                // create inputs for node
-                                // from subgraph's exposed inputs
-                                for subgraph_input in subgraph_node.inputs.iter() {
-                                    if subgraph_input.is_exposed {
-                                        let input_settings = Some(InputSettings::Path {
-                                            extension_filter: vec!["mangle".to_string()],
-                                            set_directory: None,
-                                            set_file_name: None,
-                                            set_title: Some("open subgraph".to_string()),
-                                            file_dialog_type: crate::input::FileDialogType::PickFile,
-                                        });
-
-                                        node.inputs.push(
-                                            Input::new(
-                                                subgraph_input.name.clone(),
-                                                subgraph_input.value.clone(),
-                                                input_settings,
-                                                Some(InputLink {node_id: subgraph_node_id.clone(), input_id: subgraph_input.id.clone()})
-                                            )
-                                        );
-                                    }
-                                }
-
-                                // create outputs for node
-                                // from subgraph's exposed outputs
-                                for (output_index, subgraph_output) in subgraph_node.outputs.iter().enumerate() {
-                                    if subgraph_output.is_exposed {
-                                        node.outputs.push(Output::new(subgraph_output.name.clone(), subgraph_output.value.clone(), Some(OutputLink { node_id: subgraph_node_id.clone(), output_index })));
-                                    }
-                                }
-                            }
-
-                            // other settings for node
-                            node.settings.name = subgraph.name.clone();
-                            node.node_type = NodeType::Subgraph { path: path.to_path_buf(), graph: Some(subgraph), rx_node_changed: Some(rx_node_changed) };
-
-                            // mark dirty so that it runs
-                            node.is_dirty = true;
-
-                            // send message to ui
-                            if let Some(tx) = &self.tx_node_changed {
-                                let message = SubgraphLoaded {
-                                    node_id,
-                                    settings: node.settings.clone(),
-                                    inputs: node.inputs.clone(),
-                                    outputs: node.outputs.clone(),
-                                };
-
-                                match tx.try_send(message) {
-                                    Ok(_) => {}
-                                    Err(err) => {
-                                        println!("Error sending SubgraphLoaded: {:?}", err);
-                                    }
-                                }
-                            }
-                        }
-                        Err(error) => {
-                            println!("Error loading subgraph. {:#?}", error);
-                        },
-
-                    }
-                }
-
-
+        let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
+        let subgraph = match Graph::load(path.clone(), Some(tx_node_changed), None, true) {
+            Ok(g) => g,
+            Err(error) => {
+                println!("Error loading subgraph. {:#?}", error);
+                return;
             }
+        };
+
+        // Capture the mtime so `check_subgraphs_for_changes` can detect when
+        // the child file has been rewritten (e.g. from another tab) and trigger
+        // a reload. None if metadata is unavailable; treated as "always stale"
+        // on the next check, which effectively forces a reload next tick —
+        // acceptable fallback on obscure filesystems.
+        let loaded_mtime = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+
+        // Capture existing exposed-input values by name so user-provided values
+        // survive a save→load cycle. Input.link is #[serde(skip)] and needs to
+        // be re-established every time, but Input.value is persisted. Without
+        // preserving values, reloading a saved graph would reset driven values
+        // back to child defaults.
+        let preserved_input_values: std::collections::HashMap<String, Value> = node
+            .inputs
+            .iter()
+            .map(|i| (i.name.clone(), i.value.clone()))
+            .collect();
+
+        node.inputs.clear();
+        node.outputs.clear();
+
+        for (subgraph_node_id, subgraph_node) in subgraph.nodes.iter() {
+            for subgraph_input in subgraph_node.inputs.iter() {
+                if subgraph_input.is_exposed {
+                    let initial_value = preserved_input_values
+                        .get(&subgraph_input.name)
+                        .cloned()
+                        .unwrap_or_else(|| subgraph_input.value.clone());
+                    node.inputs.push(Input::new(
+                        subgraph_input.name.clone(),
+                        initial_value,
+                        None,
+                        Some(InputLink {
+                            node_id: subgraph_node_id.clone(),
+                            input_id: subgraph_input.id.clone(),
+                        }),
+                    ));
+                }
+            }
+
+            for (output_index, subgraph_output) in subgraph_node.outputs.iter().enumerate() {
+                if subgraph_output.is_exposed {
+                    node.outputs.push(Output::new(
+                        subgraph_output.name.clone(),
+                        subgraph_output.value.clone(),
+                        Some(OutputLink {
+                            node_id: subgraph_node_id.clone(),
+                            output_index,
+                        }),
+                    ));
+                }
+            }
+        }
+
+        node.settings.name = subgraph.name.clone();
+        node.node_type = NodeType::Subgraph {
+            path: path.clone(),
+            graph: Some(subgraph),
+            rx_node_changed: Some(rx_node_changed),
+            last_mtime: loaded_mtime,
+        };
+        node.is_dirty = true;
+        // Invalidate the cached input hash so the subgraph actually re-runs on
+        // the next tick. Without this, a previous run under graph: None would
+        // have cached the empty-input hash, and the skip branch would then
+        // short-circuit every subsequent run even though outputs are stale.
+        node.cached_input_hash = None;
+
+        if let Some(tx) = &self.tx_node_changed {
+            let message = SubgraphLoaded {
+                node_id,
+                settings: node.settings.clone(),
+                inputs: node.inputs.clone(),
+                outputs: node.outputs.clone(),
+            };
+
+            if let Err(err) = tx.try_send(message) {
+                println!("Error sending SubgraphLoaded: {:?}", err);
+            }
+        }
+    }
+
+    /// Re-read any subgraph node whose child `.mangle.json` has been modified
+    /// on disk since the last load. Call this once per engine tick to pick up
+    /// edits made from another tab or an external editor.
+    ///
+    /// Missing files are silently skipped so a deleted child doesn't spam
+    /// errors — the existing in-memory snapshot stays until the file returns
+    /// or the user re-picks it.
+    pub fn check_subgraphs_for_changes(&mut self) {
+        // Collect (node_id, path) pairs up front so we can mutate `self` via
+        // `set_subgraph_path` without fighting the borrow checker.
+        let to_reload: Vec<(String, PathBuf)> = self.nodes.iter()
+            .filter_map(|(id, node)| {
+                let NodeType::Subgraph { path, last_mtime, .. } = &node.node_type else {
+                    return None;
+                };
+                if path.as_os_str().is_empty() { return None; }
+
+                let disk_mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok()?;
+                match last_mtime {
+                    Some(known) if disk_mtime <= *known => None,
+                    _ => Some((id.clone(), path.clone())),
+                }
+            })
+            .collect();
+
+        for (node_id, path) in to_reload {
+            self.set_subgraph_path(node_id, path);
         }
     }
 
     /// Set the file path where this graph will be saved.
     pub fn set_save_path(&mut self, save_path: PathBuf) {
         self.save_path = Some(save_path);
+    }
+
+    /// Create a self-contained snapshot of this graph for running on a
+    /// separate task (e.g. a video render).
+    ///
+    /// The snapshot owns a deep copy of all nodes. Its UI senders are cleared
+    /// to `None`, so running it emits no `NodeChangedMessage` / `GraphChangedMessage`
+    /// traffic and skips thumbnail generation. The save path is cleared so the
+    /// snapshot cannot accidentally overwrite the live graph's JSON. All nodes
+    /// are marked dirty so the first `run()` on the snapshot processes every
+    /// node from scratch.
+    pub fn detached(&self) -> Graph {
+        let mut nodes = self.nodes.clone();
+        for node in nodes.values_mut() {
+            node.is_dirty = true;
+            node.cached_input_hash = None;
+        }
+        Graph {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            tx_node_changed: None,
+            tx_graph_changed: None,
+            nodes,
+            is_dirty: true,
+            save_path: None,
+            is_subgraph: self.is_subgraph,
+        }
     }
 
     // returns a list of node_ids that ran

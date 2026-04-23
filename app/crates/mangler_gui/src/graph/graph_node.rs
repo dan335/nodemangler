@@ -12,6 +12,7 @@ use mangler_core::output::Output;
 use mangler_core::AddNodeType;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use super::graph_editor::TempConnection;
@@ -51,6 +52,9 @@ pub struct GraphNode {
     pub last_drag_position: Option<Pos2>,
     pub thumbnail: Option<GraphNodeThumbnail>,
     pub is_subgraph: bool,
+    /// For subgraph nodes, the path to the child `.mangle.json` file. `None`
+    /// for operation nodes or subgraph nodes that haven't been loaded yet.
+    pub subgraph_path: Option<PathBuf>,
     pub is_busy: bool,
     pub is_error: bool,
     pub error_message: Option<String>,
@@ -89,6 +93,7 @@ impl GraphNode {
             outputs,
             time: None,
             is_subgraph,
+            subgraph_path: None,
             is_busy: false,
             is_error: false,
             is_dirty: false,

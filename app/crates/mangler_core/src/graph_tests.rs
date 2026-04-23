@@ -1118,24 +1118,17 @@ async fn test_subgraph_propagates_value_end_to_end() {
         )
         .await;
 
-    // Pointing the subgraph node at the tempfile triggers the load path:
-    // the child graph is parsed and the parent node's inputs/outputs are
-    // populated from the exposed child slots.
-    parent.set_input(
-        subgraph_node_id.clone(),
-        0,
-        Value::Path(tmp_path.clone()),
-    );
+    // Load the child graph via the dedicated API. The parent node's
+    // inputs/outputs are populated from the child's exposed slots.
+    parent.set_subgraph_path(subgraph_node_id.clone(), tmp_path.clone());
 
-    // After load the parent subgraph node has two inputs: the built-in
-    // "file path" picker at index 0, and the exposed child input at index 1.
-    // Outputs contain just the exposed child output.
+    // After load the parent surfaces just the exposed child input and output.
     {
         let parent_node = parent.nodes.get(&subgraph_node_id).unwrap();
         assert_eq!(
             parent_node.inputs.len(),
-            2,
-            "parent should have file-path input plus one exposed input"
+            1,
+            "exposed child input should surface as a parent input"
         );
         assert_eq!(
             parent_node.outputs.len(),
@@ -1143,14 +1136,13 @@ async fn test_subgraph_propagates_value_end_to_end() {
             "exposed child output should surface as a parent output"
         );
         assert!(
-            parent_node.inputs[1].link.is_some(),
+            parent_node.inputs[0].link.is_some(),
             "exposed parent input must be linked back to the child node"
         );
     }
 
-    // Drive the exposed input (index 1). set_input forwards the value into
-    // the linked child input slot and marks the parent subgraph node dirty.
-    parent.set_input(subgraph_node_id.clone(), 1, Value::Decimal(42.0));
+    // Drive the exposed input (index 0 now — no more synthetic file path slot).
+    parent.set_input(subgraph_node_id.clone(), 0, Value::Decimal(42.0));
 
     parent.run().await;
 
@@ -1167,4 +1159,535 @@ async fn test_subgraph_propagates_value_end_to_end() {
     }
 
     let _ = fs::remove_file(&tmp_path);
+}
+
+// Graph::load restores Input.default_value, Output.value, and Output.default_value
+// from each Operation node's create_inputs()/create_outputs(), since those fields
+// are #[serde(skip)] and otherwise come back as Value::Bool(false).
+#[tokio::test]
+async fn test_load_restores_typed_input_and_output_defaults() {
+    use std::fs;
+    use crate::GraphSaveData;
+
+    // Build a graph containing a Decimal input node, save it.
+    let mut graph = create_test_graph();
+    let node_id = graph
+        .add_node(
+            get_id(),
+            AddNodeType::Operation(Operation::OpNumberInputDecimal),
+            glam::Vec2::ZERO,
+            true,
+            None,
+        )
+        .await;
+
+    let tmp_path = std::env::temp_dir()
+        .join(format!("mangler_load_defaults_test_{}.mangle.json", get_id()));
+    let save_data = GraphSaveData {
+        id: graph.id.clone(),
+        name: graph.name.clone(),
+        nodes: graph.nodes.clone(),
+    };
+    fs::write(&tmp_path, serde_json::to_string(&save_data).unwrap())
+        .expect("failed to write graph tempfile");
+
+    // Load it back into a fresh Graph.
+    let (tx_nc, _rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
+    let (tx_gc, _rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let loaded = Graph::load(tmp_path.clone(), Some(tx_nc), Some(tx_gc), false)
+        .expect("failed to load graph");
+
+    let node = loaded.nodes.get(&node_id).expect("node should round-trip");
+
+    // Without the fix these would be Value::Bool(false) (Value::default()).
+    match &node.inputs[0].default_value {
+        Value::Decimal(_) => {}
+        other => panic!("expected Decimal input default_value, got {:?}", other),
+    }
+    match &node.outputs[0].value {
+        Value::Decimal(_) => {}
+        other => panic!("expected Decimal output value, got {:?}", other),
+    }
+    match &node.outputs[0].default_value {
+        Value::Decimal(_) => {}
+        other => panic!("expected Decimal output default_value, got {:?}", other),
+    }
+
+    let _ = fs::remove_file(&tmp_path);
+}
+
+// Saving and reloading a parent graph that contains a Subgraph node should
+// re-hydrate the child graph (since Subgraph.graph is #[serde(skip)]) using
+// the path that survived serialization in NodeType::Subgraph.path.
+#[tokio::test]
+async fn test_load_graph_with_saved_subgraph_node_auto_reloads() {
+    use std::fs;
+    use crate::{GraphSaveData, node_type::NodeType};
+
+    // Build a tiny child graph (exposed decimal passthrough) and save it.
+    let (child_tx_nc, _child_rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
+    let (child_tx_gc, _child_rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut child = Graph::new(get_id(), child_tx_nc, child_tx_gc, true).unwrap();
+    let child_node_id = child
+        .add_node(
+            get_id(),
+            AddNodeType::Operation(Operation::OpNumberInputDecimal),
+            glam::Vec2::ZERO, true, None,
+        )
+        .await;
+    {
+        let n = child.nodes.get_mut(&child_node_id).unwrap();
+        n.inputs[0].is_exposed = true;
+        n.outputs[0].is_exposed = true;
+    }
+    let child_path = std::env::temp_dir()
+        .join(format!("mangler_autoreload_child_{}.mangle.json", get_id()));
+    let child_save = GraphSaveData {
+        id: child.id.clone(),
+        name: child.name.clone(),
+        nodes: child.nodes.clone(),
+    };
+    fs::write(&child_path, serde_json::to_string(&child_save).unwrap()).unwrap();
+
+    // Build a parent graph, add a subgraph node pointing at the child, and save.
+    let mut parent = create_test_graph();
+    let subgraph_node_id = parent
+        .add_node(
+            get_id(),
+            AddNodeType::Subgraph,
+            glam::Vec2::ZERO, true, None,
+        )
+        .await;
+    parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
+
+    let parent_path = std::env::temp_dir()
+        .join(format!("mangler_autoreload_parent_{}.mangle.json", get_id()));
+    let parent_save = GraphSaveData {
+        id: parent.id.clone(),
+        name: parent.name.clone(),
+        nodes: parent.nodes.clone(),
+    };
+    fs::write(&parent_path, serde_json::to_string(&parent_save).unwrap()).unwrap();
+
+    // Load the parent fresh. The subgraph node should auto-reload its child.
+    let (tx_nc, _rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
+    let (tx_gc, _rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut loaded_parent =
+        Graph::load(parent_path.clone(), Some(tx_nc), Some(tx_gc), false)
+            .expect("failed to load parent graph");
+
+    let loaded_node = loaded_parent
+        .nodes
+        .get(&subgraph_node_id)
+        .expect("subgraph node should round-trip");
+
+    // The auto-reload should have repopulated inputs/outputs and restored the
+    // child graph on the node_type.
+    assert_eq!(loaded_node.inputs.len(), 1, "exposed input should auto-reload");
+    assert_eq!(loaded_node.outputs.len(), 1, "exposed output should auto-reload");
+    assert!(
+        matches!(
+            loaded_node.node_type,
+            NodeType::Subgraph { graph: Some(_), .. }
+        ),
+        "child graph should be rehydrated on the subgraph node"
+    );
+
+    // End-to-end sanity check: drive the exposed input, run, assert output.
+    loaded_parent.set_input(subgraph_node_id.clone(), 0, Value::Decimal(7.0));
+    loaded_parent.run().await;
+    let final_node = loaded_parent.nodes.get(&subgraph_node_id).unwrap();
+    match &final_node.outputs[0].value {
+        Value::Decimal(v) => assert!((*v - 7.0).abs() < 1e-6, "got {}", v),
+        other => panic!("expected Decimal, got {:?}", other),
+    }
+
+    let _ = fs::remove_file(&child_path);
+    let _ = fs::remove_file(&parent_path);
+}
+
+// Mirrors the GUI flow: add subgraph → pick file → run. No parent save/load
+// cycle, because the user's reported bug happens before they ever save.
+//
+// Uses a distinctive RED color on the child so pixel-data assertions can prove
+// the real image (red 64x64) propagated, not the default placeholder (white 1x1)
+// or a same-sized default (black 64x64 from Color::default()).
+#[tokio::test]
+async fn test_subgraph_image_output_in_memory_flow() {
+    use std::fs;
+    use crate::GraphSaveData;
+    use crate::color::Color;
+
+    let (child_tx_nc, _child_rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
+    let (child_tx_gc, _child_rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut child = Graph::new(get_id(), child_tx_nc, child_tx_gc, true).unwrap();
+    let child_node_id = child
+        .add_node(
+            get_id(),
+            AddNodeType::Operation(Operation::OpImageInputColor),
+            glam::Vec2::ZERO, true, None,
+        )
+        .await;
+    // Color = RED (1,0,0,1), 64x64 so pixel data is verifiable.
+    child.set_input(child_node_id.clone(), 0, Value::Color(Color::from_srgb_float(1.0, 0.0, 0.0, 1.0)));
+    child.set_input(child_node_id.clone(), 1, Value::Integer(64));
+    child.set_input(child_node_id.clone(), 2, Value::Integer(64));
+    {
+        let n = child.nodes.get_mut(&child_node_id).unwrap();
+        n.outputs[0].is_exposed = true;
+    }
+
+    let child_path = std::env::temp_dir()
+        .join(format!("mangler_subgraph_image_inmem_child_{}.mangle.json", get_id()));
+    let child_save = GraphSaveData {
+        id: child.id.clone(),
+        name: child.name.clone(),
+        nodes: child.nodes.clone(),
+    };
+    fs::write(&child_path, serde_json::to_string(&child_save).unwrap()).unwrap();
+
+    let mut parent = create_test_graph();
+    let subgraph_node_id = parent
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None)
+        .await;
+    parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
+
+    parent.run().await;
+
+    let node = parent.nodes.get(&subgraph_node_id).unwrap();
+    match &node.outputs[0].value {
+        Value::Image { data, .. } => {
+            assert_eq!(data.width(), 64, "parent output width after run");
+            assert_eq!(data.height(), 64, "parent output height after run");
+            // Verify a center pixel is red, not white/black/something else.
+            let px = data.get_pixel(32, 32);
+            assert!(px.len() >= 3, "expected at least 3 channels, got {}", px.len());
+            assert!((px[0] - 1.0).abs() < 0.01, "R channel should be 1.0, got {}", px[0]);
+            assert!(px[1] < 0.01, "G channel should be 0.0, got {}", px[1]);
+            assert!(px[2] < 0.01, "B channel should be 0.0, got {}", px[2]);
+        }
+        other => panic!("expected Image, got {:?}", other),
+    }
+
+    let _ = fs::remove_file(&child_path);
+}
+
+// Verifies that the OutputChanged MESSAGE sent through the parent's tx_node_changed
+// channel (= the channel the GUI listens to) carries the real image value, not
+// the 1x1 placeholder. The earlier tests checked in-memory state only.
+#[tokio::test]
+async fn test_subgraph_emits_output_changed_with_real_image_through_channel() {
+    use std::fs;
+    use crate::GraphSaveData;
+    use crate::color::Color;
+
+    // Build child with exposed red 64x64 image output.
+    let (child_tx_nc, _child_rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
+    let (child_tx_gc, _child_rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut child = Graph::new(get_id(), child_tx_nc, child_tx_gc, true).unwrap();
+    let child_node_id = child
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpImageInputColor), glam::Vec2::ZERO, true, None)
+        .await;
+    child.set_input(child_node_id.clone(), 0, Value::Color(Color::from_srgb_float(1.0, 0.0, 0.0, 1.0)));
+    child.set_input(child_node_id.clone(), 1, Value::Integer(64));
+    child.set_input(child_node_id.clone(), 2, Value::Integer(64));
+    {
+        let n = child.nodes.get_mut(&child_node_id).unwrap();
+        n.outputs[0].is_exposed = true;
+    }
+
+    let child_path = std::env::temp_dir()
+        .join(format!("mangler_subgraph_channel_child_{}.mangle.json", get_id()));
+    let child_save = GraphSaveData {
+        id: child.id.clone(),
+        name: child.name.clone(),
+        nodes: child.nodes.clone(),
+    };
+    fs::write(&child_path, serde_json::to_string(&child_save).unwrap()).unwrap();
+
+    // Build parent with a KEPT rx so we can inspect messages.
+    let (parent_tx_nc, mut parent_rx_nc) = mpsc::channel::<NodeChangedMessage>(256);
+    let (parent_tx_gc, _parent_rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut parent = Graph::new(get_id(), parent_tx_nc, parent_tx_gc, false).unwrap();
+
+    let subgraph_node_id = parent
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None)
+        .await;
+    parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
+
+    parent.run().await;
+
+    // Drain messages until we find the OutputChanged for the subgraph node's
+    // output[0]. It should carry a 64x64 red image, not a 1x1 placeholder.
+    let mut found_real_image = false;
+    while let Ok(msg) = parent_rx_nc.try_recv() {
+        if let NodeChangedMessage::OutputChanged { node_id, output_index, value, .. } = msg {
+            if node_id == subgraph_node_id && output_index == 0 {
+                match value {
+                    Value::Image { data, .. } => {
+                        assert_eq!(data.width(), 64, "channel msg image width");
+                        assert_eq!(data.height(), 64, "channel msg image height");
+                        let px = data.get_pixel(32, 32);
+                        assert!(px.len() >= 3);
+                        assert!((px[0] - 1.0).abs() < 0.01, "R should be 1.0, got {}", px[0]);
+                        assert!(px[1] < 0.01, "G should be 0.0");
+                        assert!(px[2] < 0.01, "B should be 0.0");
+                        found_real_image = true;
+                        break;
+                    }
+                    other => panic!("expected Image in channel msg, got {:?}", other),
+                }
+            }
+        }
+    }
+    assert!(found_real_image, "no OutputChanged for subgraph node's exposed output reached the parent's channel");
+
+    let _ = fs::remove_file(&child_path);
+}
+
+// Reproduces user-reported issue: a subgraph whose exposed output is an image
+// should propagate the real generated image to the parent after run, not the
+// 1x1 white placeholder that `create_outputs()` returns.
+#[tokio::test]
+async fn test_subgraph_image_output_propagates_real_image() {
+    use std::fs;
+    use crate::GraphSaveData;
+
+    // Build a child with a 64x64 from-color image node whose output is exposed.
+    let (child_tx_nc, _child_rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
+    let (child_tx_gc, _child_rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut child = Graph::new(get_id(), child_tx_nc, child_tx_gc, true).unwrap();
+    let child_node_id = child
+        .add_node(
+            get_id(),
+            AddNodeType::Operation(Operation::OpImageInputColor),
+            glam::Vec2::ZERO, true, None,
+        )
+        .await;
+    // width = 64, height = 64 so the real image is clearly not the 1x1 placeholder.
+    child.set_input(child_node_id.clone(), 1, Value::Integer(64));
+    child.set_input(child_node_id.clone(), 2, Value::Integer(64));
+    {
+        let n = child.nodes.get_mut(&child_node_id).unwrap();
+        n.outputs[0].is_exposed = true;
+    }
+
+    let child_path = std::env::temp_dir()
+        .join(format!("mangler_subgraph_image_child_{}.mangle.json", get_id()));
+    let child_save = GraphSaveData {
+        id: child.id.clone(),
+        name: child.name.clone(),
+        nodes: child.nodes.clone(),
+    };
+    fs::write(&child_path, serde_json::to_string(&child_save).unwrap()).unwrap();
+
+    // Build parent, reference the child, save, load fresh, run.
+    let mut parent = create_test_graph();
+    let subgraph_node_id = parent
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None)
+        .await;
+    parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
+
+    let parent_path = std::env::temp_dir()
+        .join(format!("mangler_subgraph_image_parent_{}.mangle.json", get_id()));
+    let parent_save = GraphSaveData {
+        id: parent.id.clone(),
+        name: parent.name.clone(),
+        nodes: parent.nodes.clone(),
+    };
+    fs::write(&parent_path, serde_json::to_string(&parent_save).unwrap()).unwrap();
+
+    let (tx_nc, _rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
+    let (tx_gc, _rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut loaded_parent =
+        Graph::load(parent_path.clone(), Some(tx_nc), Some(tx_gc), false)
+            .expect("failed to load parent");
+
+    // Before run: the parent output holds the placeholder value that
+    // `create_outputs()` returns — a 1x1 white image.
+    {
+        let node = loaded_parent.nodes.get(&subgraph_node_id).unwrap();
+        assert_eq!(node.outputs.len(), 1);
+        if let Value::Image { data, .. } = &node.outputs[0].value {
+            assert_eq!(data.width(), 1, "pre-run: expected 1x1 placeholder");
+        } else {
+            panic!("pre-run: expected Image, got {:?}", node.outputs[0].value);
+        }
+    }
+
+    loaded_parent.run().await;
+
+    // After run: parent's exposed output should reflect the 64x64 image
+    // produced by the child's run, not the placeholder.
+    let final_node = loaded_parent.nodes.get(&subgraph_node_id).unwrap();
+    match &final_node.outputs[0].value {
+        Value::Image { data, .. } => {
+            assert_eq!(data.width(), 64, "parent output image width after run");
+            assert_eq!(data.height(), 64, "parent output image height after run");
+        }
+        other => panic!("expected Image, got {:?}", other),
+    }
+
+    let _ = fs::remove_file(&child_path);
+    let _ = fs::remove_file(&parent_path);
+}
+
+// ── hot-reload (cross-tab subgraph edits) ─────────────────────────────────
+
+/// Helper: build a child graph file with a single exposed image-from-color node
+/// producing a 32x32 image of the given color. Returns the tempfile path.
+#[cfg(test)]
+async fn write_child_with_color(color: crate::color::Color, label: &str) -> std::path::PathBuf {
+    use std::fs;
+    use crate::GraphSaveData;
+
+    let (tx_nc, _rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
+    let (tx_gc, _rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut child = Graph::new(get_id(), tx_nc, tx_gc, true).unwrap();
+    let child_node_id = child
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpImageInputColor),
+                  glam::Vec2::ZERO, true, None)
+        .await;
+    child.set_input(child_node_id.clone(), 0, Value::Color(color));
+    child.set_input(child_node_id.clone(), 1, Value::Integer(32));
+    child.set_input(child_node_id.clone(), 2, Value::Integer(32));
+    {
+        let n = child.nodes.get_mut(&child_node_id).unwrap();
+        n.outputs[0].is_exposed = true;
+    }
+
+    let path = std::env::temp_dir()
+        .join(format!("mangler_hotreload_{}_{}.mangle.json", label, get_id()));
+    let save = GraphSaveData {
+        id: child.id.clone(),
+        name: child.name.clone(),
+        nodes: child.nodes.clone(),
+    };
+    fs::write(&path, serde_json::to_string(&save).unwrap()).unwrap();
+    path
+}
+
+#[tokio::test]
+async fn test_subgraph_reloads_when_file_mtime_changes() {
+    use std::fs;
+    use std::time::{Duration, SystemTime};
+    use crate::color::Color;
+
+    // Build an initial RED child graph.
+    let child_path = write_child_with_color(
+        Color::from_srgb_float(1.0, 0.0, 0.0, 1.0),
+        "red",
+    ).await;
+
+    // Parent references the child — expect a red 32x32 image.
+    let mut parent = create_test_graph();
+    let subgraph_node_id = parent
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None)
+        .await;
+    parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
+    parent.run().await;
+    {
+        let node = parent.nodes.get(&subgraph_node_id).unwrap();
+        match &node.outputs[0].value {
+            Value::Image { data, .. } => {
+                let px = data.get_pixel(16, 16);
+                assert!((px[0] - 1.0).abs() < 0.01, "pre-reload red check, got R={}", px[0]);
+            }
+            other => panic!("expected Image, got {:?}", other),
+        }
+    }
+
+    // Simulate another tab overwriting the child with a GREEN version. Rewrite
+    // the file entirely. On fast filesystems mtime can have 1-second granularity,
+    // so force an explicit newer timestamp to guarantee the check detects it.
+    let green_path = write_child_with_color(
+        Color::from_srgb_float(0.0, 1.0, 0.0, 1.0),
+        "green",
+    ).await;
+    let green_content = fs::read_to_string(&green_path).unwrap();
+    let _ = fs::remove_file(&green_path);
+    fs::write(&child_path, green_content).unwrap();
+    let future = SystemTime::now() + Duration::from_secs(2);
+    filetime::set_file_mtime(&child_path, filetime::FileTime::from_system_time(future)).unwrap();
+
+    // Detect the change and re-run.
+    parent.check_subgraphs_for_changes();
+    parent.run().await;
+
+    let node = parent.nodes.get(&subgraph_node_id).unwrap();
+    match &node.outputs[0].value {
+        Value::Image { data, .. } => {
+            let px = data.get_pixel(16, 16);
+            assert!(px[0] < 0.01, "post-reload R should be 0.0, got {}", px[0]);
+            assert!((px[1] - 1.0).abs() < 0.01, "post-reload G should be 1.0, got {}", px[1]);
+            assert!(px[2] < 0.01, "post-reload B should be 0.0, got {}", px[2]);
+        }
+        other => panic!("expected Image, got {:?}", other),
+    }
+
+    let _ = fs::remove_file(&child_path);
+}
+
+#[tokio::test]
+async fn test_check_subgraphs_noop_when_unchanged() {
+    use crate::color::Color;
+
+    let child_path = write_child_with_color(
+        Color::from_srgb_float(0.0, 0.0, 1.0, 1.0),
+        "noop",
+    ).await;
+
+    let (tx_nc, mut rx_nc) = mpsc::channel::<NodeChangedMessage>(256);
+    let (tx_gc, _rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut parent = Graph::new(get_id(), tx_nc, tx_gc, false).unwrap();
+
+    let subgraph_node_id = parent
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None)
+        .await;
+    parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
+
+    // Drain the initial SubgraphLoaded emitted by set_subgraph_path itself.
+    while rx_nc.try_recv().is_ok() {}
+
+    // File unchanged — check should be a no-op.
+    parent.check_subgraphs_for_changes();
+
+    let mut reloaded = false;
+    while let Ok(msg) = rx_nc.try_recv() {
+        if matches!(msg, NodeChangedMessage::SubgraphLoaded { .. }) {
+            reloaded = true;
+            break;
+        }
+    }
+    assert!(!reloaded, "subgraph was reloaded despite no mtime change");
+
+    let _ = std::fs::remove_file(&child_path);
+}
+
+#[tokio::test]
+async fn test_check_subgraphs_handles_missing_file() {
+    use crate::color::Color;
+    use crate::node_type::NodeType;
+
+    let child_path = write_child_with_color(
+        Color::from_srgb_float(0.5, 0.5, 0.5, 1.0),
+        "missing",
+    ).await;
+
+    let mut parent = create_test_graph();
+    let subgraph_node_id = parent
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None)
+        .await;
+    parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
+
+    // Delete the child file. The check must not panic, and the existing
+    // in-memory snapshot should be preserved.
+    let _ = std::fs::remove_file(&child_path);
+    parent.check_subgraphs_for_changes();
+
+    let node = parent.nodes.get(&subgraph_node_id).unwrap();
+    assert!(
+        matches!(node.node_type, NodeType::Subgraph { graph: Some(_), .. }),
+        "child graph snapshot should be preserved when file is missing"
+    );
 }

@@ -3,12 +3,15 @@ use epaint::{vec2, Color32};
 use image::imageops::FilterType;
 use mangler_core::{
     input::{Input, InputSettings},
-    value::{ColorFormat, Value, TextHAlign, TextVAlign},
-    ChangeNodeMessage, operations::images::noise::worley_distance::NoiseWorleyDistanceFunction, color::{color_spaces::ColorSpace, blend::BlendMode},
+    operations::Operation,
+    value::{ColorFormat, Value, TextHAlign, TextVAlign, VideoType},
+    AddNodeType, ChangeGraphMessage, ChangeNodeMessage,
+    operations::images::noise::worley_distance::NoiseWorleyDistanceFunction,
+    color::{color_spaces::ColorSpace, blend::BlendMode},
 };
 use egui_extras::{TableBuilder, Column};
 use tokio::sync::mpsc::Sender;
-use crate::{graph::graph_node::GraphNode, settings::histogram_widget, themes::theme::Theme};
+use crate::{graph::graph_node::GraphNode, program::RenderProgressUiState, settings::histogram_widget, themes::theme::Theme};
 
 /// Send a value change message to the engine and update the local input.
 fn change_value(
@@ -95,7 +98,14 @@ fn filter_type_display_name(ft: &FilterType) -> String {
         .unwrap_or_else(|| format!("{:?}", ft))
 }
 
-pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: &Sender<ChangeNodeMessage>, theme: &Theme) -> NodeSettingsResponse {
+pub fn show(
+    ui: &mut egui::Ui,
+    node: &mut GraphNode,
+    tx_change_node: &Sender<ChangeNodeMessage>,
+    tx_change_graph: &Sender<ChangeGraphMessage>,
+    render_state: Option<&RenderProgressUiState>,
+    theme: &Theme,
+) -> NodeSettingsResponse {
     let mut node_settings_response = NodeSettingsResponse::new();
 
     // Heading: show custom name if set, otherwise operation name.
@@ -111,6 +121,49 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: &Sender<Cha
     ui.label(egui::RichText::new(format!("{}", node.settings.description)).color(theme.get().text_faint));
 
     ui.add_space(12.0);
+
+    // Video output nodes get a dedicated Render button + progress bar. The
+    // button sends a StartRender message to the engine, which spawns the
+    // render on a separate task; progress comes back via GraphChangedMessage
+    // and is plumbed into `render_state` by Program.
+    if matches!(&node.node_type, Some(AddNodeType::Operation(Operation::OpVideoOutputFile))) {
+        show_render_section(ui, node, tx_change_graph, render_state, theme);
+        ui.add_space(12.0);
+    }
+
+    // Subgraph nodes get a dedicated file picker in place of the old synthetic
+    // "file path" input slot. The picker drives NodeType::Subgraph.path via the
+    // SetSubgraphPath message; exposed inputs/outputs from the child surface
+    // below in the normal inputs table.
+    if node.is_subgraph {
+        ui.heading("subgraph");
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            let label = match &node.subgraph_path {
+                Some(p) => p.file_name()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| p.display().to_string()),
+                None => "(no file selected)".to_string(),
+            };
+            ui.label(label);
+            if ui.button("🗀").clicked() {
+                let file_dialog = rfd::FileDialog::new()
+                    .add_filter("subgraph (*.mangle.json)", &["json"]);
+                if let Some(picked) = file_dialog.pick_file() {
+                    node.subgraph_path = Some(picked.clone());
+                    let message = ChangeNodeMessage::SetSubgraphPath {
+                        node_id: node.id.clone(),
+                        path: picked,
+                    };
+                    if let Err(err) = tx_change_node.try_send(message) {
+                        println!("Error sending SetSubgraphPath: {:?}", err);
+                    }
+                }
+            }
+        });
+        ui.add_space(12.0);
+    }
 
     ui.heading("inputs");
     ui.add_space(12.0);
@@ -145,7 +198,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: &Sender<Cha
         TableBuilder::new(ui).striped(true)
         .column(Column::auto().at_least(50.0).at_most(130.0).resizable(false))
         .column(Column::remainder().resizable(false))
-        //.column(Column::exact(26.0).resizable(false))
+        .column(Column::exact(26.0).resizable(false))
         .header(30.0, |mut header| {
             header.col(|ui| {
                 ui.label(RichText::new("name").color(theme.get().text_faint));
@@ -153,9 +206,9 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: &Sender<Cha
             header.col(|ui| {
                 ui.label(RichText::new("value").color(theme.get().text_faint));
             });
-            // header.col(|ui| {
-            //     ui.label("");
-            // });
+            header.col(|ui| {
+                ui.label(RichText::new("exp").color(theme.get().text_faint));
+            });
         })
         .body(|mut body| {
             for (input_index, input) in node.inputs.iter_mut().enumerate() {
@@ -179,30 +232,24 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: &Sender<Cha
                         });
                     });
 
-                    // row.col(|ui| {
-                    //     ui.horizontal_centered(|ui| {
-                    //         let mut is_exposed = input.is_exposed;
-                    //         if ui
-                    //             .add(egui::Checkbox::new(&mut is_exposed, ""))
-                    //             .changed()
-                    //         {
-                    //             let message = ChangeNodeMessage::SetExposeInput {
-                    //                 node_id: node.id.clone(),
-                    //                 input_index,
-                    //                 set_to: is_exposed,
-                    //             };
-
-                    //             match tx_change_node.try_send(message) {
-                    //                 Ok(_) => {
-                    //                     input.is_exposed = is_exposed;
-                    //                 }
-                    //                 Err(err) => {
-                    //                     println!("Error sending SetNodeInputMessage: {:?}", err);
-                    //                 }
-                    //             }
-                    //         }
-                    //     });
-                    // });
+                    row.col(|ui| {
+                        ui.horizontal_centered(|ui| {
+                            let mut is_exposed = input.is_exposed;
+                            if ui.add(egui::Checkbox::new(&mut is_exposed, "")).changed() {
+                                let message = ChangeNodeMessage::SetExposeInput {
+                                    node_id: node.id.clone(),
+                                    input_index,
+                                    set_to: is_exposed,
+                                };
+                                match tx_change_node.try_send(message) {
+                                    Ok(_) => { input.is_exposed = is_exposed; }
+                                    Err(err) => {
+                                        println!("Error sending SetExposeInput: {:?}", err);
+                                    }
+                                }
+                            }
+                        });
+                    });
                 });
             }
         });
@@ -217,7 +264,7 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: &Sender<Cha
         TableBuilder::new(ui).striped(true)
             .column(Column::auto().at_least(50.0).at_most(130.0).resizable(false))
             .column(Column::remainder().resizable(false))
-            //.column(Column::exact(26.0).resizable(false))
+            .column(Column::exact(26.0).resizable(false))
             .header(30.0, |mut header| {
                 header.col(|ui| {
                     ui.label(RichText::new("name").color(theme.get().text_faint));
@@ -225,12 +272,12 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: &Sender<Cha
                 header.col(|ui| {
                     ui.label(RichText::new("value").color(theme.get().text_faint));
                 });
-                // header.col(|ui| {
-                //     ui.label("");
-                // });
+                header.col(|ui| {
+                    ui.label(RichText::new("exp").color(theme.get().text_faint));
+                });
             })
             .body(|mut body| {
-                for (_output_index, output) in node.outputs.iter_mut().enumerate() {
+                for (output_index, output) in node.outputs.iter_mut().enumerate() {
                     body.row(30.0, |mut row| {
                         row.col(|ui| {
                             ui.horizontal_centered(|ui| {
@@ -244,31 +291,24 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: &Sender<Cha
                             });
                         });
 
-                        // subgraph
-                        // row.col(|ui| {
-                        //     ui.horizontal_centered(|ui| {
-                        //         let mut is_exposed = output.is_exposed;
-                        //         if ui
-                        //             .add(egui::Checkbox::new(&mut is_exposed, ""))
-                        //             .changed()
-                        //         {
-                        //             let message = ChangeNodeMessage::SetExposeOutput {
-                        //                 node_id: node.id.clone(),
-                        //                 output_index,
-                        //                 set_to: is_exposed,
-                        //             };
-
-                        //             match tx_change_node.try_send(message) {
-                        //                 Ok(_) => {
-                        //                     output.is_exposed = is_exposed;
-                        //                 }
-                        //                 Err(err) => {
-                        //                     println!("Error sending SetNodeInputMessage: {:?}", err);
-                        //                 }
-                        //             }
-                        //         }
-                        //     });
-                        // });
+                        row.col(|ui| {
+                            ui.horizontal_centered(|ui| {
+                                let mut is_exposed = output.is_exposed;
+                                if ui.add(egui::Checkbox::new(&mut is_exposed, "")).changed() {
+                                    let message = ChangeNodeMessage::SetExposeOutput {
+                                        node_id: node.id.clone(),
+                                        output_index,
+                                        set_to: is_exposed,
+                                    };
+                                    match tx_change_node.try_send(message) {
+                                        Ok(_) => { output.is_exposed = is_exposed; }
+                                        Err(err) => {
+                                            println!("Error sending SetExposeOutput: {:?}", err);
+                                        }
+                                    }
+                                }
+                            });
+                        });
                     });
                 }
             });
@@ -319,8 +359,9 @@ pub fn show(ui: &mut egui::Ui, node: &mut GraphNode, tx_change_node: &Sender<Cha
                     });
                     row.col(|ui| {
                         ui.horizontal_centered(|ui| {
+                            let name_width = (ui.available_width() - 10.0).clamp(60.0, 200.0);
                             let mut name_text = node.custom_name.clone().unwrap_or_default();
-                            if ui.add(TextEdit::singleline(&mut name_text).hint_text("custom name")).changed() {
+                            if ui.add(TextEdit::singleline(&mut name_text).hint_text("custom name").desired_width(name_width)).changed() {
                                 let new_name = if name_text.is_empty() { None } else { Some(name_text) };
                                 node.custom_name = new_name.clone();
                                 let message = ChangeNodeMessage::SetCustomName {
@@ -392,6 +433,7 @@ fn output_value(ui: &mut egui::Ui, value: &Value) {
         Value::BlendMode(v) => { ui.add(Label::new(format!("{:?}", v))); }
         Value::TextHAlign(v) => { ui.add(Label::new(format!("{:?}", v))); }
         Value::TextVAlign(v) => { ui.add(Label::new(format!("{:?}", v))); }
+        Value::VideoType(v) => { ui.add(Label::new(format!("{:?}", v))); }
     }
 }
 
@@ -399,8 +441,14 @@ fn output_value(ui: &mut egui::Ui, value: &Value) {
 /// Render an interactive input widget appropriate for the value type.
 /// Connected inputs show a read-only label; disconnected inputs show the full editor.
 fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: usize, node_id: &str, tx_change_node: &Sender<ChangeNodeMessage>, sibling_image_format: Option<image::ImageFormat>) {
-    // Expand sliders and drag values to fill the available column width.
-    ui.spacing_mut().slider_width = ui.available_width() - 60.0;
+    // Size interactive widgets to the available column width, but clamp them:
+    // in egui_extras tables `Column::remainder()` can report a very large
+    // `available_width` for unconstrained parent layouts, which would push
+    // widgets past the visible panel. An off-screen slider track also captures
+    // stray pointer events, so the value appears to drift on its own and the
+    // knob ends up out of sight.
+    ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(80.0, 140.0);
+    let text_width = (ui.available_width() - 10.0).clamp(60.0, 140.0);
 
     match value {
         Value::Bool(a) => {
@@ -502,13 +550,13 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
             } else if let Some(InputSettings::MultiLineText) = &input.settings {
                 // Multi-line text area.
                 let mut x = a;
-                if ui.add(TextEdit::multiline(&mut x).hint_text("text")).changed() {
+                if ui.add(TextEdit::multiline(&mut x).hint_text("text").desired_width(text_width)).changed() {
                     change_value(tx_change_node, node_id, input_index, input, Value::Text(x));
                 }
             } else {
                 // Single-line text field (default).
                 let mut x = a;
-                if ui.add(TextEdit::singleline(&mut x).hint_text("text")).changed() {
+                if ui.add(TextEdit::singleline(&mut x).hint_text("text").desired_width(text_width)).changed() {
                     change_value(tx_change_node, node_id, input_index, input, Value::Text(x));
                 }
             }
@@ -584,16 +632,16 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
             if input.connection.is_some() {
                 ui.label(path.into_os_string().into_string().unwrap());
             } else {
-                ui.allocate_ui(
-                    vec2(ui.available_width() - 20.0, ui.available_height()),
-                    |ui| {
-                        ui.add_enabled_ui(false, |ui| {
-                            ui.text_edit_singleline(
-                                &mut path.into_os_string().into_string().unwrap(),
-                            )
-                        });
-                    },
-                );
+                // Leave room for the sibling folder-picker button.
+                let path_width = (text_width - 30.0).max(40.0);
+                ui.add_enabled_ui(false, |ui| {
+                    ui.add(
+                        TextEdit::singleline(
+                            &mut path.clone().into_os_string().into_string().unwrap_or_default(),
+                        )
+                        .desired_width(path_width),
+                    );
+                });
 
                 if ui.button("🗀").clicked() {
                     if let Some(InputSettings::Path {
@@ -706,9 +754,78 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 );
             }
         }
+        Value::VideoType(a) => {
+            if input.connection.is_some() {
+                ui.label(format!("{:?}", a));
+            } else {
+                let variants = VideoType::types();
+                show_enum_combo(
+                    ui, "video format", a, &variants,
+                    |v| format!("{:?}", v),
+                    input, input_index, node_id, tx_change_node,
+                    |v| Value::VideoType(*v),
+                );
+            }
+        }
     }
 }
 
+
+/// Render button + progress UI for an `OpVideoOutputFile` node.
+///
+/// Shows a Render button unless a render is already in progress (tracked in
+/// `render_state`), in which case it's replaced by a progress bar and a
+/// frame-counter readout. The button clicks send `StartRender` addressed to
+/// this node's id.
+fn show_render_section(
+    ui: &mut egui::Ui,
+    node: &GraphNode,
+    tx_change_graph: &Sender<ChangeGraphMessage>,
+    render_state: Option<&RenderProgressUiState>,
+    theme: &Theme,
+) {
+    ui.heading("render");
+    ui.add_space(6.0);
+    ui.label(
+        egui::RichText::new("Render the graph frame-by-frame into the output video file.")
+            .color(theme.get().text_faint),
+    );
+    ui.add_space(8.0);
+
+    if let Some(rs) = render_state {
+        let total = rs.total.max(1) as f32;
+        let progress = rs.frame as f32 / total;
+        ui.add(
+            egui::ProgressBar::new(progress.clamp(0.0, 1.0))
+                .text(format!("{} / {}", rs.frame, rs.total))
+                .animate(true),
+        );
+        let eta = if rs.frame > 0 {
+            let elapsed = rs.started_at.elapsed().as_secs_f32();
+            let remaining_frames = rs.total.saturating_sub(rs.frame) as f32;
+            let per_frame = elapsed / rs.frame as f32;
+            (remaining_frames * per_frame).max(0.0)
+        } else {
+            0.0
+        };
+        ui.label(format!(
+            "Rendering — ~{:.1}s remaining",
+            eta
+        ));
+    } else {
+        // Big, obvious render button.
+        let button = egui::Button::new(RichText::new("Render").size(16.0).strong())
+            .min_size(egui::vec2(ui.available_width().min(200.0), 30.0));
+        if ui.add(button).clicked() {
+            let msg = ChangeGraphMessage::StartRender {
+                output_node_id: node.id.clone(),
+            };
+            if let Err(err) = tx_change_graph.try_send(msg) {
+                println!("Error sending StartRender: {:?}", err);
+            }
+        }
+    }
+}
 
 pub struct NodeSettingsResponse {
     pub deselect_node: bool,

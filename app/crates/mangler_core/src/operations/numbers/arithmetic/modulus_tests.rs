@@ -97,6 +97,18 @@ async fn test_modulus_decimal_fractional() {
 }
 
 #[tokio::test]
+async fn test_modulus_integer_by_fractional_divisor_errors() {
+    // Integer `a` with a fractional decimal `n` < 1 truncates to 0 after `as i32`,
+    // which would panic on integer %. Must surface as a division-by-zero error.
+    let mut inputs = vec![
+        Input::new("a".to_string(), Value::Integer(10), None, None),
+        Input::new("n".to_string(), Value::Decimal(0.5), None, None),
+    ];
+    let result = OpNumberMathModulus::run(&mut inputs).await;
+    assert!(result.is_err(), "Expected error when integer dividend meets fractional divisor < 1");
+}
+
+#[tokio::test]
 async fn test_modulus_invalid_type_returns_error() {
     let mut inputs = vec![
         Input::new("a".to_string(), Value::Bool(true), None, None),

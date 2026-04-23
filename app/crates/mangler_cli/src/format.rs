@@ -152,6 +152,22 @@ pub(crate) fn format_info_human(graph: &Graph, filter_node: Option<&str>, compac
             out.push_str(&format!("    \"{}\"\n", node.settings.description));
         }
 
+        // For subgraph nodes, print child-graph state so users can see whether
+        // the child has loaded and how many nodes it contains.
+        if let mangler_core::node_type::NodeType::Subgraph { path, graph: child, .. } = &node.node_type {
+            let path_display = if path.as_os_str().is_empty() {
+                "(not set)".to_string()
+            } else {
+                path.display().to_string()
+            };
+            let child_status = match child {
+                Some(g) => format!("loaded ({} child nodes)", g.nodes.len()),
+                None => "not loaded".to_string(),
+            };
+            out.push_str(&format!("    subgraph path: {}\n", path_display));
+            out.push_str(&format!("    child graph: {}\n", child_status));
+        }
+
         // Show error state if present.
         if node.is_error {
             if let Some(msg) = &node.error_message {
@@ -195,9 +211,10 @@ pub(crate) fn format_info_human(graph: &Graph, filter_node: Option<&str>, compac
                 String::new()
             };
 
+            let exposed_tag = if input.is_exposed { " [exposed]" } else { "" };
             out.push_str(&format!(
-                "    in[{}] {} ({}) = {}{}{}\n",
-                i, input.name, type_str, display_value(&input.value), default_str, conn
+                "    in[{}] {} ({}) = {}{}{}{}\n",
+                i, input.name, type_str, display_value(&input.value), default_str, conn, exposed_tag
             ));
         }
 
@@ -208,9 +225,10 @@ pub(crate) fn format_info_human(graph: &Graph, filter_node: Option<&str>, compac
             } else {
                 String::new()
             };
+            let exposed_tag = if output.is_exposed { " [exposed]" } else { "" };
             out.push_str(&format!(
-                "    out[{}] {} ({}) = {}{}\n",
-                i, output.name, value_type_name(&output.value.value_type()), display_value(&output.value), conn
+                "    out[{}] {} ({}) = {}{}{}\n",
+                i, output.name, value_type_name(&output.value.value_type()), display_value(&output.value), conn, exposed_tag
             ));
         }
     }
@@ -252,6 +270,7 @@ pub(crate) fn format_info_json(graph: &Graph, filter_node: Option<&str>) -> Resu
                 "type": value_type_name(&vt),
                 "value": json_value(&input.value),
                 "default_value": json_value(&input.default_value),
+                "exposed": input.is_exposed,
             });
             if let Some((src_node, src_idx)) = &input.connection {
                 obj["connection"] = serde_json::json!({"node": src_node, "output": src_idx});
@@ -271,6 +290,7 @@ pub(crate) fn format_info_json(graph: &Graph, filter_node: Option<&str>) -> Resu
                 "name": output.name,
                 "type": value_type_name(&output.value.value_type()),
                 "value": json_value(&output.value),
+                "exposed": output.is_exposed,
             });
             if let Some(conns) = &output.connection {
                 let c: Vec<serde_json::Value> = conns.iter()
@@ -293,6 +313,20 @@ pub(crate) fn format_info_json(graph: &Graph, filter_node: Option<&str>) -> Resu
         });
         if node.is_error {
             node_obj["error"] = serde_json::json!(node.error_message.as_deref().unwrap_or("unknown error"));
+        }
+        // Include subgraph-specific state so JSON consumers can inspect it.
+        if let mangler_core::node_type::NodeType::Subgraph { path, graph: child, .. } = &node.node_type {
+            let path_str = if path.as_os_str().is_empty() {
+                serde_json::Value::Null
+            } else {
+                serde_json::json!(path.display().to_string())
+            };
+            let child_nodes = child.as_ref().map(|g| g.nodes.len());
+            node_obj["subgraph"] = serde_json::json!({
+                "path": path_str,
+                "child_nodes": child_nodes,
+                "loaded": child.is_some(),
+            });
         }
         nodes.push(node_obj);
     }

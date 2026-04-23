@@ -45,7 +45,9 @@ impl OpImageNoiseDomainWarpFbm {
             Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
             Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
             Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("octaves".to_string(), Value::Integer(6), Some(InputSettings::Slider { range: (0.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            // octaves must be ≥ 1 — Fbm with 0 octaves returns NaN which then
+            // poisons the warp loop and crashes the noise crate's floor_to_isize.
+            Input::new("octaves".to_string(), Value::Integer(6), Some(InputSettings::Slider { range: (1.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None),
             Input::new("frequency".to_string(), Value::Decimal(5.0), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
             Input::new("lacunarity".to_string(), Value::Decimal(2.094_395_2), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
             Input::new("persistence".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
@@ -63,9 +65,16 @@ impl OpImageNoiseDomainWarpFbm {
 
     /// Samples fBm noise at the given 4D coordinates.
     ///
-    /// Returns a value roughly in [-1, 1] range.
+    /// Returns a value roughly in [-1, 1] range. Guards against non-finite
+    /// inputs because the underlying noise crate's `floor_to_isize` panics on
+    /// NaN/Inf coordinates — and the warp loop can produce one bad iteration
+    /// that would poison every later iteration without this check.
     fn sample_fbm(fbm: &Fbm<Perlin>, coords: [f64; 4]) -> f64 {
-        fbm.get(coords)
+        if !coords.iter().all(|c| c.is_finite()) {
+            return 0.0;
+        }
+        let v = fbm.get(coords);
+        if v.is_finite() { v } else { 0.0 }
     }
 
     /// Computes 4D torus coordinates from normalized (u, v) in [0, 1].
@@ -127,6 +136,10 @@ impl OpImageNoiseDomainWarpFbm {
         seed = seed.max(1);
         let warp_iterations = warp_iterations.clamp(1, 4) as usize;
         let warp_strength = warp_strength as f64;
+        // Guard against octaves=0 even if a saved graph predates the slider min:
+        // Fbm::get with 0 octaves returns NaN, which propagates through the warp
+        // loop and crashes the noise crate's floor_to_isize.
+        let octaves = octaves.max(1);
 
         // Create the fBm noise generator
         let fbm = Fbm::<Perlin>::new(seed as u32)

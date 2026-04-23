@@ -120,6 +120,7 @@ impl Node {
                     path: PathBuf::new(),
                     graph: None,
                     rx_node_changed: None,
+                    last_mtime: None,
                 },
                 is_busy: false,
                 is_error: false,
@@ -402,6 +403,7 @@ impl Node {
                 path: _,
                 graph: subgraph_option,
                 rx_node_changed,
+                last_mtime: _,
             } => {
                 if let Some(subgraph) = subgraph_option {
                     // pass node's input to subgraph's input before running

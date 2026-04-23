@@ -166,6 +166,66 @@ Use `mangle show-ops --compact` for a quick summary."
         name: String,
     },
 
+    /// Add a subgraph node (optionally loading a child `.mangle.json` immediately)
+    #[command(
+        override_usage = "mangle <PATH> add-subgraph [OPTIONS]",
+        after_help = "\
+Examples:
+  mangle parent.json add-subgraph --id sub1
+  mangle parent.json add-subgraph --id sub1 --subgraph-file child.mangle.json
+
+The child `.mangle.json` should contain nodes with exposed inputs/outputs
+(see `expose-input`, `expose-output`). When `--subgraph-file` is provided,
+the child loads immediately and its exposed slots surface as parent I/O."
+    )]
+    AddSubgraph {
+        /// Node ID for the new subgraph node (auto-generated if omitted)
+        #[arg(long)]
+        id: Option<String>,
+        /// Child `.mangle.json` file to load immediately
+        #[arg(long)]
+        subgraph_file: Option<PathBuf>,
+    },
+
+    /// Point an existing subgraph node at a child `.mangle.json` file
+    #[command(override_usage = "mangle <PATH> set-subgraph-path --node <NODE> --subgraph-file <FILE>")]
+    SetSubgraphPath {
+        /// ID of the target subgraph node
+        #[arg(long)]
+        node: String,
+        /// Child `.mangle.json` file to load
+        #[arg(long)]
+        subgraph_file: PathBuf,
+    },
+
+    /// Mark a node input as exposed (so a parent subgraph can surface it)
+    #[command(override_usage = "mangle <PATH> expose-input --node <NODE> --input <INDEX> [--expose <true|false>]")]
+    ExposeInput {
+        /// ID of the target node
+        #[arg(long)]
+        node: String,
+        /// Zero-based input index to expose
+        #[arg(long)]
+        input: usize,
+        /// true to expose, false to un-expose (default: true)
+        #[arg(long, default_value_t = true, num_args = 0..=1, require_equals = false, default_missing_value = "true")]
+        expose: bool,
+    },
+
+    /// Mark a node output as exposed (so a parent subgraph can surface it)
+    #[command(override_usage = "mangle <PATH> expose-output --node <NODE> --output <INDEX> [--expose <true|false>]")]
+    ExposeOutput {
+        /// ID of the target node
+        #[arg(long)]
+        node: String,
+        /// Zero-based output index to expose
+        #[arg(long)]
+        output: usize,
+        /// true to expose, false to un-expose (default: true)
+        #[arg(long, default_value_t = true, num_args = 0..=1, require_equals = false, default_missing_value = "true")]
+        expose: bool,
+    },
+
     /// Enable or disable a node (disabled nodes pass inputs through unchanged)
     #[command(override_usage = "mangle <PATH> set-enabled --node <NODE> --enabled <true|false>")]
     SetEnabled {
