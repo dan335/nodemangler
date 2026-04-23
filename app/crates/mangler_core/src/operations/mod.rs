@@ -25,6 +25,8 @@ pub mod colors;
 pub mod logic;
 /// Text operations (clipboard).
 pub mod text;
+/// Video operations (file input, frame extraction).
+pub mod videos;
 
 /// Describes a single input or output connection slot on a node.
 ///
@@ -370,6 +372,13 @@ operations! {
     OpImageAdjustmentEdgeDetect(crate::operations::images::filter::edge_detect::OpImageAdjustmentEdgeDetect),
     OpImageAdjustmentEmboss(crate::operations::images::filter::emboss::OpImageAdjustmentEmboss),
     OpImageAdjustmentSharpen(crate::operations::images::filter::sharpen::OpImageAdjustmentSharpen),
+    OpImageAdjustmentKuwahara(crate::operations::images::filter::kuwahara::OpImageAdjustmentKuwahara),
+    OpImageAdjustmentAnisotropicKuwahara(crate::operations::images::filter::anisotropic_kuwahara::OpImageAdjustmentAnisotropicKuwahara),
+    OpImageAdjustmentBilateral(crate::operations::images::filter::bilateral::OpImageAdjustmentBilateral),
+    OpImageAdjustmentSnn(crate::operations::images::filter::snn::OpImageAdjustmentSnn),
+    OpImageAdjustmentToon(crate::operations::images::filter::toon::OpImageAdjustmentToon),
+    OpImageAdjustmentMedian(crate::operations::images::filter::median::OpImageAdjustmentMedian),
+    OpImageAdjustmentGuided(crate::operations::images::filter::guided::OpImageAdjustmentGuided),
     OpImageAdjustmentPosterize(crate::operations::images::adjustments::posterize::OpImageAdjustmentPosterize),
     OpImageAdjustmentHistogramScan(crate::operations::images::adjustments::histogram_scan::OpImageAdjustmentHistogramScan),
     OpImageAdjustmentHistogramRange(crate::operations::images::adjustments::histogram_range::OpImageAdjustmentHistogramRange),
@@ -460,6 +469,35 @@ operations! {
     OpNumberBitwiseNot(crate::operations::numbers::bitwise::bit_not::OpNumberBitwiseNot),
     OpNumberBitwiseShiftLeft(crate::operations::numbers::bitwise::bit_shift_left::OpNumberBitwiseShiftLeft),
     OpNumberBitwiseShiftRight(crate::operations::numbers::bitwise::bit_shift_right::OpNumberBitwiseShiftRight),
+
+    // videos
+    OpVideoInputFile(crate::operations::videos::inputs::file::OpVideoInputFile),
+    OpVideoOutputFile(crate::operations::videos::outputs::file::OpVideoOutputFile),
+}
+
+impl Operation {
+    /// Returns true if this operation's output depends on a render-clock time
+    /// value that the engine should drive during a video render. Used by the
+    /// render task to identify which nodes to override each frame.
+    pub fn is_time_aware(&self) -> bool {
+        matches!(self, Operation::OpVideoInputFile)
+    }
+
+    /// Engine hook invoked once per render frame before `graph.run()`. Updates
+    /// time-driven inputs on the node so the next run produces the frame for
+    /// `render_time_seconds`. No-op for operations where `is_time_aware()` is
+    /// false.
+    pub fn apply_render_time(&self, inputs: &mut [crate::input::Input], render_time_seconds: f64) {
+        match self {
+            Operation::OpVideoInputFile => {
+                crate::operations::videos::inputs::file::OpVideoInputFile::apply_render_time(
+                    inputs,
+                    render_time_seconds,
+                );
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Returns the full hierarchical menu of available operations.
@@ -668,6 +706,13 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentEmboss },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentSharpen },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentUnsharpen },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentKuwahara },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentAnisotropicKuwahara },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentBilateral },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentSnn },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentToon },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentMedian },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentGuided },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentDistance },
             ]},
             OperationListItem::Category { name: "pbr".to_string(), operation_list_items: vec![
@@ -759,7 +804,15 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpTextToLowercase },
             ]},
         ]},
-        //OperationListItem::Subgraph,
+        OperationListItem::Category { name: "videos".to_string(), operation_list_items: vec![
+            OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpVideoInputFile },
+            ]},
+            OperationListItem::Category { name: "output".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpVideoOutputFile },
+            ]},
+        ]},
+        OperationListItem::Subgraph,
     ];
     OperationListItem::sort_alphabetically(&mut list);
     list

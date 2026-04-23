@@ -47,8 +47,18 @@ impl App {
 
                 // Main engine loop: drain messages, execute graph, auto-save
                 let thread_handle = tokio::spawn(async move {
+                    // Optional background render task. The engine keeps running
+                    // interactively while this runs; we only track it to reject
+                    // a second concurrent StartRender.
+                    #[cfg(feature = "video")]
+                    let mut render_task: Option<JoinHandle<()>> = None;
                     loop {
                         let mut sleep_time = Instant::now() + Duration::from_millis(16);
+
+                        // Detect cross-tab / external edits to any referenced
+                        // subgraph files and reload them before we do anything
+                        // else this tick. One stat() per subgraph node — cheap.
+                        graph.check_subgraphs_for_changes();
 
                         // Process graph-level changes (add/remove nodes, connections, save path)
                         while let Ok(change_graph_message) = rx_change_graph.try_recv() {
@@ -97,6 +107,14 @@ impl App {
                                 ChangeGraphMessage::SetGraphName(graph_name) => {
                                     graph.name = graph_name;
                                     needs_to_save = true;
+                                }
+                                ChangeGraphMessage::StartRender { output_node_id } => {
+                                    start_render_on_engine(
+                                        &graph,
+                                        output_node_id,
+                                        #[cfg(feature = "video")]
+                                        &mut render_task,
+                                    );
                                 }
                             }
                         }
@@ -166,6 +184,10 @@ impl App {
                                         needs_to_save = true;
                                     }
                                 }
+                                ChangeNodeMessage::SetSubgraphPath { node_id, path } => {
+                                    graph.set_subgraph_path(node_id, path);
+                                    needs_to_save = true;
+                                }
                             }
                         }
 
@@ -205,3 +227,53 @@ impl App {
 /// Error returned when graph creation or loading fails during `App::new`.
 #[derive(Debug)]
 pub struct NewAppError(pub String);
+
+/// Handle a `StartRender` message: spawn a detached render task if none is
+/// active, otherwise emit `RenderFailed` with "already in progress".
+///
+/// When the `video` feature is disabled, all render attempts fail fast so
+/// the user gets a clear message instead of silence.
+fn start_render_on_engine(
+    graph: &crate::graph::Graph,
+    output_node_id: String,
+    #[cfg(feature = "video")] render_task: &mut Option<JoinHandle<()>>,
+) {
+    let _ = output_node_id; // suppress unused-var when the feature is off
+
+    #[cfg(feature = "video")]
+    {
+        // If a render is still active, don't start a second one.
+        let busy = render_task
+            .as_ref()
+            .map(|h| !h.is_finished())
+            .unwrap_or(false);
+        if busy {
+            if let Some(tx) = &graph.tx_graph_changed {
+                let _ = tx.try_send(GraphChangedMessage::RenderFailed {
+                    message: "render already in progress".to_string(),
+                });
+            }
+            return;
+        }
+
+        let Some(tx_graph_changed) = graph.tx_graph_changed.clone() else {
+            return;
+        };
+        let snapshot = graph.detached();
+        *render_task = Some(tokio::spawn(crate::render::run_render(
+            snapshot,
+            output_node_id,
+            tx_graph_changed,
+        )));
+    }
+
+    #[cfg(not(feature = "video"))]
+    {
+        if let Some(tx) = &graph.tx_graph_changed {
+            let _ = tx.try_send(GraphChangedMessage::RenderFailed {
+                message: "Video support is not enabled in this build (rebuild with --features video)."
+                    .to_string(),
+            });
+        }
+    }
+}

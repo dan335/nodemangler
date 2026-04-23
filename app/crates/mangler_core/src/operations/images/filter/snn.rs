@@ -1,0 +1,147 @@
+//! Symmetric Nearest Neighbor (SNN) filter operation for images.
+//!
+//! For each pixel p, the filter considers every pair of neighbors symmetric
+//! around p. From each pair `(p + d, p - d)` it picks whichever pixel is
+//! closer (in RGB Euclidean distance) to p's color. The output is the average
+//! of all the picked neighbors plus the center pixel.
+//!
+//! Conceptually a cheaper cousin of Kuwahara: same edge-preserving behavior
+//! (pixels on the wrong side of an edge are never selected) without the sector
+//! arithmetic. The aesthetic is smoother and less "painterly" — more of a
+//! denoised look than an oil-painting one.
+
+use crate::float_image::FloatImage;
+use crate::get_id;
+use crate::value::ValueType;
+use crate::input::{Input, InputSettings};
+use crate::node_settings::NodeSettings;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::output::Output;
+use crate::value::Value;
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::Instant;
+
+/// Symmetric Nearest Neighbor edge-preserving filter.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpImageAdjustmentSnn {}
+
+impl OpImageAdjustmentSnn {
+    /// Returns the node metadata (name and description) for the SNN operation.
+    pub fn settings() -> NodeSettings {
+        NodeSettings {
+            name: "snn".to_string(),
+            description: "Edge-preserving smoothing: for each pair of symmetric neighbors, average in whichever is closer to the center's color.".to_string(),
+        }
+    }
+
+    /// Creates the input ports: image and window radius.
+    pub fn create_inputs() -> Vec<Input> {
+        vec![
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("radius".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None),
+        ]
+    }
+
+    /// Creates the output port: the SNN-filtered image.
+    pub fn create_outputs() -> Vec<Output> {
+        vec![
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+        ]
+    }
+
+    /// Executes the SNN filter.
+    pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
+        let start_time = Instant::now();
+        let mut input_errors: Vec<(usize, String)> = vec![];
+
+        // convert inputs
+        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
+        let radius_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
+
+        // return if error
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
+
+        // get values
+        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
+        let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
+
+        let radius = radius.max(1) as i32;
+
+        let (width, height) = data.dimensions();
+        let ch = data.channels() as usize;
+        let has_alpha = ch == 2 || ch == 4;
+        let color_ch = if has_alpha { ch - 1 } else { ch };
+        let data_ref = &data;
+        let w = width as i32;
+        let h = height as i32;
+
+        // Process each row in parallel
+        let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(move |y| {
+            let mut row_pixels = Vec::with_capacity(w as usize * ch);
+
+            for x in 0..w {
+                let center = data_ref.get_pixel(x as u32, y as u32);
+
+                let mut sum = vec![0.0f32; ch];
+                // start by including the center pixel itself
+                for c in 0..ch {
+                    sum[c] += center[c];
+                }
+                let mut count: u32 = 1;
+
+                // iterate only the "positive half" of the window to visit each
+                // (d, -d) pair exactly once: dy > 0, or dy == 0 && dx > 0
+                for dy in 0..=radius {
+                    let dx_start = if dy == 0 { 1 } else { -radius };
+                    for dx in dx_start..=radius {
+                        // clamp both symmetric samples into the image
+                        let ax = (x + dx).clamp(0, w - 1) as u32;
+                        let ay = (y + dy).clamp(0, h - 1) as u32;
+                        let bx = (x - dx).clamp(0, w - 1) as u32;
+                        let by = (y - dy).clamp(0, h - 1) as u32;
+                        let a = data_ref.get_pixel(ax, ay);
+                        let b = data_ref.get_pixel(bx, by);
+
+                        // squared RGB distance from each neighbor to the center
+                        let mut da = 0.0f32;
+                        let mut db = 0.0f32;
+                        for c in 0..color_ch {
+                            let ea = a[c] - center[c];
+                            let eb = b[c] - center[c];
+                            da += ea * ea;
+                            db += eb * eb;
+                        }
+
+                        // pick the neighbor closer in color to the center
+                        let chosen = if da <= db { a } else { b };
+                        for c in 0..ch {
+                            sum[c] += chosen[c];
+                        }
+                        count += 1;
+                    }
+                }
+
+                let inv_n = 1.0 / count as f32;
+                for c in 0..ch {
+                    row_pixels.push(sum[c] * inv_n);
+                }
+            }
+            row_pixels
+        }).collect();
+
+        let output = FloatImage::from_raw(width, height, data.channels(), pixels).unwrap();
+
+        Ok(OperationResponse {
+            time: Instant::now().duration_since(start_time),
+            responses: vec![
+                OutputResponse { value: Value::Image { data: Arc::new(output), change_id: get_id() } },
+            ],
+        })
+    }
+}
+
+#[cfg(test)]
+#[path = "snn_tests.rs"]
+mod tests;

@@ -18,3 +18,15 @@ fastrand = "2"
 noise = "0.9"
 ab_glyph = "0.2"
 rayon = "1"
+video-rs = { version = "0.11", features = ["ndarray"], optional = true }
+ndarray = { version = "0.17", optional = true }
+dashmap = { version = "6", optional = true }
+
+[features]
+default = []
+# Enables video input/output operations. Requires FFmpeg development libraries
+# on the system (set FFMPEG_DIR or install via vcpkg). See docs/video-setup.md.
+video = ["dep:video-rs", "dep:ndarray", "dep:dashmap"]
+
+[dev-dependencies]
+filetime = "0.2"

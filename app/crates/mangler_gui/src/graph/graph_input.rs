@@ -58,6 +58,20 @@ pub fn draw_graph_input(
     let shape = Shape::circle_filled(input_position, graph_to_view_space(graph_zoom, 5.0), color);
     ui.painter().add(shape);
 
+    // Outline indicates this input is exposed for subgraph composition.
+    // Uses the theme's selected-border color so it matches the visual
+    // vocabulary already established for "this thing is highlighted."
+    if input.is_exposed {
+        ui.painter().add(Shape::circle_stroke(
+            input_position,
+            graph_to_view_space(graph_zoom, 7.0),
+            egui::Stroke::new(
+                graph_to_view_space(graph_zoom, 1.5),
+                theme.get().node_header_selected_border,
+            ),
+        ));
+    }
+
     if input_response.drag_started() {
         response.has_started_creating_connection = true;
         response.connection_from_position = input_position;

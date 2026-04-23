@@ -11,6 +11,11 @@ members = [
 [profile.dev]
 opt-level = 1
 panic = "abort"
+# Disable incremental compilation to avoid a nightly-rustc + MSVC linker bug
+# where stale cached `anon.*.llvm.*` symbols from a previous build fail to
+# resolve after the symbol table changes. Trade: ~10-30% slower rebuilds for
+# guaranteed correctness. Remove if upstream rustc fixes this.
+incremental = false
 
 # Enable high optimizations for dependencies (incl. Bevy), but not for our code:
 [profile.dev.package."*"]

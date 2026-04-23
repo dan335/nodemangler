@@ -334,6 +334,158 @@ pub(crate) fn cmd_set_name(path: PathBuf, node: String, name: String, json_outpu
     Ok(())
 }
 
+/// `mangle add-subgraph <path> [--id <id>] [--subgraph-file <file>]` — add a subgraph node.
+///
+/// If `--subgraph-file` is provided, the child graph is loaded immediately and
+/// its exposed inputs/outputs surface on the new node.
+pub(crate) async fn cmd_add_subgraph(
+    path: PathBuf,
+    id: Option<String>,
+    subgraph_file: Option<PathBuf>,
+    json_output: bool,
+) -> Result<(), String> {
+    let mut graph = load_graph(&path)?;
+    let node_id = id.unwrap_or_else(get_id);
+
+    graph.add_node(
+        node_id.clone(),
+        AddNodeType::Subgraph,
+        glam::Vec2::ZERO,
+        true,
+        None,
+    ).await;
+
+    if let Some(file) = subgraph_file.as_ref() {
+        if !file.exists() {
+            return Err(format!("subgraph file not found: {}", file.display()));
+        }
+        graph.set_subgraph_path(node_id.clone(), file.clone());
+    }
+
+    save_graph(&graph, &path)?;
+
+    if json_output {
+        let subgraph_file_str = subgraph_file.as_ref().map(|p| p.display().to_string());
+        println!("{}", serde_json::json!({
+            "node_id": node_id,
+            "subgraph_file": subgraph_file_str,
+        }));
+    } else {
+        println!("{node_id}");
+        if let Some(file) = subgraph_file.as_ref() {
+            println!("loaded subgraph from {}", file.display());
+        }
+    }
+    Ok(())
+}
+
+/// `mangle set-subgraph-path <path> --node <id> --subgraph-file <file>` — point a
+/// subgraph node at a child `.mangle.json` file and load it.
+pub(crate) fn cmd_set_subgraph_path(
+    path: PathBuf,
+    node: String,
+    subgraph_file: PathBuf,
+    json_output: bool,
+) -> Result<(), String> {
+    if !subgraph_file.exists() {
+        return Err(format!("subgraph file not found: {}", subgraph_file.display()));
+    }
+
+    let mut graph = load_graph(&path)?;
+    if !graph.nodes.contains_key(&node) {
+        return Err(node_not_found_error(&graph, &node));
+    }
+
+    // Verify the target is actually a subgraph node before loading.
+    let is_subgraph = matches!(
+        graph.nodes.get(&node).map(|n| &n.node_type),
+        Some(mangler_core::node_type::NodeType::Subgraph { .. })
+    );
+    if !is_subgraph {
+        return Err(format!(
+            "node '{}' is not a subgraph node — use `add-subgraph` to create one",
+            node
+        ));
+    }
+
+    graph.set_subgraph_path(node.clone(), subgraph_file.clone());
+    save_graph(&graph, &path)?;
+
+    if json_output {
+        println!("{}", serde_json::json!({
+            "node": node,
+            "subgraph_file": subgraph_file.display().to_string(),
+        }));
+    } else {
+        println!("set subgraph path of {node} to {}", subgraph_file.display());
+    }
+    Ok(())
+}
+
+/// `mangle expose-input <path> --node <id> --input <n> [--expose <bool>]` —
+/// mark an input as exposed (or un-exposed) for subgraph composition.
+pub(crate) fn cmd_expose_input(
+    path: PathBuf,
+    node: String,
+    input: usize,
+    expose: bool,
+    json_output: bool,
+) -> Result<(), String> {
+    let mut graph = load_graph(&path)?;
+    if !graph.nodes.contains_key(&node) {
+        return Err(node_not_found_error(&graph, &node));
+    }
+    let n = graph.nodes.get_mut(&node).unwrap();
+    let input_len = n.inputs.len();
+    let input_slot = n.inputs.get_mut(input).ok_or_else(|| {
+        format!("input index {input} out of bounds on node '{node}' ({input_len} inputs)")
+    })?;
+    input_slot.is_exposed = expose;
+    save_graph(&graph, &path)?;
+
+    if json_output {
+        println!("{}", serde_json::json!({
+            "node": node, "input": input, "exposed": expose,
+        }));
+    } else {
+        let verb = if expose { "exposed" } else { "un-exposed" };
+        println!("{verb} {node}:{input}");
+    }
+    Ok(())
+}
+
+/// `mangle expose-output <path> --node <id> --output <n> [--expose <bool>]` —
+/// mark an output as exposed (or un-exposed) for subgraph composition.
+pub(crate) fn cmd_expose_output(
+    path: PathBuf,
+    node: String,
+    output: usize,
+    expose: bool,
+    json_output: bool,
+) -> Result<(), String> {
+    let mut graph = load_graph(&path)?;
+    if !graph.nodes.contains_key(&node) {
+        return Err(node_not_found_error(&graph, &node));
+    }
+    let n = graph.nodes.get_mut(&node).unwrap();
+    let output_len = n.outputs.len();
+    let output_slot = n.outputs.get_mut(output).ok_or_else(|| {
+        format!("output index {output} out of bounds on node '{node}' ({output_len} outputs)")
+    })?;
+    output_slot.is_exposed = expose;
+    save_graph(&graph, &path)?;
+
+    if json_output {
+        println!("{}", serde_json::json!({
+            "node": node, "output": output, "exposed": expose,
+        }));
+    } else {
+        let verb = if expose { "exposed" } else { "un-exposed" };
+        println!("{verb} {node} output:{output}");
+    }
+    Ok(())
+}
+
 /// `mangle set-enabled <path> --node <id> --enabled <bool>` — enable or disable a node.
 pub(crate) fn cmd_set_enabled(path: PathBuf, node: String, enabled: bool, json_output: bool) -> Result<(), String> {
     let mut graph = load_graph(&path)?;
