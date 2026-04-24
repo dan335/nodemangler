@@ -8,7 +8,7 @@ name = "mangler_cli"
 path = "src/main.rs"
 
 [dependencies]
-mangler_core = { path = "../mangler_core" }
+mangler_core = { path = "../mangler_core", features = ["video"] }
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 serde_json = "1"

@@ -194,7 +194,9 @@ pub(crate) fn value_type_name(vt: &ValueType) -> &'static str {
         ValueType::NoiseWorleyDistanceFunction => "worleydistance",
         ValueType::TextHAlign => "texthalign",
         ValueType::TextVAlign => "textvalign",
-        ValueType::VideoType => "videotype",
+        ValueType::VideoContainer => "videocontainer",
+        ValueType::VideoCodec => "videocodec",
+        ValueType::Video => "video",
     }
 }
 

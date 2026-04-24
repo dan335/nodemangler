@@ -5,8 +5,11 @@
 //! and supports rotation where applicable. Available shapes include rectangle,
 //! ellipse, polygon, star, and line.
 
-pub mod rectangle;
+pub mod cone;
 pub mod ellipse;
-pub mod polygon;
-pub mod star;
 pub mod line;
+pub mod paraboloid;
+pub mod polygon;
+pub mod pyramid;
+pub mod rectangle;
+pub mod star;

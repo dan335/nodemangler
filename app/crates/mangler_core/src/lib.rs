@@ -30,6 +30,7 @@ pub mod output;
 pub mod value;
 pub mod node_type;
 pub mod thumbnail;
+pub mod thumbnail_service;
 pub mod app;
 pub mod dynamic_image_serde;
 pub mod float_image;
@@ -134,6 +135,12 @@ pub enum NodeChangedMessage {
         message: Option<String>,
     },
     /// An output value was recomputed after a node run.
+    ///
+    /// For `Value::Image` outputs the engine sets `thumbnail: None` and the
+    /// actual thumbnail follows via [`NodeChangedMessage::ThumbnailReady`]
+    /// once the async [`crate::thumbnail_service::ThumbnailService`] has
+    /// computed it. All other value types have their (cheap) thumbnail
+    /// computed inline on the engine thread and delivered here.
     OutputChanged {
         /// The affected node's unique identifier.
         node_id: String,
@@ -143,6 +150,23 @@ pub enum NodeChangedMessage {
         value: Value,
         /// An optional thumbnail preview generated from the output value.
         thumbnail: Option<Thumbnail>,
+    },
+    /// A thumbnail computed asynchronously for an image output. The UI
+    /// matches `change_id` against the current output value's change_id and
+    /// discards the thumbnail if the output has since been superseded (stale
+    /// write guard — see
+    /// [`crate::thumbnail_service::ThumbnailService`]).
+    ThumbnailReady {
+        /// The affected node's unique identifier.
+        node_id: String,
+        /// Zero-based index of the output.
+        output_index: usize,
+        /// The `Value::Image.change_id` of the value the thumbnail was built
+        /// from. Must match the current output's change_id for the thumbnail
+        /// to be applied; otherwise drop.
+        change_id: String,
+        /// The computed thumbnail.
+        thumbnail: Thumbnail,
     },
     /// An input's exposed state changed (for subgraph composition).
     ExposeInputChanged {

@@ -10,7 +10,9 @@ pub mod decoder_cache;
 pub mod encoder;
 
 #[cfg(feature = "video")]
-pub use decoder_cache::{VideoDecoderCache, VideoError, VideoMeta};
+pub use crate::value::VideoMeta;
+#[cfg(feature = "video")]
+pub use decoder_cache::{VideoDecoderCache, VideoError};
 #[cfg(feature = "video")]
 pub use encoder::VideoEncoder;
 

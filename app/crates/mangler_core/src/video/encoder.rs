@@ -1,8 +1,13 @@
 //! Video encoder wrapper.
 //!
 //! [`VideoEncoder`] wraps [`video_rs::encode::Encoder`] with a simpler API:
-//! `open` → repeated `push_frame` → `finalize`. Each `VideoType` variant maps
-//! to an H.264 yuv420p preset; the container is chosen by file extension.
+//! `open` → repeated `push_frame` → `finalize`.
+//!
+//! `open` takes an explicit `(VideoContainer, VideoCodec)` pair and validates
+//! it against the static compatibility matrix before touching FFmpeg. Only a
+//! subset of the matrix has encoder support wired up today (see match arm in
+//! [`VideoEncoder::open`]); pairs that are legal but not-yet-implemented
+//! surface as a distinct error so we can expand coverage independently.
 //!
 //! Frame conversion takes a 1–4 channel [`FloatImage`] and produces an RGB24
 //! `Array3<u8>` frame suitable for `Encoder::encode`. Conversion and encoding
@@ -15,8 +20,48 @@ use video_rs::encode::{Encoder, Settings};
 use video_rs::time::Time;
 
 use crate::float_image::FloatImage;
-use crate::value::VideoType;
+use crate::value::{VideoCodec, VideoContainer};
 use crate::video::decoder_cache::VideoError;
+
+#[cfg(test)]
+#[path = "encoder_tests.rs"]
+mod tests;
+
+/// The concrete encoder preset chosen for a `(container, codec)` pair.
+///
+/// Single source of truth for which combos have encoder support wired up.
+/// `encoder_preset_for` is the only way to obtain one; `to_settings` is the
+/// only way to turn it into FFmpeg settings. Adding a new preset means adding
+/// a variant here, an arm to `encoder_preset_for`, and an arm to
+/// `to_settings`.
+enum EncoderPreset {
+    H264Yuv420p,
+    // NOTE: video-rs 0.11 does not expose a VP9 preset; `WebM + Vp9` is not
+    // yet implemented. Add a `Vp9` variant here and wire it up when it is.
+}
+
+impl EncoderPreset {
+    fn to_settings(&self, width: u32, height: u32) -> Settings {
+        match self {
+            EncoderPreset::H264Yuv420p => {
+                Settings::preset_h264_yuv420p(width as usize, height as usize, false)
+            }
+        }
+    }
+}
+
+/// Map a `(container, codec)` pair to the implemented encoder preset, if any.
+/// `None` means the combo is legal in the compatibility matrix but not yet
+/// wired up — callers should surface that as "encoder not yet implemented".
+fn encoder_preset_for(container: VideoContainer, codec: VideoCodec) -> Option<EncoderPreset> {
+    use EncoderPreset::*;
+    match (container, codec) {
+        (VideoContainer::Mp4,  VideoCodec::H264)
+        | (VideoContainer::Mov, VideoCodec::H264)
+        | (VideoContainer::Mkv, VideoCodec::H264) => Some(H264Yuv420p),
+        _ => None,
+    }
+}
 
 /// Encode frames produced by the graph into a video file.
 ///
@@ -37,19 +82,53 @@ pub struct VideoEncoder {
 
 impl VideoEncoder {
     /// Open a new encoder writing to `path` with the given dimensions, fps,
-    /// and container type. Uses h264 yuv420p for all `VideoType` variants;
-    /// the container is selected by the file extension on `path` (which the
-    /// caller should set from `format.extension()`).
+    /// container, and codec.
+    ///
+    /// Validates `(container, codec)` against the compatibility matrix first
+    /// (cheap — no FFmpeg calls). Then dispatches to the right encoder preset.
+    /// Only the combos we actually wire up today succeed; any other legal
+    /// combo returns an "encoder not yet implemented" error.
     pub fn open(
         path: &Path,
         width: u32,
         height: u32,
         fps: f32,
-        _format: VideoType,
+        container: VideoContainer,
+        codec: VideoCodec,
     ) -> Result<Self, VideoError> {
+        if !codec.is_supported_in(container) {
+            return Err(VideoError(format!(
+                "codec {:?} is not valid in a {:?} container",
+                codec, container
+            )));
+        }
+
+        let preset = encoder_preset_for(container, codec).ok_or_else(|| {
+            VideoError(format!(
+                "encoder not yet implemented for {:?} + {:?}",
+                container, codec
+            ))
+        })?;
+
         crate::video::ensure_init();
-        let settings = Settings::preset_h264_yuv420p(width as usize, height as usize, false);
-        let encoder = Encoder::new(path.to_path_buf(), settings).map_err(VideoError::from)?;
+        let settings = preset.to_settings(width, height);
+        let encoder = Encoder::new(path.to_path_buf(), settings).map_err(|e| {
+            // EINVAL at encoder open time almost always means the underlying
+            // ffmpeg build has no encoder registered for the requested codec
+            // (vcpkg's default `ffmpeg` port disables libx264 under GPL, and
+            // hardware encoders are disabled too). Enrich the error so users
+            // don't have to chase "Invalid argument" alone.
+            let raw = VideoError::from(e);
+            VideoError(format!(
+                "{} — this usually means the ffmpeg build in use has no {:?} \
+                 encoder. On Windows, reinstall vcpkg ffmpeg with \
+                 `vcpkg install ffmpeg[x264,gpl]:x64-windows --recurse` (libx264 \
+                 is GPL and not in the default feature set), or use a BtbN \
+                 `gpl-shared` prebuilt pack. See docs/video-setup.md.",
+                raw.0,
+                codec,
+            ))
+        })?;
         Ok(Self {
             inner: Some(encoder),
             path: path.to_path_buf(),
@@ -58,6 +137,16 @@ impl VideoEncoder {
             expected_size: (width, height),
             warned_size_mismatch: false,
         })
+    }
+
+    /// Whether an encoder preset is wired up for the given combo. The combo
+    /// must also pass [`VideoCodec::is_supported_in`] — this only reflects
+    /// what we've implemented, not what's legal in the container.
+    ///
+    /// UI uses this to warn the user *before* they click Render that a combo
+    /// they've selected won't actually encode.
+    pub fn has_encoder_preset(container: VideoContainer, codec: VideoCodec) -> bool {
+        encoder_preset_for(container, codec).is_some()
     }
 
     /// Push a single frame to the encoder. Runs the actual encode on a

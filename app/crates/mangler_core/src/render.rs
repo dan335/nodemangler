@@ -21,18 +21,9 @@ use tokio::sync::mpsc::Sender;
 
 use crate::graph::Graph;
 use crate::node_type::NodeType;
-use crate::operations::Operation;
-use crate::value::{Value, VideoType};
-use crate::video::{VideoDecoderCache, VideoEncoder};
+use crate::value::{Value, VideoCodec, VideoContainer};
+use crate::video::VideoEncoder;
 use crate::GraphChangedMessage;
-
-/// Collected information about a single time-aware node the render loop
-/// needs to drive each frame.
-struct VideoInputDriver {
-    node_id: String,
-    native_fps: f32,
-    total_frames: u32,
-}
 
 /// Run a video render to completion. Failures and successes are reported
 /// via `tx`; this fn returns when the render task is done (no return value).
@@ -66,15 +57,15 @@ async fn render_inner(
     _started: Instant,
 ) -> Result<PathBuf, String> {
     // 1. Read render config from the Video Output node.
-    let (path, video_format, fps, duration) = read_output_config(graph, output_node_id)?;
+    let (path, container, codec, fps, duration) = read_output_config(graph, output_node_id)?;
 
     if path.as_os_str().is_empty() {
         return Err("Video output node has no path set.".to_string());
     }
 
-    // Ensure the file extension matches the chosen format. Auto-append if
+    // Ensure the file extension matches the chosen container. Auto-append if
     // missing, replace if different — mirrors how image output works.
-    let path = ensure_video_extension(path, video_format);
+    let path = ensure_video_extension(path, container);
 
     // 2. Warm up so video input nodes populate their metadata outputs
     // (fps, total_frames, width, height) the first run.
@@ -84,13 +75,34 @@ async fn render_inner(
     let drivers = collect_video_drivers(graph);
 
     // 4. Infer output dimensions from the first frame at the output node's
-    //    `image` input.
-    let (width, height) = infer_render_size(graph, output_node_id)
+    //    `image` input. H.264 with YUV420P requires even width and height,
+    //    so round down to the nearest even number.
+    let (mut width, mut height) = infer_render_size(graph, output_node_id)
         .ok_or_else(|| "could not infer output frame size from graph".to_string())?;
+    if width < 2 || height < 2 {
+        return Err(format!(
+            "output frame size {}x{} is too small to encode. Connect an image \
+             into the Video Output node's `image` input.",
+            width, height
+        ));
+    }
+    width &= !1;
+    height &= !1;
 
     // 5. Open the encoder.
-    let mut encoder = VideoEncoder::open(&path, width, height, fps, video_format)
-        .map_err(|e| e.0)?;
+    let mut encoder = VideoEncoder::open(&path, width, height, fps, container, codec)
+        .map_err(|e| {
+            format!(
+                "opening encoder for {} ({:?}+{:?}, {}x{}@{}fps): {}",
+                path.display(),
+                container,
+                codec,
+                width,
+                height,
+                fps,
+                e.0,
+            )
+        })?;
 
     // 6. Frame loop.
     let total_frames = ((duration as f64) * (fps as f64)).round().max(1.0) as u32;
@@ -118,7 +130,15 @@ async fn render_inner(
             "Video output node is missing an `image` input value.".to_string()
         })?;
 
-        encoder.push_frame(&frame_data).await.map_err(|e| e.0)?;
+        encoder.push_frame(&frame_data).await.map_err(|e| {
+            format!(
+                "encoding frame {} ({}x{}): {}",
+                frame,
+                frame_data.width(),
+                frame_data.height(),
+                e.0,
+            )
+        })?;
 
         if (frame + 1) % 10 == 0 || frame + 1 == total_frames {
             let _ = tx
@@ -130,14 +150,15 @@ async fn render_inner(
     }
 
     // 7. Finalize the encoder.
-    encoder.finalize().await.map_err(|e| e.0)
+    encoder.finalize().await.map_err(|e| format!("finalizing encoder: {}", e.0))
 }
 
-/// Read path / format / fps / duration from the Video Output node's inputs.
+/// Read path / container / codec / fps / duration from the Video Output node's
+/// inputs.
 fn read_output_config(
     graph: &Graph,
     output_node_id: &str,
-) -> Result<(PathBuf, VideoType, f32, f32), String> {
+) -> Result<(PathBuf, VideoContainer, VideoCodec, f32, f32), String> {
     let node = graph
         .nodes
         .get(output_node_id)
@@ -153,15 +174,25 @@ fn read_output_config(
         })
         .unwrap_or_default();
 
-    let video_format = node
+    let container = node
         .inputs
         .iter()
-        .find(|i| i.name == "video_format")
+        .find(|i| i.name == "container")
         .and_then(|i| match &i.value {
-            Value::VideoType(v) => Some(*v),
+            Value::VideoContainer(v) => Some(*v),
             _ => None,
         })
-        .unwrap_or(VideoType::Mp4);
+        .unwrap_or(VideoContainer::Mp4);
+
+    let codec = node
+        .inputs
+        .iter()
+        .find(|i| i.name == "codec")
+        .and_then(|i| match &i.value {
+            Value::VideoCodec(v) => Some(*v),
+            _ => None,
+        })
+        .unwrap_or(VideoCodec::H264);
 
     let fps = node
         .inputs
@@ -185,14 +216,14 @@ fn read_output_config(
         .unwrap_or(10.0)
         .max(0.1);
 
-    Ok((path, video_format, fps, duration))
+    Ok((path, container, codec, fps, duration))
 }
 
-/// If `path` doesn't end with an extension matching `format`, append or
-/// replace the extension. Ensures the encoder's container choice matches
-/// the filename the user sees.
-fn ensure_video_extension(mut path: PathBuf, format: VideoType) -> PathBuf {
-    let want = format.extension();
+/// If `path` doesn't end with an extension matching `container`, append or
+/// replace the extension. Ensures the container choice matches the filename
+/// the user sees.
+fn ensure_video_extension(mut path: PathBuf, container: VideoContainer) -> PathBuf {
+    let want = container.extension();
     let matches = path
         .extension()
         .and_then(|e| e.to_str())
@@ -204,50 +235,33 @@ fn ensure_video_extension(mut path: PathBuf, format: VideoType) -> PathBuf {
     path
 }
 
-/// Scan the graph for time-aware nodes (currently just video inputs) and
-/// collect each one's node_id, native fps, and total frame count for use
-/// in the render loop.
-fn collect_video_drivers(graph: &Graph) -> Vec<VideoInputDriver> {
+/// Collect the ids of every time-aware node in the graph, so the render
+/// loop can drive them each frame via the `Operation::apply_render_time`
+/// hook.
+fn collect_video_drivers(graph: &Graph) -> Vec<String> {
     let mut drivers = Vec::new();
     for (node_id, node) in &graph.nodes {
-        let NodeType::Operation { operation } = &node.node_type else { continue; };
-        if !operation.is_time_aware() { continue; }
-        if !matches!(operation, Operation::OpVideoInputFile) { continue; }
-
-        // Read the clip's path from the node's inputs, fetch meta.
-        let Some(path) = node.inputs.iter().find(|i| i.name == "path").and_then(|i| match &i.value {
-            Value::Path(p) => Some(p.clone()),
-            _ => None,
-        }) else { continue; };
-
-        if path.as_os_str().is_empty() { continue; }
-
-        let Ok(meta) = VideoDecoderCache::global().meta_blocking(&path) else { continue; };
-        drivers.push(VideoInputDriver {
-            node_id: node_id.clone(),
-            native_fps: meta.fps,
-            total_frames: meta.total_frames,
-        });
+        let NodeType::Operation { operation } = &node.node_type else { continue };
+        if operation.is_time_aware() {
+            drivers.push(node_id.clone());
+        }
     }
     drivers
 }
 
-/// For each driver, set its `current_frame` input to the target frame for
-/// the given render time, and mark the node dirty so the next `graph.run()`
-/// processes it (and everything downstream).
+/// For each time-aware node, delegate to its `apply_render_time` hook
+/// (each op knows which of its own inputs to update) and mark it dirty so
+/// the next `graph.run()` re-decodes.
 fn apply_render_time_to_drivers(
     graph: &mut Graph,
-    drivers: &[VideoInputDriver],
+    drivers: &[String],
     render_time_seconds: f64,
 ) {
-    for driver in drivers {
-        let frame = (render_time_seconds * driver.native_fps as f64).round() as i32;
-        let frame = frame.clamp(0, driver.total_frames.saturating_sub(1) as i32);
-        let Some(node) = graph.nodes.get_mut(&driver.node_id) else { continue; };
-        let Some(idx) = node.inputs.iter().position(|i| i.name == "current_frame") else {
-            continue;
-        };
-        node.inputs[idx].value = Value::Integer(frame);
+    for node_id in drivers {
+        let Some(node) = graph.nodes.get_mut(node_id) else { continue };
+        let NodeType::Operation { operation } = &node.node_type else { continue };
+        let op = operation.clone();
+        op.apply_render_time(&mut node.inputs, render_time_seconds);
         node.is_dirty = true;
         node.cached_input_hash = None;
     }
