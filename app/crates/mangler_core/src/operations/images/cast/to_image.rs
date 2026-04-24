@@ -27,20 +27,23 @@ impl OpImageCastToImage {
         NodeSettings {
             name: "to image".to_string(),
             description: "Converts a value to a 1x1 image.".to_string(),
+            help: "Packs the input scalar into a single-pixel RGBA FloatImage via `Value::try_convert_to(ValueType::Image)`. Booleans become black or white, integers are treated as 0-255 grayscale levels, decimals as 0-1 grayscale, and colours are written as their sRGBA float quadruple.\n\nUseful when a downstream node only accepts images (for example a blend operand or a gradient endpoint supplied at runtime). The output is always 1x1; use `resize` if you need a larger constant field, though feeding the value into a dedicated image input is usually cheaper.".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal input (0.0–1.0 grayscale).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(0.0), None, None),
+            Input::new("input".to_string(), Value::Decimal(0.0), None, None)
+                .with_description("Scalar value (bool, integer, decimal, or colour) to pack into a 1x1 pixel."),
         ]
     }
 
     /// Creates the default output list: a single image output.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("1x1 RGBA image representing the input value."),
         ]
     }
 

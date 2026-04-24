@@ -24,6 +24,7 @@ impl OpNumberMathSqrt {
         NodeSettings {
             name: "square root".to_string(),
             description: "Returns the square root of a number.".to_string(),
+            help: "Computes the non-negative square root of the input using f32::sqrt. Integer inputs are cast to f32 and the result is always a decimal.\n\nNegative inputs raise an error rather than returning NaN, so problems surface immediately. If you need to accept negatives, use cube root or take abs first.".to_string(),
         }
     }
 
@@ -31,6 +32,7 @@ impl OpNumberMathSqrt {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Non-negative number to take the square root of; negatives error.")
         ]
     }
 
@@ -38,6 +40,7 @@ impl OpNumberMathSqrt {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Square root of a as a decimal.")
         ]
     }
 

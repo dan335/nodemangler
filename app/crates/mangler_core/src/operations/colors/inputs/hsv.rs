@@ -22,16 +22,21 @@ impl OpColorInputHsva {
         NodeSettings {
             name: "hsv".to_string(),
             description: "Creates a color using the HSV color space.".to_string(),
+            help: "Builds an sRGB color from hue (0-360 degrees), saturation (0-1), and value/brightness (0-1). Unlike HSL, in HSV the fully saturated pure hue sits at value 1; lowering value darkens toward black and lowering saturation washes toward white.\n\nHue is taken modulo 360 so wrapping works naturally. Saturation at 0 gives a neutral gray regardless of hue. Alpha is carried through straight (not premultiplied). This is the color model used by most classic painting tool color pickers.".to_string(),
         }
     }
 
     /// Creates the input definitions: hue (0..360), saturation (0..1), value (0..1), and alpha.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("hue".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(1.0), clamp_to_range: false }), None),
-            Input::new("saturation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("value".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("alpha".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("hue".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(1.0), clamp_to_range: false }), None)
+                .with_description("Hue angle in degrees (0–360) around the color wheel."),
+            Input::new("saturation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("Color intensity (0 = gray, 1 = fully saturated)."),
+            Input::new("value".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("Brightness of the color (0 = black, 1 = full brightness)."),
+            Input::new("alpha".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Opacity of the resulting color (0 transparent, 1 opaque)."),
         ]
     }
 
@@ -39,6 +44,7 @@ impl OpColorInputHsva {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Color(Color::default()), None)
+                .with_description("Color assembled from the HSV + alpha channels.")
         ]
     }
 

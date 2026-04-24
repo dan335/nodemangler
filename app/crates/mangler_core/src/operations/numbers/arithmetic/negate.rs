@@ -24,6 +24,7 @@ impl OpNumberMathNegate {
         NodeSettings {
             name: "negate".to_string(),
             description: "Negates a number (flips sign).".to_string(),
+            help: "Flips the sign of the input: positive values become negative and vice versa, while zero is unchanged. The output type matches the input: integer stays integer, decimal stays decimal.\n\nEquivalent to multiplying by -1 but slightly clearer in graphs. Note that i32::MIN cannot be negated in integer arithmetic and will wrap, following native Rust semantics.".to_string(),
         }
     }
 
@@ -31,6 +32,7 @@ impl OpNumberMathNegate {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Number whose sign will be flipped.")
         ]
     }
 
@@ -38,6 +40,7 @@ impl OpNumberMathNegate {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Negation of the input; type matches the input type.")
         ]
     }
 

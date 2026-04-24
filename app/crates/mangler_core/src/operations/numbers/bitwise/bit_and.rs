@@ -20,14 +20,17 @@ impl OpNumberBitwiseAnd {
         NodeSettings {
             name: "bitwise and".to_string(),
             description: "Computes the bitwise AND of two integers.".to_string(),
+            help: "Returns a & b, setting each output bit only when both corresponding input bits are 1.\n\nCommonly used for masking: AND-ing with 0xFF keeps the low byte, AND-ing with (1 << n) - 1 keeps the low n bits. Operates on signed 32-bit integers, so the sign bit is treated like any other bit.".to_string(),
         }
     }
 
     /// Creates the default input list: two integer drag-value inputs.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("b".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("a".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("First integer operand for the bitwise AND."),
+            Input::new("b".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Second integer operand for the bitwise AND."),
         ]
     }
 
@@ -35,6 +38,7 @@ impl OpNumberBitwiseAnd {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Integer(0), None)
+                .with_description("Bitwise AND of a and b (a & b).")
         ]
     }
 

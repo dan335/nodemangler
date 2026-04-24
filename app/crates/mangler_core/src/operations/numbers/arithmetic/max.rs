@@ -22,14 +22,17 @@ impl OpNumberMathMax {
         NodeSettings {
             name: "max".to_string(),
             description: "Returns the largest of two numbers.".to_string(),
+            help: "Returns whichever of a and b is numerically greater. Integer/integer inputs stay as integer; any decimal input promotes the result to decimal.\n\nFloating-point comparison follows f32::max semantics, which propagates NaN inputs. Commonly combined with min to implement a clamp, or to enforce a non-zero lower bound.".to_string(),
         }
     }
 
     /// Creates the default input list: two decimal drag-value inputs (a and b).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
+            Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("First candidate value."),
             Input::new("b".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Second candidate value.")
         ]
     }
 
@@ -37,6 +40,7 @@ impl OpNumberMathMax {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("The larger of a and b; mixed integer/decimal inputs promote to decimal.")
         ]
     }
 

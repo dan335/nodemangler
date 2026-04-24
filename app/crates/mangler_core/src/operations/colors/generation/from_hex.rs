@@ -22,13 +22,15 @@ impl OpColorGenerationFromHex {
         NodeSettings {
             name: "from hex".to_string(),
             description: "Parses a hex color string (e.g. #RRGGBB or #RRGGBBAA) into a color.".to_string(),
+            help: "Strips an optional leading '#' and parses exactly 6 hex digits (RGB, alpha defaults to 255) or 8 hex digits (RGBA). Digits are case-insensitive and each byte is converted from 0-255 into an sRGB float channel.\n\nShort forms like '#FFF' or CSS named colors are not supported; invalid lengths or non-hex characters surface as a node error rather than silently clamping. The parsed color is interpreted as sRGB and stored with straight (non-premultiplied) alpha.".to_string(),
         }
     }
 
     /// Creates the input definitions: a single hex string input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("hex".to_string(), Value::Text("#FFFFFF".to_string()), Some(InputSettings::SingleLineText), None),
+            Input::new("hex".to_string(), Value::Text("#FFFFFF".to_string()), Some(InputSettings::SingleLineText), None)
+                .with_description("Hex color code in #RRGGBB or #RRGGBBAA form to parse into an sRGB color."),
         ]
     }
 
@@ -36,6 +38,7 @@ impl OpColorGenerationFromHex {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Color(Color::default()), None)
+                .with_description("Color parsed from the hex string.")
         ]
     }
 

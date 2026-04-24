@@ -32,26 +32,35 @@ impl OpImageInputGradient {
         NodeSettings {
             name: "from gradient".to_string(),
             description: "Creates an image from a gradient.".to_string(),
+            help: "Generates a vertical gradient by linearly interpolating between color A (top) and color B (bottom). Each row is blended once and replicated horizontally, so output cost is proportional to height rather than total pixel count.\n\nThe color space selector controls where the interpolation happens: Lab and LCH produce perceptually smoother ramps, HSL/HSV can cycle hue, and Linear RGB avoids the gamma-induced darkening seen with sRGB blending. The result is a 4-channel FloatImage in sRGB regardless of the interpolation space.".to_string(),
         }
     }
 
     /// Creates the input definitions: two colors (a and b), width, height, and color space.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("b".to_string(), Value::Color(Color::from_srgb_u8(255, 255, 255, 255)), None, None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Lab), None, None),
+            Input::new("a".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Color at the top row of the gradient."),
+            Input::new("b".to_string(), Value::Color(Color::from_srgb_u8(255, 255, 255, 255)), None, None)
+                .with_description("Color at the bottom row of the gradient."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Width of the generated gradient image in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Height of the generated gradient image in pixels."),
+            Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Lab), None, None)
+                .with_description("Color space used to interpolate between A and B."),
         ]
     }
 
     /// Creates the output definitions: the gradient image, width, and height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
-            Output::new("width".to_string(), Value::Integer(1), None),
-            Output::new("height".to_string(), Value::Integer(1), None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None)
+                .with_description("Vertical gradient image blended between A and B."),
+            Output::new("width".to_string(), Value::Integer(1), None)
+                .with_description("Final width of the gradient image in pixels."),
+            Output::new("height".to_string(), Value::Integer(1), None)
+                .with_description("Final height of the gradient image in pixels."),
         ]
     }
 

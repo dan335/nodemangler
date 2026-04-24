@@ -28,20 +28,25 @@ impl OpImageAdjustmentColorMatch {
         NodeSettings {
             name: "color match".to_string(),
             description: "Remaps the source image so its per-channel histogram matches the reference image.".to_string(),
+            help: "Builds a 256-bin cumulative distribution for each colour channel of both source and reference, then constructs a lookup table that maps each source value to the reference value with the closest CDF. Channels are processed independently (R, G, B each get their own LUT), which produces the classic photo colour-match look rather than a true 3D transform.\n\nIf the reference has fewer channels than the source (for example a grayscale reference) its single LUT is fanned out across the source's colour channels. Strength lerps between the original and the fully matched image, letting you dial the effect in softly. Alpha passes through unchanged.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("source".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("reference".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("strength".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("source".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Image whose per-channel histogram will be remapped."),
+            Input::new("reference".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Image providing the target histogram the source is matched against."),
+            Input::new("strength".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Blend between the original source (0) and the fully matched result (1)."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Source image with its colour distribution shifted toward the reference."),
         ]
     }
 

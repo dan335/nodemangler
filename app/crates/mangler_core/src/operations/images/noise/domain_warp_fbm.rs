@@ -36,30 +36,41 @@ impl OpImageNoiseDomainWarpFbm {
         NodeSettings {
             name: "domain warp".to_string(),
             description: "Domain-warped fBm noise. Recursively distorts coordinates with fBm to produce organic, grunge-like textures.".to_string(),
+            help: "Inigo Quilez-style recursive domain warping: instead of sampling fBm at (x, y), the coordinates themselves are displaced by another fBm sample before the final lookup, following the pattern f(p + f(p + f(p))). Each warp iteration uses unique offsets so the layers decorrelate.\n\nOctaves/frequency/lacunarity/persistence shape the underlying fBm. Warp iterations set the recursion depth; warp strength scales how far coordinates are pushed. Higher strength and more iterations smear the pattern into paint-like streaks.\n\nIdeal for marble veining, flowing magma, ink bleeds, and any organic, turbulent look.".to_string(),
         }
     }
 
     /// Creates the default inputs: seed, dimensions, fractal params, and warp controls.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed for the warped fBm; change to reshape the smears and stains."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
             // octaves must be ≥ 1 — Fbm with 0 octaves returns NaN which then
             // poisons the warp loop and crashes the noise crate's floor_to_isize.
-            Input::new("octaves".to_string(), Value::Integer(6), Some(InputSettings::Slider { range: (1.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("frequency".to_string(), Value::Decimal(5.0), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
-            Input::new("lacunarity".to_string(), Value::Decimal(2.094_395_2), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
-            Input::new("persistence".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
-            Input::new("warp_iterations".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (1.0, 4.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("warp_strength".to_string(), Value::Decimal(0.8), Some(InputSettings::DragValue { clamp: Some((0.0, 10.0)), speed: Some(0.01) }), None),
+            Input::new("octaves".to_string(), Value::Integer(6), Some(InputSettings::Slider { range: (1.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Number of fBm octaves in the underlying noise; more adds finer detail inside the warp."),
+            Input::new("frequency".to_string(), Value::Decimal(5.0), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None)
+                .with_description("Base frequency of the fBm; higher values produce smaller flowing features."),
+            Input::new("lacunarity".to_string(), Value::Decimal(2.094_395_2), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None)
+                .with_description("Frequency multiplier between octaves of the fBm layer."),
+            Input::new("persistence".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None)
+                .with_description("Amplitude falloff per octave of the fBm layer."),
+            Input::new("warp_iterations".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (1.0, 4.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Number of recursive warp passes; more iterations produce deeper, more chaotic distortion."),
+            Input::new("warp_strength".to_string(), Value::Decimal(0.8), Some(InputSettings::DragValue { clamp: Some((0.0, 10.0)), speed: Some(0.01) }), None)
+                .with_description("Amplitude of each domain warp; higher values smear the pattern further."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Seamlessly tiling grayscale image of domain-warped fBm with paint-like smears."),
         ]
     }
 

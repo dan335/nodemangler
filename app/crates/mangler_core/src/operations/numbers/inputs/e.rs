@@ -20,6 +20,7 @@ impl OpNumberInputE {
         NodeSettings {
             name: "e".to_string(),
             description: "Outputs Euler's number e (2.71828...).".to_string(),
+            help: "Emits the mathematical constant e, the base of the natural logarithm, at f32 precision (std::f32::consts::E).\n\nCommonly used as a base for exponential curves, compounding formulas, and pairing with the ln node to build log-scale remaps.".to_string(),
         }
     }
 
@@ -32,6 +33,7 @@ impl OpNumberInputE {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(std::f32::consts::E), None)
+                .with_description("Euler's number e (approximately 2.71828).")
         ]
     }
 

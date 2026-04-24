@@ -86,26 +86,35 @@ impl OpImageNoiseHybridMultifractalNoise {
         NodeSettings {
             name: "hybrid multifractal noise".to_string(),
             description: "Noise function that outputs seamlessly tiling hybrid Multifractal noise. The result of this multifractal noise is that valleys in the noise should have smooth bottoms at all altitudes.".to_string(),
+            help: "A multifractal fBm where each octave is weighted by the previous octave's output. Low-signal regions (valleys) accumulate very little extra detail, while high-signal regions (ridges) pick up full fractal roughness. The effect is smooth basins with sharp, detailed peaks.\n\nFrequency sets the base feature size; octaves, lacunarity, and persistence behave like standard fBm. Lower persistence emphasizes the flat valleys; more octaves add more craggy detail on top of the ridges.\n\nIdeal for realistic mountain/valley terrain heightmaps and for weathered rock surfaces where lows should feel quiet.".to_string(),
         }
     }
 
     /// Creates the default inputs: seed, width, height, octaves, frequency, lacunarity, and persistence.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("octaves".to_string(), Value::Integer(6), Some(InputSettings::Slider { range: (0.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("frequency".to_string(), Value::Integer(5), Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }), None),
-            Input::new("lacunarity".to_string(), Value::Decimal(2.094_395_2), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
-            Input::new("persistence".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed controlling where ridges and valleys land."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("octaves".to_string(), Value::Integer(6), Some(InputSettings::Slider { range: (0.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Number of octaves summed; more octaves add detail on ridges while valleys stay smooth."),
+            Input::new("frequency".to_string(), Value::Integer(5), Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }), None)
+                .with_description("Base lattice period; higher values produce smaller features."),
+            Input::new("lacunarity".to_string(), Value::Decimal(2.094_395_2), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None)
+                .with_description("Frequency multiplier between octaves; larger values add finer detail faster."),
+            Input::new("persistence".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None)
+                .with_description("Amplitude falloff per octave; lower values emphasize the smooth valleys."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None)
+                .with_description("Seamlessly tiling grayscale hybrid multifractal noise image."),
         ]
     }
 

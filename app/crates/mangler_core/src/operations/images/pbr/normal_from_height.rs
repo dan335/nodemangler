@@ -22,18 +22,21 @@ pub struct OpImagePbrNormalFromHeight{}
 
 impl OpImagePbrNormalFromHeight {
     pub fn settings() -> NodeSettings {
-        NodeSettings { name: "normal from height".to_string(), description: "Generates a normal map from a grayscale height map.".to_string() }
+        NodeSettings { name: "normal from height".to_string(), description: "Generates a normal map from a grayscale height map.".to_string(), help: "Applies a 3x3 Sobel operator to the input's luminance (Rec.709 for multi-channel sources, channel 0 for single-channel) to estimate dx and dy of the height field, then reconstructs and normalises a tangent-space normal vector with Z fixed at 1.0.\n\nThe final XYZ normal is remapped to the 0-1 storage range and written to an RGBA image with alpha 1.0, with flat regions sitting at (0.5, 0.5, 1.0). intensity scales the gradient before normalisation, giving taller or flatter apparent surfaces. Input should be treated as linear height, not sRGB color.".to_string() }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("intensity".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 20.0), step_by: Some(0.1), clamp_to_range: true }), None),
+            Input::new("image".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Grayscale height map to derive surface normals from."),
+            Input::new("intensity".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 20.0), step_by: Some(0.1), clamp_to_range: true }), None)
+                .with_description("Scales the height gradient, making the resulting normals steeper or gentler."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
-        vec![Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)]
+        vec![Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Tangent-space normal map encoded with XYZ in RGB and flat at (0.5,0.5,1).")]
     }
 
     /// Generates a normal map using the Sobel operator on luminance.

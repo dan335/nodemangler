@@ -23,14 +23,17 @@ impl OpLogicCompareLessThan {
         NodeSettings {
             name: "less than".to_string(),
             description: "Returns true if a is less than b.".to_string(),
+            help: "Both inputs are coerced to Decimal before the strict a < b test. Equal values produce false; use less-or-equal if you want inclusive behavior.\n\nBecause comparison happens in f64, tiny floating-point errors can flip the result near boundaries. Offset b by a small epsilon if you need robust threshold behavior.".to_string(),
         }
     }
 
     /// Creates the default inputs: two decimal inputs `a` and `b` with drag-value UI, both defaulting to 0.0.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("b".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Left-hand value in the comparison a < b."),
+            Input::new("b".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Right-hand value in the comparison a < b."),
         ]
     }
 
@@ -38,6 +41,7 @@ impl OpLogicCompareLessThan {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Bool(false), None)
+                .with_description("True when a is strictly less than b.")
         ]
     }
 

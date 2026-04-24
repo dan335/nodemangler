@@ -27,20 +27,23 @@ impl OpColorCastToColor {
         NodeSettings {
             name: "to color".to_string(),
             description: "Converts a value to a grayscale color.".to_string(),
+            help: "Accepts a Bool, Integer, or Decimal input and packs it into the R, G, and B channels of a fully opaque color. Bool false becomes black and true becomes white. Integers are treated as 0-255 sRGB bytes and normalized; decimals are taken as 0-1 sRGB floats without further remapping.\n\nUse this as an explicit bridge when a node expects a Color and you want a gray of a specific intensity from a numeric value. The output is always fully opaque (alpha = 1).".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal input (0.0–1.0 grayscale).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(0.0), None, None),
+            Input::new("input".to_string(), Value::Decimal(0.0), None, None)
+                .with_description("Scalar (bool, integer, or decimal) interpreted as a grayscale intensity."),
         ]
     }
 
     /// Creates the default output list: a single color output.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Color(Color::default()), None),
+            Output::new("output".to_string(), Value::Color(Color::default()), None)
+                .with_description("Opaque grayscale color built from the input scalar."),
         ]
     }
 

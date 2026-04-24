@@ -23,14 +23,17 @@ impl OpNumberMathMultiply {
         NodeSettings {
             name: "multiply".to_string(),
             description: "Multiplies two numbers.".to_string(),
+            help: "Computes a * b for integer or decimal inputs. Integer/integer multiplication stays as integer and wraps on overflow like native i32 arithmetic; mixing with a decimal promotes the result to decimal.\n\nUseful for scaling values, applying gain, or combining normalized parameters. For element-wise image or color multiplication, connect through the blend nodes instead.".to_string(),
         }
     }
 
     /// Creates the default input list: two decimal drag-value inputs (a and b), defaulting to 1.0.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
+            Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("First factor in the multiplication."),
             Input::new("b".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Second factor in the multiplication.")
         ]
     }
 
@@ -38,6 +41,7 @@ impl OpNumberMathMultiply {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Product of a and b; mixed integer/decimal inputs promote to decimal.")
         ]
     }
 

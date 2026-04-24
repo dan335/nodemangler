@@ -62,26 +62,35 @@ impl OpImageNoiseClouds {
         NodeSettings {
             name: "cloud noise".to_string(),
             description: "Creates a seamlessly tiling image with soft cloud-like patterns using multi-octave value noise.".to_string(),
+            help: "fBm built on value noise instead of Perlin gradient noise. Value noise interpolates between random lattice values, which gives rounder, blobbier features than Perlin's directional gradients, so the layered result looks softer and more fluffy.\n\nFrequency sets the base blob size, octaves stack finer wispy detail on top, lacunarity is the per-octave frequency multiplier, and persistence is the amplitude falloff. Lower persistence softens the result; higher lacunarity adds wispy filaments faster.\n\nIdeal for clouds, fog, smoke, and watercolor-style textures.".to_string(),
         }
     }
 
     /// Creates the default inputs: seed, width, height, octaves, frequency, lacunarity, and persistence.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("octaves".to_string(), Value::Integer(6), Some(InputSettings::Slider { range: (1.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("frequency".to_string(), Value::Integer(4), Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }), None),
-            Input::new("lacunarity".to_string(), Value::Decimal(2.0), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
-            Input::new("persistence".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed for the cloud pattern; change to get a different cloudscape."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("octaves".to_string(), Value::Integer(6), Some(InputSettings::Slider { range: (1.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Number of value-noise octaves summed; higher values add wispy detail."),
+            Input::new("frequency".to_string(), Value::Integer(4), Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }), None)
+                .with_description("Base lattice period; higher values produce smaller, denser cloud blobs."),
+            Input::new("lacunarity".to_string(), Value::Decimal(2.0), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None)
+                .with_description("Frequency multiplier between octaves; higher values add wispier detail."),
+            Input::new("persistence".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None)
+                .with_description("Amplitude falloff per octave; lower values give smoother, softer clouds."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Seamlessly tiling grayscale image with soft, rounded cloud shapes."),
         ]
     }
 

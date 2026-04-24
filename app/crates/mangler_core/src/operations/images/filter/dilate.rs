@@ -28,21 +28,25 @@ impl OpImageAdjustmentDilate {
         NodeSettings {
             name: "dilate".to_string(),
             description: "Morphological dilation — per-channel max in a square neighborhood. Grows bright regions.".to_string(),
+            help: "For each pixel takes the per-channel maximum over a (2r+1) square window. Bright regions grow by `radius` pixels, dark regions shrink, small dark pits are filled, and isolated bright pixels spread.\n\nDual of erosion; combining the two yields open/close. Implemented as two 1D sweeps (horizontal then vertical) via the separable morphology primitive in `erode.rs`, so cost is O(r) per pixel.".to_string(),
         }
     }
 
     /// Creates input ports: image and radius (square window half-size).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("radius".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image or mask to dilate."),
+            Input::new("radius".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Half-size of the square window in pixels; larger values grow bright regions more."),
         ]
     }
 
     /// Creates the output port: the dilated image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Dilated image where bright regions have expanded by the chosen radius."),
         ]
     }
 

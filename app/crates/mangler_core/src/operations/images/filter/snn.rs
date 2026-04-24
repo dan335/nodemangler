@@ -33,21 +33,25 @@ impl OpImageAdjustmentSnn {
         NodeSettings {
             name: "snn".to_string(),
             description: "Edge-preserving smoothing: for each pair of symmetric neighbors, average in whichever is closer to the center's color.".to_string(),
+            help: "Symmetric Nearest Neighbor filter. For every pair of neighbors `(p+d, p-d)` symmetric about the center, picks the one closer in RGB Euclidean distance to the center color and averages only the chosen ones (plus the center). Pixels on the wrong side of an edge are never selected, so edges stay intact.\n\nConceptually a cheaper relative of Kuwahara; aesthetic is smoother and more denoised-looking, less painterly. Cost is O(r^2) per pixel and rows run in parallel; alpha is averaged alongside color but excluded from the distance metric.".to_string(),
         }
     }
 
     /// Creates the input ports: image and window radius.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("radius".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to smooth using symmetric nearest-neighbor selection."),
+            Input::new("radius".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Half-size of the square window in pixels; larger values smooth over broader areas."),
         ]
     }
 
     /// Creates the output port: the SNN-filtered image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Edge-preserving SNN-smoothed image with a denoised look."),
         ]
     }
 

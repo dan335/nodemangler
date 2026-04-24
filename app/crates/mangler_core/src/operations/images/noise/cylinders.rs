@@ -31,22 +31,27 @@ impl OpImageNoiseCylinders {
         NodeSettings {
             name: "concentric rings".to_string(),
             description: "Seamlessly tiling concentric cylinder rings using toroidal distance.".to_string(),
+            help: "A deterministic radial wave function, not a stochastic noise. Each pixel's value comes from a triangle wave applied to the toroidal (wrapped) distance from the tile center, so the pattern reads as concentric rings that wrap cleanly at the edges.\n\nFrequency sets how many rings radiate from the center across the tile. Useful as a mask for radial gradients, tree-ring textures, ripples, or as a seed for warp operations that turn the regular rings into something more organic.".to_string(),
         }
     }
 
     /// Creates the default inputs: width, height, and frequency.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("frequency".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("frequency".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Number of concentric rings radiating from the tile center."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Seamlessly tiling grayscale image of concentric cylindrical rings."),
         ]
     }
 

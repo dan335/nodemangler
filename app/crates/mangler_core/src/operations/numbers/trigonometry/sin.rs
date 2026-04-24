@@ -20,13 +20,15 @@ impl OpNumberTrigSin {
         NodeSettings {
             name: "sin".to_string(),
             description: "Computes the sine of an angle in radians.".to_string(),
+            help: "Returns sin(input) with the input interpreted as radians; the output always lies in [-1, 1].\n\nIf you are working in degrees, multiply by pi / 180 before feeding the node. Very large input magnitudes lose precision because radians collapse onto the same angle modulo tau. Pair with asin for the principal inverse.".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Angle in radians to take the sine of."),
         ]
     }
 
@@ -34,6 +36,7 @@ impl OpNumberTrigSin {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Sine of the input angle, always in [-1, 1].")
         ]
     }
 

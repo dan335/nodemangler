@@ -30,23 +30,29 @@ impl OpImageInputUrl {
         NodeSettings {
             name: "from url".to_string(),
             description: "Grabs an image from a url.".to_string(),
+            help: "Performs an async HTTP GET with reqwest and decodes the response body into a FloatImage, preserving the source channel count. The fetched URL is echoed back as an output so downstream nodes can key off the actual source.\n\nErrors are reported separately for request failures, byte-read failures, and unsupported image formats. The request is re-issued whenever the URL input or an upstream dirty flag changes, so avoid connecting this node to constantly-changing inputs.".to_string(),
         }
     }
 
     /// Creates the input definitions: a single URL string with multi-line text editing.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("url".to_string(), Value::Text("https://i.imgur.com/3aDSTiBl.jpg".to_string()), Some(InputSettings::MultiLineText), None),
+            Input::new("url".to_string(), Value::Text("https://i.imgur.com/3aDSTiBl.jpg".to_string()), Some(InputSettings::MultiLineText), None)
+                .with_description("HTTP URL to download and decode into an image."),
         ]
     }
 
     /// Creates the output definitions: the decoded image, width, height, and the fetched URL.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
-            Output::new("width".to_string(), Value::Integer(i32::default()), None),
-            Output::new("height".to_string(), Value::Integer(i32::default()), None),
-            Output::new("url".to_string(), Value::Text("".to_string()), None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None)
+                .with_description("Image decoded from the downloaded URL."),
+            Output::new("width".to_string(), Value::Integer(i32::default()), None)
+                .with_description("Width of the downloaded image in pixels."),
+            Output::new("height".to_string(), Value::Integer(i32::default()), None)
+                .with_description("Height of the downloaded image in pixels."),
+            Output::new("url".to_string(), Value::Text("".to_string()), None)
+                .with_description("The URL that was successfully fetched."),
         ]
     }
 

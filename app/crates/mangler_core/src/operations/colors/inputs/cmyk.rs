@@ -23,17 +23,23 @@ impl OpColorInputCmyk {
         NodeSettings {
             name: "cmyk".to_string(),
             description: "Creates a color using the CMYK color space.".to_string(),
+            help: "Assembles an sRGB color from the subtractive CMYK channels plus alpha. Cyan, magenta, yellow, and key each take 0-1 ink amounts; internally the conversion computes R = (1 - C)(1 - K), G = (1 - M)(1 - K), B = (1 - Y)(1 - K).\n\nThis is a math model of CMYK rather than an ICC-managed print conversion, so colors will not precisely match any specific press or paper profile. Alpha is carried through untouched and not premultiplied. Useful for print-style mixing or for driving graph inputs in a CMY/K-centric workflow.".to_string(),
         }
     }
 
     /// Creates the input definitions: cyan, magenta, yellow, key (0..1 each), and alpha.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("cyan".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("magenta".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("yellow".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("key (black)".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("alpha".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("cyan".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("Cyan ink amount (0–1) in the CMYK subtractive model."),
+            Input::new("magenta".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("Magenta ink amount (0–1) in the CMYK subtractive model."),
+            Input::new("yellow".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("Yellow ink amount (0–1) in the CMYK subtractive model."),
+            Input::new("key (black)".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("Key (black) ink amount (0–1); higher values darken the output."),
+            Input::new("alpha".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Opacity of the resulting color (0 transparent, 1 opaque)."),
         ]
     }
 
@@ -41,6 +47,7 @@ impl OpColorInputCmyk {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Color(Color::default()), None)
+                .with_description("Color assembled from the CMYK + alpha channels.")
         ]
     }
 

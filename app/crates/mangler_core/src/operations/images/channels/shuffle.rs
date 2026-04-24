@@ -21,21 +21,31 @@ pub struct OpImageChannelShuffle {}
 
 impl OpImageChannelShuffle {
     pub fn settings() -> NodeSettings {
-        NodeSettings { name: "channel shuffle".to_string(), description: "Remaps image channels using selectable source channels.".to_string() }
+        NodeSettings {
+            name: "channel shuffle".to_string(),
+            description: "Remaps image channels using selectable source channels.".to_string(),
+            help: "For each output channel (R, G, B, A), picks which source channel (indexed 0=R, 1=G, 2=B, 3=A) to read. The source is first promoted to a virtual RGBA pixel: 1-channel inputs replicate across RGB with alpha 1, 2-channel inputs use luminance+alpha, 3-channel inputs assume alpha 1, and 4-channel inputs pass through.\n\nOutput is always 4-channel RGBA regardless of source channel count. Setting every output to the same source produces a grayscale splat; swapping red and blue gives a BGR->RGB correction; feeding the alpha index into RGB visualises the mask.".to_string(),
+        }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("red source".to_string(), Value::Integer(0), Some(InputSettings::Slider { range: (0.0, 3.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("green source".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (0.0, 3.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("blue source".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (0.0, 3.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("alpha source".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (0.0, 3.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image whose channels are reordered."),
+            Input::new("red source".to_string(), Value::Integer(0), Some(InputSettings::Slider { range: (0.0, 3.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Which source channel (0=R, 1=G, 2=B, 3=A) feeds the output red."),
+            Input::new("green source".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (0.0, 3.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Which source channel (0=R, 1=G, 2=B, 3=A) feeds the output green."),
+            Input::new("blue source".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (0.0, 3.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Which source channel (0=R, 1=G, 2=B, 3=A) feeds the output blue."),
+            Input::new("alpha source".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (0.0, 3.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Which source channel (0=R, 1=G, 2=B, 3=A) feeds the output alpha."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
-        vec![Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)]
+        vec![Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            .with_description("RGBA image with channels remapped from the chosen source indices.")]
     }
 
     /// Remaps each pixel's channels based on source indices. Always outputs 4-channel RGBA.

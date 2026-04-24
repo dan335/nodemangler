@@ -23,21 +23,25 @@ impl OpColorAnalysisColorTemperature {
         NodeSettings {
             name: "color temperature".to_string(),
             description: "Estimates the perceptual color temperature in Kelvin using the McCamy formula via XYZ chromaticity. Also outputs a normalized warm (1.0) to cool (0.0) value.".to_string(),
+            help: "Converts the input to CIE XYZ, computes chromaticity coordinates (cx, cy), and evaluates McCamy's cubic polynomial to estimate correlated color temperature (CCT).\n\nThe result is clamped to the physically meaningful 1000 K (candle) to 20000 K (blue sky) range, with 6504 K used as a D65 fallback when the color is too dark for chromaticity to be defined. warm_cool remaps this so 1.0 is warm red-orange and 0.0 is cool blue.\n\nNote that CCT is only strictly meaningful for near-neutral whites; saturated colors far off the Planckian locus still return a value but treat it as a rough perceptual warmth cue.".to_string(),
         }
     }
 
     /// Creates the single input definition: the source color.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("color".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("color".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Color to estimate the correlated color temperature of."),
         ]
     }
 
     /// Creates the two output definitions: kelvin and warm_cool.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("kelvin".to_string(), Value::Decimal(0.0), None),
-            Output::new("warm_cool".to_string(), Value::Decimal(0.0), None),
+            Output::new("kelvin".to_string(), Value::Decimal(0.0), None)
+                .with_description("Estimated correlated color temperature in Kelvin (1000–20000)."),
+            Output::new("warm_cool".to_string(), Value::Decimal(0.0), None)
+                .with_description("Normalized 0 (cool/blue) to 1 (warm/red-orange) temperature position."),
         ]
     }
 

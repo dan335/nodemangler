@@ -35,6 +35,7 @@ impl OpImageAdjustmentDog {
         NodeSettings {
             name: "difference of gaussians".to_string(),
             description: "Stylized edge / line-drawing filter via DoG or XDoG on luminance.".to_string(),
+            help: "Subtracts two Gaussian-blurred copies of the luminance at sigmas sigma and k*sigma. Plain DoG thresholds the difference at zero; XDoG (Winnemoller 2012) replaces the hard threshold with `T(u) = 1 + tanh(phi * (u - eps))` over the blend `u = (1 + p)*G_sigma - p*G_k*sigma`, producing smoother, more expressive strokes.\n\nk is typically 1.6 (Marr-Hildreth). Gaussians use explicit separable 1D kernels truncated at 3*sigma since DoG is sensitive to exact kernel shape at small sigmas.".to_string(),
         }
     }
 
@@ -43,26 +44,34 @@ impl OpImageAdjustmentDog {
     /// and a toggle between plain DoG and XDoG.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image whose luminance is stylized into a line drawing."),
             // small sigma (inner Gaussian) — controls line thickness
-            Input::new("sigma".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 10.0), step_by: Some(0.1), clamp_to_range: true }), None),
+            Input::new("sigma".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 10.0), step_by: Some(0.1), clamp_to_range: true }), None)
+                .with_description("Inner Gaussian standard deviation; controls line thickness."),
             // k ratio (outer sigma = k * sigma); 1.6 is the canonical Marr–Hildreth value
-            Input::new("k".to_string(), Value::Decimal(1.6), Some(InputSettings::Slider { range: (1.01, 5.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("k".to_string(), Value::Decimal(1.6), Some(InputSettings::Slider { range: (1.01, 5.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Ratio between outer and inner sigma; 1.6 is the canonical Marr-Hildreth value."),
             // XDoG only: sharpness p — boosts the inner Gaussian in the blend
-            Input::new("sharpness".to_string(), Value::Decimal(20.0), Some(InputSettings::Slider { range: (0.0, 200.0), step_by: Some(0.5), clamp_to_range: true }), None),
+            Input::new("sharpness".to_string(), Value::Decimal(20.0), Some(InputSettings::Slider { range: (0.0, 200.0), step_by: Some(0.5), clamp_to_range: true }), None)
+                .with_description("XDoG sharpness p that boosts the inner Gaussian in the blend."),
             // XDoG only: threshold epsilon — values below become ramped, above clamp to 1
-            Input::new("threshold".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("threshold".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("XDoG epsilon cutoff; values above are snapped to white, below are ramped."),
             // XDoG only: phi — steepness of the tanh soft threshold
-            Input::new("phi".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.1, 100.0), step_by: Some(0.1), clamp_to_range: true }), None),
+            Input::new("phi".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.1, 100.0), step_by: Some(0.1), clamp_to_range: true }), None)
+                .with_description("XDoG phi; steepness of the tanh soft-threshold ramp."),
             // false = plain DoG thresholded at 0; true = XDoG soft-threshold
-            Input::new("use xdog".to_string(), Value::Bool(true), None, None),
+            Input::new("use xdog".to_string(), Value::Bool(true), None, None)
+                .with_description("Enable XDoG soft-threshold output instead of plain binary DoG."),
         ]
     }
 
     /// Creates the output port: grayscale line-drawing image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Grayscale line-drawing image produced by the DoG or XDoG stylization."),
         ]
     }
 

@@ -20,13 +20,15 @@ impl OpNumberTrigTan {
         NodeSettings {
             name: "tan".to_string(),
             description: "Computes the tangent of an angle in radians.".to_string(),
+            help: "Returns sin(x) / cos(x) with the input interpreted as radians. The function has vertical asymptotes at pi/2 + k*pi, where cos goes to zero, so inputs near those angles return very large magnitudes (positive or negative).\n\nIf you have y and x components and want a quadrant-correct angle, use atan2. Pair with atan for the principal inverse on (-pi/2, pi/2).".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Angle in radians to take the tangent of."),
         ]
     }
 
@@ -34,6 +36,7 @@ impl OpNumberTrigTan {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Tangent of the input angle; diverges near pi/2 + k*pi.")
         ]
     }
 

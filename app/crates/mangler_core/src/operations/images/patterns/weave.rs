@@ -26,23 +26,29 @@ impl OpImagePatternWeave {
         NodeSettings {
             name: "weave".to_string(),
             description: "Generates a basket weave pattern.".to_string(),
+            help: "Produces a single-channel basket-weave mask on a count-by-count grid. Cells alternate in a checkerboard between brighter horizontal strands (~0.784) and dimmer vertical strands (~0.502) to fake depth, with gaps between strands written as 0.0.\n\nGap size is a fraction of cell size and applies to all four sides of each cell. Increasing count adds more, smaller strands. The pattern repeats cleanly on an integer number of cells so it will tile when width and height are multiples of the cell size.".to_string(),
         }
     }
 
     /// Creates the default inputs: width, height, count (grid divisions), and gap_size.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("count".to_string(), Value::Integer(8), Some(InputSettings::DragValue { clamp: Some((1.0, 64.0)), speed: None }), None),
-            Input::new("gap_size".to_string(), Value::Decimal(0.05), Some(InputSettings::Slider { range: (0.0, 0.5), step_by: None, clamp_to_range: true }), None),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("count".to_string(), Value::Integer(8), Some(InputSettings::DragValue { clamp: Some((1.0, 64.0)), speed: None }), None)
+                .with_description("Grid divisions along both axes; controls strand density."),
+            Input::new("gap_size".to_string(), Value::Decimal(0.05), Some(InputSettings::Slider { range: (0.0, 0.5), step_by: None, clamp_to_range: true }), None)
+                .with_description("Gap thickness between strands as a fraction of cell size."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Grayscale basket-weave mask with brighter horizontal and dimmer vertical strands."),
         ]
     }
 

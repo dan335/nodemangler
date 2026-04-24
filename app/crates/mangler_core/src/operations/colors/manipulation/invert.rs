@@ -23,21 +23,25 @@ impl OpColorManipulationInvert {
         NodeSettings {
             name: "invert".to_string(),
             description: "Inverts the RGB channels of a color (1.0 - channel). Optionally also inverts the alpha channel.".to_string(),
+            help: "Produces a photographic-style negative by replacing each sRGB channel with 1 - channel. Black becomes white, red becomes cyan, and so on.\n\nThe operation runs on the gamma-encoded sRGB floats; inverting in linear light would give slightly different midtones, so use this for color-picker style inversion. When 'invert alpha' is on, fully opaque becomes fully transparent and vice versa; otherwise alpha is preserved.".to_string(),
         }
     }
 
     /// Creates the input definitions: a color and an invert-alpha toggle.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("color".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("invert alpha".to_string(), Value::Bool(false), None, None),
+            Input::new("color".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Color whose RGB channels will be inverted (1 - channel)."),
+            Input::new("invert alpha".to_string(), Value::Bool(false), None, None)
+                .with_description("When true the alpha channel is also inverted; otherwise it passes through."),
         ]
     }
 
     /// Creates the single output definition for the inverted color.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Color(Color::default()), None),
+            Output::new("output".to_string(), Value::Color(Color::default()), None)
+                .with_description("Inverted color with each channel replaced by 1 - channel."),
         ]
     }
 

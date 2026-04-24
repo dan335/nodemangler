@@ -31,6 +31,7 @@ impl OpVideoOutputFile {
         NodeSettings {
             name: "video to file".to_string(),
             description: "Renders the graph frame-by-frame into a video file. Use the Render button in the inspector to start.".to_string(),
+            help: "Configures a render target: path, container, codec, fps, and duration. Clicking Render spawns a separate task that drives a detached graph snapshot one frame at a time via apply_render_time hooks on time-aware nodes (extract frame, etc.) and feeds the image input to the encoder.\n\nContainer and codec must be compatible: see VideoContainer::supported_codecs. Typical pairings are Mp4/H264, Mp4/H265, Mov/ProRes, WebM/Vp9, and Mkv/anything. Mismatched combinations fail at encode time. Encoding requires FFmpeg built with libx264, libx265, libvpx, libaom, and gpl; see docs/video-setup.md.\n\nDuring interactive editing this node just forwards its incoming image to last_frame so the node thumbnail keeps updating; it never touches the encoder except when a render is running.".to_string(),
         }
     }
 
@@ -41,7 +42,8 @@ impl OpVideoOutputFile {
                 Value::Image { data: default_image(), change_id: get_id() },
                 None,
                 None,
-            ),
+            )
+            .with_description("Image frame that will be encoded into the video at each render tick."),
             Input::new(
                 "path".to_string(),
                 Value::Path(PathBuf::new()),
@@ -58,19 +60,22 @@ impl OpVideoOutputFile {
                     file_dialog_type: FileDialogType::SaveFile,
                 }),
                 None,
-            ),
+            )
+            .with_description("Destination file path for the rendered video."),
             Input::new(
                 "container".to_string(),
                 Value::VideoContainer(VideoContainer::Mp4),
                 None,
                 None,
-            ),
+            )
+            .with_description("Container format to wrap the encoded video stream."),
             Input::new(
                 "codec".to_string(),
                 Value::VideoCodec(VideoCodec::H264),
                 None,
                 None,
-            ),
+            )
+            .with_description("Video codec used to encode frames; must be compatible with the container."),
             Input::new(
                 "fps".to_string(),
                 Value::Decimal(30.0),
@@ -79,7 +84,8 @@ impl OpVideoOutputFile {
                     speed: Some(1.0),
                 }),
                 None,
-            ),
+            )
+            .with_description("Frames per second written to the output video."),
             Input::new(
                 "duration".to_string(),
                 Value::Decimal(10.0),
@@ -88,7 +94,8 @@ impl OpVideoOutputFile {
                     speed: Some(0.1),
                 }),
                 None,
-            ),
+            )
+            .with_description("Total length of the render in seconds."),
         ]
     }
 
@@ -101,8 +108,10 @@ impl OpVideoOutputFile {
                 "last_frame".to_string(),
                 Value::Image { data: default_image(), change_id: get_id() },
                 None,
-            ),
-            Output::new("rendered_path".to_string(), Value::Path(PathBuf::new()), None),
+            )
+            .with_description("Most recent incoming image, forwarded so the node thumbnail updates live."),
+            Output::new("rendered_path".to_string(), Value::Path(PathBuf::new()), None)
+                .with_description("Path of the finished video file once a render completes."),
         ]
     }
 

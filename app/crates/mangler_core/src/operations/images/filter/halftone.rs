@@ -36,6 +36,7 @@ impl OpImageAdjustmentHalftone {
         NodeSettings {
             name: "halftone".to_string(),
             description: "Halftone dot-screen: reproduces tone with a rotated grid of size-modulated dots.".to_string(),
+            help: "Rotates a regular grid by `angle`, samples the input's luminance at each rotated cell center, then draws a filled disk whose radius is proportional to `1 - lum`. Bright regions yield tiny dots, dark regions fill the cell to its corners.\n\nThe rotation prevents moire with other regular patterns (45 degrees is the classic black-plate angle). Output is strictly binary per color channel (ink or paper) with input alpha preserved. Cell size sets the dot pitch.".to_string(),
         }
     }
 
@@ -43,18 +44,22 @@ impl OpImageAdjustmentHalftone {
     /// screen rotation angle in degrees (classic value ≈ 45°).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image whose luminance drives the halftone dot sizes."),
             // Grid period in pixels — size of each halftone cell
-            Input::new("cell size".to_string(), Value::Integer(8), Some(InputSettings::Slider { range: (2.0, 64.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("cell size".to_string(), Value::Integer(8), Some(InputSettings::Slider { range: (2.0, 64.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Size of each halftone cell in pixels; larger values yield bigger dots."),
             // Screen rotation in degrees
-            Input::new("angle".to_string(), Value::Decimal(45.0), Some(InputSettings::Slider { range: (0.0, 180.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("angle".to_string(), Value::Decimal(45.0), Some(InputSettings::Slider { range: (0.0, 180.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Screen rotation in degrees; 45 is the classic halftone angle."),
         ]
     }
 
     /// Creates the output port: the halftoned binary image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Binary halftone image of size-modulated dots on a rotated grid."),
         ]
     }
 

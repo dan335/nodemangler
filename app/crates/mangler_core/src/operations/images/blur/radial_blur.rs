@@ -27,22 +27,27 @@ impl OpImageAdjustmentRadialBlur {
         NodeSettings {
             name: "radial blur".to_string(),
             description: "Applies a circular spin blur around the image center.".to_string(),
+            help: "For each output pixel, converts its position relative to the image centre into polar coordinates (angle, distance), then averages samples taken at evenly spaced angular offsets over +/- half of the sweep angle while keeping the same distance. This produces the rotational motion-blur look, strongest at the edges and negligible at the centre.\n\nSamples are bilinear for smooth results. Work is parallelised across rows. Angle 0 or samples = 1 returns the image unchanged. The centre is fixed at the image middle; for off-centre spins, use a safe-transform node first.".to_string(),
         }
     }
 
     /// Creates the input ports: image, spin angle (degrees), and number of samples.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("angle".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 180.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("samples".to_string(), Value::Integer(10), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 100.0)) }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to spin around the image centre."),
+            Input::new("angle".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 180.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Total sweep in degrees each pixel is smeared across its arc."),
+            Input::new("samples".to_string(), Value::Integer(10), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 100.0)) }), None)
+                .with_description("Number of angular taps averaged along each pixel's arc."),
         ]
     }
 
     /// Creates the output port: the radially blurred image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Image with a circular spin blur around its centre."),
         ]
     }
 

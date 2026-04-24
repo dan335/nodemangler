@@ -24,14 +24,17 @@ impl OpNumberMathLcm {
         NodeSettings {
             name: "lcm".to_string(),
             description: "Computes the least common multiple.".to_string(),
+            help: "Computes the least common multiple of two integers as |a * b| / gcd(a, b). If either input is zero, the result is 0 by convention.\n\nThe multiplication is performed in i64 before casting back to i32 to avoid overflow for moderately large factors. Useful for finding common periods when syncing repeating patterns.".to_string(),
         }
     }
 
     /// Creates the default input list: two integer drag-value inputs (a=4, b=6).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Integer(4), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("b".to_string(), Value::Integer(6), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("a".to_string(), Value::Integer(4), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("First integer operand; zero causes the result to be 0."),
+            Input::new("b".to_string(), Value::Integer(6), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Second integer operand; zero causes the result to be 0."),
         ]
     }
 
@@ -39,6 +42,7 @@ impl OpNumberMathLcm {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Integer(0), None)
+                .with_description("Least common multiple of a and b, computed as |a*b| / gcd(a,b).")
         ]
     }
 

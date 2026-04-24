@@ -20,13 +20,15 @@ impl OpNumberTrigTanh {
         NodeSettings {
             name: "tanh".to_string(),
             description: "Computes the hyperbolic tangent of a value.".to_string(),
+            help: "Returns sinh(x) / cosh(x), a smooth S-curve that is odd, passes through the origin, and asymptotes to -1 as x goes to -infinity and to +1 as x goes to +infinity.\n\nPopular as a soft clamp or activation: it squashes any real input into (-1, 1) without the hard corner of a clamp. Effectively saturated for |x| above about 5.".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Value to take the hyperbolic tangent of."),
         ]
     }
 
@@ -34,6 +36,7 @@ impl OpNumberTrigTanh {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Hyperbolic tangent of the input, asymptotic to +/-1.")
         ]
     }
 

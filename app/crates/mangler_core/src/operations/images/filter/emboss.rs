@@ -23,21 +23,29 @@ pub struct OpImageAdjustmentEmboss {}
 impl OpImageAdjustmentEmboss {
     /// Returns the node metadata (name and description) for the emboss operation.
     pub fn settings() -> NodeSettings {
-        NodeSettings { name: "emboss".to_string(), description: "Applies an emboss effect.".to_string() }
+        NodeSettings {
+            name: "emboss".to_string(),
+            description: "Applies an emboss effect.".to_string(),
+            help: "For each pixel samples one step forward and one step backward along the light angle, then outputs `0.5 + intensity * (forward - backward)` clamped to [0, 1]. Flat regions render as mid-grey; rising and falling edges shade light and dark relative to the angle.\n\nThe angle is the direction from which the simulated light arrives; rotating it flips the apparent relief. Color channels are processed independently; alpha is preserved. Edges are handled by clamping.".to_string(),
+        }
     }
 
     /// Creates the input ports: image, intensity, and angle (in degrees) controlling the emboss direction.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("intensity".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 10.0), step_by: Some(0.1), clamp_to_range: true }), None),
-            Input::new("angle".to_string(), Value::Decimal(135.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to convert into a 3D-relief emboss."),
+            Input::new("intensity".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 10.0), step_by: Some(0.1), clamp_to_range: true }), None)
+                .with_description("Multiplier on the directional difference; higher values deepen the relief."),
+            Input::new("angle".to_string(), Value::Decimal(135.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Light direction in degrees controlling where the relief appears to come from."),
         ]
     }
 
     /// Creates the output port: the embossed image.
     pub fn create_outputs() -> Vec<Output> {
-        vec![Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)]
+        vec![Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            .with_description("Embossed image centered at mid-grey with relief along the chosen angle.")]
     }
 
     /// Executes the emboss effect. Samples forward and backward along the angle direction

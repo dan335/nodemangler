@@ -23,14 +23,17 @@ impl OpLogicBoolNor {
         NodeSettings {
             name: "nor".to_string(),
             description: "Returns true only if both inputs are false.".to_string(),
+            help: "Negation of OR: outputs true only when neither operand is true. Truth table: (false, false) -> true, (false, true) -> false, (true, false) -> false, (true, true) -> false.\n\nInputs are coerced to Bool before evaluation. Like NAND, NOR is functionally complete and can express every boolean function on its own.".to_string(),
         }
     }
 
     /// Creates the default inputs: two boolean inputs `a` and `b`, both defaulting to `false`.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Bool(false), None, None),
-            Input::new("b".to_string(), Value::Bool(false), None, None),
+            Input::new("a".to_string(), Value::Bool(false), None, None)
+                .with_description("First boolean operand of the NOR gate."),
+            Input::new("b".to_string(), Value::Bool(false), None, None)
+                .with_description("Second boolean operand of the NOR gate."),
         ]
     }
 
@@ -38,6 +41,7 @@ impl OpLogicBoolNor {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Bool(true), None)
+                .with_description("True only when both a and b are false.")
         ]
     }
 

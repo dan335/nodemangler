@@ -27,21 +27,27 @@ impl OpImageFxOuterGlow {
         NodeSettings {
             name: "outer glow".to_string(),
             description: "Glow extending outside a mask — dilate, subtract, blur, tint.".to_string(),
+            help: "Collapses the input to a single-channel mask field, dilates it by `radius` pixels using a separable max-morphology pass, and subtracts the original mask to isolate a ring that extends outward from the silhouette. That ring is then Gaussian-blurred with sigma = radius/2 and tinted with the chosen colour.\n\nOutput is an RGBA halo layer whose alpha is glow * intensity * color.a clamped to 0-1, designed to be composited above the source. Intensity can exceed 1 for bloomed looks. Because both the dilation and blur scale with radius, raising the radius expands the halo while keeping its soft-edged character.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("radius".to_string(), Value::Integer(4), Some(InputSettings::Slider { range: (1.0, 64.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("intensity".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 4.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("color".to_string(), Value::Color(Color::from_srgb_float(1.0, 1.0, 1.0, 1.0)), None, None),
+            Input::new("mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Shape whose outside edge the glow radiates from."),
+            Input::new("radius".to_string(), Value::Integer(4), Some(InputSettings::Slider { range: (1.0, 64.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Dilation distance in pixels; larger values extend the glow further outward."),
+            Input::new("intensity".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 4.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("Brightness multiplier applied to the glow's alpha."),
+            Input::new("color".to_string(), Value::Color(Color::from_srgb_float(1.0, 1.0, 1.0, 1.0)), None, None)
+                .with_description("Colour the glow ring is tinted with."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("RGBA halo layer; composite above the source to place it around."),
         ]
     }
 

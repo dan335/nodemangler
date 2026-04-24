@@ -37,6 +37,21 @@ fn change_value(
     input.value = value;
 }
 
+/// Build the hover tooltip text for an input's name label.
+///
+/// Combines the input's description (when the operation provides one) with
+/// the "double-click to reset to default" affordance hint, separated by a
+/// blank line. If the description is empty, only the reset hint is shown so
+/// the existing tooltip behaviour is preserved for operations that have not
+/// been given descriptions yet.
+fn build_socket_hover_text(description: &str) -> String {
+    if description.is_empty() {
+        "Double-click to reset to default".to_string()
+    } else {
+        format!("{}\n\nDouble-click to reset to default", description)
+    }
+}
+
 /// Draw a solid color rectangle as a swatch preview.
 fn show_color_swatch(ui: &mut egui::Ui, color: Color32) {
     let (rect, _) = ui.allocate_exact_size(vec2(40.0, 18.0), egui::Sense::hover());
@@ -119,6 +134,23 @@ pub fn show(
         });
     });
     ui.label(egui::RichText::new(format!("{}", node.settings.description)).color(theme.get().text_faint));
+
+    // Collapsible long-form help. Only shown when the operation provides help
+    // text so nodes that haven't been documented yet don't get an empty
+    // disclosure triangle. Default-closed — the short description above is
+    // the primary summary, and help is there for users who want more depth.
+    if !node.settings.help.is_empty() {
+        ui.add_space(4.0);
+        egui::CollapsingHeader::new("help")
+            .id_salt("node_help")
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.label(
+                    egui::RichText::new(&node.settings.help)
+                        .color(theme.get().text_faint),
+                );
+            });
+    }
 
     ui.add_space(12.0);
 
@@ -222,8 +254,12 @@ pub fn show(
                             // needed because `ui.label` allocates a
                             // hover-only rect that can't detect clicks.
                             let label_response = ui
-                                .add(Label::new(&input.name).sense(egui::Sense::click()))
-                                .on_hover_text("Double-click to reset to default");
+                                .add(Label::new(&input.name).sense(egui::Sense::click()));
+                            // Build a hover tooltip that combines the input's
+                            // description (when the operation provides one)
+                            // with the "double-click to reset" affordance hint.
+                            let hover_text = build_socket_hover_text(&input.description);
+                            let label_response = label_response.on_hover_text(hover_text);
                             if label_response.double_clicked() {
                                 let default = input.default_value.clone();
                                 change_value(tx_change_node, &node.id, input_index, input, default);
@@ -292,7 +328,14 @@ pub fn show(
                     body.row(30.0, |mut row| {
                         row.col(|ui| {
                             ui.horizontal_centered(|ui| {
-                                ui.label(&output.name);
+                                let label = ui.label(&output.name);
+                                // Show the per-output description as a tooltip
+                                // when the operation provides one. Outputs have
+                                // no double-click-reset affordance, so empty
+                                // descriptions simply suppress the tooltip.
+                                if !output.description.is_empty() {
+                                    label.on_hover_text(&output.description);
+                                }
                             });
                         });
 

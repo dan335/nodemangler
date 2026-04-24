@@ -25,20 +25,23 @@ impl OpImageTransformRotate90 {
         NodeSettings {
             name: "rotate 90".to_string(),
             description: "Rotates an image 90 degrees.".to_string(),
+            help: "Rotates the image 90 degrees clockwise. Pixel (x, y) in the source maps to (height - 1 - y, x) in the output, and the output's width and height are swapped relative to the input.\n\nNo resampling is performed, so the operation is lossless and the channel count is preserved. Four applications of this node returns the original image exactly; prefer it over the arbitrary-angle `rotate` node for clean axis-aligned quarter turns.".to_string(),
         }
     }
 
     /// Creates the default inputs: a single source image.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image to rotate 90 degrees clockwise."),
         ]
     }
 
     /// Creates the default outputs: the rotated image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Image rotated 90 degrees clockwise with width and height swapped."),
         ]
     }
 

@@ -35,24 +35,29 @@ impl OpImageAdjustmentOrderedDither {
         NodeSettings {
             name: "ordered dither".to_string(),
             description: "Bayer-matrix ordered dither — quantize to N levels using a tiled threshold pattern.".to_string(),
+            help: "Tiles a Bayer threshold matrix across the image (sizes 2, 4, or 8), adds a per-pixel offset scaled by the quantization step, and snaps each color channel to the nearest of `levels` palette steps. The matrix is recursively generated from the 2x2 seed and zero-centered so the dither has zero mean and does not shift overall brightness.\n\nUnlike Floyd-Steinberg, the pattern is deterministic and fully parallel — no error propagation. `levels = 2` gives the classic 1-bit look; higher values produce retro EGA/VGA palettes. Alpha is preserved.".to_string(),
         }
     }
 
     /// Creates input ports: image, matrix size (2/4/8), and quantization levels.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to quantize via a tiled Bayer threshold matrix."),
             // Matrix size — only 2, 4, or 8 are meaningful; larger values are clamped
-            Input::new("matrix size".to_string(), Value::Integer(4), Some(InputSettings::Slider { range: (2.0, 8.0), step_by: Some(2.0), clamp_to_range: true }), None),
+            Input::new("matrix size".to_string(), Value::Integer(4), Some(InputSettings::Slider { range: (2.0, 8.0), step_by: Some(2.0), clamp_to_range: true }), None)
+                .with_description("Bayer matrix size; larger matrices give finer dot patterns (snapped to 2, 4, or 8)."),
             // Levels per channel: 2 = 1-bit black/white; higher = retro palette
-            Input::new("levels".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (2.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("levels".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (2.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Quantization levels per channel; 2 gives 1-bit, higher values give a retro palette."),
         ]
     }
 
     /// Creates the output port: the dithered image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Ordered-dithered image quantized via the tiled Bayer pattern."),
         ]
     }
 

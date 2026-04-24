@@ -42,25 +42,33 @@ impl OpImageNoiseVoronoise {
         NodeSettings {
             name: "voronoi blend".to_string(),
             description: "Blends between Voronoi and gradient noise. Jitter controls cell randomness, smoothness controls interpolation.".to_string(),
+            help: "Inigo Quilez's voronoise: a unified generator that covers a 2D space of patterns along the jitter and smoothness axes. Each cell holds a jittered point with a random value, and the output is a distance-weighted blend of those values with an exponential kernel whose sharpness is set by smoothness.\n\nWith jitter=0 and smoothness=0 you get a regular grid; jitter=1, smoothness=0 gives sharp Voronoi cells; jitter=0, smoothness=1 gives value noise; jitter=1, smoothness=1 gives smooth organic noise. Frequency sets how many cells fit across the tile.\n\nGreat when you want one knob to slide continuously between cellular and smooth looks.".to_string(),
         }
     }
 
     /// Creates the default inputs: seed, width, height, frequency, jitter, and smoothness.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("frequency".to_string(), Value::Decimal(8.0), Some(InputSettings::DragValue { clamp: Some((1.0, 100.0)), speed: Some(0.1) }), None),
-            Input::new("jitter".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("smoothness".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed placing the cell points and their values."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("frequency".to_string(), Value::Decimal(8.0), Some(InputSettings::DragValue { clamp: Some((1.0, 100.0)), speed: Some(0.1) }), None)
+                .with_description("Number of cells across the tile; higher values produce smaller, denser cells."),
+            Input::new("jitter".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Cell point randomness; 0 is a regular grid and 1 is fully scattered."),
+            Input::new("smoothness".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Blend between sharp Voronoi cells (0) and smooth gradient noise (1)."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Seamlessly tiling grayscale image blending Voronoi cells with gradient noise."),
         ]
     }
 

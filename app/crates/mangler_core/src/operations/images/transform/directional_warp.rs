@@ -29,23 +29,29 @@ impl OpImageTransformDirectionalWarp {
         NodeSettings {
             name: "directional warp".to_string(),
             description: "Displaces pixels along a single angle, with intensity driven by a grayscale map.".to_string(),
+            help: "For each output pixel the intensity map is bilinearly sampled (resized to match the source), its luminance is centered to -0.5..0.5, and the source is then sampled at an offset of that value times intensity along the fixed angle vector.\n\nUnlike the regular warp node which uses separate R/G channels for X and Y, this node smears pixels in one direction only, making it ideal for wind, motion streaks, or anisotropic distortion. Output preserves the source's channel count; coordinates are clamped at edges rather than wrapped.".to_string(),
         }
     }
 
     /// Creates the default inputs: source image, grayscale intensity map, angle (degrees), and intensity scalar.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("intensity map".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("angle".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(0.1), clamp_to_range: false }), None),
-            Input::new("intensity".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 200.0), step_by: Some(0.1), clamp_to_range: false }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to displace."),
+            Input::new("intensity map".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Grayscale map whose luminance drives the displacement magnitude per pixel."),
+            Input::new("angle".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(0.1), clamp_to_range: false }), None)
+                .with_description("Direction of displacement in degrees."),
+            Input::new("intensity".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 200.0), step_by: Some(0.1), clamp_to_range: false }), None)
+                .with_description("Maximum displacement in pixels scaled by the intensity map."),
         ]
     }
 
     /// Creates the default outputs: the warped image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Image with pixels displaced along the specified angle."),
         ]
     }
 

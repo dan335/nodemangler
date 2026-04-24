@@ -78,28 +78,39 @@ impl OpImageNoiseAnisotropic {
         NodeSettings {
             name: "anisotropic noise".to_string(),
             description: "Creates a seamlessly tiling image with directionally stretched noise patterns.".to_string(),
+            help: "Layers periodic Perlin octaves (fBm) with their coordinate frame rotated and scaled along one axis, squashing the noise into elongated streaks instead of round blobs.\n\nAngle sets the streak direction and stretch sets how far the noise is drawn out. Octaves, frequency, lacunarity, and persistence behave like standard fBm: more octaves add finer detail, higher lacunarity packs that detail in faster, and lower persistence makes each octave softer.\n\nGood for brushed metal, wood grain, hair, fabric weave, and wind-blown sand.".to_string(),
         }
     }
 
     /// Creates the default inputs: seed, width, height, angle, stretch, octaves, frequency, lacunarity, and persistence.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("angle".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("stretch".to_string(), Value::Decimal(4.0), Some(InputSettings::Slider { range: (1.0, 20.0), step_by: Some(0.1), clamp_to_range: false }), None),
-            Input::new("octaves".to_string(), Value::Integer(6), Some(InputSettings::Slider { range: (1.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("frequency".to_string(), Value::Integer(5), Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }), None),
-            Input::new("lacunarity".to_string(), Value::Decimal(2.094_395_2), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
-            Input::new("persistence".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed for the noise pattern; change to get a different stretched variation."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("angle".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Direction in degrees along which the noise is stretched."),
+            Input::new("stretch".to_string(), Value::Decimal(4.0), Some(InputSettings::Slider { range: (1.0, 20.0), step_by: Some(0.1), clamp_to_range: false }), None)
+                .with_description("Stretch ratio along the chosen angle; higher values produce more elongated streaks."),
+            Input::new("octaves".to_string(), Value::Integer(6), Some(InputSettings::Slider { range: (1.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Number of fBm layers summed together; more octaves add finer directional detail."),
+            Input::new("frequency".to_string(), Value::Integer(5), Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }), None)
+                .with_description("Base lattice period; higher values produce tighter, more repeated streaks."),
+            Input::new("lacunarity".to_string(), Value::Decimal(2.094_395_2), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None)
+                .with_description("Frequency multiplier between octaves; larger values add finer directional detail faster."),
+            Input::new("persistence".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None)
+                .with_description("Amplitude falloff per octave; lower values make the streaks smoother."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Seamlessly tiling grayscale image with directionally stretched noise."),
         ]
     }
 

@@ -101,25 +101,33 @@ impl OpImageShapeStar {
         NodeSettings {
             name: "star".to_string(),
             description: "Generates a star shape as a grayscale SDF.".to_string(),
+            help: "Builds a star polygon by alternating vertices between outer_radius (spike tips) and inner_radius (valley points), then evaluates min-edge-distance with a ray-cast inside/outside test to form a signed distance field with smoothstep anti-aliasing.\n\nOutput is a 1-channel FloatImage mask, 1.0 inside and 0.0 outside. The first spike starts straight up from the centre, and rotation tilts the whole star clockwise. Reducing inner_radius sharpens spikes; setting it close to outer_radius flattens toward a regular 2N-gon.".to_string(),
         }
     }
 
     /// Creates the default inputs: width, height, points, outer_radius, inner_radius, and rotation.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("points".to_string(), Value::Integer(5), Some(InputSettings::DragValue { clamp: Some((3.0, 64.0)), speed: None }), None),
-            Input::new("outer_radius".to_string(), Value::Decimal(0.4), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None),
-            Input::new("inner_radius".to_string(), Value::Decimal(0.2), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None),
-            Input::new("rotation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: false }), None),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Width of the generated image in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Height of the generated image in pixels."),
+            Input::new("points".to_string(), Value::Integer(5), Some(InputSettings::DragValue { clamp: Some((3.0, 64.0)), speed: None }), None)
+                .with_description("Number of points (spikes) on the star."),
+            Input::new("outer_radius".to_string(), Value::Decimal(0.4), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Radius out to the tips of the spikes in normalised units."),
+            Input::new("inner_radius".to_string(), Value::Decimal(0.2), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Radius out to the valleys between spikes in normalised units."),
+            Input::new("rotation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Rotation of the star around its center in degrees."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Grayscale mask with the star filled white on a black background."),
         ]
     }
 

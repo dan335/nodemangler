@@ -25,19 +25,23 @@ impl OpImageAdjustmentHighpass {
         NodeSettings {
             name: "highpass".to_string(),
             description: "Subtracts a blurred copy from the original, keeping only high-frequency detail. Output is biased by 0.5 so mid-grey = zero detail.".to_string(),
+            help: "Gaussian-blurs the image at the given radius to isolate the low-frequency component, then outputs `source - blur + 0.5` clamped to [0, 1]. Flat regions converge to mid-grey; edges and fine detail appear as positive or negative deviations.\n\nMatches Photoshop's High Pass convention and is typically used as the detail layer for frequency-separation retouching or blended in overlay to sharpen. Alpha is preserved. Larger radius keeps coarser detail; very small radius gives pure edge residual.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("radius".to_string(), Value::Decimal(4.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 256.0)) }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to extract high-frequency detail from."),
+            Input::new("radius".to_string(), Value::Decimal(4.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 256.0)) }), None)
+                .with_description("Blur radius in pixels; larger values keep more of the fine detail."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("High-frequency detail image biased to mid-grey at zero difference."),
         ]
     }
 

@@ -18,6 +18,12 @@ pub struct Output {
     pub id: String,
     /// Display name shown in the graph editor.
     pub name: String,
+    /// Human-readable description of what this output produces, shown as a
+    /// tooltip when the user hovers over the output's name in the node settings
+    /// panel. Empty string means "no tooltip". `#[serde(default)]` so older
+    /// saved graphs (which lack the field) deserialize with an empty description.
+    #[serde(default)]
+    pub description: String,
     /// The current computed value produced by the node.
     /// Skipped during serialization — outputs are always recomputed when the graph runs.
     #[serde(skip)]
@@ -49,6 +55,7 @@ impl Output {
     pub fn new(name: String, default_value: Value, link: Option<OutputLink>) -> Output {
         Output {
             name,
+            description: String::new(),
             value: default_value.clone(),
             default_value,
             connection: None,
@@ -56,6 +63,13 @@ impl Output {
             link,
             id: get_id(),
         }
+    }
+
+    /// Builder: attach a human-readable description used as the tooltip when
+    /// hovering the output's name in the node settings panel.
+    pub fn with_description(mut self, description: impl Into<String>) -> Output {
+        self.description = description.into();
+        self
     }
 
     /// Check whether this output can be connected to the given input based on

@@ -28,24 +28,31 @@ impl OpImageTransformSafeTransform {
         NodeSettings {
             name: "tiling transform".to_string(),
             description: "Applies translation, rotation, and scale while preserving seamless tiling.".to_string(),
+            help: "Applies an affine transform (translate, then rotate around center, then scale around center) via inverse mapping with bilinear sampling. Translation is specified as a fraction of image width/height; rotation is in degrees; scale is uniform.\n\nCritically, source coordinates wrap modulo the image dimensions instead of clamping, so a tileable input remains tileable after the transform and the output can be reused in repeating contexts. Output dimensions and channel count match the input. Very small scale values are floored to 0.001 to avoid division-by-zero.".to_string(),
         }
     }
 
     /// Creates the default inputs: source image, X/Y translation (normalized), rotation (degrees), and scale factor.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("translate x".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: Some(0.001), clamp_to_range: false }), None),
-            Input::new("translate y".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: Some(0.001), clamp_to_range: false }), None),
-            Input::new("rotation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(0.1), clamp_to_range: false }), None),
-            Input::new("scale".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.01, 4.0), step_by: Some(0.01), clamp_to_range: false }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to transform; edges wrap to preserve tiling."),
+            Input::new("translate x".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: Some(0.001), clamp_to_range: false }), None)
+                .with_description("Horizontal translation as a fraction of image width."),
+            Input::new("translate y".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: Some(0.001), clamp_to_range: false }), None)
+                .with_description("Vertical translation as a fraction of image height."),
+            Input::new("rotation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(0.1), clamp_to_range: false }), None)
+                .with_description("Rotation angle in degrees around the image center."),
+            Input::new("scale".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.01, 4.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("Uniform scale factor applied around the image center."),
         ]
     }
 
     /// Creates the default outputs: the transformed image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Transformed image with wrapped edges, still seamlessly tileable."),
         ]
     }
 

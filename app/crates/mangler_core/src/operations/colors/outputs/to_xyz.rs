@@ -22,23 +22,29 @@ impl OpColorOutputXyz {
         NodeSettings {
             name: "to xyz".to_string(),
             description: "Converts a color to the XYZ color space.".to_string(),
+            help: "Linearises the sRGB color and applies the D65 sRGB-to-XYZ matrix, yielding CIE 1931 tristimulus values. Y corresponds directly to relative luminance, while X and Z encode the red-green and blue responses.\n\nXYZ is device-independent, so this is the right bridge when sending data to external color-management tools or comparing against absolute white points. Alpha is forwarded straight through from the input.".to_string(),
         }
     }
 
     /// Creates the single input definition accepting a color to decompose.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("input".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Color to decompose into CIE XYZ tristimulus values."),
         ]
     }
 
     /// Creates the output definitions: X, Y, Z, and alpha as decimal values.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("x".to_string(), Value::Decimal(0.5), None),
-            Output::new("y".to_string(), Value::Decimal(0.5), None),
-            Output::new("z".to_string(), Value::Decimal(0.5), None),
-            Output::new("alpha".to_string(), Value::Decimal(1.0), None),
+            Output::new("x".to_string(), Value::Decimal(0.5), None)
+                .with_description("CIE X tristimulus value (red-green response) of the input color."),
+            Output::new("y".to_string(), Value::Decimal(0.5), None)
+                .with_description("CIE Y tristimulus value (luminance response) of the input color."),
+            Output::new("z".to_string(), Value::Decimal(0.5), None)
+                .with_description("CIE Z tristimulus value (blue response) of the input color."),
+            Output::new("alpha".to_string(), Value::Decimal(1.0), None)
+                .with_description("Alpha channel passed through from the input color."),
         ]
     }
 

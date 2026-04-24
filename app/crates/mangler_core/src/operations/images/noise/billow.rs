@@ -58,26 +58,35 @@ impl OpImageNoiseBillow {
         NodeSettings {
             name: "billow noise".to_string(),
             description: "Creates a seamlessly tiling billowy noise image.".to_string(),
+            help: "A variant of fBm where each Perlin octave is folded with abs() before being summed, flipping negative regions positive. This turns the usual zero-crossings into soft ridges and produces a puffy, cloud-like look.\n\nOctaves control how many billow layers are added, lacunarity sets the per-octave frequency multiplier, and persistence sets the amplitude falloff. Lower persistence gives softer puffs; higher lacunarity packs finer puffs inside the large ones.\n\nGood for clouds, cotton, smoke, and soft foamy textures.".to_string(),
         }
     }
 
     /// Creates the default inputs: seed, width, height, octaves, frequency, lacunarity, and persistence.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("octaves".to_string(), Value::Integer(6), Some(InputSettings::Slider { range: (0.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("frequency".to_string(), Value::Integer(5), Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }), None),
-            Input::new("lacunarity".to_string(), Value::Decimal(2.094_395_2), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
-            Input::new("persistence".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed for the billow pattern; change to get a different puff arrangement."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("octaves".to_string(), Value::Integer(6), Some(InputSettings::Slider { range: (0.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Number of billow layers summed; more octaves add finer puff detail."),
+            Input::new("frequency".to_string(), Value::Integer(5), Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }), None)
+                .with_description("Base lattice period; higher values create smaller puffs."),
+            Input::new("lacunarity".to_string(), Value::Decimal(2.094_395_2), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None)
+                .with_description("Frequency multiplier between octaves; higher values add finer puffs faster."),
+            Input::new("persistence".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None)
+                .with_description("Amplitude falloff per octave; lower values produce softer, cloudier puffs."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None)
+                .with_description("Seamlessly tiling grayscale billow noise image with soft puffy ridges."),
         ]
     }
 

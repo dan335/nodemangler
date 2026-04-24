@@ -33,22 +33,26 @@ impl OpImageAdjustmentKuwahara {
         NodeSettings {
             name: "kuwahara".to_string(),
             description: "Edge-preserving smoothing filter that produces a painterly look.".to_string(),
+            help: "Classic Kuwahara (1976). For each pixel, evaluates four overlapping square quadrants (TL, TR, BL, BR) of size (radius+1), computes per-channel mean and luminance variance in each, and outputs the mean of whichever quadrant has the lowest luminance variance.\n\nProduces a flat, posterized, oil-painting aesthetic because flat-region quadrants win and their means replace neighboring gradients. Alpha is averaged with color but excluded from the variance metric. Rows are processed in parallel; edges clamped.".to_string(),
         }
     }
 
     /// Creates the input ports: image and radius controlling the size of each quadrant.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to smooth with classic Kuwahara quadrant averaging."),
             // radius is the half-size of each quadrant; quadrants are (radius+1) x (radius+1) pixels
-            Input::new("radius".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("radius".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Half-size of each quadrant in pixels; larger values yield a chunkier painterly look."),
         ]
     }
 
     /// Creates the output port: the Kuwahara-filtered image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Painterly Kuwahara-smoothed image with preserved edges."),
         ]
     }
 

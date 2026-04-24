@@ -24,21 +24,25 @@ impl OpImageAdjustmentBrighten {
         NodeSettings {
             name: "brighten".to_string(),
             description: "Adjusts image brightness. Positive brightens, negative darkens.".to_string(),
+            help: "Adds a constant offset to every colour channel of each pixel. The amount is a signed decimal in the -1 to 1 range; 0 leaves the image untouched, +1 pushes all channels up by one unit, -1 pulls them all down.\n\nAlpha is skipped so transparency is preserved. Values are not clamped, so extreme amounts can push channels outside the 0-1 interval and clip on later stages that expect normalised data. For a perceptual brightness change use a levels or curves node instead; this one is purely additive.".to_string(),
         }
     }
 
     /// Creates the input ports: an image and an amount (-1.0 to 1.0) controlling brightness offset.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image to brighten or darken."),
             Input::new("amount".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Offset added to every colour channel; positive brightens, negative darkens.")
         ]
     }
 
     /// Creates the output port: the brightness-adjusted image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Image with the brightness offset applied, alpha preserved."),
         ]
     }
 

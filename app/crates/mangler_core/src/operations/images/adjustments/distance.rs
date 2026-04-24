@@ -28,6 +28,7 @@ impl OpImageAdjustmentDistance {
         NodeSettings {
             name: "distance field".to_string(),
             description: "Computes a signed distance field from a binary (black/white) image.".to_string(),
+            help: "Thresholds the input luminance (Rec. 709 for RGB, or single channel for grayscale) into inside/outside regions, then brute-force searches a square window of radius spread to find the nearest pixel of the opposite class.\n\nThe Euclidean distance is normalised by spread so the boundary becomes 0.5, inside pixels range from 0.5 to 1, and outside pixels from 0 to 0.5. Larger spread values produce smoother, softer fields but cost O(spread^2) per pixel; the loop short-circuits when it finds a neighbour at distance less than 1. Output is always a 4-channel grayscale RGBA image. Useful as a basis for glow, outline, or soft-mask effects.".to_string(),
         }
     }
 
@@ -35,16 +36,20 @@ impl OpImageAdjustmentDistance {
     /// (maximum search radius in pixels).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("threshold".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("spread".to_string(), Value::Decimal(32.0), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 256.0)) }), None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image; its luminance is thresholded into inside/outside regions."),
+            Input::new("threshold".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Luminance cutoff separating inside (above) from outside (below)."),
+            Input::new("spread".to_string(), Value::Decimal(32.0), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 256.0)) }), None)
+                .with_description("Maximum search radius in pixels; caps how far the distance field extends."),
         ]
     }
 
     /// Creates the output port: the distance field image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Signed distance field centred on 0.5 at the boundary, >0.5 inside, <0.5 outside."),
         ]
     }
 

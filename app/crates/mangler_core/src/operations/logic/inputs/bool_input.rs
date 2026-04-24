@@ -25,6 +25,7 @@ impl OpLogicInputBool {
         NodeSettings {
             name: "boolean".to_string(),
             description: "A boolean input.".to_string(),
+            help: "Exposes a single Bool value into the graph. The input socket accepts any type convertible to Bool: Integer and Decimal follow zero/non-zero semantics, Text parses \"true\"/\"false\" (case-insensitive).\n\nUse this as a named toggle that downstream logic, comparison, or select nodes can reference without hard-coding a literal.".to_string(),
         }
     }
 
@@ -32,6 +33,7 @@ impl OpLogicInputBool {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("input".to_string(), Value::Bool(false), None, None)
+                .with_description("Boolean value to emit from this input node.")
         ]
     }
 
@@ -39,6 +41,7 @@ impl OpLogicInputBool {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Bool(false), None)
+                .with_description("The boolean value supplied to the input socket.")
         ]
     }
 

@@ -33,6 +33,7 @@ impl OpExtractFrameByTime {
         NodeSettings {
             name: "extract frame by time".to_string(),
             description: "Extracts a frame from a video at the given time in seconds.".to_string(),
+            help: "Decodes the frame at the requested effective time (seconds). Time is mapped through the VideoRef's transform chain (trim, speed, reverse, loop) via source_frame_for_effective_time, so \"0.0\" always means the start of the clip as seen by the graph, not the source file.\n\nTime-aware during renders: the engine writes the render clock directly into the time input, so this node sweeps through the effective duration as the render advances. Use extract frame by index if you want exact frame-accurate stepping instead of seconds.".to_string(),
         }
     }
 
@@ -43,7 +44,8 @@ impl OpExtractFrameByTime {
                 Value::Video(VideoRef::default()),
                 None,
                 None,
-            ),
+            )
+            .with_description("Source video handle to decode a frame from."),
             Input::new(
                 "time".to_string(),
                 Value::Decimal(0.0),
@@ -52,7 +54,8 @@ impl OpExtractFrameByTime {
                     speed: Some(0.01),
                 }),
                 None,
-            ),
+            )
+            .with_description("Effective time in seconds to sample; overwritten by the render clock during renders."),
         ]
     }
 
@@ -64,7 +67,8 @@ impl OpExtractFrameByTime {
                 change_id: get_id(),
             },
             None,
-        )]
+        )
+        .with_description("Decoded video frame at the selected time as an image.")]
     }
 
     #[cfg(feature = "video")]

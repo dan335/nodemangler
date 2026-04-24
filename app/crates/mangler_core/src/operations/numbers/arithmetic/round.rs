@@ -24,6 +24,7 @@ impl OpNumberMathRound {
         NodeSettings {
             name: "round".to_string(),
             description: "Rounds a number.".to_string(),
+            help: "Rounds a decimal to the nearest whole number using f32::round, which applies \"round half away from zero\" semantics (so 0.5 becomes 1.0 and -0.5 becomes -1.0).\n\nInteger inputs pass through unchanged. For directional rounding use floor, ceil, or truncate instead.".to_string(),
         }
     }
 
@@ -31,6 +32,7 @@ impl OpNumberMathRound {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Number to round; halfway values round away from zero.")
         ]
     }
 
@@ -38,6 +40,7 @@ impl OpNumberMathRound {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Input rounded to the nearest integer value.")
         ]
     }
 

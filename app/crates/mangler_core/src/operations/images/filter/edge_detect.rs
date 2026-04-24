@@ -22,20 +22,27 @@ pub struct OpImageAdjustmentEdgeDetect {}
 impl OpImageAdjustmentEdgeDetect {
     /// Returns the node metadata (name and description) for the edge detect operation.
     pub fn settings() -> NodeSettings {
-        NodeSettings { name: "edge detect".to_string(), description: "Detects edges using Sobel operator.".to_string() }
+        NodeSettings {
+            name: "edge detect".to_string(),
+            description: "Detects edges using Sobel operator.".to_string(),
+            help: "Convolves the Rec. 709 luminance with a 3x3 Sobel Gx and Gy pair, then outputs `sqrt(Gx^2 + Gy^2) * intensity` as a grayscale value on every color channel. Alpha is preserved.\n\nFast single-pass detector; unlike Canny there is no smoothing, non-max suppression, or thresholding, so raw gradients are kept and response scales with noise. Edges are handled by clamping. Intensity acts as a brightness multiplier before clamping to [0, 1].".to_string(),
+        }
     }
 
     /// Creates the input ports: an image and an intensity multiplier for edge strength.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("intensity".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 10.0), step_by: Some(0.1), clamp_to_range: true }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image whose luminance is analyzed for edge gradients."),
+            Input::new("intensity".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 10.0), step_by: Some(0.1), clamp_to_range: true }), None)
+                .with_description("Multiplier applied to the Sobel magnitude; higher values make edges brighter."),
         ]
     }
 
     /// Creates the output port: grayscale edge magnitude image.
     pub fn create_outputs() -> Vec<Output> {
-        vec![Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)]
+        vec![Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            .with_description("Grayscale image of the Sobel gradient magnitude at each pixel.")]
     }
 
     /// Executes edge detection using Sobel Gx and Gy kernels on Rec. 709 luminance.

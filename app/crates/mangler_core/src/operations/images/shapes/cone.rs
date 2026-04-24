@@ -22,21 +22,27 @@ impl OpImageShapeCone {
         NodeSettings {
             name: "cone".to_string(),
             description: "Cone height shape. `truncate` flattens the peak to produce a frustum.".to_string(),
+            help: "Produces a 1-channel greyscale height field where value equals linear falloff from the center of a circular base, reaching 1.0 at the apex and 0.0 outside the radius. size is the base radius in normalised (-1..1) coordinates and caps at 0.001 to avoid division-by-zero.\n\nRaising truncate clips the top of the cone and renormalises so the remaining plateau still peaks at 1.0, giving a frustum. Ideal as a height input for normal_from_height and ao_from_height downstream; values are linear, not sRGB.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("size".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None),
-            Input::new("truncate".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Width of the generated height map in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Height of the generated height map in pixels."),
+            Input::new("size".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Radius of the cone's circular base in normalised units."),
+            Input::new("truncate".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Cuts off the top of the cone to create a flat-topped frustum."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Grayscale cone height shape, 1.0 at the peak and 0.0 outside the base."),
         ]
     }
 

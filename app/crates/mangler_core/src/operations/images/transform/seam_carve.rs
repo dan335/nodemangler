@@ -34,6 +34,7 @@ impl OpImageTransformSeamCarve {
         NodeSettings {
             name: "seam carve".to_string(),
             description: "Content-aware resize via seam carving. Removes or inserts low-energy pixel seams to change dimensions while preserving important content.".to_string(),
+            help: "Implements the Avidan-Shamir seam carving algorithm: energy is computed as the per-channel forward-difference gradient magnitude, a dynamic-programming pass finds the minimum-energy top-to-bottom seam, and that seam is removed (for shrinking) or duplicated with an averaged neighbour (for enlarging). Horizontal seams are handled by transposing the image, running vertical-seam passes, and transposing back. Width is adjusted before height.\n\nThis preserves high-detail regions (faces, edges) far better than uniform scaling, but is O(n) per removed/inserted seam so large dimension changes can be slow. Enlarging by more than 2x is done in successive doubling passes. Channel count is preserved.".to_string(),
         }
     }
 
@@ -48,7 +49,8 @@ impl OpImageTransformSeamCarve {
                 },
                 None,
                 None,
-            ),
+            )
+            .with_description("Source image to content-aware resize."),
             Input::new(
                 "width".to_string(),
                 Value::Integer(512),
@@ -57,7 +59,8 @@ impl OpImageTransformSeamCarve {
                     speed: None,
                 }),
                 None,
-            ),
+            )
+            .with_description("Target output width; seams are removed or inserted to reach this."),
             Input::new(
                 "height".to_string(),
                 Value::Integer(512),
@@ -66,7 +69,8 @@ impl OpImageTransformSeamCarve {
                     speed: None,
                 }),
                 None,
-            ),
+            )
+            .with_description("Target output height; seams are removed or inserted to reach this."),
         ]
     }
 
@@ -80,9 +84,12 @@ impl OpImageTransformSeamCarve {
                     change_id: get_id(),
                 },
                 None,
-            ),
-            Output::new("width".to_string(), Value::Integer(1), None),
-            Output::new("height".to_string(), Value::Integer(1), None),
+            )
+            .with_description("Content-aware resized image that preserves high-energy regions."),
+            Output::new("width".to_string(), Value::Integer(1), None)
+                .with_description("Actual output width in pixels."),
+            Output::new("height".to_string(), Value::Integer(1), None)
+                .with_description("Actual output height in pixels."),
         ]
     }
 

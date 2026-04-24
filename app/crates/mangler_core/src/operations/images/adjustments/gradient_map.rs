@@ -26,6 +26,7 @@ impl OpImageAdjustmentGradientMap {
         NodeSettings {
             name: "gradient map".to_string(),
             description: "Maps image luminance to a color gradient.".to_string(),
+            help: "Computes each pixel's Rec. 709 luminance, then uses that value as a 0-1 parameter along a colour ramp. In two-colour mode, output is a straight lerp from A at 0 to B at 1; in three-colour mode, a middle colour C is inserted at the configurable mid position, creating an A-to-C lerp below and a C-to-B lerp above.\n\nColours are pulled from sRGB floats including alpha on the gradient, but the source image's own alpha is preserved. Output is always a 4-channel RGBA image. Useful for recolouring height or mask fields and for mood-shifting photos.".to_string(),
         }
     }
 
@@ -33,19 +34,26 @@ impl OpImageAdjustmentGradientMap {
     /// a toggle for using the mid color, and a mid position slider.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("color a".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("color b".to_string(), Value::Color(Color::from_srgb_float(1.0, 1.0, 1.0, 1.0)), None, None),
-            Input::new("color c".to_string(), Value::Color(Color::from_srgb_float(0.5, 0.5, 0.5, 1.0)), None, None),
-            Input::new("use mid color".to_string(), Value::Bool(false), None, None),
-            Input::new("mid position".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image whose luminance picks a position along the gradient."),
+            Input::new("color a".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Colour at the dark end of the gradient (luminance 0)."),
+            Input::new("color b".to_string(), Value::Color(Color::from_srgb_float(1.0, 1.0, 1.0, 1.0)), None, None)
+                .with_description("Colour at the bright end of the gradient (luminance 1)."),
+            Input::new("color c".to_string(), Value::Color(Color::from_srgb_float(0.5, 0.5, 0.5, 1.0)), None, None)
+                .with_description("Optional middle colour inserted at the mid position when enabled."),
+            Input::new("use mid color".to_string(), Value::Bool(false), None, None)
+                .with_description("When on, interpolates A→C→B instead of a plain two-colour ramp."),
+            Input::new("mid position".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Luminance position where colour C sits along the gradient."),
         ]
     }
 
     /// Creates the output port: the gradient-mapped image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("RGBA image recoloured by mapping luminance through the gradient."),
         ]
     }
 

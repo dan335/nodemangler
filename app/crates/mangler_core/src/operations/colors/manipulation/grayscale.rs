@@ -23,21 +23,25 @@ impl OpColorManipulationGrayscale {
         NodeSettings {
             name: "grayscale".to_string(),
             description: "Converts a color to grayscale using the BT.709 relative luminance formula.".to_string(),
+            help: "Linearises the input, computes BT.709 luminance (0.2126 R + 0.7152 G + 0.0722 B), then bakes that luminance back into all three sRGB channels with an approximate gamma 2.2 so the gray reads as the same brightness as the original.\n\nThe linear luminance scalar is also exposed as a second output, which is useful for driving downstream math without re-measuring. Alpha is preserved untouched. This is perceptually more accurate than a flat (r+g+b)/3 average.".to_string(),
         }
     }
 
     /// Creates the single input definition: the color to convert.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("color".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("color".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Color to convert to grayscale via BT.709 luminance."),
         ]
     }
 
     /// Creates the output definitions: the grayscale color and the linear luminance scalar.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Color(Color::default()), None),
-            Output::new("luminance".to_string(), Value::Decimal(0.0), None),
+            Output::new("output".to_string(), Value::Color(Color::default()), None)
+                .with_description("Grayscale color with equal R=G=B derived from the BT.709 luminance."),
+            Output::new("luminance".to_string(), Value::Decimal(0.0), None)
+                .with_description("Raw linear-space BT.709 luminance (0–1)."),
         ]
     }
 

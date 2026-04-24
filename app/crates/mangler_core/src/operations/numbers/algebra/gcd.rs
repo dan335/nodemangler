@@ -25,14 +25,17 @@ impl OpNumberMathGcd {
         NodeSettings {
             name: "gcd".to_string(),
             description: "Computes the greatest common divisor.".to_string(),
+            help: "Computes the greatest common divisor of two integers using the Euclidean algorithm applied to their absolute values, so signs on the inputs are ignored.\n\nIf both inputs are zero the result is 0 (by convention). If only one input is zero, the other's absolute value is returned. Pairs naturally with the lcm node.".to_string(),
         }
     }
 
     /// Creates the default input list: two integer drag-value inputs (a=12, b=8).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Integer(12), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("b".to_string(), Value::Integer(8), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("a".to_string(), Value::Integer(12), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("First integer; sign is ignored since GCD uses absolute values."),
+            Input::new("b".to_string(), Value::Integer(8), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Second integer; sign is ignored since GCD uses absolute values."),
         ]
     }
 
@@ -40,6 +43,7 @@ impl OpNumberMathGcd {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Integer(0), None)
+                .with_description("Greatest common divisor of |a| and |b|; 0 when both inputs are 0.")
         ]
     }
 

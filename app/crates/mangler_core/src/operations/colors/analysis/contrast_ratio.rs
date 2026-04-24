@@ -23,23 +23,29 @@ impl OpColorAnalysisContrastRatio {
         NodeSettings {
             name: "contrast ratio".to_string(),
             description: "Computes the WCAG contrast ratio between two colors and checks AA (4.5:1) and AAA (7:1) compliance.".to_string(),
+            help: "Converts each color to linear RGB, computes BT.709 relative luminance (0.2126 R + 0.7152 G + 0.0722 B), and then evaluates (L_lighter + 0.05) / (L_darker + 0.05). The order of a and b does not matter; the formula always uses the brighter value as numerator.\n\nResults range from 1 (identical luminance) to 21 (pure black on pure white). passes_AA is true when the ratio meets 4.5:1 (the WCAG 2.1 minimum for normal-sized body text), and passes_AAA requires 7:1 for enhanced contrast. Alpha is ignored, so pre-blend colors against their real background before checking.".to_string(),
         }
     }
 
     /// Creates the input definitions: two colors (a, b) to compare.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("b".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("a".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("First color in the contrast pair (e.g. foreground)."),
+            Input::new("b".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Second color in the contrast pair (e.g. background)."),
         ]
     }
 
     /// Creates the output definitions: ratio, AA pass, and AAA pass.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("ratio".to_string(), Value::Decimal(0.0), None),
-            Output::new("passes_AA".to_string(), Value::Bool(false), None),
-            Output::new("passes_AAA".to_string(), Value::Bool(false), None),
+            Output::new("ratio".to_string(), Value::Decimal(0.0), None)
+                .with_description("WCAG 2.1 contrast ratio between the two colors (1 to 21)."),
+            Output::new("passes_AA".to_string(), Value::Bool(false), None)
+                .with_description("True when the ratio meets the WCAG AA threshold of 4.5:1."),
+            Output::new("passes_AAA".to_string(), Value::Bool(false), None)
+                .with_description("True when the ratio meets the WCAG AAA threshold of 7:1."),
         ]
     }
 

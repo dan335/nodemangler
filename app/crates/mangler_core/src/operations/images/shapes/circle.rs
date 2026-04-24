@@ -31,28 +31,39 @@ impl OpImageShapesCircle {
         NodeSettings {
             name: "circle".to_string(),
             description: "Creates a circle.".to_string(),
+            help: "Despite the name, this node currently emits a vertical two-color gradient strip rather than a disc; use the ellipse node for a true circular shape. It fills a 4-channel RGBA FloatImage by blending the color input (top) toward the background (bottom) in the chosen color space using Lerp.\n\nThe padding input is reserved for future circle-layout work and is not used by the current implementation. Colors are quantised to u8 and then re-floated, so expect ~1/255 precision compared with the gradient node.".to_string(),
         }
     }
 
     /// Creates the default inputs: color, background, width, height, padding, color space, and blend mode.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("color".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("background".to_string(), Value::Color(Color::from_srgb_u8(0, 0, 0, 0)), None, None),
-            Input::new("width".to_string(), Value::Decimal(512.0), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Decimal(512.0), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("padding".to_string(), Value::Decimal(5.0), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Lab), None, None),
-            Input::new("blend mode".to_string(), Value::BlendMode(crate::color::blend::BlendMode::Lerp), None, None),
+            Input::new("color".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Starting color at the top of the vertical gradient."),
+            Input::new("background".to_string(), Value::Color(Color::from_srgb_u8(0, 0, 0, 0)), None, None)
+                .with_description("Ending color at the bottom of the vertical gradient."),
+            Input::new("width".to_string(), Value::Decimal(512.0), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Width of the generated image in pixels."),
+            Input::new("height".to_string(), Value::Decimal(512.0), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Height of the generated image in pixels."),
+            Input::new("padding".to_string(), Value::Decimal(5.0), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Padding value reserved for circle layout (currently unused)."),
+            Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Lab), None, None)
+                .with_description("Color space used to interpolate between the two colors."),
+            Input::new("blend mode".to_string(), Value::BlendMode(crate::color::blend::BlendMode::Lerp), None, None)
+                .with_description("Blend mode used when mixing the two gradient colors."),
         ]
     }
 
     /// Creates the default outputs: the gradient image, width, and height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
-            Output::new("width".to_string(), Value::Integer(1), None),
-            Output::new("height".to_string(), Value::Integer(1), None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None)
+                .with_description("RGBA gradient image blending the two colors from top to bottom."),
+            Output::new("width".to_string(), Value::Integer(1), None)
+                .with_description("Final width of the generated image in pixels."),
+            Output::new("height".to_string(), Value::Integer(1), None)
+                .with_description("Final height of the generated image in pixels."),
         ]
     }
 

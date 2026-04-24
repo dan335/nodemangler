@@ -23,14 +23,17 @@ impl OpNumberTrigAtan2 {
         NodeSettings {
             name: "atan2".to_string(),
             description: "Computes atan2(y, x), the two-argument arctangent.".to_string(),
+            help: "Returns the signed angle in radians between the positive x-axis and the point (x, y), in the range (-pi, pi]. Unlike plain atan, it uses the signs of both inputs to place the result in the correct quadrant.\n\nat y = 0, x = 0 the angle is defined as 0. Handy for converting cartesian coordinates into polar angles, e.g. when generating radial patterns.".to_string(),
         }
     }
 
     /// Creates the default input list: two decimal drag-value inputs (y and x).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("y".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("x".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("y".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Y coordinate (vertical component) of the point."),
+            Input::new("x".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("X coordinate (horizontal component) of the point."),
         ]
     }
 
@@ -38,6 +41,7 @@ impl OpNumberTrigAtan2 {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Angle in radians from the positive x-axis to (x, y), in (-pi, pi].")
         ]
     }
 

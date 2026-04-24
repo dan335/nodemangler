@@ -23,17 +23,23 @@ impl OpColorGenerationRandomColor {
         NodeSettings {
             name: "random color".to_string(),
             description: "Generates a random color with configurable saturation and lightness ranges.".to_string(),
+            help: "Samples uniformly in HSL: hue is chosen over the full [0, 360) circle while saturation and lightness are each drawn uniformly from their min/max ranges. The result is converted back to sRGB and emitted as a fully opaque color.\n\nThe generate input is a Trigger, so firing it produces a new color on each activation. If max is less than min the effective range collapses to min (the difference is clamped at 0). Tighten saturation and lightness to avoid muddy near-gray or near-white picks.".to_string(),
         }
     }
 
     /// Creates the input definitions: a trigger, min/max saturation, and min/max lightness sliders.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("generate".to_string(), Value::Trigger, None, None),
-            Input::new("min saturation".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("max saturation".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("min lightness".to_string(), Value::Decimal(0.3), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("max lightness".to_string(), Value::Decimal(0.7), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("generate".to_string(), Value::Trigger, None, None)
+                .with_description("Fires a new random color each time this trigger is activated."),
+            Input::new("min saturation".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Lower bound (0–1) of the HSL saturation sampled for the new color."),
+            Input::new("max saturation".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Upper bound (0–1) of the HSL saturation sampled for the new color."),
+            Input::new("min lightness".to_string(), Value::Decimal(0.3), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Lower bound (0–1) of the HSL lightness sampled for the new color."),
+            Input::new("max lightness".to_string(), Value::Decimal(0.7), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Upper bound (0–1) of the HSL lightness sampled for the new color."),
         ]
     }
 
@@ -41,6 +47,7 @@ impl OpColorGenerationRandomColor {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("color".to_string(), Value::Color(Color::default()), None)
+                .with_description("Random color with a uniformly sampled hue, saturation, and lightness.")
         ]
     }
 

@@ -20,13 +20,15 @@ impl OpNumberMathLog10 {
         NodeSettings {
             name: "log10".to_string(),
             description: "Computes base-10 logarithm.".to_string(),
+            help: "Returns the common (base-10) logarithm of the input. Input must be strictly positive; zero or negative values produce a node error.\n\nUseful for converting linear values into decades (e.g., decibels, exposure stops, scientific notation exponents). For natural-log or base-2, use the ln or log2 nodes.".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Value to take the base-10 logarithm of; must be strictly positive."),
         ]
     }
 
@@ -34,6 +36,7 @@ impl OpNumberMathLog10 {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Base-10 logarithm of the input.")
         ]
     }
 

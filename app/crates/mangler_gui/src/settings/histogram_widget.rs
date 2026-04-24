@@ -9,6 +9,7 @@ use eframe::egui;
 use epaint::{vec2, Color32, Rect, Stroke, StrokeKind};
 use mangler_core::float_image::FloatImage;
 use mangler_core::value::Value;
+use rayon::prelude::*;
 
 use crate::graph::graph_node::{GraphNode, HistogramCache};
 use crate::themes::theme::Theme;
@@ -20,41 +21,61 @@ use crate::themes::theme::Theme;
 /// For 1-2 channel images, only the luminance histogram is meaningful (R/G/B bins stay zeroed).
 /// All four histograms share a single max_count for consistent vertical scaling.
 pub fn compute_histogram(data: &FloatImage) -> HistogramCache {
-    let mut bins = [0u32; 256];
-    let mut bins_r = [0u32; 256];
-    let mut bins_g = [0u32; 256];
-    let mut bins_b = [0u32; 256];
     let ch = data.channels() as usize;
     let has_alpha = ch == 2 || ch == 4;
     let color_ch = if has_alpha { ch - 1 } else { ch };
 
-    for pixel in data.pixels() {
-        // Skip fully transparent pixels. Operations like rotate fill the
-        // uncovered corners with alpha=0, and counting those RGB=0 samples
-        // would spike bin 0 of every channel and drown out the real content.
-        if has_alpha && pixel[ch - 1] <= 0.0 {
-            continue;
-        }
+    // Per-worker accumulator: (luminance, red, green, blue) bins.
+    // Using `Box` keeps the 4 KiB accumulator off the stack so rayon's fold
+    // identity closure stays cheap to invoke per split.
+    type Bins = Box<([u32; 256], [u32; 256], [u32; 256], [u32; 256])>;
+    let identity = || -> Bins { Box::new(([0u32; 256], [0u32; 256], [0u32; 256], [0u32; 256])) };
 
-        if color_ch >= 3 {
-            // Per-channel bins
-            let r_bin = (pixel[0] * 255.0).clamp(0.0, 255.0) as usize;
-            let g_bin = (pixel[1] * 255.0).clamp(0.0, 255.0) as usize;
-            let b_bin = (pixel[2] * 255.0).clamp(0.0, 255.0) as usize;
-            bins_r[r_bin] += 1;
-            bins_g[g_bin] += 1;
-            bins_b[b_bin] += 1;
+    let folded: Bins = data
+        .as_slice()
+        .par_chunks_exact(ch)
+        .fold(identity, |mut acc, pixel| {
+            // Skip fully transparent pixels. Operations like rotate fill the
+            // uncovered corners with alpha=0, and counting those RGB=0 samples
+            // would spike bin 0 of every channel and drown out the real content.
+            if has_alpha && pixel[ch - 1] <= 0.0 {
+                return acc;
+            }
 
-            // Luminance
-            let lum = 0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2];
-            let lum_bin = (lum * 255.0).clamp(0.0, 255.0) as usize;
-            bins[lum_bin] += 1;
-        } else {
-            // Grayscale: first channel is luminance
-            let bin = (pixel[0] * 255.0).clamp(0.0, 255.0) as usize;
-            bins[bin] += 1;
-        }
-    }
+            if color_ch >= 3 {
+                // Per-channel bins. Scale to 0..=255 and clamp via integer
+                // saturation — cheaper than the branchy `f32::clamp`.
+                let r_bin = (pixel[0] * 255.0) as i32;
+                let g_bin = (pixel[1] * 255.0) as i32;
+                let b_bin = (pixel[2] * 255.0) as i32;
+                acc.1[r_bin.clamp(0, 255) as usize] += 1;
+                acc.2[g_bin.clamp(0, 255) as usize] += 1;
+                acc.3[b_bin.clamp(0, 255) as usize] += 1;
+
+                // Luminance (Rec. 709)
+                let lum = 0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2];
+                let lum_bin = (lum * 255.0) as i32;
+                acc.0[lum_bin.clamp(0, 255) as usize] += 1;
+            } else {
+                // Grayscale: first channel is luminance
+                let bin = (pixel[0] * 255.0) as i32;
+                acc.0[bin.clamp(0, 255) as usize] += 1;
+            }
+            acc
+        })
+        .reduce(identity, |mut a, b| {
+            // Merge per-worker bins. 256 adds × 4 channels is trivial
+            // relative to the per-pixel work.
+            for i in 0..256 {
+                a.0[i] += b.0[i];
+                a.1[i] += b.1[i];
+                a.2[i] += b.2[i];
+                a.3[i] += b.3[i];
+            }
+            a
+        });
+
+    let (bins, bins_r, bins_g, bins_b) = *folded;
 
     // Shared max across all histograms for consistent vertical scale
     let max_count = bins

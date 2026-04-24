@@ -25,13 +25,15 @@ impl OpNumberMathFrac {
         NodeSettings {
             name: "fractional part".to_string(),
             description: "Returns the fractional part of a decimal.".to_string(),
+            help: "Computes x - trunc(x) using f32::fract, returning the portion after the decimal point. For negative inputs the result is also negative, so fract(-1.5) is -0.5 rather than 0.5.\n\nPairs with truncate: trunc(x) + frac(x) equals x exactly. Useful for wrapping UV coordinates or deriving sub-pixel offsets.".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal input defaulting to 3.14.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(std::f32::consts::PI), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(std::f32::consts::PI), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Number whose fractional part is extracted."),
         ]
     }
 
@@ -39,6 +41,7 @@ impl OpNumberMathFrac {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Fractional part of the input; preserves the input's sign.")
         ]
     }
 

@@ -25,19 +25,23 @@ impl OpImageAdjustmentLuminanceHighpass {
         NodeSettings {
             name: "luminance highpass".to_string(),
             description: "Highpass applied only to the luminance channel. Chroma is preserved to avoid colored sharpening halos.".to_string(),
+            help: "Gaussian-blurs the image, computes the Rec. 709 luminance delta `lum(src) - lum(blur)`, and adds that scalar delta uniformly to each RGB channel. This sharpens brightness variation without shifting hue, avoiding the colored ringing a naive per-channel highpass produces near saturated edges.\n\nSingle-channel or gray+alpha inputs fall back to the plain highpass formulation. Unlike `highpass`, the output is the sharpened image itself (ready to use), not a mid-grey-centered detail layer.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("radius".to_string(), Value::Decimal(4.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 256.0)) }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image whose luminance is sharpened without shifting chroma."),
+            Input::new("radius".to_string(), Value::Decimal(4.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 256.0)) }), None)
+                .with_description("Blur radius in pixels for the low-pass component subtracted from luminance."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Image with the luminance high-pass delta added back into each color channel."),
         ]
     }
 

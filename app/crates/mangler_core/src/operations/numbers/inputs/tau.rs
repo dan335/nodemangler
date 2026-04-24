@@ -20,6 +20,7 @@ impl OpNumberInputTau {
         NodeSettings {
             name: "tau".to_string(),
             description: "Outputs the constant tau (2*pi = 6.28318...).".to_string(),
+            help: "Emits the mathematical constant tau, equal to 2 * pi or one full turn in radians, at f32 precision (std::f32::consts::TAU).\n\nOften more natural than pi for angular work: a full rotation is one tau, a quarter turn is tau/4, and so on. Handy for seamless loops and circular parameterizations.".to_string(),
         }
     }
 
@@ -32,6 +33,7 @@ impl OpNumberInputTau {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(std::f32::consts::TAU), None)
+                .with_description("The constant tau, equal to 2 * pi (approximately 6.28318).")
         ]
     }
 

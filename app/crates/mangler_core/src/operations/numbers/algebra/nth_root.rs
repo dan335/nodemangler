@@ -24,14 +24,17 @@ impl OpNumberMathNthRt {
         NodeSettings {
             name: "nth root".to_string(),
             description: "Returns the nth root of a number.".to_string(),
+            help: "Computes a^(1/n) using f32::powf, producing the nth root of a. The root degree n may be any non-zero decimal (including fractional or negative values).\n\nNegative values of a are clamped to 0 before the root is taken, because real-valued fractional powers of negatives are undefined. A root degree of zero raises an error.".to_string(),
         }
     }
 
     /// Creates the default input list: value `a` (1.0) and root degree `n` (1.0).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
+            Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Radicand; negative values are clamped to 0 before the root is taken."),
             Input::new("n".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Root degree; must be non-zero, otherwise the node errors.")
         ]
     }
 
@@ -39,6 +42,7 @@ impl OpNumberMathNthRt {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Nth root of a, computed as a^(1/n).")
         ]
     }
 

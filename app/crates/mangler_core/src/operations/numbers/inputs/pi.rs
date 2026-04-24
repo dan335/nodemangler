@@ -20,6 +20,7 @@ impl OpNumberInputPi {
         NodeSettings {
             name: "pi".to_string(),
             description: "Outputs the constant pi (3.14159...).".to_string(),
+            help: "Emits the mathematical constant pi, the ratio of a circle's circumference to its diameter, at f32 precision (std::f32::consts::PI). Use it for angle conversions, trigonometric ranges, and radial patterns.".to_string(),
         }
     }
 
@@ -32,6 +33,7 @@ impl OpNumberInputPi {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(std::f32::consts::PI), None)
+                .with_description("The constant pi (approximately 3.14159).")
         ]
     }
 

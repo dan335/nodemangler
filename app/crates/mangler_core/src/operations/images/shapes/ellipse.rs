@@ -34,24 +34,31 @@ impl OpImageShapeEllipse {
         NodeSettings {
             name: "ellipse".to_string(),
             description: "Generates an ellipse shape as a grayscale SDF.".to_string(),
+            help: "Rasterises an ellipse into a 1-channel FloatImage by evaluating a signed distance function and applying smoothstep anti-aliasing at a one-and-a-half-pixel edge width. Output is 1.0 inside and 0.0 outside.\n\nradius_x and radius_y are independent normalised axes (1.0 covers half the canvas), so setting them equal produces a circle. Rotation is applied to the normalised sample coordinates, meaning the rotated ellipse always stays centred on the image. Handy as an alpha matte or mask for blend nodes.".to_string(),
         }
     }
 
     /// Creates the default inputs: width, height, radius_x, radius_y, and rotation.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("radius_x".to_string(), Value::Decimal(0.4), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None),
-            Input::new("radius_y".to_string(), Value::Decimal(0.4), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None),
-            Input::new("rotation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: false }), None),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Width of the generated image in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Height of the generated image in pixels."),
+            Input::new("radius_x".to_string(), Value::Decimal(0.4), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Horizontal radius of the ellipse in normalised units."),
+            Input::new("radius_y".to_string(), Value::Decimal(0.4), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Vertical radius of the ellipse in normalised units."),
+            Input::new("rotation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Rotation of the ellipse around its center in degrees."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Grayscale mask with the ellipse filled white on a black background."),
         ]
     }
 

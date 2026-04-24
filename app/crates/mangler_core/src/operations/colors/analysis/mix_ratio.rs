@@ -23,22 +23,27 @@ impl OpColorAnalysisMixRatio {
         NodeSettings {
             name: "mix ratio".to_string(),
             description: "Reverse-lerp: finds the blend ratio t (0–1) such that lerp(source, target, t) ≈ mixed. Averages the per-channel t values for non-degenerate channels.".to_string(),
+            help: "For each of the R, G, and B channels, solves t = (mixed - source) / (target - source) whenever |target - source| exceeds 1e-6. The three per-channel estimates are averaged and clamped to 0-1.\n\nDegenerate channels (where source and target are equal) are skipped so they cannot produce NaN or bias the average. If every channel is degenerate the operation falls back to 0.0. The math assumes a straight sRGB linear interpolation was used to produce mixed, so non-linear blends will give only a rough estimate.".to_string(),
         }
     }
 
     /// Creates the three input definitions: source, target, and mixed colors.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("source".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("target".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("mixed".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("source".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Starting color of the blend (t = 0)."),
+            Input::new("target".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Ending color of the blend (t = 1)."),
+            Input::new("mixed".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Observed blended color whose mix ratio is inferred."),
         ]
     }
 
     /// Creates the single output definition: ratio (0.0–1.0).
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("ratio".to_string(), Value::Decimal(0.0), None),
+            Output::new("ratio".to_string(), Value::Decimal(0.0), None)
+                .with_description("Estimated blend ratio t (0–1) such that lerp(source, target, t) matches mixed."),
         ]
     }
 

@@ -25,20 +25,23 @@ impl OpTextInput {
         NodeSettings {
             name: "text".to_string(),
             description: "A text body input.".to_string(),
+            help: "Exposes a multi-line Text value into the graph. The input uses the MultiLineText widget so newlines are preserved verbatim in the output; paragraph breaks in the editor become literal \\n characters downstream.\n\nAny value convertible to Text (numbers, booleans, paths) is accepted and stringified before being passed through.".to_string(),
         }
     }
 
     /// Creates the default inputs: a single multi-line text input defaulting to an empty string.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Text(String::new()), Some(InputSettings::MultiLineText), None),
+            Input::new("input".to_string(), Value::Text(String::new()), Some(InputSettings::MultiLineText), None)
+                .with_description("Multi-line text body to emit from this input node."),
         ]
     }
 
     /// Creates the default outputs: a single text output defaulting to an empty string.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Text(String::new()), None),
+            Output::new("output".to_string(), Value::Text(String::new()), None)
+                .with_description("The text value supplied to the input socket."),
         ]
     }
 

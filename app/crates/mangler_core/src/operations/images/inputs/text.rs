@@ -41,6 +41,7 @@ impl OpImageInputText {
         NodeSettings {
             name: "from text".to_string(),
             description: "Renders a text string to a grayscale image.".to_string(),
+            help: "Rasterises the input string using the embedded Manrope Regular font into a 1-channel FloatImage, with white glyphs on a black background suitable for use as a mask. Explicit line breaks come from \\n in the text; setting wrap_width above 0 adds automatic word-wrap at that pixel column.\n\nx_position and y_position are normalised 0-1 fractions of the canvas that define the text anchor. h_align and v_align place the block relative to that anchor, and a non-zero rotation rotates the full block clockwise around the anchor with bilinear resampling. letter_spacing and line_spacing fine-tune tracking and leading.".to_string(),
         }
     }
 
@@ -57,63 +58,75 @@ impl OpImageInputText {
     /// - `rotation` — clockwise rotation in degrees around the anchor point
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("text".to_string(), Value::Text("Hello".to_string()), Some(InputSettings::MultiLineText), None),
+            Input::new("text".to_string(), Value::Text("Hello".to_string()), Some(InputSettings::MultiLineText), None)
+                .with_description("Text string to render; use newlines for explicit line breaks."),
             Input::new(
                 "font_size".to_string(),
                 Value::Decimal(64.0),
                 Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }),
                 None,
-            ),
+            )
+                .with_description("Glyph height in pixels."),
             Input::new(
                 "image_width".to_string(),
                 Value::Integer(512),
                 Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }),
                 None,
-            ),
+            )
+                .with_description("Width of the output canvas in pixels."),
             Input::new(
                 "image_height".to_string(),
                 Value::Integer(512),
                 Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }),
                 None,
-            ),
+            )
+                .with_description("Height of the output canvas in pixels."),
             Input::new(
                 "x_position".to_string(),
                 Value::Decimal(0.5),
                 Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }),
                 None,
-            ),
+            )
+                .with_description("Horizontal anchor position as a 0-1 fraction of canvas width."),
             Input::new(
                 "y_position".to_string(),
                 Value::Decimal(0.5),
                 Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }),
                 None,
-            ),
+            )
+                .with_description("Vertical anchor position as a 0-1 fraction of canvas height."),
             Input::new(
                 "letter_spacing".to_string(),
                 Value::Decimal(0.0),
                 Some(InputSettings::DragValue { clamp: Some((-100.0, 500.0)), speed: None }),
                 None,
-            ),
+            )
+                .with_description("Extra pixels added between glyphs; may be negative for tighter tracking."),
             Input::new(
                 "line_spacing".to_string(),
                 Value::Decimal(1.0),
                 Some(InputSettings::DragValue { clamp: Some((0.0, 10.0)), speed: None }),
                 None,
-            ),
+            )
+                .with_description("Multiplier on line height between stacked lines (1.0 is tight)."),
             Input::new(
                 "wrap_width".to_string(),
                 Value::Integer(0),
                 Some(InputSettings::DragValue { clamp: Some((0.0, 10000.0)), speed: None }),
                 None,
-            ),
-            Input::new("h_align".to_string(), Value::TextHAlign(TextHAlign::Center), None, None),
-            Input::new("v_align".to_string(), Value::TextVAlign(TextVAlign::Middle), None, None),
+            )
+                .with_description("Word-wrap column in pixels; 0 disables wrapping."),
+            Input::new("h_align".to_string(), Value::TextHAlign(TextHAlign::Center), None, None)
+                .with_description("Horizontal alignment of each line relative to the anchor x."),
+            Input::new("v_align".to_string(), Value::TextVAlign(TextVAlign::Middle), None, None)
+                .with_description("Vertical alignment of the text block relative to the anchor y."),
             Input::new(
                 "rotation".to_string(),
                 Value::Decimal(0.0),
                 Some(InputSettings::Slider { range: (-180.0, 180.0), step_by: None, clamp_to_range: true }),
                 None,
-            ),
+            )
+                .with_description("Clockwise rotation of the text block in degrees around the anchor."),
         ]
     }
 
@@ -124,7 +137,8 @@ impl OpImageInputText {
                 "output".to_string(),
                 Value::Image { data: default_image(), change_id: get_id() },
                 None,
-            ),
+            )
+                .with_description("Grayscale mask with rasterised white text on a black background."),
         ]
     }
 

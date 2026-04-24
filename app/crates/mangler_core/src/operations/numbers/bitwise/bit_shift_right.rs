@@ -20,14 +20,17 @@ impl OpNumberBitwiseShiftRight {
         NodeSettings {
             name: "shift right".to_string(),
             description: "Shifts an integer right by a specified number of bits.".to_string(),
+            help: "Returns input >> amount, moving bits toward the low end. Because the value is signed this is an arithmetic shift: the sign bit is replicated on the left, so shifting a negative number right keeps it negative.\n\namount must be in the range 0..=31; values outside produce a node error. For positive inputs this is equivalent to floor division by 2^amount.".to_string(),
         }
     }
 
     /// Creates the default input list: an integer input and a shift amount.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("amount".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Integer whose bits will be shifted right."),
+            Input::new("amount".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Number of bit positions to shift right; must be between 0 and 31."),
         ]
     }
 
@@ -35,6 +38,7 @@ impl OpNumberBitwiseShiftRight {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Integer(0), None)
+                .with_description("Input shifted right by amount bits (input >> amount).")
         ]
     }
 

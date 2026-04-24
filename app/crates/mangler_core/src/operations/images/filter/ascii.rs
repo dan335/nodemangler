@@ -65,24 +65,29 @@ impl OpImageAdjustmentAscii {
         NodeSettings {
             name: "ascii".to_string(),
             description: "Tiles the image with 10 ASCII-style glyphs chosen by cell brightness.".to_string(),
+            help: "Each square cell's mean luminance picks one of ten embedded 8x8 bitmaps from the density ramp ` .:-=+*#%@`, scaled with nearest-neighbor into the cell. No font rendering is involved, so the filter stays self-contained.\n\nOutput is strictly binary per color channel (ink vs paper) and alpha is preserved. The invert toggle swaps ink and paper so glyphs render bright on a dark background. Smaller cell sizes lose glyph detail since the source bitmaps are 8x8.".to_string(),
         }
     }
 
     /// Creates input ports: image, cell size in pixels, and invert flag.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image whose brightness drives the ASCII glyph selection."),
             // Pixel size of each ASCII cell; glyphs are 8×8 so smaller cells lose detail
-            Input::new("cell size".to_string(), Value::Integer(8), Some(InputSettings::Slider { range: (2.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("cell size".to_string(), Value::Integer(8), Some(InputSettings::Slider { range: (2.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Pixel size of each square ASCII cell; larger cells yield chunkier glyphs."),
             // Invert: false = dark glyph on bright paper (default); true = bright glyph on dark ink
-            Input::new("invert".to_string(), Value::Bool(false), None, None),
+            Input::new("invert".to_string(), Value::Bool(false), None, None)
+                .with_description("Invert ink and paper so glyphs render bright on a dark background."),
         ]
     }
 
     /// Creates the output port: the ASCII-ified image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("ASCII-stylized image with glyphs stamped into brightness-ranked cells."),
         ]
     }
 

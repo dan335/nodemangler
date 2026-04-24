@@ -24,6 +24,7 @@ impl OpNumberMathSign {
         NodeSettings {
             name: "sign".to_string(),
             description: "Returns the sign of a number.".to_string(),
+            help: "Returns -1 for negative inputs and 1 for positive inputs, preserving the input type (integer or decimal). For integers, zero returns 0; for decimals, f32::signum returns 1.0 for positive zero and -1.0 for negative zero.\n\nHandy as a multiplier to strip magnitude while keeping direction, or in combination with abs to reconstruct a signed value.".to_string(),
         }
     }
 
@@ -31,6 +32,7 @@ impl OpNumberMathSign {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Number whose sign is evaluated.")
         ]
     }
 
@@ -38,6 +40,7 @@ impl OpNumberMathSign {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Signum of the input: -1 if negative, 0/1 for zero (integers), 1 if positive.")
         ]
     }
 

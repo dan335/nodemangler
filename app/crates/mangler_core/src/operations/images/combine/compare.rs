@@ -29,22 +29,27 @@ impl OpImageCombineCompare {
         NodeSettings {
             name: "compare".to_string(),
             description: "Compares two images. Black = same, white = different, grey = slightly different.".to_string(),
+            help: "For each pixel, computes the mean absolute difference across the RGB channels of A and B (alpha is ignored), multiplies by gain, and clamps to 0-1 to produce a single-channel greyscale output. Identical images yield pure black; maximally different yield white.\n\nOutput size matches image A; pixels outside image B's bounds are treated as black, which inflates the difference in those regions. Gain lets small deviations become visible without changing the comparison math. Useful for visual regression and debugging node outputs: wire two graph branches in and eyeball the diff.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
             // First image to compare.
-            Input::new("image a".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image a".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("First image; its dimensions determine the output size."),
             // Second image to compare.
-            Input::new("image b".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image b".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Second image; pixels outside its bounds are treated as black."),
             // Multiplier that amplifies small differences (1.0 = raw, higher = more visible).
-            Input::new("gain".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (1.0, 10.0), step_by: Some(0.1), clamp_to_range: true }), None),
+            Input::new("gain".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (1.0, 10.0), step_by: Some(0.1), clamp_to_range: true }), None)
+                .with_description("Multiplier applied to the per-pixel difference to make small deltas visible."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
-        vec![Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)]
+        vec![Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            .with_description("Grayscale difference map: black where images match, white where they disagree.")]
     }
 
     /// Runs the comparison.

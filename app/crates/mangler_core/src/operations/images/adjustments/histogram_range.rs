@@ -24,22 +24,27 @@ impl OpImageAdjustmentHistogramRange {
         NodeSettings {
             name: "histogram range".to_string(),
             description: "Remaps image luminance to a target range.".to_string(),
+            help: "Scans the image once to find the actual minimum and maximum luminance (Rec. 709 weighted for RGB, single channel for grayscale), then linearly remaps every colour channel from the detected span into the user's target min-max interval.\n\nIf the source luminance is flat (actual max equals actual min), every pixel collapses to range min. Output channels are clamped to 0-1 and alpha is preserved. Use this to compress or expand dynamic range into a predictable band, for example to squeeze a noise pattern into the 0.4-0.6 range before blending.".to_string(),
         }
     }
 
     /// Creates the input ports: image, target range min, and target range max.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("range min".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("range max".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image whose actual luminance span is rescaled."),
+            Input::new("range min".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Value the image's darkest pixels will be mapped to."),
+            Input::new("range max".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Value the image's brightest pixels will be mapped to."),
         ]
     }
 
     /// Creates the output port: the range-remapped image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Image linearly remapped so its tones span the target min–max range."),
         ]
     }
 

@@ -22,23 +22,29 @@ impl OpColorOutputRgbLinear {
         NodeSettings {
             name: "to rgb linear".to_string(),
             description: "Converts a color to the RGB linear color space.".to_string(),
+            help: "Removes the sRGB transfer curve and returns the color's red, green, blue, and alpha as linear-light 0-1 floats. In linear RGB, doubling a channel represents literally twice as much physical light, so use this when feeding renderers, blending, or any math that assumes linearity.\n\nVisually 0.5 sRGB maps to about 0.21 linear, so the numbers out of this node look darker than the sRGB sliders that produced the color. Alpha is passed through without any curve adjustment.".to_string(),
         }
     }
 
     /// Creates the single input definition accepting a color to decompose.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("input".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Color to decompose into linear RGB channels."),
         ]
     }
 
     /// Creates the output definitions: red, green, blue, and alpha as decimal values.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("red".to_string(), Value::Decimal(0.5), None),
-            Output::new("green".to_string(), Value::Decimal(0.5), None),
-            Output::new("blue".to_string(), Value::Decimal(0.5), None),
-            Output::new("alpha".to_string(), Value::Decimal(1.0), None),
+            Output::new("red".to_string(), Value::Decimal(0.5), None)
+                .with_description("Linear (non-gamma-encoded) red channel of the input color."),
+            Output::new("green".to_string(), Value::Decimal(0.5), None)
+                .with_description("Linear (non-gamma-encoded) green channel of the input color."),
+            Output::new("blue".to_string(), Value::Decimal(0.5), None)
+                .with_description("Linear (non-gamma-encoded) blue channel of the input color."),
+            Output::new("alpha".to_string(), Value::Decimal(1.0), None)
+                .with_description("Alpha channel passed through from the input color."),
         ]
     }
 

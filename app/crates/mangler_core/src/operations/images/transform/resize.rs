@@ -29,25 +29,33 @@ impl OpImageTransformResize {
         NodeSettings {
             name: "resize".to_string(),
             description: "Resizes an image to fit within the target dimensions while preserving aspect ratio. Output may be smaller than requested.".to_string(),
+            help: "Scales the image uniformly so it fits inside the (width, height) bounding box. Because aspect ratio is preserved, one dimension usually ends up smaller than requested; use the width/height outputs to read the actual result size.\n\nThe selected filter type (Nearest, Triangle, CatmullRom, Gaussian, Lanczos3) controls sharpness vs. aliasing of the resample. Internally the FloatImage round-trips through DynamicImage, which means output channel count is normalized to the 8-bit image representation used by the image crate.".to_string(),
         }
     }
 
     /// Creates the default inputs: source image, target width/height, and resampling filter type.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("width".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("filter type".to_string(), Value::FilterType(image::imageops::FilterType::Gaussian), None, None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image to resize."),
+            Input::new("width".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Maximum output width; result is scaled to fit within this."),
+            Input::new("height".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Maximum output height; result is scaled to fit within this."),
+            Input::new("filter type".to_string(), Value::FilterType(image::imageops::FilterType::Gaussian), None, None)
+                .with_description("Resampling filter used for the scale."),
         ]
     }
 
     /// Creates the default outputs: resized image, and its actual width and height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
-            Output::new("width".to_string(), Value::Integer(1), None),
-            Output::new("height".to_string(), Value::Integer(1), None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Aspect-preserving resized image fitting inside the target box."),
+            Output::new("width".to_string(), Value::Integer(1), None)
+                .with_description("Actual output width in pixels after aspect-preserving fit."),
+            Output::new("height".to_string(), Value::Integer(1), None)
+                .with_description("Actual output height in pixels after aspect-preserving fit."),
         ]
     }
 

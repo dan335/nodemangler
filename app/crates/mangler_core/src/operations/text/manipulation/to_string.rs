@@ -23,20 +23,23 @@ impl OpTextToString {
         NodeSettings {
             name: "to string".to_string(),
             description: "Converts any value to its text representation.".to_string(),
+            help: "Legacy pass-through retained so older saved graphs continue to deserialize. It used to cast the separate Text and String types into a single String output; now that those have been merged into a single Text value type, the node simply forwards its input unchanged.\n\nThis node is hidden from the node menu and should not be placed in new graphs. Prefer connecting values directly or using explicit Text inputs.".to_string(),
         }
     }
 
     /// Creates the default inputs: a single empty `Text` input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Text(String::new()), None, None),
+            Input::new("input".to_string(), Value::Text(String::new()), None, None)
+                .with_description("Value to pass through as text (legacy cast, now a no-op)."),
         ]
     }
 
     /// Creates the default output: a single `Text` value.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Text(String::new()), None),
+            Output::new("output".to_string(), Value::Text(String::new()), None)
+                .with_description("The input forwarded unchanged as a text value."),
         ]
     }
 

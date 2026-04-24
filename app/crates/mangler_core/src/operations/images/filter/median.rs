@@ -31,22 +31,26 @@ impl OpImageAdjustmentMedian {
         NodeSettings {
             name: "median".to_string(),
             description: "Replaces each pixel with the per-channel median of its neighborhood. Preserves edges, removes small details.".to_string(),
+            help: "For every pixel and channel, gathers the (2r+1) square window and writes the middle value back. Unlike mean-based smoothing, the median is robust to outliers, so salt-and-pepper noise and thin specks are removed while long edges stay razor-sharp.\n\nImplemented via Quickselect (`select_nth_unstable_by`) so cost per pixel is O(k) average for k = (2r+1)^2 rather than O(k log k). Radius is capped because k grows quadratically. Each channel (including alpha) is filtered independently, which can shift colors at high radius.".to_string(),
         }
     }
 
     /// Creates the input ports: image and window radius (capped to keep cost bounded).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to denoise or stylize with per-channel median filtering."),
             // radius is capped at 8 — at r=8 the per-pixel window is 17x17=289 samples
-            Input::new("radius".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (1.0, 8.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("radius".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (1.0, 8.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Half-size of the square window in pixels; larger values produce a chunkier look."),
         ]
     }
 
     /// Creates the output port: the median-filtered image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Median-filtered image with small details removed and edges preserved."),
         ]
     }
 

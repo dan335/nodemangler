@@ -19,20 +19,29 @@ pub struct OpImageCombineBlit {}
 
 impl OpImageCombineBlit {
     pub fn settings() -> NodeSettings {
-        NodeSettings { name: "composite".to_string(), description: "Pastes a foreground image onto a background at a given position.".to_string() }
+        NodeSettings {
+            name: "composite".to_string(),
+            description: "Pastes a foreground image onto a background at a given position.".to_string(),
+            help: "Pastes the foreground onto the background using the standard Porter-Duff `over` operator: out_rgb = fg_rgb * fg_a + bg_rgb * (1 - fg_a), out_a = fg_a + bg_a * (1 - fg_a). The foreground's top-left lands at (position x, position y) relative to the background; pixels outside the background are skipped.\n\nWorks with any channel combination: missing alpha channels are treated as 1.0, grayscale inputs composite into the equivalent colour region. Will attempt to reuse the background's pixel buffer without cloning if it is the sole owner. Output matches the background's size and channel count exactly.".to_string(),
+        }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("background".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("foreground".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("position x".to_string(), Value::Integer(i32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
-            Input::new("position y".to_string(), Value::Integer(i32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
+            Input::new("background".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Base image the foreground is pasted onto; sets the output size."),
+            Input::new("foreground".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Image alpha-composited on top of the background."),
+            Input::new("position x".to_string(), Value::Integer(i32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Horizontal pixel offset of the foreground's top-left within the background."),
+            Input::new("position y".to_string(), Value::Integer(i32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Vertical pixel offset of the foreground's top-left within the background."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
-        vec![Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)]
+        vec![Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+            .with_description("Background with the foreground pasted in using standard over compositing.")]
     }
 
     /// Overlays the foreground onto the background at the given position using alpha compositing.

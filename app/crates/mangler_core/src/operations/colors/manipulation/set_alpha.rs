@@ -23,27 +23,32 @@ impl OpColorManipulationSetAlpha {
         NodeSettings {
             name: "set alpha".to_string(),
             description: "Replaces or multiplies the alpha channel of a color.".to_string(),
+            help: "With 'multiply' off, the existing alpha is replaced outright with the provided value; with it on, the new alpha is color.a * alpha, so partially transparent inputs are faded further rather than forced to full opacity.\n\nRGB channels are carried through untouched; no premultiplication is applied, so this operation is purely on straight alpha. Alpha input is a 0-1 slider with clamping, so values outside the range are not possible from the UI.".to_string(),
         }
     }
 
     /// Creates the input definitions: a color, an alpha value slider, and a multiply toggle.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("color".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("color".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Color whose alpha channel will be replaced or scaled."),
             Input::new(
                 "alpha".to_string(),
                 Value::Decimal(1.0),
                 Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }),
                 None,
-            ),
-            Input::new("multiply".to_string(), Value::Bool(false), None, None),
+            )
+            .with_description("New alpha value (0–1) used to replace or multiply the existing alpha."),
+            Input::new("multiply".to_string(), Value::Bool(false), None, None)
+                .with_description("When true multiplies the existing alpha; when false replaces it outright."),
         ]
     }
 
     /// Creates the single output definition for the color with modified alpha.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Color(Color::default()), None),
+            Output::new("output".to_string(), Value::Color(Color::default()), None)
+                .with_description("Color with the new alpha applied; RGB channels pass through unchanged."),
         ]
     }
 

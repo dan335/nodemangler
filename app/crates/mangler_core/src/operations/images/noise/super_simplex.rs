@@ -28,23 +28,29 @@ impl OpImageNoiseSuperSimplex {
         NodeSettings {
             name: "super simplex noise".to_string(),
             description: "Creates a seamlessly tiling image from super simplex noise.".to_string(),
+            help: "SuperSimplex is an improved variant of simplex noise with better isotropy and fewer visual artifacts than both Perlin and OpenSimplex. It uses a denser kernel at each simplex vertex so the resulting field is smoother and more statistically uniform across directions.\n\nScale controls the number of noise periods across the tile; higher values produce smaller features. Because SuperSimplex only supports up to 3D, seamless tiling here is approximated with a 4-sample bilinear blend between offset evaluations.\n\nUseful when plain Perlin's grid artifacts show through, and wherever smooth, directionally-neutral noise is wanted.".to_string(),
         }
     }
 
     /// Creates the default inputs: seed, width, height, and scale.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("scale".to_string(), Value::Integer(10), Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed for the SuperSimplex pattern; change for a different variation."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("scale".to_string(), Value::Integer(10), Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }), None)
+                .with_description("Number of noise periods across the tile; higher values pack more features in."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None)
+                .with_description("Seamlessly tiling grayscale SuperSimplex noise image."),
         ]
     }
 

@@ -29,6 +29,7 @@ impl OpNumberInputInteger {
         NodeSettings {
             name: "integer".to_string(),
             description: "An integer number input.".to_string(),
+            help: "Emits a single signed 32-bit integer onto the graph. Use this node to supply counts, indices, seeds, or other whole-number parameters.\n\nConnections from decimal inputs are truncated toward zero (not rounded); booleans become 0 or 1. Values outside the i32 range cannot be represented and will be clamped or error during conversion.".to_string(),
         }
     }
 
@@ -36,6 +37,7 @@ impl OpNumberInputInteger {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("input".to_string(), Value::Integer(i32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Integer value to emit; decimals are truncated to integers.")
         ]
     }
 
@@ -43,6 +45,7 @@ impl OpNumberInputInteger {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Integer(i32::default()), None)
+                .with_description("The integer value from the input, passed through.")
         ]
     }
 

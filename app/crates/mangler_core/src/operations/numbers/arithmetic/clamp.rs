@@ -25,15 +25,19 @@ impl OpNumberMathClamp {
         NodeSettings {
             name: "clamp".to_string(),
             description: "Clamps a number between two values.".to_string(),
+            help: "Restricts input a to the [min, max] range: values below min are raised to min, values above max are lowered to max. The min and max bounds are converted to decimal for the comparison.\n\nInteger inputs produce integer outputs, with the clamped value rounded back to i32. Useful for normalizing values to the 0-1 range or keeping parameters inside valid ranges. Behaviour is undefined if min is greater than max.".to_string(),
         }
     }
 
     /// Creates the default input list: value `a`, `min` (0.0), and `max` (1.0).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
-            Input::new("min".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
-            Input::new("max".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
+            Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Value to restrict inside the min and max range."),
+            Input::new("min".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Lower bound; inputs below this are raised to min."),
+            Input::new("max".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Upper bound; inputs above this are lowered to max."),
         ]
     }
 
@@ -41,6 +45,7 @@ impl OpNumberMathClamp {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Input a constrained to the [min, max] range.")
         ]
     }
 

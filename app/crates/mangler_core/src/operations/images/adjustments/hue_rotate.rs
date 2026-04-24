@@ -25,21 +25,25 @@ impl OpImageAdjustmentHueRotate {
         NodeSettings {
             name: "hue shift".to_string(),
             description: "Rotates the hue of an image.".to_string(),
+            help: "For every RGB pixel, converts to HSL, adds amount * 360 degrees to the hue, then wraps it back into 0-360 before converting back to RGB. Saturation and lightness are preserved exactly, so the image's tonality is untouched while colours slide around the wheel.\n\nImages with fewer than three colour channels (1 or 2 channel grayscale) have no hue to rotate and are passed through unchanged. Alpha, when present, is left intact. The amount input is normalised to -1 to 1 so a full spin equals 1 and sign picks rotation direction.".to_string(),
         }
     }
 
     /// Creates the input ports: an image and a normalized rotation amount (-1.0 to 1.0, mapped to -360..360 degrees).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Colour image whose hues will be rotated."),
             Input::new("amount".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Hue shift normalised to [-1, 1], corresponding to -360 to 360 degrees.")
         ]
     }
 
     /// Creates the output port: the hue-rotated image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Image with hues rotated around the colour wheel; saturation and lightness are preserved."),
         ]
     }
 

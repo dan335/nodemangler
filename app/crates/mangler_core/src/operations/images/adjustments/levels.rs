@@ -30,25 +30,33 @@ impl OpImageAdjustmentLevels {
         NodeSettings {
             name: "levels".to_string(),
             description: "Adjusts input levels (low/mid/high) and output range.".to_string(),
+            help: "Matches the Substance Designer levels node: each colour channel is first clamped and normalised from [in low, in high] to 0-1, then passed through a gamma curve driven by the midtone (0.5 = neutral, using gamma = log(0.5)/log(midtone)), and finally scaled into [out low, out high].\n\nIn mid values below 0.5 brighten midtones, values above darken them. When in low and in high are equal the input range is clamped to a minimum of 0.001 to avoid division by zero. Alpha is preserved. Use this as your main tonal workhorse: black/white point correction, gamma, and output range in one pass.".to_string(),
         }
     }
 
     /// Creates the input ports: image, input low/mid/high, and output low/high.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("in low".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("in mid".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.01, 0.99), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("in high".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("out low".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("out high".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image to remap through the levels curve."),
+            Input::new("in low".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Input black point; values at or below this become 0."),
+            Input::new("in mid".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.01, 0.99), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Midtone pivot; values below 0.5 brighten midtones, above darken them."),
+            Input::new("in high".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Input white point; values at or above this become 1."),
+            Input::new("out low".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Output black point; the darkest values are mapped to this."),
+            Input::new("out high".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Output white point; the brightest values are mapped to this."),
         ]
     }
 
     /// Creates the output port: the levels-adjusted image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Image remapped through the input/output levels and midtone gamma."),
         ]
     }
 

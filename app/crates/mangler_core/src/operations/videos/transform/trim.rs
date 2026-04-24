@@ -25,6 +25,7 @@ impl OpVideoTrim {
         NodeSettings {
             name: "video trim".to_string(),
             description: "Restricts a video to the source seconds between start and end. Metadata only — no re-encode.".to_string(),
+            help: "Appends a Trim transform keeping only the source range [start, end] in seconds. Effective duration becomes end - start and effective time 0.0 maps to the source start. Start and end are clamped to non-negative values before being stored.\n\nNo decoding or re-encoding happens; downstream extract-frame ops translate effective time or frame back to an in-range source index via VideoRef::source_frame_for_effective_time. Composes cleanly with speed, reverse, and loop (order matters: trim first to define the slice, then retime it).".to_string(),
         }
     }
 
@@ -35,7 +36,8 @@ impl OpVideoTrim {
                 Value::Video(VideoRef::default()),
                 None,
                 None,
-            ),
+            )
+            .with_description("Source video handle to trim to a sub-range."),
             Input::new(
                 "start".to_string(),
                 Value::Decimal(0.0),
@@ -44,7 +46,8 @@ impl OpVideoTrim {
                     speed: Some(0.01),
                 }),
                 None,
-            ),
+            )
+            .with_description("Start time in source seconds; frames before this are dropped."),
             Input::new(
                 "end".to_string(),
                 Value::Decimal(1.0),
@@ -53,7 +56,8 @@ impl OpVideoTrim {
                     speed: Some(0.01),
                 }),
                 None,
-            ),
+            )
+            .with_description("End time in source seconds; frames after this are dropped."),
         ]
     }
 
@@ -62,7 +66,8 @@ impl OpVideoTrim {
             "video".to_string(),
             Value::Video(VideoRef::default()),
             None,
-        )]
+        )
+        .with_description("Trimmed video handle covering only the selected range.")]
     }
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {

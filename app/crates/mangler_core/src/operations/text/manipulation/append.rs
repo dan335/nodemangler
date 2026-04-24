@@ -23,21 +23,25 @@ impl OpTextAppend {
         NodeSettings {
             name: "append".to_string(),
             description: "Concatenates two text values.".to_string(),
+            help: "Produces the string a + b with no separator inserted between them. To add spaces, punctuation, or newlines, include them at the end of a or the start of b.\n\nBoth inputs are coerced to Text first, so numbers, booleans, and other scalar types are stringified using their standard representations before concatenation.".to_string(),
         }
     }
 
     /// Creates the default inputs: `a` and `b`, both empty `Text` values.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Text(String::new()), None, None),
-            Input::new("b".to_string(), Value::Text(String::new()), None, None),
+            Input::new("a".to_string(), Value::Text(String::new()), None, None)
+                .with_description("First text string placed at the start of the result."),
+            Input::new("b".to_string(), Value::Text(String::new()), None, None)
+                .with_description("Second text string appended to the end of a."),
         ]
     }
 
     /// Creates the default output: a single `Text` value.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Text(String::new()), None),
+            Output::new("output".to_string(), Value::Text(String::new()), None)
+                .with_description("The concatenation of a followed by b."),
         ]
     }
 

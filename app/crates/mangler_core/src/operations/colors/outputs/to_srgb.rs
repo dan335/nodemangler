@@ -22,23 +22,29 @@ impl OpColorOutputRgb {
         NodeSettings {
             name: "to rgb".to_string(),
             description: "Converts a color to the RGB color space.".to_string(),
+            help: "Returns the color's stored sRGB (gamma-encoded) red, green, blue, and alpha channels as 0-1 floats. These are the same numbers used by CSS, hex codes, and typical color pickers, so 0.5 here corresponds to a mid-gray #808080.\n\nIf you need numbers suitable for linear-light math (lighting, blending in a renderer), use the to rgb linear variant instead, which applies the sRGB EOTF.".to_string(),
         }
     }
 
     /// Creates the single input definition accepting a color to decompose.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("input".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Color to decompose into sRGB channels."),
         ]
     }
 
     /// Creates the output definitions: red, green, blue, and alpha as decimal values.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("red".to_string(), Value::Decimal(0.5), None),
-            Output::new("green".to_string(), Value::Decimal(0.5), None),
-            Output::new("blue".to_string(), Value::Decimal(0.5), None),
-            Output::new("alpha".to_string(), Value::Decimal(1.0), None),
+            Output::new("red".to_string(), Value::Decimal(0.5), None)
+                .with_description("Gamma-encoded sRGB red channel (0–1) of the input color."),
+            Output::new("green".to_string(), Value::Decimal(0.5), None)
+                .with_description("Gamma-encoded sRGB green channel (0–1) of the input color."),
+            Output::new("blue".to_string(), Value::Decimal(0.5), None)
+                .with_description("Gamma-encoded sRGB blue channel (0–1) of the input color."),
+            Output::new("alpha".to_string(), Value::Decimal(1.0), None)
+                .with_description("Alpha channel passed through from the input color."),
         ]
     }
 

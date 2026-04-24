@@ -22,36 +22,45 @@ impl OpColorHarmonyMonochromatic {
         NodeSettings {
             name: "monochromatic".to_string(),
             description: "Generates five monochromatic shades with the same hue and saturation, evenly distributed across a configurable lightness range.".to_string(),
+            help: "Converts the input to HSL, clamps the min/max lightness bounds to [0, 1], and produces five colors with the original hue and saturation at lightness values of lmin, lmin + 0.25 * span, ..., lmax. shade_1 is always the darkest and shade_5 the lightest.\n\nIf lmax is less than lmin the interpolation still runs and simply steps backward, producing a light-to-dark ramp. Since only lightness changes, very saturated hues may look pinched at extreme lightness because HSL clips to white/black. Alpha is carried through from the input.".to_string(),
         }
     }
 
     /// Creates the three input definitions: the source color, minimum lightness, and maximum lightness.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("color".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("color".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Base color; its hue and saturation are preserved across the shades."),
             Input::new(
                 "lightness_min".to_string(),
                 Value::Decimal(0.1),
                 Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }),
                 None,
-            ),
+            )
+            .with_description("Minimum HSL lightness used for the darkest shade."),
             Input::new(
                 "lightness_max".to_string(),
                 Value::Decimal(0.9),
                 Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }),
                 None,
-            ),
+            )
+            .with_description("Maximum HSL lightness used for the lightest shade."),
         ]
     }
 
     /// Creates the five output definitions: shade_1 through shade_5, from darkest to lightest.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("shade_1".to_string(), Value::Color(Color::default()), None),
-            Output::new("shade_2".to_string(), Value::Color(Color::default()), None),
-            Output::new("shade_3".to_string(), Value::Color(Color::default()), None),
-            Output::new("shade_4".to_string(), Value::Color(Color::default()), None),
-            Output::new("shade_5".to_string(), Value::Color(Color::default()), None),
+            Output::new("shade_1".to_string(), Value::Color(Color::default()), None)
+                .with_description("Darkest shade at lightness = lightness_min."),
+            Output::new("shade_2".to_string(), Value::Color(Color::default()), None)
+                .with_description("Shade at 25% of the way from lightness_min to lightness_max."),
+            Output::new("shade_3".to_string(), Value::Color(Color::default()), None)
+                .with_description("Middle shade at 50% of the way from lightness_min to lightness_max."),
+            Output::new("shade_4".to_string(), Value::Color(Color::default()), None)
+                .with_description("Shade at 75% of the way from lightness_min to lightness_max."),
+            Output::new("shade_5".to_string(), Value::Color(Color::default()), None)
+                .with_description("Lightest shade at lightness = lightness_max."),
         ]
     }
 

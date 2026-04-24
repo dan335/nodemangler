@@ -24,15 +24,19 @@ impl OpNumberMathLerp {
         NodeSettings {
             name: "lerp".to_string(),
             description: "Linearly interpolates between two values.".to_string(),
+            help: "Computes a + (b - a) * t, blending from a toward b as t moves from 0 to 1.\n\nThe factor t is not clamped: values outside [0, 1] extrapolate past the endpoints, which is useful for easing overshoots or projecting beyond a range. All three inputs are coerced to decimal before the blend.".to_string(),
         }
     }
 
     /// Creates the default input list: "a" (0.0), "b" (1.0), and "t" (0.5).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("b".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("t".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Start value; returned when t is 0."),
+            Input::new("b".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("End value; returned when t is 1."),
+            Input::new("t".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Blend factor; 0 gives a, 1 gives b, values outside [0,1] extrapolate."),
         ]
     }
 
@@ -40,6 +44,7 @@ impl OpNumberMathLerp {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Linearly interpolated value: a + (b - a) * t.")
         ]
     }
 

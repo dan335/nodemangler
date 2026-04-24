@@ -25,6 +25,7 @@ impl OpVideoSpeed {
         NodeSettings {
             name: "video speed".to_string(),
             description: "Scales playback speed. Values > 1 speed up, values < 1 slow down. Metadata only.".to_string(),
+            help: "Appends a Speed transform to the VideoRef. Effective duration becomes source_duration / factor and total_frames scales the same way; fps and the underlying image resolution are unchanged, so downstream nodes still see frames spaced at the source fps rate.\n\nFactor is clamped to (0.01, 100.0) and floored to 1e-4 internally to prevent dividing the timeline by zero. Use the video reverse node for negative playback direction rather than a negative factor.".to_string(),
         }
     }
 
@@ -35,7 +36,8 @@ impl OpVideoSpeed {
                 Value::Video(VideoRef::default()),
                 None,
                 None,
-            ),
+            )
+            .with_description("Source video handle whose playback rate will be rescaled."),
             Input::new(
                 "factor".to_string(),
                 Value::Decimal(1.0),
@@ -47,7 +49,8 @@ impl OpVideoSpeed {
                     speed: Some(0.01),
                 }),
                 None,
-            ),
+            )
+            .with_description("Speed multiplier; values above 1 speed up, below 1 slow down."),
         ]
     }
 
@@ -56,7 +59,8 @@ impl OpVideoSpeed {
             "video".to_string(),
             Value::Video(VideoRef::default()),
             None,
-        )]
+        )
+        .with_description("Retimed video handle with duration divided by the speed factor.")]
     }
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {

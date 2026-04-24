@@ -24,20 +24,25 @@ impl OpImagePbrNormalBlend {
         NodeSettings {
             name: "normal blend".to_string(),
             description: "Linearly interpolates between two normal maps with an opacity slider; re-normalises the result.".to_string(),
+            help: "Unpacks both normal maps from their 0-1 storage back to -1..1 vectors, mixes them componentwise by opacity, and re-normalises before re-packing. Produces a smooth fade between two normal fields without any detail-preservation heuristics.\n\nIf map B is a different size than A it is bilinearly sampled so it stretches to fit. For combining a detail layer over a base, prefer the normal_combine node which offers the Whiteout or RNM operator and retains overhang detail; this node is better for opacity-style fades.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("b".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("opacity".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("a".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("First normal map, used fully when opacity is 0."),
+            Input::new("b".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Second normal map, used fully when opacity is 1."),
+            Input::new("opacity".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Interpolation factor between normal map A and B."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Re-normalised normal map blended from A and B by opacity."),
         ]
     }
 

@@ -23,13 +23,15 @@ impl OpNumberCastToDecimal {
         NodeSettings {
             name: "to decimal".to_string(),
             description: "Converts a number to a decimal.".to_string(),
+            help: "Coerces the input into a decimal (f32) via Value::try_convert_to. Integers widen to f32, booleans map to 0.0 or 1.0, and numeric-looking text is parsed.\n\nUnsupported types raise a conversion error. Use this to normalize a mixed-type input before feeding it into nodes that only accept decimals.".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(f32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
+            Input::new("a".to_string(), Value::Decimal(f32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Value to convert into a decimal (f32)."),
         ]
     }
 
@@ -37,6 +39,7 @@ impl OpNumberCastToDecimal {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Input coerced to a decimal via try_convert_to.")
         ]
     }
 

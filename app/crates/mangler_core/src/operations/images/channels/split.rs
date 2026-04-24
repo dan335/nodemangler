@@ -22,19 +22,28 @@ pub struct OpImageChannelSplit {}
 
 impl OpImageChannelSplit {
     pub fn settings() -> NodeSettings {
-        NodeSettings { name: "channel split".to_string(), description: "Splits an image into R, G, B, A channels.".to_string() }
+        NodeSettings {
+            name: "channel split".to_string(),
+            description: "Splits an image into R, G, B, A channels.".to_string(),
+            help: "Emits four single-channel FloatImage outputs corresponding to red, green, blue, and alpha. For sources with fewer channels, missing colour components are zero-filled, while alpha defaults to 1.0 for RGB and 1 or 3-channel sources and to the second channel for 2-channel grayscale+alpha input.\n\nEach output has the same dimensions as the input but just one channel, making them directly usable as masks or as scalar inputs to nodes that accept grayscale. Pair with `channel merge` to rebuild after per-channel processing.".to_string(),
+        }
     }
 
     pub fn create_inputs() -> Vec<Input> {
-        vec![Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)]
+        vec![Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            .with_description("Source image to decompose into individual channel images.")]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("red".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
-            Output::new("green".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
-            Output::new("blue".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
-            Output::new("alpha".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("red".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Single-channel image holding the source red channel."),
+            Output::new("green".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Single-channel image holding the source green channel."),
+            Output::new("blue".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Single-channel image holding the source blue channel."),
+            Output::new("alpha".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Single-channel image holding the source alpha (or 1.0 if absent)."),
         ]
     }
 

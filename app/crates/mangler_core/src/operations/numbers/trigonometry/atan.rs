@@ -20,13 +20,15 @@ impl OpNumberTrigAtan {
         NodeSettings {
             name: "atan".to_string(),
             description: "Computes the arctangent (inverse tangent) of a value.".to_string(),
+            help: "Returns the angle in radians whose tangent equals the input, in the open range (-pi/2, pi/2). Accepts any real input.\n\nBecause tan is periodic, atan recovers only the principal branch and cannot distinguish quadrants. If you have separate y and x components and need the correct quadrant, use the atan2 node instead.".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Tangent value to invert; any real number is accepted."),
         ]
     }
 
@@ -34,6 +36,7 @@ impl OpNumberTrigAtan {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Arctangent of the input in radians, in the range (-pi/2, pi/2).")
         ]
     }
 

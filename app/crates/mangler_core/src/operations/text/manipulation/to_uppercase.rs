@@ -21,20 +21,23 @@ impl OpTextToUppercase {
         NodeSettings {
             name: "to uppercase".to_string(),
             description: "Converts text to uppercase.".to_string(),
+            help: "Uses Rust's str::to_uppercase, which applies Unicode full case-folding. Non-ASCII letters are mapped correctly, and a single character may expand to multiple output characters (for example the German sharp s \"ss\" -> \"SS\").\n\nThe transformation is locale-independent; locale-specific rules (such as Turkish dotted I) are not applied.".to_string(),
         }
     }
 
     /// Creates the default inputs: a single empty `Text` input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Text(String::new()), None, None),
+            Input::new("input".to_string(), Value::Text(String::new()), None, None)
+                .with_description("Text value to convert to uppercase."),
         ]
     }
 
     /// Creates the default output: a single `Text` value.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Text(String::new()), None),
+            Output::new("output".to_string(), Value::Text(String::new()), None)
+                .with_description("The input text with all letters uppercased via Unicode rules."),
         ]
     }
 

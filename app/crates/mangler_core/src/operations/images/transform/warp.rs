@@ -30,22 +30,27 @@ impl OpImageTransformWarp {
         NodeSettings {
             name: "warp".to_string(),
             description: "Displaces pixels using a displacement map. Red channel offsets X, green channel offsets Y.".to_string(),
+            help: "For each output pixel, the displacement map is bilinearly sampled (with coordinate scaling so the map need not match source dimensions). The red channel drives horizontal offset and green drives vertical: 0.5 is zero displacement, with values above/below pushing pixels in opposite directions. The final displacement is (channel - 0.5) * intensity pixels.\n\nSingle-channel maps use the same value for both X and Y. Source sampling is bilinear and coordinates are clamped at image edges (not wrapped), so strong warps near borders can produce streaking. Output channel count matches the source image.".to_string(),
         }
     }
 
     /// Creates the default inputs: source image, displacement map, and intensity scalar.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("displacement".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("intensity".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 200.0), step_by: Some(0.1), clamp_to_range: false }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to displace."),
+            Input::new("displacement".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Displacement map: red channel drives X offset, green drives Y offset."),
+            Input::new("intensity".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 200.0), step_by: Some(0.1), clamp_to_range: false }), None)
+                .with_description("Maximum displacement in pixels scaled by the map values."),
         ]
     }
 
     /// Creates the default outputs: the warped image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Image with pixels displaced according to the displacement map."),
         ]
     }
 

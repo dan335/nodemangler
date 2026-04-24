@@ -23,21 +23,27 @@ impl OpImageShapeParaboloid {
         NodeSettings {
             name: "paraboloid".to_string(),
             description: "Paraboloid dome height shape centered in the image. h = 1 - (d/size)^2.".to_string(),
+            help: "Generates a smooth 1-channel greyscale dome whose height falls off with the power of the normalised radial distance. size sets the radius in normalised units; falloff is the exponent applied to distance, where 2.0 gives a true paraboloid and higher values produce a flatter plateau with steeper shoulders.\n\nValues sit in linear space and peak at 1.0, making this a clean source for normal_from_height, AO, or blob-style masks. Pixels outside the radius are clamped to 0.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("size".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None),
-            Input::new("falloff".to_string(), Value::Decimal(2.0), Some(InputSettings::Slider { range: (0.5, 6.0), step_by: Some(0.1), clamp_to_range: false }), None),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Width of the generated height map in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Height of the generated height map in pixels."),
+            Input::new("size".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Radius of the paraboloid dome in normalised units."),
+            Input::new("falloff".to_string(), Value::Decimal(2.0), Some(InputSettings::Slider { range: (0.5, 6.0), step_by: Some(0.1), clamp_to_range: false }), None)
+                .with_description("Power controlling the sharpness of the dome; 2.0 is standard."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Grayscale dome height shape, 1.0 at the center and 0.0 outside."),
         ]
     }
 

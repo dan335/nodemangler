@@ -23,13 +23,15 @@ impl OpNumberMathLn {
         NodeSettings {
             name: "ln".to_string(),
             description: "Computes the natural logarithm.".to_string(),
+            help: "Returns ln(x), the logarithm base e. Computed in f64 and cast back to f32.\n\nInput must be strictly positive; zero or negative inputs produce a node error rather than -infinity or NaN. The inverse of exp: ln(exp(x)) == x for valid x.".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal input defaulting to e (2.718).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(std::f32::consts::E), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(std::f32::consts::E), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Value to take the natural log of; must be strictly positive."),
         ]
     }
 
@@ -37,6 +39,7 @@ impl OpNumberMathLn {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Natural logarithm (base e) of the input.")
         ]
     }
 

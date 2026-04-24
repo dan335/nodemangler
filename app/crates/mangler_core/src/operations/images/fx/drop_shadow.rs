@@ -26,23 +26,31 @@ impl OpImageFxDropShadow {
         NodeSettings {
             name: "drop shadow".to_string(),
             description: "Offsets and blurs a mask, tints it, and outputs an RGBA shadow layer for compositing below the source.".to_string(),
+            help: "Reduces the mask input to a single-channel field (alpha times luminance for RGBA, or luminance for RGB), shifts it by (offset x, offset y) pixels with zero-fill outside the image, applies a Gaussian blur with the requested sigma, and paints the result with the chosen colour. The final alpha is mask * color.a * opacity clamped to 0-1.\n\nThe offset and blur are separate passes so zero blur yields a crisp displaced silhouette. The output is always 4-channel RGBA and matches the mask's size. Composite it below the source using a `blend` node in Normal mode; feed the source's own alpha as the mask input.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("offset x".to_string(), Value::Decimal(6.0), Some(InputSettings::DragValue { speed: None, clamp: Some((-256.0, 256.0)) }), None),
-            Input::new("offset y".to_string(), Value::Decimal(6.0), Some(InputSettings::DragValue { speed: None, clamp: Some((-256.0, 256.0)) }), None),
-            Input::new("blur radius".to_string(), Value::Decimal(4.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 256.0)) }), None),
-            Input::new("color".to_string(), Value::Color(Color::from_srgb_float(0.0, 0.0, 0.0, 1.0)), None, None),
-            Input::new("opacity".to_string(), Value::Decimal(0.6), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Shape whose alpha or luminance defines the silhouette that casts the shadow."),
+            Input::new("offset x".to_string(), Value::Decimal(6.0), Some(InputSettings::DragValue { speed: None, clamp: Some((-256.0, 256.0)) }), None)
+                .with_description("Horizontal pixel offset of the shadow from the mask."),
+            Input::new("offset y".to_string(), Value::Decimal(6.0), Some(InputSettings::DragValue { speed: None, clamp: Some((-256.0, 256.0)) }), None)
+                .with_description("Vertical pixel offset of the shadow from the mask."),
+            Input::new("blur radius".to_string(), Value::Decimal(4.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 256.0)) }), None)
+                .with_description("Gaussian sigma in pixels used to soften the shadow; 0 gives a crisp offset."),
+            Input::new("color".to_string(), Value::Color(Color::from_srgb_float(0.0, 0.0, 0.0, 1.0)), None, None)
+                .with_description("Colour the shadow layer is tinted with."),
+            Input::new("opacity".to_string(), Value::Decimal(0.6), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Overall transparency of the shadow; 1 is fully opaque where the mask is solid."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("RGBA shadow layer; composite below the source to place it behind."),
         ]
     }
 

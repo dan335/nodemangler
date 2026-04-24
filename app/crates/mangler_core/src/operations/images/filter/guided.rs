@@ -37,25 +37,30 @@ impl OpImageAdjustmentGuided {
         NodeSettings {
             name: "guided filter".to_string(),
             description: "Edge-preserving smoothing (He et al.). Self-guided; O(1) per pixel regardless of radius.".to_string(),
+            help: "He et al. 2010 guided filter in self-guided form: luminance acts as its own guide. For each color channel it fits a local linear model `q = a*I + b` whose coefficients are derived from box-blurred statistics (mean, variance, covariance), then smooths `a` and `b` with another box blur before applying.\n\nCost is independent of radius because the whole pipeline reduces to a fixed number of box blurs implemented with prefix sums. Smaller epsilon keeps edges sharper; larger epsilon smooths more aggressively. Alpha is passed through.".to_string(),
         }
     }
 
     /// Creates the input ports: image, radius, and epsilon (edge sensitivity).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to smooth while preserving edges; also acts as its own guide."),
             // box-blur radius — cost is independent of this thanks to prefix sums, so we allow large values
-            Input::new("radius".to_string(), Value::Integer(8), Some(InputSettings::Slider { range: (1.0, 64.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("radius".to_string(), Value::Integer(8), Some(InputSettings::Slider { range: (1.0, 64.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Window radius for the internal box blurs; larger values smooth over broader areas."),
             // epsilon controls how aggressively edges are preserved: smaller values keep more detail
             // (sharper edges, less smoothing); larger values smooth more aggressively across edges
-            Input::new("epsilon".to_string(), Value::Decimal(0.01), Some(InputSettings::Slider { range: (0.0001, 1.0), step_by: Some(0.001), clamp_to_range: true }), None),
+            Input::new("epsilon".to_string(), Value::Decimal(0.01), Some(InputSettings::Slider { range: (0.0001, 1.0), step_by: Some(0.001), clamp_to_range: true }), None)
+                .with_description("Edge-preservation regularizer; smaller values keep edges sharper."),
         ]
     }
 
     /// Creates the output port: the guided-filtered image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Edge-preserving guided-filter output."),
         ]
     }
 

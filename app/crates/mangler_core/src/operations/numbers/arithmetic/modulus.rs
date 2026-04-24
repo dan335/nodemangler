@@ -24,14 +24,17 @@ impl OpNumberMathModulus {
         NodeSettings {
             name: "modulus".to_string(),
             description: "Returns the remainder after dividing two numbers.".to_string(),
+            help: "Computes a % n using Rust's remainder semantics, where the sign of the result matches the sign of the dividend (e.g. -7 % 3 = -1, not 2).\n\nSetting n to zero raises a division-by-zero error. When a is an integer the divisor is truncated to i32 first, so a fractional n like 0.5 will be treated as 0 and also error out. Useful for wrapping values to a range or detecting multiples.".to_string(),
         }
     }
 
     /// Creates the default input list: value `a` (0.5) and divisor `n` (1.0).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
-            Input::new("n".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
+            Input::new("a".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Dividend whose remainder is taken."),
+            Input::new("n".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Divisor; must be non-zero, otherwise the node errors."),
         ]
     }
 
@@ -39,6 +42,7 @@ impl OpNumberMathModulus {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Remainder of a divided by n; sign matches the dividend.")
         ]
     }
 

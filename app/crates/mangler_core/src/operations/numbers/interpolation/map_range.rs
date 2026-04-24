@@ -25,6 +25,7 @@ impl OpNumberMathMapRange {
         NodeSettings {
             name: "map range".to_string(),
             description: "Remaps a value from one range to another.".to_string(),
+            help: "Linearly rescales input from [in min, in max] onto [out min, out max] using out_min + (input - in_min) * (out_max - out_min) / (in_max - in_min).\n\nThe result is not clamped, so inputs outside the source range produce outputs outside the destination range. If in min equals in max the source range has zero width and the node errors. Inverted ranges (min > max) flip the mapping direction.".to_string(),
         }
     }
 
@@ -32,11 +33,16 @@ impl OpNumberMathMapRange {
     /// "out min" (0.0), and "out max" (100.0).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("in min".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("in max".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("out min".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("out max".to_string(), Value::Decimal(100.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Value to remap from the input range to the output range."),
+            Input::new("in min".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Lower bound of the input range."),
+            Input::new("in max".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Upper bound of the input range; must differ from in min."),
+            Input::new("out min".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Lower bound of the output range."),
+            Input::new("out max".to_string(), Value::Decimal(100.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Upper bound of the output range."),
         ]
     }
 
@@ -44,6 +50,7 @@ impl OpNumberMathMapRange {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Input remapped linearly from [in min, in max] onto [out min, out max].")
         ]
     }
 

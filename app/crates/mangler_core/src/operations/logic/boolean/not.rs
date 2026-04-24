@@ -23,13 +23,15 @@ impl OpLogicBoolNot {
         NodeSettings {
             name: "not".to_string(),
             description: "Returns the inverse of the input.".to_string(),
+            help: "Single-input logical negation. Maps true -> false and false -> true.\n\nThe input is coerced to Bool first, so numeric inputs follow truthy/zero semantics: any non-zero value is treated as true, zero as false. Useful for flipping gates, inverting masks, or negating conditions feeding into the select node.".to_string(),
         }
     }
 
     /// Creates the default input: a single boolean input defaulting to `false`.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Bool(false), None, None),
+            Input::new("input".to_string(), Value::Bool(false), None, None)
+                .with_description("Boolean value to invert."),
         ]
     }
 
@@ -37,6 +39,7 @@ impl OpLogicBoolNot {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Bool(true), None)
+                .with_description("Logical negation of the input value.")
         ]
     }
 

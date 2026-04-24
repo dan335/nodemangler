@@ -24,14 +24,17 @@ impl OpLogicCompareNotEqual {
         NodeSettings {
             name: "not equal".to_string(),
             description: "Returns true if two values are not equal.".to_string(),
+            help: "Logical inverse of the equal node. Text-to-Text comparisons are performed directly as strings (case-sensitive), while all other combinations are coerced to Decimal first so Bool, Integer, and Decimal values can cross-compare (Bool::true -> 1.0, Bool::false -> 0.0).\n\nAs with equal, numeric differences that fall within floating-point rounding noise may produce a surprising true result.".to_string(),
         }
     }
 
     /// Creates the default inputs: two decimal inputs `a` and `b` with drag-value UI, both defaulting to 0.0.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("b".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("First value to compare for inequality."),
+            Input::new("b".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Second value to compare for inequality."),
         ]
     }
 
@@ -39,6 +42,7 @@ impl OpLogicCompareNotEqual {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Bool(false), None)
+                .with_description("True when a and b are not equal.")
         ]
     }
 

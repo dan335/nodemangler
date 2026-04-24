@@ -25,20 +25,23 @@ impl OpImageTransformFlipVertical {
         NodeSettings {
             name: "flip vertical".to_string(),
             description: "Flips an image vertically.".to_string(),
+            help: "Mirrors every pixel across the horizontal center axis, so the pixel at (x, y) becomes (x, height - 1 - y). Output dimensions and channel count match the input; no resampling is performed, so the operation is lossless and self-inverse.\n\nHandy for correcting top-down vs. bottom-up image orientations (e.g. flipping texture data between OpenGL and DirectX conventions).".to_string(),
         }
     }
 
     /// Creates the default inputs: a single source image.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image to flip top-to-bottom."),
         ]
     }
 
     /// Creates the default outputs: the flipped image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Image mirrored top-to-bottom."),
         ]
     }
 

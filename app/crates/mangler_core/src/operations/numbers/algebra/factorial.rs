@@ -24,13 +24,15 @@ impl OpNumberMathFactorial {
         NodeSettings {
             name: "factorial".to_string(),
             description: "Computes the factorial of an integer.".to_string(),
+            help: "Computes n! by iterating from 2 up to n. The input is clamped to [0, 12] because 12! = 479,001,600 is the largest factorial that fits in an i32; higher values would overflow.\n\nDecimal inputs are first converted (truncated) to integer, and 0! returns 1 by convention. For combinatorial work beyond 12! you will need to split the computation or switch to a larger integer type externally.".to_string(),
         }
     }
 
     /// Creates the default input list: a single integer input clamped to `[0, 12]`.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Integer(5), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 12.0)) }), None),
+            Input::new("input".to_string(), Value::Integer(5), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 12.0)) }), None)
+                .with_description("Non-negative integer n; clamped to [0, 12] to avoid i32 overflow."),
         ]
     }
 
@@ -38,6 +40,7 @@ impl OpNumberMathFactorial {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Integer(0), None)
+                .with_description("Factorial n! as an i32.")
         ]
     }
 

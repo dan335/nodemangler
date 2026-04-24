@@ -26,22 +26,27 @@ impl OpImageAdjustmentUnsharpen {
         NodeSettings {
             name: "unsharp mask".to_string(),
             description: "Sharpens by subtracting a blurred version. Controls radius and intensity.".to_string(),
+            help: "Classic unsharp mask: Gaussian-blur the image with the given sigma and output `source + (source - blur)` so the high-frequency detail above `threshold` is added back on top of itself. Larger sigma widens the sharpening halo; threshold spares flat, low-contrast areas to avoid amplifying noise.\n\nImplemented via the `image` crate's `unsharpen`, which requires a positive sigma; sigma = 0 passes the image through unchanged. Unlike `sharpen`, the radius is tunable, so this can target coarse or fine detail instead of only the 3x3 neighborhood.".to_string(),
         }
     }
 
     /// Creates the input ports: an image, sigma (blur radius), and threshold (edge sensitivity).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("sigma".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 1000.0)) }), None),
-            Input::new("threshold".to_string(), Value::Integer(1), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image to sharpen via unsharp masking."),
+            Input::new("sigma".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 1000.0)) }), None)
+                .with_description("Gaussian blur standard deviation; larger values widen the sharpening halo."),
+            Input::new("threshold".to_string(), Value::Integer(1), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Minimum local contrast required before a pixel is sharpened; higher values spare flat areas."),
         ]
     }
 
     /// Creates the output port: the unsharp-masked image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Unsharp-masked image with edge contrast boosted."),
         ]
     }
 

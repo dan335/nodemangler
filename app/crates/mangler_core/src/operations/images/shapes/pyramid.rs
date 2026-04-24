@@ -22,22 +22,29 @@ impl OpImageShapePyramid {
         NodeSettings {
             name: "pyramid".to_string(),
             description: "Square pyramid height shape. Optional step count produces a banded, Mayan-style stepped pyramid.".to_string(),
+            help: "Emits a 1-channel greyscale height shape whose value falls off linearly with the Chebyshev (max-axis) distance from the centre, giving a pyramid with a square footprint. size is the half-extent of the base; pixels outside it clamp to 0 and the apex sits at 1.0.\n\nSetting steps above 0 quantises the continuous slope into that many bands, producing a stepped, Mayan-style pyramid. Rotation is applied in sample space so the pyramid rotates in place around its peak. Output is linear, ready for normal or AO generation.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("size".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None),
-            Input::new("steps".to_string(), Value::Integer(0), Some(InputSettings::DragValue { clamp: Some((0.0, 32.0)), speed: None }), None),
-            Input::new("rotation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: false }), None),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Width of the generated height map in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Height of the generated height map in pixels."),
+            Input::new("size".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Half-size of the square pyramid base in normalised units."),
+            Input::new("steps".to_string(), Value::Integer(0), Some(InputSettings::DragValue { clamp: Some((0.0, 32.0)), speed: None }), None)
+                .with_description("Number of stepped bands; 0 produces a smooth slope."),
+            Input::new("rotation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Rotation of the pyramid around its center in degrees."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Grayscale pyramid height shape, 1.0 at the peak and 0.0 outside the base."),
         ]
     }
 

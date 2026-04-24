@@ -35,6 +35,7 @@ impl OpImageAdjustmentNonLocalMeans {
         NodeSettings {
             name: "non local means".to_string(),
             description: "Non-Local Means denoising — weights neighbors by patch similarity rather than spatial distance.".to_string(),
+            help: "Buades, Coll and Morel 2005. For each pixel p and every candidate q in a search window, weights q by `exp(-||patch(p) - patch(q)||^2 / h^2)` where patches are small windows around each pixel. The output is the weighted average over q, so repeating textures reinforce each other while noise averages to zero.\n\nSuperior to bilateral/guided at preserving fine repeating detail. Cost is O(W^2 * P^2) per pixel with W = search radius and P = patch radius, so both are capped tightly. Rows run in parallel; smaller `strength` keeps detail, larger strength smooths harder.".to_string(),
         }
     }
 
@@ -42,20 +43,25 @@ impl OpImageAdjustmentNonLocalMeans {
     /// filter strength h (larger = more smoothing).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to denoise using patch-similarity weighted averaging."),
             // search window radius — how far NLM looks for similar patches
-            Input::new("search radius".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 8.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("search radius".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 8.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Half-size of the search window; larger values consider patches farther away."),
             // patch radius — size of the neighborhood used for similarity
-            Input::new("patch radius".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (0.0, 4.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("patch radius".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (0.0, 4.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Half-size of the comparison patch; larger values weigh broader context in the match."),
             // filter strength h; small h = sharp but noisy, large h = smooth but blurry
-            Input::new("strength".to_string(), Value::Decimal(0.1), Some(InputSettings::Slider { range: (0.001, 1.0), step_by: Some(0.001), clamp_to_range: true }), None),
+            Input::new("strength".to_string(), Value::Decimal(0.1), Some(InputSettings::Slider { range: (0.001, 1.0), step_by: Some(0.001), clamp_to_range: true }), None)
+                .with_description("Denoising strength h; smaller values keep more detail, larger values smooth more."),
         ]
     }
 
     /// Creates the output port: the denoised image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Non-Local Means denoised image with repeating texture preserved."),
         ]
     }
 

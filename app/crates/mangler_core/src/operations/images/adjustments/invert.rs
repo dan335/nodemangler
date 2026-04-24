@@ -24,20 +24,23 @@ impl OpImageAdjustmentInvert {
         NodeSettings {
             name: "invert".to_string(),
             description: "Inverts all color channels of an image.".to_string(),
+            help: "Replaces each colour channel with 1 minus its value, producing a photographic negative. Alpha is skipped so transparency is preserved.\n\nWhen the input image is the sole owner of its pixel data the node mutates in place instead of cloning, keeping it cheap in long chains. The operation assumes channels sit inside 0-1; values outside that interval are still inverted linearly but will remain outside 0-1, which downstream nodes may clip.".to_string(),
         }
     }
 
     /// Creates the input port: a single image to invert.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image to produce a photographic negative of."),
         ]
     }
 
     /// Creates the output port: the color-inverted image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Image with each colour channel replaced by 1 minus its value; alpha preserved."),
         ]
     }
 

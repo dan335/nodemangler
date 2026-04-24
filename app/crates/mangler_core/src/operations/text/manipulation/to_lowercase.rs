@@ -21,20 +21,23 @@ impl OpTextToLowercase {
         NodeSettings {
             name: "to lowercase".to_string(),
             description: "Converts text to lowercase.".to_string(),
+            help: "Uses Rust's str::to_lowercase, which applies Unicode full case-folding. Characters outside ASCII are handled correctly, and a single input character may expand to multiple output characters (for example the German sharp s \"SS\" -> \"ss\").\n\nThe transformation is locale-independent; locale-sensitive mappings (such as Turkish dotless i) are not applied.".to_string(),
         }
     }
 
     /// Creates the default inputs: a single empty `Text` input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Text(String::new()), None, None),
+            Input::new("input".to_string(), Value::Text(String::new()), None, None)
+                .with_description("Text value to convert to lowercase."),
         ]
     }
 
     /// Creates the default output: a single `Text` value.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Text(String::new()), None),
+            Output::new("output".to_string(), Value::Text(String::new()), None)
+                .with_description("The input text with all letters lowercased via Unicode rules."),
         ]
     }
 

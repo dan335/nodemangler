@@ -51,30 +51,36 @@ impl OpImageAdjustmentAnisotropicKuwahara {
         NodeSettings {
             name: "anisotropic kuwahara".to_string(),
             description: "Edge-following painterly smoothing (Kyprianidis 2009). Slower but smoother than classic Kuwahara.".to_string(),
+            help: "Kyprianidis 2009 variant of the Kuwahara filter. A smoothed structure tensor yields a per-pixel edge orientation and anisotropy; sampling happens along an ellipse oriented along the edge, split into 8 Gaussian angular sectors, and sector means are blended with weights `1 / (variance^q + eps)` so the flattest sector dominates.\n\nBrush strokes follow object contours instead of staircasing on diagonals. Sharpness (q) posterizes flat regions, alpha stretches strokes along edges. Heavier than classic Kuwahara but parallelized over rows.".to_string(),
         }
     }
 
     /// Creates the input ports.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to stylize with edge-following painterly smoothing."),
             // base sampling radius — neighborhood is (2r+1) x (2r+1) before the elliptical warp
-            Input::new("radius".to_string(), Value::Integer(4), Some(InputSettings::Slider { range: (2.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("radius".to_string(), Value::Integer(4), Some(InputSettings::Slider { range: (2.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Base sampling radius in pixels; larger values give bigger brush strokes."),
             // sharpness q: exponent on per-sector variance when computing blend weights.
             // Higher = sharper edges and flatter regions (more posterised);
             // lower = softer transitions (more averaged).
-            Input::new("sharpness".to_string(), Value::Decimal(8.0), Some(InputSettings::Slider { range: (1.0, 20.0), step_by: Some(0.5), clamp_to_range: true }), None),
+            Input::new("sharpness".to_string(), Value::Decimal(8.0), Some(InputSettings::Slider { range: (1.0, 20.0), step_by: Some(0.5), clamp_to_range: true }), None)
+                .with_description("Variance exponent controlling sector blending; higher values posterize flatter regions."),
             // alpha: how much to stretch the ellipse along the edge direction.
             // 0 → almost circular (≈ classic Kuwahara behavior at strong edges);
             // higher → ellipse follows edges more aggressively for longer brush strokes.
-            Input::new("alpha".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 2.0), step_by: Some(0.05), clamp_to_range: true }), None),
+            Input::new("alpha".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 2.0), step_by: Some(0.05), clamp_to_range: true }), None)
+                .with_description("Ellipse elongation along edges; higher values produce longer edge-following strokes."),
         ]
     }
 
     /// Creates the output port.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Painterly anisotropic-Kuwahara smoothed image that follows edge contours."),
         ]
     }
 

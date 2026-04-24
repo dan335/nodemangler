@@ -24,6 +24,7 @@ impl OpVideoLoop {
         NodeSettings {
             name: "video loop".to_string(),
             description: "Repeats the clip N times back-to-back. Metadata only.".to_string(),
+            help: "Appends a Loop transform to the VideoRef, multiplying the effective duration and total_frames by count. Fps, width, height, and the underlying source file are untouched; no re-encode happens.\n\nCount is clamped to at least 1. Downstream extract-frame ops wrap effective time/frame modulo the input clip's duration when mapping back to the source, so looping composes cleanly with trim, speed, and reverse earlier in the chain.".to_string(),
         }
     }
 
@@ -34,7 +35,8 @@ impl OpVideoLoop {
                 Value::Video(VideoRef::default()),
                 None,
                 None,
-            ),
+            )
+            .with_description("Source video handle to repeat back-to-back."),
             Input::new(
                 "count".to_string(),
                 Value::Integer(2),
@@ -43,7 +45,8 @@ impl OpVideoLoop {
                     speed: Some(1.0),
                 }),
                 None,
-            ),
+            )
+            .with_description("Number of times the clip is repeated in sequence."),
         ]
     }
 
@@ -52,7 +55,8 @@ impl OpVideoLoop {
             "video".to_string(),
             Value::Video(VideoRef::default()),
             None,
-        )]
+        )
+        .with_description("Looped video handle with duration multiplied by the repeat count.")]
     }
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {

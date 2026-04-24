@@ -20,14 +20,17 @@ impl OpNumberBitwiseOr {
         NodeSettings {
             name: "bitwise or".to_string(),
             description: "Computes the bitwise OR of two integers.".to_string(),
+            help: "Returns a | b, setting each output bit when either of the corresponding input bits is 1.\n\nUseful for combining bit flags: OR a mask into a value to turn its bits on without disturbing others. Operates on signed 32-bit integers.".to_string(),
         }
     }
 
     /// Creates the default input list: two integer drag-value inputs.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("b".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("a".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("First integer operand for the bitwise OR."),
+            Input::new("b".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Second integer operand for the bitwise OR."),
         ]
     }
 
@@ -35,6 +38,7 @@ impl OpNumberBitwiseOr {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Integer(0), None)
+                .with_description("Bitwise OR of a and b (a | b).")
         ]
     }
 

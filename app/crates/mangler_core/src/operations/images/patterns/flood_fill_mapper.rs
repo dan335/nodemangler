@@ -29,21 +29,27 @@ impl OpImagePatternFloodFillMapper {
         NodeSettings {
             name: "flood fill mapper".to_string(),
             description: "Colours each flood-fill cell by sampling a gradient at the cell's random value; outside pixels pass through black.".to_string(),
+            help: "Reads the packed data image from the flood fill node and looks up each cell's colour by horizontally sampling the gradient image at a per-cell t coordinate (bilinear along the gradient's y-midpoint).\n\nRandomness blends between using the sequential cell index (0) and the cell's stable random value (1) as t, while offset shifts every sample along the gradient. t is clamped to [0, 1] so endpoints sample the first/last gradient pixel rather than wrapping. Gradient dimensions do not need to match the input; pixels with cell id 0 are written as transparent black.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("flood fill".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("gradient".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("randomness".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("offset".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("flood fill".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Flood-fill data image produced by the flood fill node."),
+            Input::new("gradient".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Horizontal gradient sampled per cell to pick its color."),
+            Input::new("randomness".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Blends between using cell index (0) and per-cell random value (1) to sample the gradient."),
+            Input::new("offset".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Shifts the gradient sample position for every cell."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("RGBA image with each cell filled by its sampled gradient color."),
         ]
     }
 

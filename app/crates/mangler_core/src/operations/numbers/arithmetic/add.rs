@@ -28,14 +28,17 @@ impl OpNumberMathAdd {
         NodeSettings {
             name: "add".to_string(),
             description: "Adds two numbers together.".to_string(),
+            help: "Polymorphic addition that dispatches on the types of both inputs. Numbers are summed and mixed integer/decimal types promote to decimal. Booleans act as 0 or 1.\n\nText inputs concatenate with their partner (e.g. text + number becomes a formatted string). Colors add the scalar to every sRGBA channel, and images add a scalar to every pixel channel. Image + image, image + decimal, and image + color combinations are not yet implemented.".to_string(),
         }
     }
 
     /// Creates the default input list: two decimal drag-value inputs (a and b).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
-            Input::new("b".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
+            Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("First operand; accepts numbers, booleans, strings, colors, or images."),
+            Input::new("b".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Second operand added to a; type combines with a to choose the result type."),
         ]
     }
 
@@ -43,6 +46,7 @@ impl OpNumberMathAdd {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Sum of a and b, promoted or concatenated based on input types.")
         ]
     }
 

@@ -22,13 +22,15 @@ impl OpNumberMathFloor {
         NodeSettings {
             name: "floor".to_string(),
             description: "Rounds down to the nearest integer.".to_string(),
+            help: "Returns the largest integer less than or equal to the input, using f32::floor. The result is returned as a decimal so it can feed directly into other floating-point math.\n\nFlooring always rounds toward negative infinity, so floor(-1.5) yields -2.0, not -1.0. Pair with ceil or round when you need different rounding semantics.".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Number to round down to the nearest integer."),
         ]
     }
 
@@ -36,6 +38,7 @@ impl OpNumberMathFloor {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Largest integer value less than or equal to the input.")
         ]
     }
 

@@ -30,25 +30,33 @@ impl OpImageInputColor {
         NodeSettings {
             name: "from color".to_string(),
             description: "Creates an image from a color.".to_string(),
+            help: "Produces a 4-channel FloatImage where every pixel is the same color. Width and height are clamped to at least 1 and capped at 10000; the color is written directly as sRGB floats to avoid the precision loss of a u8 round-trip.\n\nHandy for generating solid backgrounds, tinted fills for blend operations, or constant alpha masks. The color, width, and height are also passed through as separate outputs so downstream nodes can read the same values without re-wiring the original inputs.".to_string(),
         }
     }
 
     /// Creates the input definitions: color, width (1-10000), and height (1-10000).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("color".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
+            Input::new("color".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Color used to fill every pixel of the output image."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Width of the generated image in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Height of the generated image in pixels."),
         ]
     }
 
     /// Creates the output definitions: the generated image, the color, width, and height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
-            Output::new("color".to_string(), Value::Color(Color::default()), None),
-            Output::new("width".to_string(), Value::Integer(1), None),
-            Output::new("height".to_string(), Value::Integer(1), None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None)
+                .with_description("Solid-color image filled with the chosen color."),
+            Output::new("color".to_string(), Value::Color(Color::default()), None)
+                .with_description("Pass-through of the input color."),
+            Output::new("width".to_string(), Value::Integer(1), None)
+                .with_description("Final width of the generated image in pixels."),
+            Output::new("height".to_string(), Value::Integer(1), None)
+                .with_description("Final height of the generated image in pixels."),
         ]
     }
 

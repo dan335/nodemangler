@@ -20,6 +20,12 @@ pub struct Input {
     pub id: String,
     /// Display name shown in the graph editor.
     pub name: String,
+    /// Human-readable description of what this input controls, shown as a
+    /// tooltip when the user hovers over the input's name in the node settings
+    /// panel. Empty string means "no tooltip". `#[serde(default)]` so older
+    /// saved graphs (which lack the field) deserialize with an empty description.
+    #[serde(default)]
+    pub description: String,
     /// The current value held by this input.
     /// Images are replaced with a 1x1 placeholder during serialization to avoid
     /// storing full pixel data. Non-image values (numbers, paths, colors, etc.)
@@ -68,6 +74,7 @@ impl Input {
         Input {
             id: get_id(),
             name,
+            description: String::new(),
             value: default_value.clone(),
             default_value,
             settings,
@@ -78,6 +85,13 @@ impl Input {
             accepts_any_type: false,
             link,
         }
+    }
+
+    /// Builder: attach a human-readable description used as the tooltip when
+    /// hovering the input's name in the node settings panel.
+    pub fn with_description(mut self, description: impl Into<String>) -> Input {
+        self.description = description.into();
+        self
     }
 
     /// Check whether an output can be connected to this input based on type

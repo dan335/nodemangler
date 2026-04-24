@@ -31,25 +31,33 @@ impl OpImageShapeRectangle {
         NodeSettings {
             name: "rectangle".to_string(),
             description: "Generates a rectangle shape as a grayscale SDF.".to_string(),
+            help: "Rasterises a rounded rectangle into a 1-channel FloatImage using a rounded-box SDF with smoothstepped edges. rect_width and rect_height are full widths in normalised (-1..1) units — a value of 1.0 covers half the canvas.\n\ncorner_radius rounds the corners and is automatically capped at half the smaller side, so extreme values degrade to a capsule or disc rather than folding. Rotation is applied to the sample coordinates, keeping the rectangle centred on the canvas.".to_string(),
         }
     }
 
     /// Creates the default inputs: width, height, rect_width, rect_height, corner_radius, and rotation.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("rect_width".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None),
-            Input::new("rect_height".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None),
-            Input::new("corner_radius".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 0.5), step_by: None, clamp_to_range: false }), None),
-            Input::new("rotation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: false }), None),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Width of the generated image in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Height of the generated image in pixels."),
+            Input::new("rect_width".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Full width of the rectangle in normalised units."),
+            Input::new("rect_height".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Full height of the rectangle in normalised units."),
+            Input::new("corner_radius".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 0.5), step_by: None, clamp_to_range: false }), None)
+                .with_description("Rounds the rectangle corners; 0 is a sharp corner."),
+            Input::new("rotation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Rotation of the rectangle around its center in degrees."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Grayscale mask with the rectangle filled white on a black background."),
         ]
     }
 

@@ -23,14 +23,17 @@ impl OpNumberMathAverage {
         NodeSettings {
             name: "average".to_string(),
             description: "Computes the average (mean) of two numbers.".to_string(),
+            help: "Calculates the arithmetic mean as (a + b) / 2. Both inputs are converted to decimal before the computation, so integers and booleans are accepted transparently.\n\nUseful for blending two scalar parameters together or finding a midpoint between two values. For a weighted mix between values, use the lerp operation instead.".to_string(),
         }
     }
 
     /// Creates the default input list: two decimal drag-value inputs defaulting to 0.0.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("b".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("First number to average."),
+            Input::new("b".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Second number to average."),
         ]
     }
 
@@ -38,6 +41,7 @@ impl OpNumberMathAverage {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Arithmetic mean of a and b, computed as (a + b) / 2.")
         ]
     }
 

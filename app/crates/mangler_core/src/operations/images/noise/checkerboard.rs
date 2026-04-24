@@ -26,22 +26,27 @@ impl OpImageNoiseCheckerboard {
         NodeSettings {
             name: "checkerboard noise".to_string(),
             description: "Creates a checkerboard noise image.".to_string(),
+            help: "Not a stochastic noise at all: a deterministic alternating black/white grid produced by the noise crate's Checkerboard function. The size input is a subdivision exponent rather than a count, so each step doubles how many squares fit across the image.\n\nHandy as a UV test pattern, a mask for regular alternation, or an input to other nodes (warp, blur, blend) that turn the regular grid into something less obvious.".to_string(),
         }
     }
 
     /// Creates the default inputs: width, height, and size (number of checkerboard divisions).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("size".to_string(), Value::Integer(10), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("size".to_string(), Value::Integer(10), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Checkerboard subdivision exponent; larger values produce more, smaller squares."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None)
+                .with_description("Grayscale checkerboard pattern image."),
         ]
     }
 

@@ -41,30 +41,43 @@ impl OpImageNoiseDirt {
         NodeSettings {
             name: "dirt noise".to_string(),
             description: "Organic splatter/grunge noise. Creates dirt, stains, wear marks, and grunge textures using randomized blob kernels.".to_string(),
+            help: "Sparse convolution noise: jittered grid cells each drop one or two blob-shaped splatter kernels with randomized size, rotation, elongation, and intensity. Edges are perturbed by angle-based sine harmonics controlled by roughness, so blobs look torn instead of mathematically clean. Overlapping splatters use MAX blending rather than summing, keeping individual marks crisp.\n\nDensity sets how many cells fit across the tile; octaves stack smaller speckles on top of larger stains. The scale/intensity variation sliders randomize per-splatter values.\n\nBest for dirt, rust, stains, wear maps, and grunge overlays where standard lattice noise looks too regular.".to_string(),
         }
     }
 
     /// Creates the default inputs for the dirt noise operation.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None),
-            Input::new("density".to_string(), Value::Decimal(8.0), Some(InputSettings::DragValue { clamp: Some((1.0, 64.0)), speed: Some(0.1) }), None),
-            Input::new("scale".to_string(), Value::Decimal(0.7), Some(InputSettings::DragValue { clamp: Some((0.01, 10.0)), speed: Some(0.01) }), None),
-            Input::new("scale_variation".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None),
-            Input::new("intensity".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None),
-            Input::new("intensity_variation".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None),
-            Input::new("roughness".to_string(), Value::Decimal(0.4), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None),
-            Input::new("elongation".to_string(), Value::Decimal(0.3), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None),
-            Input::new("octaves".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 8.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed for splatter placement and shape; change to rearrange the grunge."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("density".to_string(), Value::Decimal(8.0), Some(InputSettings::DragValue { clamp: Some((1.0, 64.0)), speed: Some(0.1) }), None)
+                .with_description("Number of splatter cells across the image; higher values pack splatters tighter."),
+            Input::new("scale".to_string(), Value::Decimal(0.7), Some(InputSettings::DragValue { clamp: Some((0.01, 10.0)), speed: Some(0.01) }), None)
+                .with_description("Base splatter radius relative to cell size; larger values produce bigger blobs."),
+            Input::new("scale_variation".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
+                .with_description("How much splatter sizes vary from the base scale; 0 is uniform, 1 is most varied."),
+            Input::new("intensity".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
+                .with_description("Peak brightness of each splatter; raises overall darkness of the dirt."),
+            Input::new("intensity_variation".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
+                .with_description("How much splatter brightness varies; 0 is uniform, 1 is most varied."),
+            Input::new("roughness".to_string(), Value::Decimal(0.4), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
+                .with_description("How irregular each splatter edge is; 0 gives smooth blobs, 1 gives torn edges."),
+            Input::new("elongation".to_string(), Value::Decimal(0.3), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
+                .with_description("How much splatters can stretch; 0 keeps them round, 1 allows streak-like shapes."),
+            Input::new("octaves".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 8.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Number of splatter scales layered; more octaves add smaller speckles on top."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Seamlessly tiling grayscale dirt/grunge image of irregular splatter blobs."),
         ]
     }
 

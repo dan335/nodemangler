@@ -36,24 +36,31 @@ impl OpImageNoiseVoronoiCrack {
         NodeSettings {
             name: "voronoi crack noise".to_string(),
             description: "Voronoi F2-F1 noise producing crack/vein patterns from cell boundary distances.".to_string(),
+            help: "A Voronoi/Worley variant that outputs F2 - F1: the difference between the distance to the second-nearest cell point and the nearest one. That difference is near zero exactly along cell boundaries (where two neighbors are equidistant), so boundaries light up as bright lines and cell interiors stay dark.\n\nFrequency sets how many cells pack across the tile; jitter controls how far each cell point deviates from its cell center (0 is a regular grid, 1 is fully scattered).\n\nClassic for cracked earth, dried mud, bark, leaf veins, stone fractures, and any ridge-line network.".to_string(),
         }
     }
 
     /// Creates the default inputs: seed, width, height, frequency, and jitter.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("frequency".to_string(), Value::Decimal(8.0), Some(InputSettings::DragValue { clamp: Some((1.0, 100.0)), speed: Some(0.1) }), None),
-            Input::new("jitter".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed placing the cell points and thus the crack layout."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("frequency".to_string(), Value::Decimal(8.0), Some(InputSettings::DragValue { clamp: Some((1.0, 100.0)), speed: Some(0.1) }), None)
+                .with_description("Number of cells across the tile; higher values produce denser, smaller cracks."),
+            Input::new("jitter".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("How far each cell point may wander from its cell center; 0 is a regular grid."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Seamlessly tiling grayscale crack/vein pattern highlighting Voronoi cell boundaries."),
         ]
     }
 

@@ -31,13 +31,15 @@ impl OpColorHarmonyDoubleSplitComplementary {
         NodeSettings {
             name: "double split comp".to_string(),
             description: "Generates four harmony colors at +30°, -30°, +150°, and +210° hue offsets from the input, forming a six-color double split-complementary scheme.".to_string(),
+            help: "Operates in HSL: saturation, lightness, and alpha are preserved while the hue is rotated to create two neighbors of the base (+/-30 degrees) and two neighbors of the complement (+150 and +210 degrees). Together with the input and its direct complement, the four outputs form a rich six-color palette with built-in contrast and variety.\n\nBecause all shifts are hue rotations, neutral grays collapse to identical outputs. Combine this node with the input color for a complete palette.".to_string(),
         }
     }
 
     /// Creates the single input definition: the source color.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("color".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("color".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Base color whose double split-complementary palette is generated."),
         ]
     }
 
@@ -48,10 +50,14 @@ impl OpColorHarmonyDoubleSplitComplementary {
     /// - `split_comp_b` (+210° from input)
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("split_base_a".to_string(), Value::Color(Color::default()), None),
-            Output::new("split_base_b".to_string(), Value::Color(Color::default()), None),
-            Output::new("split_comp_a".to_string(), Value::Color(Color::default()), None),
-            Output::new("split_comp_b".to_string(), Value::Color(Color::default()), None),
+            Output::new("split_base_a".to_string(), Value::Color(Color::default()), None)
+                .with_description("Color adjacent to the base at hue +30°."),
+            Output::new("split_base_b".to_string(), Value::Color(Color::default()), None)
+                .with_description("Color adjacent to the base at hue -30° (i.e. +330°)."),
+            Output::new("split_comp_a".to_string(), Value::Color(Color::default()), None)
+                .with_description("Color flanking the complement at hue +150°."),
+            Output::new("split_comp_b".to_string(), Value::Color(Color::default()), None)
+                .with_description("Color flanking the complement at hue +210°."),
         ]
     }
 

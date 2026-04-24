@@ -24,6 +24,7 @@ impl OpNumberMathCbrt {
         NodeSettings {
             name: "cube root".to_string(),
             description: "Returns the cube root of a number.".to_string(),
+            help: "Computes the real cube root of the input, equivalent to a^(1/3). Always returns a decimal; integer inputs are cast to f32 first.\n\nUnlike square root, cube root is defined for negative numbers: cbrt(-8) is -2. Useful for reversing a cube or for perceptual intensity curves.".to_string(),
         }
     }
 
@@ -31,6 +32,7 @@ impl OpNumberMathCbrt {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Number whose cube root is taken; negatives yield negative results.")
         ]
     }
 
@@ -38,6 +40,7 @@ impl OpNumberMathCbrt {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Cube root of the input as a decimal.")
         ]
     }
 
