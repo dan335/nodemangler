@@ -31,25 +31,33 @@ impl OpImagePbrBevel {
         NodeSettings {
             name: "bevel".to_string(),
             description: "Produces a beveled height/normal from a mask using a distance-field ramp.".to_string(),
+            help: "Thresholds the input mask into inside/outside pixels, then for each inside pixel finds the Euclidean distance to the nearest outside pixel within the configured search window. That distance is normalised against distance (in pixels), shaped by the corner profile (round sin-curve or angular linear), and blended toward a smoothstep by smoothing.\n\nIn height mode (default) the output is a single-channel height field; in normal mode a Sobel operator is run over the internal height to produce a tangent-space normal map whose apparent strength scales inversely with distance so wider bevels give gentler normals.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("distance".to_string(), Value::Decimal(16.0), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 256.0)) }), None),
-            Input::new("smoothing".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source mask that defines the shape to be beveled."),
+            Input::new("distance".to_string(), Value::Decimal(16.0), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 256.0)) }), None)
+                .with_description("Bevel width in pixels, measured inward from the mask edge."),
+            Input::new("smoothing".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Blends the ramp toward a smoothstep curve for softer bevels."),
             // 0 = round (sin curve), 1 = angular (linear)
-            Input::new("corner type".to_string(), Value::Integer(0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("corner type".to_string(), Value::Integer(0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Profile shape: 0 rounded (sin curve), 1 angular (linear)."),
             // 0 = height, 1 = normal
-            Input::new("output mode".to_string(), Value::Integer(0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("threshold".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("output mode".to_string(), Value::Integer(0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Output type: 0 height map, 1 derived normal map."),
+            Input::new("threshold".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Luminance cutoff used to split the mask into inside and outside pixels."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Beveled height map, or derived normal map when output mode is 1."),
         ]
     }
 

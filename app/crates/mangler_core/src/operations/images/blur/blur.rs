@@ -27,19 +27,23 @@ impl OpImageAdjustmentBlur {
         NodeSettings {
             name: "blur".to_string(),
             description: "Applies a Gaussian blur with adjustable radius.".to_string(),
+            help: "Approximates a true Gaussian blur by running three successive box-blur passes (horizontal + vertical each) with radii chosen via the W3C SVG algorithm. This is O(n) per pixel regardless of sigma, so even very large blurs remain fast.\n\nSigma is the Gaussian standard deviation in pixels; a sigma at or below machine epsilon short-circuits and returns the source unchanged. Edges are clamped (extend), so bright borders cannot leak darkness into the image. All channels including alpha are blurred identically; premultiply beforehand if you need alpha-aware blooming.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("sigma".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 1000.0)) }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to blur."),
+            Input::new("sigma".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 1000.0)) }), None)
+                .with_description("Gaussian standard deviation in pixels; larger values produce a softer blur."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Blurred image produced by three box passes approximating a Gaussian."),
         ]
     }
 

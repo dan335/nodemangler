@@ -28,6 +28,7 @@ impl OpNumberInputDecimal {
         NodeSettings {
             name: "decimal".to_string(),
             description: "A decimal number input.".to_string(),
+            help: "Emits a single 32-bit floating-point value onto the graph. Use this node to supply constants, tweakable parameters, or expose a decimal input on a subgraph.\n\nInputs connected from other numeric types are coerced: integers widen to decimal, booleans become 0.0 or 1.0. Non-numeric types produce an input error.".to_string(),
         }
     }
 
@@ -35,6 +36,7 @@ impl OpNumberInputDecimal {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Decimal value to emit; other numeric types are coerced to decimal.")
         ]
     }
 
@@ -42,6 +44,7 @@ impl OpNumberInputDecimal {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("The decimal value from the input, passed through.")
         ]
     }
 

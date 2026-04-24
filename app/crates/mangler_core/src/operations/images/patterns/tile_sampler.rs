@@ -42,6 +42,7 @@ impl OpImagePatternTileSampler {
         NodeSettings {
             name: "tile sampler".to_string(),
             description: "Scatters instances of an input pattern across a grid with randomization.".to_string(),
+            help: "Divides the output into a count_x by count_y grid and stamps one instance of the pattern into each cell. Base scale fits the stamp to its cell; scale random, rotation random (degrees), and offset random (fraction of cell size) jitter each instance deterministically from the seed.\n\nStamps that rotate or translate out of their cell can bleed into neighbours; overlapping regions are composited with a per-channel max blend so the brightest value wins. Stamp pixels that fall outside the canvas are clipped rather than wrapped. The output channel count matches the input pattern.".to_string(),
         }
     }
 
@@ -49,23 +50,34 @@ impl OpImagePatternTileSampler {
     /// and randomization parameters (scale_random, rotation_random, offset_random, seed).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("pattern".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("count_x".to_string(), Value::Integer(4), Some(InputSettings::DragValue { clamp: Some((1.0, 64.0)), speed: None }), None),
-            Input::new("count_y".to_string(), Value::Integer(4), Some(InputSettings::DragValue { clamp: Some((1.0, 64.0)), speed: None }), None),
-            Input::new("scale".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 3.0), step_by: None, clamp_to_range: false }), None),
-            Input::new("scale_random".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None),
-            Input::new("rotation_random".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: true }), None),
-            Input::new("offset_random".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None),
-            Input::new("seed".to_string(), Value::Integer(42), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
+            Input::new("pattern".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image stamped into each grid cell."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("count_x".to_string(), Value::Integer(4), Some(InputSettings::DragValue { clamp: Some((1.0, 64.0)), speed: None }), None)
+                .with_description("Number of grid columns."),
+            Input::new("count_y".to_string(), Value::Integer(4), Some(InputSettings::DragValue { clamp: Some((1.0, 64.0)), speed: None }), None)
+                .with_description("Number of grid rows."),
+            Input::new("scale".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 3.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Base scale of each pattern instance relative to its cell."),
+            Input::new("scale_random".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
+                .with_description("Random variation applied to each instance's scale."),
+            Input::new("rotation_random".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: true }), None)
+                .with_description("Maximum random rotation per instance in degrees."),
+            Input::new("offset_random".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
+                .with_description("Random per-cell position offset as a fraction of cell size."),
+            Input::new("seed".to_string(), Value::Integer(42), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed; same seed always produces the same layout."),
         ]
     }
 
     /// Creates the default output: a single image matching the input pattern's channel count.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Composite image of all grid-placed pattern instances, max-blended."),
         ]
     }
 

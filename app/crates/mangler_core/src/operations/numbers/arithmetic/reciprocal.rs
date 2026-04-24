@@ -24,6 +24,7 @@ impl OpNumberMathReciprocal {
         NodeSettings {
             name: "reciprocal".to_string(),
             description: "Returns 1 divided by the input value.".to_string(),
+            help: "Computes 1 / input after converting the value to decimal. Setting the input to zero raises a division-by-zero error rather than producing infinity.\n\nUseful for turning multipliers into divisors (and vice versa) or for inverting a ratio without wiring up a full divide node.".to_string(),
         }
     }
 
@@ -31,6 +32,7 @@ impl OpNumberMathReciprocal {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("input".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Number to invert; setting it to zero raises a division-by-zero error.")
         ]
     }
 
@@ -38,6 +40,7 @@ impl OpNumberMathReciprocal {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Reciprocal 1 / input as a decimal.")
         ]
     }
 

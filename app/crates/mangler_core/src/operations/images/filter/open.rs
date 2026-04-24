@@ -24,19 +24,23 @@ impl OpImageAdjustmentOpen {
         NodeSettings {
             name: "open".to_string(),
             description: "Morphological opening — erode then dilate. Removes small bright specks.".to_string(),
+            help: "Runs an erosion (per-channel min in a square window) immediately followed by a dilation (per-channel max) using the same radius. Bright specks, thin bright filaments, and isolated highlights smaller than the structuring element disappear while larger bright regions recover their original footprint.\n\nComplementary to `close` for mask cleanup. Uses the separable morphology primitive from `erode.rs` so cost is O(r) per pixel.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("radius".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image or mask to open."),
+            Input::new("radius".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Structuring element radius in pixels; larger values remove bigger bright specks."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Image after morphological opening that removes small bright specks."),
         ]
     }
 

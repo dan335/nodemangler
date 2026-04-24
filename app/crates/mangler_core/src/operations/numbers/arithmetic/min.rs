@@ -22,14 +22,17 @@ impl OpNumberMathMin {
         NodeSettings {
             name: "min".to_string(),
             description: "Returns the minimum of two numbers.".to_string(),
+            help: "Returns whichever of a and b is numerically smaller. Integer/integer inputs stay as integer; any decimal input promotes the result to decimal.\n\nFloating-point comparison follows f32::min semantics, which propagates NaN inputs. Commonly combined with max to implement a clamp, or to enforce an upper bound on a running value.".to_string(),
         }
     }
 
     /// Creates the default input list: two decimal drag-value inputs (a and b).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
+            Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("First candidate value."),
             Input::new("b".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Second candidate value.")
         ]
     }
 
@@ -37,6 +40,7 @@ impl OpNumberMathMin {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("The smaller of a and b; mixed integer/decimal inputs promote to decimal.")
         ]
     }
 

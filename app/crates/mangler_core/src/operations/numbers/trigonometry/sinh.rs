@@ -20,13 +20,15 @@ impl OpNumberTrigSinh {
         NodeSettings {
             name: "sinh".to_string(),
             description: "Computes the hyperbolic sine of a value.".to_string(),
+            help: "Returns (e^x - e^-x) / 2, an odd function with sinh(0) == 0 and sinh(-x) == -sinh(x).\n\nGrows exponentially for large |x| and can overflow f32 to +/- infinity around |x| ~ 89. Near zero it behaves almost linearly, making it handy for gentle-to-extreme response curves.".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Value to take the hyperbolic sine of."),
         ]
     }
 
@@ -34,6 +36,7 @@ impl OpNumberTrigSinh {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Hyperbolic sine of the input: (e^x - e^-x) / 2.")
         ]
     }
 

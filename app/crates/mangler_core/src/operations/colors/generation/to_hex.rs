@@ -23,14 +23,17 @@ impl OpColorGenerationToHex {
         NodeSettings {
             name: "to hex".to_string(),
             description: "Converts a color to a hex string (e.g. #RRGGBB or #RRGGBBAA).".to_string(),
+            help: "Multiplies each sRGB float channel by 255 and rounds to the nearest byte, then formats the result as an uppercase hex string prefixed with '#'. When include alpha is false the output is #RRGGBB and the alpha channel is dropped; when true the alpha byte is appended as #RRGGBBAA.\n\nFloat channels outside 0-1 are cast to u8 after rounding, so HDR or negative values will wrap rather than saturate; clamp upstream if you need safe output.".to_string(),
         }
     }
 
     /// Creates the input definitions: a color and a boolean flag to include alpha.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("color".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("include alpha".to_string(), Value::Bool(false), None, None),
+            Input::new("color".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Color to format as a hex string."),
+            Input::new("include alpha".to_string(), Value::Bool(false), None, None)
+                .with_description("When true appends the alpha byte, producing #RRGGBBAA instead of #RRGGBB."),
         ]
     }
 
@@ -38,6 +41,7 @@ impl OpColorGenerationToHex {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("hex".to_string(), Value::Text("#000000".to_string()), None)
+                .with_description("Uppercase hex color code (#RRGGBB or #RRGGBBAA).")
         ]
     }
 

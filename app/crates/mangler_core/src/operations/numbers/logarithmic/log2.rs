@@ -20,13 +20,15 @@ impl OpNumberMathLog2 {
         NodeSettings {
             name: "log2".to_string(),
             description: "Computes base-2 logarithm.".to_string(),
+            help: "Returns the binary (base-2) logarithm of the input. Input must be strictly positive; zero or negative values produce a node error.\n\nHandy for reasoning about mip levels, octaves of noise, bit widths, and any doubling-based progression. log2(1) is 0, log2(2) is 1, log2(4) is 2, and so on.".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Value to take the base-2 logarithm of; must be strictly positive."),
         ]
     }
 
@@ -34,6 +36,7 @@ impl OpNumberMathLog2 {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Base-2 logarithm of the input.")
         ]
     }
 

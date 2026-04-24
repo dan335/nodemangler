@@ -32,6 +32,7 @@ impl OpImageAdjustmentCanny {
         NodeSettings {
             name: "canny".to_string(),
             description: "Canny edge detector (Gaussian → Sobel → non-max suppression → hysteresis).".to_string(),
+            help: "Classic four-stage Canny: Gaussian-smooth the luminance, take Sobel gradients, thin ridges via non-max suppression along the gradient direction quantized to 4 angles, then double-threshold with hysteresis so weak edges are kept only if 8-connected to a strong edge.\n\nMagnitude is normalized by the image max so thresholds are meaningful across exposures. Sigma suppresses noise at the cost of edge localization. Output is a binary mask (0 or 1) on color channels with the source alpha preserved.".to_string(),
         }
     }
 
@@ -39,20 +40,25 @@ impl OpImageAdjustmentCanny {
     /// thresholds for hysteresis.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image whose luminance is analyzed for edges."),
             // sigma for the pre-smoothing Gaussian
-            Input::new("sigma".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 5.0), step_by: Some(0.1), clamp_to_range: true }), None),
+            Input::new("sigma".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 5.0), step_by: Some(0.1), clamp_to_range: true }), None)
+                .with_description("Standard deviation of the Gaussian pre-smoothing; larger values suppress more noise."),
             // lower threshold: below this, gradients are rejected
-            Input::new("low threshold".to_string(), Value::Decimal(0.1), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("low threshold".to_string(), Value::Decimal(0.1), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Weak-edge cutoff; gradients below this are rejected outright."),
             // upper threshold: above this, gradients are always kept
-            Input::new("high threshold".to_string(), Value::Decimal(0.3), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("high threshold".to_string(), Value::Decimal(0.3), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Strong-edge cutoff; gradients above this are always kept and seed hysteresis."),
         ]
     }
 
     /// Creates the output port: binary edge image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Binary edge mask where detected edges are white on a black background."),
         ]
     }
 

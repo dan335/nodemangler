@@ -38,27 +38,37 @@ impl OpImageNoiseReactionDiffusion {
         NodeSettings {
             name: "reaction diffusion".to_string(),
             description: "Gray-Scott reaction-diffusion simulation producing organic spots, worms, maze, and coral patterns.".to_string(),
+            help: "Simulates Turing's reaction-diffusion model in its Gray-Scott form. Two virtual chemicals A and B diffuse across a wrapped grid; A is fed in at rate feed, B is consumed at rate kill, and the reaction A + 2B -> 3B converts A into more B wherever B already exists. The final B field is output as grayscale.\n\nFeed and kill choose the pattern family - the description lists classic presets like spots, worms, maze, and coral - while diffusion rates of A and B (usually Da ~ 2 * Db) control feature scale. Iterations let the pattern evolve; fewer iterations give soft blobs, many iterations settle into crisp structure.\n\nProduces biological textures impossible for analytic noise: leopard spots, zebra stripes, coral, and organic mazes.".to_string(),
         }
     }
 
     /// Creates the default inputs: seed, dimensions, feed/kill rates, and iterations.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(256), Some(InputSettings::DragValue { clamp: Some((1.0, 2048.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(256), Some(InputSettings::DragValue { clamp: Some((1.0, 2048.0)), speed: None }), None),
-            Input::new("feed".to_string(), Value::Decimal(0.055), Some(InputSettings::DragValue { clamp: Some((0.0, 0.1)), speed: Some(0.0001) }), None),
-            Input::new("kill".to_string(), Value::Decimal(0.062), Some(InputSettings::DragValue { clamp: Some((0.0, 0.1)), speed: Some(0.0001) }), None),
-            Input::new("diffusion_a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { clamp: Some((0.0, 2.0)), speed: Some(0.01) }), None),
-            Input::new("diffusion_b".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { clamp: Some((0.0, 2.0)), speed: Some(0.01) }), None),
-            Input::new("iterations".to_string(), Value::Integer(4000), Some(InputSettings::DragValue { clamp: Some((100.0, 50000.0)), speed: Some(100.0) }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed placing the initial chemical B seed spots."),
+            Input::new("width".to_string(), Value::Integer(256), Some(InputSettings::DragValue { clamp: Some((1.0, 2048.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(256), Some(InputSettings::DragValue { clamp: Some((1.0, 2048.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("feed".to_string(), Value::Decimal(0.055), Some(InputSettings::DragValue { clamp: Some((0.0, 0.1)), speed: Some(0.0001) }), None)
+                .with_description("Rate at which chemical A is replenished; small shifts change spots, worms, or maze."),
+            Input::new("kill".to_string(), Value::Decimal(0.062), Some(InputSettings::DragValue { clamp: Some((0.0, 0.1)), speed: Some(0.0001) }), None)
+                .with_description("Rate at which chemical B decays; tune together with feed to select pattern type."),
+            Input::new("diffusion_a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { clamp: Some((0.0, 2.0)), speed: Some(0.01) }), None)
+                .with_description("Diffusion rate of chemical A; larger values smooth A across the grid faster."),
+            Input::new("diffusion_b".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { clamp: Some((0.0, 2.0)), speed: Some(0.01) }), None)
+                .with_description("Diffusion rate of chemical B; typically about half of A for classic patterns."),
+            Input::new("iterations".to_string(), Value::Integer(4000), Some(InputSettings::DragValue { clamp: Some((100.0, 50000.0)), speed: Some(100.0) }), None)
+                .with_description("Number of simulation steps; more iterations let patterns evolve further."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Seamlessly tiling grayscale Gray-Scott reaction-diffusion pattern."),
         ]
     }
 

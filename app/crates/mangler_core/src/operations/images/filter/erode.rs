@@ -29,22 +29,26 @@ impl OpImageAdjustmentErode {
         NodeSettings {
             name: "erode".to_string(),
             description: "Morphological erosion — per-channel min in a square neighborhood. Shrinks bright regions.".to_string(),
+            help: "For each pixel takes the per-channel minimum over a (2r+1) square window. Bright regions shrink by `radius` pixels, thin bright filaments disappear, and dark regions grow.\n\nFundamental morphological primitive; combining with dilation gives open/close. Implemented as separable 1D min passes (horizontal then vertical), so cost is O(r) per pixel rather than O(r^2). Alpha is eroded alongside color channels; edges are handled by clamping.".to_string(),
         }
     }
 
     /// Creates input ports: image and radius (square window half-size).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image or mask to erode."),
             // radius of the structuring element (square)
-            Input::new("radius".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("radius".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Half-size of the square window in pixels; larger values shrink bright regions more."),
         ]
     }
 
     /// Creates the output port: the eroded image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Eroded image where bright regions have shrunk by the chosen radius."),
         ]
     }
 

@@ -24,14 +24,17 @@ impl OpNumberMathStep {
         NodeSettings {
             name: "step".to_string(),
             description: "Returns 0 if input < edge, 1 otherwise.".to_string(),
+            help: "A hard threshold (the GLSL-style step function): outputs 0.0 when input is strictly less than edge, and 1.0 when input is greater than or equal to edge.\n\nUsed for binary masks and discrete gating. For a soft-edged version that ramps smoothly between the two sides, use the smoothstep node instead.".to_string(),
         }
     }
 
     /// Creates the default input list: "input" (0.0) and "edge" (0.5) drag-value inputs.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("edge".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Value compared against the edge threshold."),
+            Input::new("edge".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Threshold; output is 0 below it and 1 at or above it."),
         ]
     }
 
@@ -39,6 +42,7 @@ impl OpNumberMathStep {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("0.0 when input < edge, otherwise 1.0.")
         ]
     }
 

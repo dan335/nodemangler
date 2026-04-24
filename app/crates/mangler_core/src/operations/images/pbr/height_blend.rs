@@ -21,24 +21,32 @@ pub struct OpImagePbrHeightBlend {}
 
 impl OpImagePbrHeightBlend {
     pub fn settings() -> NodeSettings {
-        NodeSettings { name: "height blend".to_string(), description: "Blends two materials using their height maps for realistic layering.".to_string() }
+        NodeSettings { name: "height blend".to_string(), description: "Blends two materials using their height maps for realistic layering.".to_string(), help: "At each pixel the overlay's relative height is remapped by blend amount and contrast to a 0-1 weight; that weight linearly interpolates between base and overlay color, and between base and overlay height. Raising contrast produces a sharper, more mask-like boundary so individual bumps of the overlay poke through cleanly.\n\nOutputs both the blended color (RGBA) and the combined greyscale height map (packed as RGBA) so it can feed a subsequent normal_from_height or ao_from_height. Height maps are read as Rec.709 luminance when given RGB input; color images are padded to RGBA.".to_string() }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("base color".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("base height".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("overlay color".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("overlay height".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("blend amount".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("contrast".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("base color".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Albedo/color image of the base material layer."),
+            Input::new("base height".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Height map describing the surface of the base material."),
+            Input::new("overlay color".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Albedo/color image of the material layered on top."),
+            Input::new("overlay height".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Height map describing the surface of the overlay material."),
+            Input::new("blend amount".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Shifts how much of the overlay shows through, 0 all base to 1 all overlay."),
+            Input::new("contrast".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Sharpens the transition between the two heights."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
-            Output::new("height".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Color image produced by height-masked blending of the two materials."),
+            Output::new("height".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Combined height map of the two materials after blending."),
         ]
     }
 

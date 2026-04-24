@@ -25,15 +25,19 @@ impl OpNumberMathSmoothstep {
         NodeSettings {
             name: "smoothstep".to_string(),
             description: "Smooth Hermite interpolation between two edges.".to_string(),
+            help: "Computes the GLSL smoothstep: t = clamp((input - edge0) / (edge1 - edge0), 0, 1), then returns t * t * (3 - 2t). The output is always in [0, 1] with zero first derivative at both endpoints, producing an ease-in/ease-out S-curve.\n\nUseful for soft thresholds and gradient masks. edge0 and edge1 must differ or the node errors; passing edge0 > edge1 inverts the ramp.".to_string(),
         }
     }
 
     /// Creates the default input list: "input" (0.5), "edge0" (0.0), and "edge1" (1.0).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("edge0".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("edge1".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(0.5), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Value to smooth-interpolate between the two edges."),
+            Input::new("edge0".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Lower edge; inputs at or below this return 0."),
+            Input::new("edge1".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Upper edge; inputs at or above this return 1."),
         ]
     }
 
@@ -41,6 +45,7 @@ impl OpNumberMathSmoothstep {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Smooth Hermite blend in [0, 1] using t*t*(3-2t) with zero end-slopes.")
         ]
     }
 

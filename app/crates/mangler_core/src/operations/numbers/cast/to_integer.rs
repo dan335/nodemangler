@@ -24,13 +24,15 @@ impl OpNumberCastToInteger {
         NodeSettings {
             name: "to integer".to_string(),
             description: "Converts a number to an integer.".to_string(),
+            help: "Coerces the input into an integer (i32) via Value::try_convert_to. Decimals are truncated toward zero rather than rounded, so 3.7 becomes 3 and -3.7 becomes -3. Booleans map to 0 or 1 and numeric text is parsed.\n\nUnsupported types raise a conversion error. If you need a different rounding mode, pass the value through round, floor, or ceil before casting.".to_string(),
         }
     }
 
     /// Creates the default input list: a single integer drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Integer(i32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
+            Input::new("a".to_string(), Value::Integer(i32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Value to convert into an integer (i32); decimals truncate toward zero."),
         ]
     }
 
@@ -38,6 +40,7 @@ impl OpNumberCastToInteger {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Integer(i32::default()), None)
+                .with_description("Input coerced to an integer via try_convert_to.")
         ]
     }
 

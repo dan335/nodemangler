@@ -56,24 +56,31 @@ impl OpImageShapePolygon {
         NodeSettings {
             name: "polygon".to_string(),
             description: "Generates a regular polygon shape as a grayscale SDF.".to_string(),
+            help: "Evaluates a signed distance field for a regular polygon with N sides (minimum 3, max 64) inscribed in a circle of the given radius, then smoothsteps the boundary for anti-aliasing. Output is a 1-channel FloatImage mask with 1.0 inside and 0.0 outside.\n\nradius is the circumscribed radius in normalised (-1..1) coordinates, so the value 1.0 reaches the edge of the canvas. Rotation is applied before the SDF evaluation, which keeps the polygon centred on the image.".to_string(),
         }
     }
 
     /// Creates the default inputs: width, height, sides, radius, and rotation.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("sides".to_string(), Value::Integer(6), Some(InputSettings::DragValue { clamp: Some((3.0, 64.0)), speed: None }), None),
-            Input::new("radius".to_string(), Value::Decimal(0.4), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None),
-            Input::new("rotation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: false }), None),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Width of the generated image in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Height of the generated image in pixels."),
+            Input::new("sides".to_string(), Value::Integer(6), Some(InputSettings::DragValue { clamp: Some((3.0, 64.0)), speed: None }), None)
+                .with_description("Number of sides in the regular polygon (minimum 3)."),
+            Input::new("radius".to_string(), Value::Decimal(0.4), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Circumscribed radius of the polygon in normalised units."),
+            Input::new("rotation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Rotation of the polygon around its center in degrees."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Grayscale mask with the polygon filled white on a black background."),
         ]
     }
 

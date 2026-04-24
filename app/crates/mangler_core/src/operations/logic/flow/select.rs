@@ -27,19 +27,23 @@ impl OpLogicFlowSelect {
         NodeSettings {
             name: "select".to_string(),
             description: "Outputs one of two values based on a boolean condition (if/else).".to_string(),
+            help: "Acts as a ternary (condition ? if_true : if_false). Only the condition input is coerced to Bool; the selected branch is passed through with its original type preserved, so the output can be any Value kind (number, color, image, text, video, etc.).\n\nBoth branches accept any type (accepts_any_type = true), which means the two inputs do not have to match. The output's runtime type will follow whichever branch was taken, which can change the downstream type from frame to frame if the condition toggles.".to_string(),
         }
     }
 
     /// Creates the default inputs: a boolean condition, and two decimal branch values ("if true" and "if false").
     pub fn create_inputs() -> Vec<Input> {
-        let mut if_true = Input::new("if true".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None);
+        let mut if_true = Input::new("if true".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+            .with_description("Value forwarded to the output when the condition is true.");
         if_true.accepts_any_type = true;
 
-        let mut if_false = Input::new("if false".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None);
+        let mut if_false = Input::new("if false".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+            .with_description("Value forwarded to the output when the condition is false.");
         if_false.accepts_any_type = true;
 
         vec![
-            Input::new("condition".to_string(), Value::Bool(false), None, None),
+            Input::new("condition".to_string(), Value::Bool(false), None, None)
+                .with_description("Boolean that selects which branch to output."),
             if_true,
             if_false,
         ]
@@ -49,6 +53,7 @@ impl OpLogicFlowSelect {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("The selected branch value, passed through without type coercion.")
         ]
     }
 

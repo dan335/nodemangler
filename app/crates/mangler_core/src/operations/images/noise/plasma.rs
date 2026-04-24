@@ -146,24 +146,31 @@ impl OpImageNoisePlasma {
         NodeSettings {
             name: "plasma noise".to_string(),
             description: "Creates a seamlessly tiling plasma fractal image using diamond-square subdivision.".to_string(),
+            help: "The classic diamond-square fractal subdivision algorithm (also called midpoint displacement). Starting from a single seeded point, the grid is recursively refined: each step alternates setting cell centers to the average of corners plus a random offset, then setting edge midpoints the same way. The offset shrinks each pass, producing detail at progressively smaller scales.\n\nDetail sets the subdivision depth (grid size is 2^detail). Roughness scales the random displacement per subdivision: higher values give jagged, chaotic plasma; lower values give smooth clouds.\n\nGreat for classic demoscene plasma, cloud heightmaps, and lightning backgrounds.".to_string(),
         }
     }
 
     /// Creates the default inputs: seed, width, height, detail (grid subdivision level), and roughness.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("detail".to_string(), Value::Integer(8), Some(InputSettings::Slider { range: (2.0, 12.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("roughness".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed for the diamond-square random offsets."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("detail".to_string(), Value::Integer(8), Some(InputSettings::Slider { range: (2.0, 12.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Subdivision depth; each step doubles the grid resolution and adds finer plasma detail."),
+            Input::new("roughness".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("How fast the displacement decays per subdivision; higher values give jagged plasma."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Seamlessly tiling grayscale plasma fractal image from diamond-square subdivision."),
         ]
     }
 

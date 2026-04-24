@@ -26,20 +26,23 @@ impl OpImageTransformRotate180 {
         NodeSettings {
             name: "rotate 180".to_string(),
             description: "Rotates an image 180 degrees.".to_string(),
+            help: "Rearranges pixels so (x, y) becomes (width - 1 - x, height - 1 - y). Output dimensions and channel count are unchanged and no resampling is performed, which makes this lossless and self-inverse.\n\nEquivalent to flipping both horizontally and vertically. Prefer this over the arbitrary-angle `rotate` node at 180 degrees because it avoids bicubic filtering and its associated blur.".to_string(),
         }
     }
 
     /// Creates the default inputs: a single source image.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image to rotate 180 degrees."),
         ]
     }
 
     /// Creates the default outputs: the rotated image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Image rotated 180 degrees with the same dimensions."),
         ]
     }
 

@@ -28,21 +28,27 @@ impl OpImageFxInnerGlow {
         NodeSettings {
             name: "inner glow".to_string(),
             description: "Glow along the inside edge of a mask — mask minus erosion, blurred and tinted.".to_string(),
+            help: "Collapses the input to a single-channel mask field, erodes it by `radius` pixels using a separable min-morphology pass, and subtracts the eroded result from the original to isolate a ring that hugs the inside edge. That ring is then Gaussian-blurred with sigma = radius/2 and painted with the chosen colour.\n\nOutput is an RGBA layer whose alpha is glow * intensity * color.a clamped to 0-1, ready to composite above the source. Intensity can exceed 1 to saturate the halo. Larger radius values both widen the ring and soften it since the blur scales with radius.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("radius".to_string(), Value::Integer(4), Some(InputSettings::Slider { range: (1.0, 64.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("intensity".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 4.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("color".to_string(), Value::Color(Color::from_srgb_float(1.0, 1.0, 1.0, 1.0)), None, None),
+            Input::new("mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Shape whose inside edge the glow hugs."),
+            Input::new("radius".to_string(), Value::Integer(4), Some(InputSettings::Slider { range: (1.0, 64.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Erosion distance in pixels; larger values push the glow further inward."),
+            Input::new("intensity".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 4.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("Brightness multiplier applied to the glow's alpha."),
+            Input::new("color".to_string(), Value::Color(Color::from_srgb_float(1.0, 1.0, 1.0, 1.0)), None, None)
+                .with_description("Colour the glow ring is tinted with."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("RGBA layer with a blurred glow ring sitting inside the mask boundary."),
         ]
     }
 

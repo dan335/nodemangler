@@ -28,6 +28,7 @@ impl OpImageAdjustmentNonUniformBlur {
         NodeSettings {
             name: "non-uniform blur".to_string(),
             description: "Blurs with per-pixel intensity controlled by a grayscale map.".to_string(),
+            help: "For each pixel, reads the first channel of the blur map as a 0-1 factor, multiplies it by max intensity to get a local radius in pixels, then averages that many bilinear samples laid out on a Vogel (sunflower) disc. Vogel placement uses the golden angle so the samples stay evenly distributed regardless of count.\n\nThe blur map is resized with bilinear filtering to match the source if dimensions differ, so a small mask can drive a large image. Dark areas of the map stay sharp, bright areas smear out to max intensity pixels. Parallelised across rows via rayon. Useful for depth-of-field, motion-tagged blur, or selective softening.".to_string(),
         }
     }
 
@@ -35,17 +36,22 @@ impl OpImageAdjustmentNonUniformBlur {
     /// maximum blur intensity (pixels), and sample count per pixel.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("blur map".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("max intensity".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 50.0), step_by: Some(0.5), clamp_to_range: true }), None),
-            Input::new("samples".to_string(), Value::Integer(16), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 64.0)) }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to blur with a spatially varying radius."),
+            Input::new("blur map".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Grayscale map; bright pixels get more blur, dark pixels stay sharp."),
+            Input::new("max intensity".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 50.0), step_by: Some(0.5), clamp_to_range: true }), None)
+                .with_description("Blur radius in pixels when the blur map is fully white."),
+            Input::new("samples".to_string(), Value::Integer(16), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 64.0)) }), None)
+                .with_description("Number of Vogel disc taps per pixel; more samples are smoother but slower."),
         ]
     }
 
     /// Creates the output port: the non-uniformly blurred image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Image blurred with per-pixel radius taken from the blur map."),
         ]
     }
 

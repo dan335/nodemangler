@@ -23,16 +23,21 @@ impl OpColorInputLch {
         NodeSettings {
             name: "lch".to_string(),
             description: "Creates a color using the LCH color space.".to_string(),
+            help: "Builds an sRGB color from the cylindrical form of Lab: lightness, chroma (radial colorfulness), and hue (0-360 angle). LCH inherits Lab's perceptual uniformity while giving intuitive polar control, so rotating hue at fixed chroma keeps the perceived vividness steady.\n\nHigh chroma values easily land outside the sRGB gamut and will be clipped at conversion time, so bright saturated hues can shift; reduce chroma for reliable results. Alpha is carried through without premultiplication.".to_string(),
         }
     }
 
     /// Creates the input definitions: lightness (0..2), chroma (0..1), hue (0..360), and alpha.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("lightness".to_string(), Value::Decimal(0.6), Some(InputSettings::Slider { range: (0.0, 2.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("chroma".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("hue".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(1.0), clamp_to_range: false }), None),
-            Input::new("alpha".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("lightness".to_string(), Value::Decimal(0.6), Some(InputSettings::Slider { range: (0.0, 2.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("Perceived lightness (0 dark to ~2 very bright) in LCH."),
+            Input::new("chroma".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("Colorfulness (0 = gray, higher = more vivid) in LCH."),
+            Input::new("hue".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(1.0), clamp_to_range: false }), None)
+                .with_description("Hue angle in degrees (0–360) around the LCH color wheel."),
+            Input::new("alpha".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Opacity of the resulting color (0 transparent, 1 opaque)."),
         ]
     }
 
@@ -40,6 +45,7 @@ impl OpColorInputLch {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Color(Color::default()), None)
+                .with_description("Color assembled from the LCH + alpha channels.")
         ]
     }
 

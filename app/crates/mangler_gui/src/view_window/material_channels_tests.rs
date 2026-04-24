@@ -24,7 +24,7 @@ fn make_node(id: &str, name: &str, outputs: Vec<Output>) -> GraphNode {
     GraphNode::new(
         id.to_string(),
         Pos2::ZERO,
-        NodeSettings { name: name.to_string(), description: String::new() },
+        NodeSettings { name: name.to_string(), description: String::new(), help: String::new() },
         vec![],
         outputs,
         false,

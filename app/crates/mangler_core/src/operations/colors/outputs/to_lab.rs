@@ -22,23 +22,29 @@ impl OpColorOutputLab {
         NodeSettings {
             name: "to lab".to_string(),
             description: "Converts a color to the LAB color space.".to_string(),
+            help: "Splits the color into CIE L*a*b*: L* is perceived lightness (0-100), a* is the green-red axis (negative green, positive red, roughly -128..128), and b* is the blue-yellow axis (negative blue, positive yellow). Alpha is forwarded unchanged.\n\nThe conversion goes through linear RGB and XYZ using a D65 white point. Because Lab is perceptually uniform, equal numeric steps in its channels feel roughly equal visually, which is why Delta E color-difference math is done here.".to_string(),
         }
     }
 
     /// Creates the single input definition accepting a color to decompose.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("input".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Color to decompose into CIE L*a*b* channels."),
         ]
     }
 
     /// Creates the output definitions: lightness, green-red (a*), blue-yellow (b*), and alpha.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("lightness".to_string(), Value::Decimal(0.5), None),
-            Output::new("green - red".to_string(), Value::Decimal(0.5), None),
-            Output::new("blue - yellow".to_string(), Value::Decimal(0.5), None),
-            Output::new("alpha".to_string(), Value::Decimal(1.0), None),
+            Output::new("lightness".to_string(), Value::Decimal(0.5), None)
+                .with_description("CIE L* perceived lightness (0 = black, 100 = white)."),
+            Output::new("green - red".to_string(), Value::Decimal(0.5), None)
+                .with_description("CIE a* axis: negative toward green, positive toward red."),
+            Output::new("blue - yellow".to_string(), Value::Decimal(0.5), None)
+                .with_description("CIE b* axis: negative toward blue, positive toward yellow."),
+            Output::new("alpha".to_string(), Value::Decimal(1.0), None)
+                .with_description("Alpha channel passed through from the input color."),
         ]
     }
 

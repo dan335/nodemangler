@@ -34,6 +34,7 @@ impl OpExtractFrameByIndex {
         NodeSettings {
             name: "extract frame by index".to_string(),
             description: "Extracts a frame from a video at the given frame number.".to_string(),
+            help: "Decodes the requested frame from the VideoDecoderCache and emits it as an Image. The frame index is interpreted in effective-clip space: the VideoRef's transform chain (trim, speed, reverse, loop) is applied via source_frame_for_effective_frame to pick the right source frame.\n\nTime-aware during renders: the engine overwrites the frame input with round(render_time * video.meta.fps), clamped into the clip, so this node walks through the effective timeline automatically. Use extract frame by time if you prefer to drive it with seconds instead of an integer index.".to_string(),
         }
     }
 
@@ -44,7 +45,8 @@ impl OpExtractFrameByIndex {
                 Value::Video(VideoRef::default()),
                 None,
                 None,
-            ),
+            )
+            .with_description("Source video handle to decode a frame from."),
             Input::new(
                 "frame".to_string(),
                 Value::Integer(0),
@@ -53,7 +55,8 @@ impl OpExtractFrameByIndex {
                     speed: Some(1.0),
                 }),
                 None,
-            ),
+            )
+            .with_description("Effective frame index to decode; overwritten by the render clock during renders."),
         ]
     }
 
@@ -65,7 +68,8 @@ impl OpExtractFrameByIndex {
                 change_id: get_id(),
             },
             None,
-        )]
+        )
+        .with_description("Decoded video frame at the selected index as an image.")]
     }
 
     #[cfg(feature = "video")]

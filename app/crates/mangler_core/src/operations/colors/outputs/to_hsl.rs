@@ -22,23 +22,29 @@ impl OpColorOutputHsl {
         NodeSettings {
             name: "to hsl".to_string(),
             description: "Converts a color to the HSL color space.".to_string(),
+            help: "Splits the color into hue (0-360 degrees), saturation (0-1), lightness (0-1), and alpha. Lightness 0.5 represents the most saturated form of the hue; 0 is black and 1 is white.\n\nFor pure grays (when max(R, G, B) == min(R, G, B)) hue is undefined and will be reported as 0 rather than NaN, and saturation collapses to 0. Alpha is passed through untouched from the input color.".to_string(),
         }
     }
 
     /// Creates the single input definition accepting a color to decompose.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("input".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Color to decompose into HSL channels."),
         ]
     }
 
     /// Creates the output definitions: hue, saturation, lightness, and alpha as decimal values.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("hue".to_string(), Value::Decimal(0.5), None),
-            Output::new("saturation".to_string(), Value::Decimal(0.5), None),
-            Output::new("lightness".to_string(), Value::Decimal(0.5), None),
-            Output::new("alpha".to_string(), Value::Decimal(1.0), None),
+            Output::new("hue".to_string(), Value::Decimal(0.5), None)
+                .with_description("Hue angle in degrees (0–360) extracted from the input color."),
+            Output::new("saturation".to_string(), Value::Decimal(0.5), None)
+                .with_description("HSL saturation (0 = gray, 1 = fully saturated)."),
+            Output::new("lightness".to_string(), Value::Decimal(0.5), None)
+                .with_description("HSL lightness (0 = black, 0.5 = pure color, 1 = white)."),
+            Output::new("alpha".to_string(), Value::Decimal(1.0), None)
+                .with_description("Alpha channel passed through from the input color."),
         ]
     }
 

@@ -33,22 +33,28 @@ impl OpImageAdjustmentDither {
         NodeSettings {
             name: "dither".to_string(),
             description: "Ordered-dither quantisation with Bayer 4, Bayer 8, or hashed-noise patterns.".to_string(),
+            help: "Before quantising each channel to `levels` equally-spaced steps, a per-pixel threshold offset is added to break up solid bands. Three threshold textures are available: Bayer 4x4 (very coarse cross-hatch), Bayer 8x8 (the classic ordered-dither look), and hashed white noise (busier but tile-free).\n\nThe offset magnitude is scaled by strength/steps, so strength 0 reduces the node to plain posterisation and strength 1 fully covers a single quantisation step. Channels are processed independently and alpha is passed through. Lower level counts produce harder banding that the dither tries to break up; combine with a small blur for retina-screen-friendly smoothing.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("levels".to_string(), Value::Integer(4), Some(InputSettings::DragValue { clamp: Some((2.0, 256.0)), speed: None }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image whose channels will be dithered and quantised."),
+            Input::new("levels".to_string(), Value::Integer(4), Some(InputSettings::DragValue { clamp: Some((2.0, 256.0)), speed: None }), None)
+                .with_description("Number of discrete output levels per channel; lower values posterise harder."),
             // 0 = Bayer4, 1 = Bayer8, 2 = WhiteNoise
-            Input::new("pattern".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (0.0, 2.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("strength".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("pattern".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (0.0, 2.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Threshold pattern: 0 Bayer 4x4, 1 Bayer 8x8, 2 hashed white noise."),
+            Input::new("strength".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Amount of dither offset applied; 0 collapses to plain quantisation."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Dithered image quantised to the requested number of levels."),
         ]
     }
 

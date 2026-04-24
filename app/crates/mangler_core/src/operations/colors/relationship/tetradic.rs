@@ -27,22 +27,27 @@ impl OpColorHarmonyTetradic {
         NodeSettings {
             name: "tetradic".to_string(),
             description: "Generates three tetradic harmony colors at +90°, +180°, and +270° hue offsets, forming a four-color rectangle on the hue wheel.".to_string(),
+            help: "Converts the input to HSL, keeps saturation and lightness, and rotates the hue by 90, 180, and 270 degrees to produce the other three corners of a square on the color wheel. Together with the input, the outputs make a four-color scheme with two complementary pairs.\n\nBecause all operations are hue rotations, grays produce identical outputs. Tetradic palettes tend to be bold; if colors feel too busy, lower saturation or use monochromatic output for the supporting roles.".to_string(),
         }
     }
 
     /// Creates the single input definition: the source color.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("color".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("color".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Base color whose three tetradic partners are generated."),
         ]
     }
 
     /// Creates the three output definitions: tetradic_b (+90°), tetradic_c (+180°), tetradic_d (+270°).
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("tetradic_b".to_string(), Value::Color(Color::default()), None),
-            Output::new("tetradic_c".to_string(), Value::Color(Color::default()), None),
-            Output::new("tetradic_d".to_string(), Value::Color(Color::default()), None),
+            Output::new("tetradic_b".to_string(), Value::Color(Color::default()), None)
+                .with_description("Tetradic partner at the base hue shifted by +90°."),
+            Output::new("tetradic_c".to_string(), Value::Color(Color::default()), None)
+                .with_description("Tetradic partner at the base hue shifted by +180° (the complement)."),
+            Output::new("tetradic_d".to_string(), Value::Color(Color::default()), None)
+                .with_description("Tetradic partner at the base hue shifted by +270°."),
         ]
     }
 

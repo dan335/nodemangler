@@ -24,27 +24,37 @@ impl OpColorSampleMostCommonColors {
         NodeSettings {
             name: "most common colors".to_string(),
             description: "Finds the most common colors in an image.".to_string(),
+            help: "Converts every pixel to HSL, quantizes hue/saturation/lightness into integer buckets using the provided precision values, and counts how many pixels fall into each bucket. The five most populous buckets are converted back to a representative color (bucket center) and returned.\n\nHigher quantization values give finer color distinctions but can scatter visually identical pixels across multiple buckets, so start low and increase gradually. Single-channel images are broadcast to gray. If fewer than five distinct buckets exist the remaining slots are padded with the default color, and pixel alpha is ignored during counting.".to_string(),
         }
     }
 
     /// Creates the input definitions: an image and quantization precision for hue, saturation, and lightness.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image{data:crate::operations::default_image(), change_id:crate::get_id()}, None, None),
-            Input::new("hue quantization".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (1.0, 100.0), step_by: Some(1.0), clamp_to_range: true}), None),
-            Input::new("saturation quantization".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (1.0, 100.0), step_by: Some(1.0), clamp_to_range: true}), None),
-            Input::new("lightness quantization".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (1.0, 100.0), step_by: Some(1.0), clamp_to_range: true}), None),
+            Input::new("image".to_string(), Value::Image{data:crate::operations::default_image(), change_id:crate::get_id()}, None, None)
+                .with_description("Image whose pixels are scanned to find the most common quantized HSL colors."),
+            Input::new("hue quantization".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (1.0, 100.0), step_by: Some(1.0), clamp_to_range: true}), None)
+                .with_description("Number of hue buckets; higher values distinguish more hues."),
+            Input::new("saturation quantization".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (1.0, 100.0), step_by: Some(1.0), clamp_to_range: true}), None)
+                .with_description("Number of saturation buckets; higher values distinguish more saturations."),
+            Input::new("lightness quantization".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (1.0, 100.0), step_by: Some(1.0), clamp_to_range: true}), None)
+                .with_description("Number of lightness buckets; higher values distinguish more shades."),
         ]
     }
 
     /// Creates 5 color output slots, one for each of the top most common colors.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("1".to_string(), Value::Color(Color::default()), None),
-            Output::new("2".to_string(), Value::Color(Color::default()), None),
-            Output::new("3".to_string(), Value::Color(Color::default()), None),
-            Output::new("4".to_string(), Value::Color(Color::default()), None),
-            Output::new("5".to_string(), Value::Color(Color::default()), None),
+            Output::new("1".to_string(), Value::Color(Color::default()), None)
+                .with_description("Most common color in the image (from the largest HSL bucket)."),
+            Output::new("2".to_string(), Value::Color(Color::default()), None)
+                .with_description("Second most common color in the image."),
+            Output::new("3".to_string(), Value::Color(Color::default()), None)
+                .with_description("Third most common color in the image."),
+            Output::new("4".to_string(), Value::Color(Color::default()), None)
+                .with_description("Fourth most common color in the image."),
+            Output::new("5".to_string(), Value::Color(Color::default()), None)
+                .with_description("Fifth most common color in the image."),
         ]
     }
 

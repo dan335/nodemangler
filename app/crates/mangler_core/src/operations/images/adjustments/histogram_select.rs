@@ -25,21 +25,27 @@ impl OpImageAdjustmentHistogramSelect {
         NodeSettings {
             name: "histogram select".to_string(),
             description: "Outputs a soft-edged mask where input luminance falls within a chosen band.".to_string(),
+            help: "Computes Rec. 709 luminance per pixel, then emits 1 when the pixel's distance from the band centre is within a fully-opaque inner region and 0 beyond the outer edge. Between those two radii the output is a Hermite smoothstep fade.\n\nThe contrast input grows the inner region from 0 (fully soft triangular falloff) to 1 (rectangular, hard-edged band). Range sets the total band width; half of it is the outer edge. Output is a single-channel mask, independent of the source's channel count. Handy for isolating highlights/shadows/midtones for downstream masking or blending.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("position".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("range".to_string(), Value::Decimal(0.2), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("contrast".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image whose luminance is selected into a mask."),
+            Input::new("position".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Target luminance at the centre of the selection band."),
+            Input::new("range".to_string(), Value::Decimal(0.2), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Total width of the luminance band around the position."),
+            Input::new("contrast".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Hardness of the band edges; 0 is fully soft, 1 is a rectangular cut."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Single-channel mask that is bright inside the selected luminance band."),
         ]
     }
 

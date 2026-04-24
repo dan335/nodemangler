@@ -35,26 +35,35 @@ impl OpImageShapeLine {
         NodeSettings {
             name: "line".to_string(),
             description: "Generates a line shape as a grayscale SDF.".to_string(),
+            help: "Draws an anti-aliased line segment from (start_x, start_y) to (end_x, end_y) with rounded caps, by evaluating the signed distance to the segment and smoothstepping the edge. Coordinates are 0-1 fractions of the canvas; thickness is in normalised units.\n\nOutput is a 1-channel FloatImage mask with 1.0 inside the stroke and 0.0 outside. When start and end coincide the node degrades gracefully into a filled disc centred on that point rather than producing an empty image.".to_string(),
         }
     }
 
     /// Creates the default inputs: width, height, start_x, start_y, end_x, end_y, and thickness.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("start_x".to_string(), Value::Decimal(0.25), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: false }), None),
-            Input::new("start_y".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: false }), None),
-            Input::new("end_x".to_string(), Value::Decimal(0.75), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: false }), None),
-            Input::new("end_y".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: false }), None),
-            Input::new("thickness".to_string(), Value::Decimal(0.02), Some(InputSettings::Slider { range: (0.001, 0.2), step_by: None, clamp_to_range: false }), None),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Width of the generated image in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Height of the generated image in pixels."),
+            Input::new("start_x".to_string(), Value::Decimal(0.25), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Start-point X as a 0-1 fraction of image width."),
+            Input::new("start_y".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Start-point Y as a 0-1 fraction of image height."),
+            Input::new("end_x".to_string(), Value::Decimal(0.75), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("End-point X as a 0-1 fraction of image width."),
+            Input::new("end_y".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("End-point Y as a 0-1 fraction of image height."),
+            Input::new("thickness".to_string(), Value::Decimal(0.02), Some(InputSettings::Slider { range: (0.001, 0.2), step_by: None, clamp_to_range: false }), None)
+                .with_description("Thickness of the line in normalised units."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Grayscale mask with the line drawn white on a black background."),
         ]
     }
 

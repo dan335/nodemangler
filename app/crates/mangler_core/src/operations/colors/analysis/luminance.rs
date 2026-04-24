@@ -23,20 +23,23 @@ impl OpColorAnalysisLuminance {
         NodeSettings {
             name: "luminance".to_string(),
             description: "Computes the BT.709 relative luminance of a color.".to_string(),
+            help: "Converts the color from sRGB to linear RGB (removing the gamma transfer) and computes the weighted sum 0.2126 R + 0.7152 G + 0.0722 B. These coefficients come from the BT.709/sRGB primaries and match the CIE Y channel.\n\nUse this when you need a perceptually meaningful brightness scalar: it is the same quantity WCAG contrast uses, and is a better luma proxy than a simple (r+g+b)/3 average. Output is clamped to 0-1; alpha is ignored.".to_string(),
         }
     }
 
     /// Creates the input definitions: a single color to measure.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("color".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("color".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Color to compute the relative luminance of."),
         ]
     }
 
     /// Creates the output definition: luminance as a decimal in [0, 1].
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("luminance".to_string(), Value::Decimal(0.0), None),
+            Output::new("luminance".to_string(), Value::Decimal(0.0), None)
+                .with_description("BT.709 relative luminance (0–1) computed from linear RGB."),
         ]
     }
 

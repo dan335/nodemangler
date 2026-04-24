@@ -29,22 +29,27 @@ impl OpImageTransformRotateAroundCenter {
         NodeSettings {
             name: "rotate".to_string(),
             description: "Rotates an image by any angle around its center point.".to_string(),
+            help: "Rotates the image by an arbitrary angle in degrees around its center, using imageproc's bicubic interpolation for smooth edges. Output dimensions match the input, so corners of the rotated image are clipped and any newly uncovered pixels are filled with the background color (RGBA, so a fully transparent color leaves holes).\n\nBecause the source is converted to RGBA8 for imageproc and back to FloatImage, the output is always 4-channel and some precision is lost on floating-point source images. For axis-aligned quarter turns, use rotate 90 / 180 / 270 instead to avoid the resample blur.".to_string(),
         }
     }
 
     /// Creates the default inputs: source image, rotation angle in degrees, and background fill color.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("degrees".to_string(), Value::Decimal(45.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(0.01), clamp_to_range:false }), None),
-            Input::new("background color".to_string(), Value::Color(Color::from_srgb_u8(0,0,0,0)), None, None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image to rotate around its center."),
+            Input::new("degrees".to_string(), Value::Decimal(45.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(0.01), clamp_to_range:false }), None)
+                .with_description("Rotation angle in degrees applied around the image center."),
+            Input::new("background color".to_string(), Value::Color(Color::from_srgb_u8(0,0,0,0)), None, None)
+                .with_description("Color used to fill areas exposed outside the rotated image."),
         ]
     }
 
     /// Creates the default outputs: the rotated image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Image rotated around its center using bicubic interpolation."),
         ]
     }
 

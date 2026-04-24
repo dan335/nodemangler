@@ -24,13 +24,15 @@ impl OpNumberMathExp {
         NodeSettings {
             name: "exp".to_string(),
             description: "Computes e raised to a power.".to_string(),
+            help: "Returns e^x, the exponential function. Computation is done in f64 and cast back to f32 to preserve precision for moderately large exponents.\n\nGrows extremely quickly: inputs above roughly 88 overflow f32 to infinity, and large negative inputs underflow toward zero. Pair with ln as its inverse.".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal input defaulting to 1.0.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Exponent x; the node returns e raised to this power."),
         ]
     }
 
@@ -38,6 +40,7 @@ impl OpNumberMathExp {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("e raised to the input exponent.")
         ]
     }
 

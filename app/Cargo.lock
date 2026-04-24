@@ -2655,6 +2655,7 @@ dependencies = [
  "image",
  "mangler_core",
  "puffin",
+ "rayon",
  "rfd",
  "sanitize-filename",
  "serde",

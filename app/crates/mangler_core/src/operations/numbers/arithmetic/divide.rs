@@ -24,14 +24,17 @@ impl OpNumberMathDivide {
         NodeSettings {
             name: "divide".to_string(),
             description: "Divides two numbers.".to_string(),
+            help: "Computes a / b for integer or decimal inputs. Mixed integer/decimal types promote to decimal, while two integers stay in integer arithmetic with truncation toward zero.\n\nSetting b to zero raises a division-by-zero error rather than producing infinity or NaN, so the node surfaces the problem clearly instead of silently propagating a bad value downstream.".to_string(),
         }
     }
 
     /// Creates the default input list: two decimal drag-value inputs (a and b), defaulting to 1.0.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
+            Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Dividend (numerator) of the division."),
             Input::new("b".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Divisor (denominator); produces an error when set to zero.")
         ]
     }
 
@@ -39,6 +42,7 @@ impl OpNumberMathDivide {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Quotient a / b; integer inputs truncate toward zero.")
         ]
     }
 

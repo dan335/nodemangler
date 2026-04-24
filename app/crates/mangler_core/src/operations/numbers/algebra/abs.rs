@@ -22,6 +22,7 @@ impl OpNumberMathAbs {
         NodeSettings {
             name: "absolute value".to_string(),
             description: "Returns the absolute value of a number.".to_string(),
+            help: "Returns the non-negative magnitude of the input: negative values have their sign flipped, positive values pass through. The output type matches the input.\n\nFor i32, note that abs(i32::MIN) overflows and wraps per native Rust semantics. Commonly used to compute distances or to turn a signed delta into a magnitude.".to_string(),
         }
     }
 
@@ -29,6 +30,7 @@ impl OpNumberMathAbs {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Number whose magnitude is computed.")
         ]
     }
 
@@ -36,6 +38,7 @@ impl OpNumberMathAbs {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Non-negative magnitude of the input; output type matches input.")
         ]
     }
 

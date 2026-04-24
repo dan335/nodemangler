@@ -23,14 +23,17 @@ impl OpLogicCompareGreaterEqual {
         NodeSettings {
             name: "greater or equal".to_string(),
             description: "Returns true if a is greater than or equal to b.".to_string(),
+            help: "Both inputs are coerced to Decimal before evaluating a >= b, so Bool, Integer, and Decimal sources can be compared against each other. Bool::true converts to 1.0 and Bool::false to 0.0.\n\nOutputs true when the two values are equal as well as when a exceeds b, making this the inclusive counterpart to greater-than.".to_string(),
         }
     }
 
     /// Creates the default inputs: two decimal inputs `a` and `b` with drag-value UI, both defaulting to 0.0.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("b".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Left-hand value in the comparison a >= b."),
+            Input::new("b".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Right-hand value in the comparison a >= b."),
         ]
     }
 
@@ -38,6 +41,7 @@ impl OpLogicCompareGreaterEqual {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Bool(false), None)
+                .with_description("True when a is greater than or equal to b.")
         ]
     }
 

@@ -23,14 +23,17 @@ impl OpLogicBoolOr {
         NodeSettings {
             name: "or".to_string(),
             description: "Returns true if either input is true.".to_string(),
+            help: "Standard two-input logical disjunction (inclusive OR). Truth table: (false, false) -> false, (false, true) -> true, (true, false) -> true, (true, true) -> true.\n\nInputs are coerced to Bool before evaluation. Unlike XOR, the case where both inputs are true still yields true.".to_string(),
         }
     }
 
     /// Creates the default inputs: two boolean inputs `a` and `b`, both defaulting to `false`.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Bool(false), None, None),
-            Input::new("b".to_string(), Value::Bool(false), None, None),
+            Input::new("a".to_string(), Value::Bool(false), None, None)
+                .with_description("First boolean operand of the OR gate."),
+            Input::new("b".to_string(), Value::Bool(false), None, None)
+                .with_description("Second boolean operand of the OR gate."),
         ]
     }
 
@@ -38,6 +41,7 @@ impl OpLogicBoolOr {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Bool(false), None)
+                .with_description("True when at least one of a or b is true.")
         ]
     }
 

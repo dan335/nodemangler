@@ -29,13 +29,15 @@ impl OpImageOutputClipboard {
         NodeSettings {
             name: "to clipboard".to_string(),
             description: "Copies an image to the clipboard.".to_string(),
+            help: "Converts the input FloatImage to RGBA8 and writes it to the system clipboard via arboard so it can be pasted into other applications. Quantisation to 8 bits happens at this step, so high-dynamic-range or linear data will be clipped and gamma-encoded.\n\nThis node has no output sockets; its effect is purely the clipboard side effect. It will error if the platform clipboard is unavailable or rejects the image.".to_string(),
         }
     }
 
     /// Creates the input definitions: a single image to copy to the clipboard.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Image to write to the system clipboard as RGBA8."),
         ]
     }
 

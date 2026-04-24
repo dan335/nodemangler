@@ -35,6 +35,7 @@ impl OpVideoFromFile {
         NodeSettings {
             name: "video from file".to_string(),
             description: "Loads a video file. Pipe the `video` output into an extract-frame node to get frames.".to_string(),
+            help: "Probes the file header and emits a lightweight VideoRef handle plus metadata sockets (width, height, fps, duration, total_frames, container, codec). Nothing is decoded here; the handle carries its path so extract-frame and transform nodes can share the process-global VideoDecoderCache downstream.\n\nSupported extensions: mp4, mov, webm, mkv, avi, m4v. Detected containers are Mp4, Mov, Mkv, WebM, Avi; detected codecs include H264, H265, Vp8, Vp9, Av1, Mpeg4, and ProRes. Requires the video cargo feature (enabled by default in mangler_gui and mangler_cli); builds without it return an explanatory error at run time.".to_string(),
         }
     }
 
@@ -57,7 +58,8 @@ impl OpVideoFromFile {
                 file_dialog_type: FileDialogType::PickFile,
             }),
             None,
-        )]
+        )
+        .with_description("Path to the video file to load and probe for metadata.")]
     }
 
     /// Outputs: the Video handle (slot 0 — drives the node thumbnail) plus
@@ -68,22 +70,30 @@ impl OpVideoFromFile {
                 "video".to_string(),
                 Value::Video(VideoRef::default()),
                 None,
-            ),
-            Output::new("width".to_string(), Value::Integer(1), None),
-            Output::new("height".to_string(), Value::Integer(1), None),
-            Output::new("fps".to_string(), Value::Decimal(0.0), None),
-            Output::new("duration".to_string(), Value::Decimal(0.0), None),
-            Output::new("total_frames".to_string(), Value::Integer(0), None),
+            )
+            .with_description("Video handle to pipe into extract-frame or transform nodes."),
+            Output::new("width".to_string(), Value::Integer(1), None)
+                .with_description("Frame width of the source video in pixels."),
+            Output::new("height".to_string(), Value::Integer(1), None)
+                .with_description("Frame height of the source video in pixels."),
+            Output::new("fps".to_string(), Value::Decimal(0.0), None)
+                .with_description("Frames per second of the source video."),
+            Output::new("duration".to_string(), Value::Decimal(0.0), None)
+                .with_description("Total duration of the source video in seconds."),
+            Output::new("total_frames".to_string(), Value::Integer(0), None)
+                .with_description("Total number of frames in the source video."),
             Output::new(
                 "container".to_string(),
                 Value::VideoContainer(VideoContainer::Mp4),
                 None,
-            ),
+            )
+            .with_description("Container format detected from the source file."),
             Output::new(
                 "codec".to_string(),
                 Value::VideoCodec(VideoCodec::H264),
                 None,
-            ),
+            )
+            .with_description("Video codec detected from the source file."),
         ]
     }
 

@@ -23,14 +23,17 @@ impl OpLogicBoolNand {
         NodeSettings {
             name: "nand".to_string(),
             description: "Returns true unless both inputs are true.".to_string(),
+            help: "Negation of AND: outputs false only when both operands are true, and true in every other case. Truth table: (false, false) -> true, (false, true) -> true, (true, false) -> true, (true, true) -> false.\n\nInputs are coerced to Bool before evaluation. NAND is functionally complete, so any boolean circuit can be built from chained NAND gates alone.".to_string(),
         }
     }
 
     /// Creates the default inputs: two boolean inputs `a` and `b`, both defaulting to `false`.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Bool(false), None, None),
-            Input::new("b".to_string(), Value::Bool(false), None, None),
+            Input::new("a".to_string(), Value::Bool(false), None, None)
+                .with_description("First boolean operand of the NAND gate."),
+            Input::new("b".to_string(), Value::Bool(false), None, None)
+                .with_description("Second boolean operand of the NAND gate."),
         ]
     }
 
@@ -38,6 +41,7 @@ impl OpLogicBoolNand {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Bool(true), None)
+                .with_description("False only when both a and b are true.")
         ]
     }
 

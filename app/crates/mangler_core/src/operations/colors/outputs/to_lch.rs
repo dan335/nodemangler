@@ -22,23 +22,29 @@ impl OpColorOutputLch {
         NodeSettings {
             name: "to lch".to_string(),
             description: "Converts a color to the LCH color space.".to_string(),
+            help: "Converts the color to Lab and then expresses the a*/b* pair as polar (chroma, hue) while keeping L* as lightness. Chroma is the distance from the neutral axis (colorfulness) and hue is the angle in degrees (0-360).\n\nFor near-neutral grays where chroma is essentially zero, hue is not meaningful and will be reported as 0 rather than NaN. Use this when you want perceptually uniform lightness with intuitive hue rotation. Alpha is passed through from the input.".to_string(),
         }
     }
 
     /// Creates the single input definition accepting a color to decompose.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("input".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Color to decompose into LCH channels."),
         ]
     }
 
     /// Creates the output definitions: lightness, chroma, hue, and alpha as decimal values.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("lightness".to_string(), Value::Decimal(0.5), None),
-            Output::new("chroma".to_string(), Value::Decimal(0.5), None),
-            Output::new("hue".to_string(), Value::Decimal(0.5), None),
-            Output::new("alpha".to_string(), Value::Decimal(1.0), None),
+            Output::new("lightness".to_string(), Value::Decimal(0.5), None)
+                .with_description("LCH perceived lightness of the input color."),
+            Output::new("chroma".to_string(), Value::Decimal(0.5), None)
+                .with_description("LCH chroma (colorfulness) of the input color."),
+            Output::new("hue".to_string(), Value::Decimal(0.5), None)
+                .with_description("LCH hue angle in degrees (0–360)."),
+            Output::new("alpha".to_string(), Value::Decimal(1.0), None)
+                .with_description("Alpha channel passed through from the input color."),
         ]
     }
 

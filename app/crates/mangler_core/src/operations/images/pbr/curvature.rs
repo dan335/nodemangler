@@ -21,16 +21,19 @@ pub struct OpImagePbrCurvature {}
 
 impl OpImagePbrCurvature {
     pub fn settings() -> NodeSettings {
-        NodeSettings { name: "curvature".to_string(), description: "Detects convex and concave areas from a normal map.".to_string() }
+        NodeSettings { name: "curvature".to_string(), description: "Detects convex and concave areas from a normal map.".to_string(), help: "Unpacks the X and Y components of the input tangent-space normal map, then measures their central-difference divergence per pixel (horizontal change of X plus vertical change of Y). That signed curvature is offset to a 0.5 midpoint and scaled by intensity to produce a greyscale RGBA image.\n\nInterpretation: 0.5 is flat, values above 0.5 are convex peaks/edges, values below are concave pits/valleys. Useful as a mask input for edge wear, dirt in crevices, and other PBR surface detailing. Expects a properly encoded (not inverted) OpenGL-style normal map.".to_string() }
     }
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("intensity".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 10.0), step_by: Some(0.1), clamp_to_range: true }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Tangent-space normal map used to compute curvature."),
+            Input::new("intensity".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 10.0), step_by: Some(0.1), clamp_to_range: true }), None)
+                .with_description("Scales the curvature signal away from the flat midpoint of 0.5."),
         ]
     }
     pub fn create_outputs() -> Vec<Output> {
-        vec![Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)]
+        vec![Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Grayscale curvature map: 0.5 flat, >0.5 convex, <0.5 concave.")]
     }
 
     /// Computes curvature from the input normal map using divergence of the normal field.

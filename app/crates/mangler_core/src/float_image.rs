@@ -249,6 +249,14 @@ impl FloatImage {
         self.channels
     }
 
+    /// Raw pixel data as a flat `&[f32]` slice, length `width * height * channels`,
+    /// laid out row-major with interleaved channels. Useful for parallel iteration
+    /// via `rayon`'s `par_chunks_exact(channels)`.
+    #[inline]
+    pub fn as_slice(&self) -> &[f32] {
+        &self.data
+    }
+
     /// Returns (width, height).
     #[inline]
     pub fn dimensions(&self) -> (u32, u32) {

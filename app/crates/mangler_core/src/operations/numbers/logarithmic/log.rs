@@ -24,14 +24,17 @@ impl OpNumberMathLog {
         NodeSettings {
             name: "log".to_string(),
             description: "Computes logarithm with a given base.".to_string(),
+            help: "Returns log_base(input), computed in f64 and cast back to f32.\n\nInput must be strictly positive and base must be positive and not equal to 1; violations return a node error. For the common fixed bases prefer the dedicated ln, log2, or log10 nodes, which skip the extra division and validation.".to_string(),
         }
     }
 
     /// Creates the default input list: `input` (100.0) and `base` (10.0).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(100.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("base".to_string(), Value::Decimal(10.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(100.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Value to take the logarithm of; must be strictly positive."),
+            Input::new("base".to_string(), Value::Decimal(10.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Logarithm base; must be positive and not equal to 1."),
         ]
     }
 
@@ -39,6 +42,7 @@ impl OpNumberMathLog {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Logarithm of input in the given base.")
         ]
     }
 

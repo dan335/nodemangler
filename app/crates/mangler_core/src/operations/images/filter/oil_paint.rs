@@ -33,24 +33,29 @@ impl OpImageAdjustmentOilPaint {
         NodeSettings {
             name: "oil paint".to_string(),
             description: "Oil-paint stylization via intensity-histogram quantization of each neighborhood.".to_string(),
+            help: "Holzmann 1988 intensity-histogram oil paint. For every pixel, gathers a square brush neighborhood, quantizes each neighbor's luminance into one of `levels` bins, finds the dominant bin, and outputs the average color of the neighbors that fell into it.\n\nSmooth posterized patches separated by hard boundaries where the dominant bin flips produce the brush-stroke look. Fewer levels means a more posterized palette; larger radius gives chunkier strokes. Different character from Kuwahara (variance-based) or toon (posterize + edge). Alpha is copied from the center pixel; rows run in parallel.".to_string(),
         }
     }
 
     /// Creates input ports: image, brush radius, and number of intensity bins.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to stylize with brush-stroke oil-paint posterization."),
             // Brush radius — larger = chunkier strokes
-            Input::new("radius".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 10.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("radius".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 10.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Brush radius in pixels; larger values produce chunkier brush strokes."),
             // Number of intensity bins — lower = more posterized palette
-            Input::new("levels".to_string(), Value::Integer(8), Some(InputSettings::Slider { range: (2.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("levels".to_string(), Value::Integer(8), Some(InputSettings::Slider { range: (2.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Number of luminance bins; fewer levels give a more posterized palette."),
         ]
     }
 
     /// Creates the output port: the stylized image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Oil-paint stylized image built from dominant-bin neighborhood averages."),
         ]
     }
 

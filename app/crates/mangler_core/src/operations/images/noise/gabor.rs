@@ -41,27 +41,37 @@ impl OpImageNoiseGabor {
         NodeSettings {
             name: "gabor noise".to_string(),
             description: "Directional noise using oriented Gabor kernels. Creates scratches, brushed metal, and wood grain textures.".to_string(),
+            help: "Sparse convolution noise built from Gabor kernels - cosine waves modulated by a Gaussian envelope. Each grid cell drops one oriented kernel; their contributions sum across the image. Because each kernel carries a directional wave, the result is strongly anisotropic.\n\nOrientation sets a shared angle; enabling random orientation makes each kernel pick its own angle for isotropic noise. Kernel frequency controls the wave density inside a single kernel; bandwidth scales the Gaussian envelope; density sets the kernel count across the image.\n\nGood for brushed metal, scratches, wood grain, fabric fibers, and any streaky, oriented surface.".to_string(),
         }
     }
 
     /// Creates the default inputs: seed, dimensions, orientation, frequency, bandwidth, and density.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None),
-            Input::new("orientation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("random_orientation".to_string(), Value::Bool(false), None, None),
-            Input::new("kernel_frequency".to_string(), Value::Decimal(0.1), Some(InputSettings::DragValue { clamp: Some((0.01, 1.0)), speed: Some(0.001) }), None),
-            Input::new("bandwidth".to_string(), Value::Decimal(1.5), Some(InputSettings::DragValue { clamp: Some((0.1, 10.0)), speed: Some(0.1) }), None),
-            Input::new("density".to_string(), Value::Decimal(16.0), Some(InputSettings::DragValue { clamp: Some((1.0, 64.0)), speed: Some(0.5) }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed for the kernel placement and weights."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("orientation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Shared wave orientation in degrees when random orientation is off."),
+            Input::new("random_orientation".to_string(), Value::Bool(false), None, None)
+                .with_description("When true each kernel picks its own angle for isotropic noise; when false all align."),
+            Input::new("kernel_frequency".to_string(), Value::Decimal(0.1), Some(InputSettings::DragValue { clamp: Some((0.01, 1.0)), speed: Some(0.001) }), None)
+                .with_description("Spatial frequency of the cosine wave inside each Gabor kernel."),
+            Input::new("bandwidth".to_string(), Value::Decimal(1.5), Some(InputSettings::DragValue { clamp: Some((0.1, 10.0)), speed: Some(0.1) }), None)
+                .with_description("Gaussian envelope width; larger values make each kernel cover a bigger area."),
+            Input::new("density".to_string(), Value::Decimal(16.0), Some(InputSettings::DragValue { clamp: Some((1.0, 64.0)), speed: Some(0.5) }), None)
+                .with_description("Number of kernels across the image; higher values pack more scratches per unit area."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Seamlessly tiling grayscale Gabor noise with directional streaks or scratches."),
         ]
     }
 

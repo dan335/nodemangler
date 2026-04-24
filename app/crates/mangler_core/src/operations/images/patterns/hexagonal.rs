@@ -26,23 +26,29 @@ impl OpImagePatternHexagonal {
         NodeSettings {
             name: "hexagonal".to_string(),
             description: "Generates a hexagonal tile pattern.".to_string(),
+            help: "Produces a single-channel grayscale mask of flat-top hexagonal tiles. Each pixel is mapped into axial hex space, rounded to the nearest hex center via cube-coordinate rounding, and tested against the hex edge using a hexagonal norm.\n\nScale controls how many cells span the longer image axis (higher means smaller tiles), and gap size is a fraction of the tile radius used on all six sides. Pixels inside a tile are 1.0 and pixels in the gap are 0.0. The pattern is not guaranteed to tile seamlessly at arbitrary scales.".to_string(),
         }
     }
 
     /// Creates the default inputs: width, height, scale, and gap_size.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("scale".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (1.0, 64.0), step_by: None, clamp_to_range: false }), None),
-            Input::new("gap_size".to_string(), Value::Decimal(0.05), Some(InputSettings::Slider { range: (0.0, 0.5), step_by: None, clamp_to_range: true }), None),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("scale".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (1.0, 64.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("How many hex cells fit across the image; higher means smaller tiles."),
+            Input::new("gap_size".to_string(), Value::Decimal(0.05), Some(InputSettings::Slider { range: (0.0, 0.5), step_by: None, clamp_to_range: true }), None)
+                .with_description("Gap thickness between hex tiles as a fraction of tile radius."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Grayscale hex mask: 1.0 inside a tile, 0.0 in the gaps."),
         ]
     }
 

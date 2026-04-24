@@ -23,14 +23,17 @@ impl OpNumberMathSubtract {
         NodeSettings {
             name: "subtract".to_string(),
             description: "Subtracts two numbers.".to_string(),
+            help: "Computes a - b for integer or decimal inputs. Integer/integer inputs stay as integer and wrap on overflow like native i32 arithmetic; mixing with a decimal promotes the result to decimal.\n\nIf you need the absolute difference regardless of input order, chain the output through an abs node.".to_string(),
         }
     }
 
     /// Creates the default input list: two decimal drag-value inputs (a and b).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(f32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
+            Input::new("a".to_string(), Value::Decimal(f32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Minuend; the value that b is subtracted from."),
             Input::new("b".to_string(), Value::Decimal(f32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Subtrahend; the value subtracted from a.")
         ]
     }
 
@@ -38,6 +41,7 @@ impl OpNumberMathSubtract {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Difference a - b; mixed integer/decimal inputs promote to decimal.")
         ]
     }
 

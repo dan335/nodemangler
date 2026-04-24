@@ -20,6 +20,9 @@ pub struct SearchResult {
     pub name: String,
     /// Hierarchical category path, e.g. "images > noise".
     pub category_path: String,
+    /// One-sentence summary from `settings().description`, shown as a hover
+    /// tooltip on the search row.
+    pub description: String,
 }
 
 /// The response from showing the popup this frame.
@@ -246,6 +249,17 @@ impl NodeSearchPopup {
                                         egui::Sense::click(),
                                     );
 
+                                    // Show the short description as a tooltip
+                                    // so users can preview what a node does
+                                    // without having to add it to the graph.
+                                    let row_response = if result.description.is_empty() {
+                                        row_response
+                                    } else {
+                                        row_response.on_hover_text_at_pointer(
+                                            result.description.as_str(),
+                                        )
+                                    };
+
                                     if is_selected {
                                         ui.painter().rect_filled(rect, 0.0, selection_fill);
                                     }
@@ -418,6 +432,7 @@ pub fn flatten_operations(items: &[OperationListItem], path: &str) -> Vec<Search
                 results.push(SearchResult {
                     operation: operation.clone(),
                     name: settings.name,
+                    description: settings.description,
                     category_path: path.to_string(),
                 });
             }

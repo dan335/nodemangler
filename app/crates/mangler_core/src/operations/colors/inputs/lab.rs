@@ -23,16 +23,21 @@ impl OpColorInputLab {
         NodeSettings {
             name: "lab".to_string(),
             description: "Creates a color using the LAB color space.".to_string(),
+            help: "Builds an sRGB color from CIE L*a*b*: L* is perceived lightness (0 black to 100 white), a* is the green-red axis (negative = green, positive = red), and b* is the blue-yellow axis (negative = blue, positive = yellow).\n\nLab is perceptually uniform, so equal numeric steps feel like roughly equal color changes, which makes it useful for color-difference math. Values of a*/b* far from zero can fall outside the sRGB gamut and will be clipped to displayable channels. Alpha is passed through unchanged.".to_string(),
         }
     }
 
     /// Creates the input definitions: L* (0..100), a* (-128..127), b* (-128..127), and alpha.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("lightness".to_string(), Value::Decimal(50.0), Some(InputSettings::Slider { range: (0.0, 100.0), step_by: Some(1.0), clamp_to_range: false }), None),
-            Input::new("green - red".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-128.0, 127.0), step_by: Some(1.0), clamp_to_range: false }), None),
-            Input::new("blue - yellow".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-128.0, 127.0), step_by: Some(1.0), clamp_to_range: false }), None),
-            Input::new("alpha".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("lightness".to_string(), Value::Decimal(50.0), Some(InputSettings::Slider { range: (0.0, 100.0), step_by: Some(1.0), clamp_to_range: false }), None)
+                .with_description("CIE L* perceived lightness (0 = black, 100 = white)."),
+            Input::new("green - red".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-128.0, 127.0), step_by: Some(1.0), clamp_to_range: false }), None)
+                .with_description("CIE a* axis: negative shifts toward green, positive toward red."),
+            Input::new("blue - yellow".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-128.0, 127.0), step_by: Some(1.0), clamp_to_range: false }), None)
+                .with_description("CIE b* axis: negative shifts toward blue, positive toward yellow."),
+            Input::new("alpha".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Opacity of the resulting color (0 transparent, 1 opaque)."),
         ]
     }
 
@@ -40,6 +45,7 @@ impl OpColorInputLab {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Color(Color::default()), None)
+                .with_description("Color assembled from the CIE L*a*b* + alpha channels.")
         ]
     }
 

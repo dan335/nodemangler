@@ -28,21 +28,25 @@ impl OpImageTransformMakeTile {
         NodeSettings {
             name: "make tile".to_string(),
             description: "Makes an image tile seamlessly by cross-fading overlapping border regions.".to_string(),
+            help: "Rewrites the four border strips of the image so the result tiles without visible seams. The blend size (0.01..0.5 of the image's width/height) sets how wide the fade region is; corners are handled first via bilinear blend of all four source quadrants, then horizontal and vertical edges are linearly crossfaded between mirrored source pixels.\n\nOutput dimensions and channel count match the input. The interior of the image is left untouched; only a band of width blend_size * dim near each edge is modified. Use larger blend sizes for smoother tiling at the cost of losing more of the original border detail.".to_string(),
         }
     }
 
     /// Creates the default inputs: source image and blend size (fraction of image dimensions).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("blend size".to_string(), Value::Decimal(0.25), Some(InputSettings::Slider { range: (0.01, 0.5), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to make seamlessly tileable."),
+            Input::new("blend size".to_string(), Value::Decimal(0.25), Some(InputSettings::Slider { range: (0.01, 0.5), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Fraction of image width/height used for the edge cross-fade."),
         ]
     }
 
     /// Creates the default outputs: the tileable image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Seamlessly tileable image with blended edges and corners."),
         ]
     }
 

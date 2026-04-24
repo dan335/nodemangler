@@ -26,15 +26,19 @@ impl OpNumberRandomInteger {
         NodeSettings {
             name: "random integer".to_string(),
             description: "Generates a random integer number between min and max.".to_string(),
+            help: "Rolls a uniformly distributed integer in the half-open range [min, max) each time the generate trigger fires, using the fastrand PRNG.\n\nmin is inclusive and max is exclusive. If max is not strictly greater than min, it is automatically clamped to min + 1 so the range is always valid (and the output equals min). The generator is non-cryptographic and not seeded per-graph, so results are not reproducible.".to_string(),
         }
     }
 
     /// Creates the default input list: trigger, `min` (i32::MIN), and `max` (i32::MAX).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("generate".to_string(), Value::Trigger, None, None),
-            Input::new("min".to_string(), Value::Integer(i32::MIN), None, None),
-            Input::new("max".to_string(), Value::Integer(i32::MAX), None, None),
+            Input::new("generate".to_string(), Value::Trigger, None, None)
+                .with_description("Trigger that causes the node to roll a new random integer."),
+            Input::new("min".to_string(), Value::Integer(i32::MIN), None, None)
+                .with_description("Inclusive lower bound of the random range."),
+            Input::new("max".to_string(), Value::Integer(i32::MAX), None, None)
+                .with_description("Exclusive upper bound; clamped to min+1 if not greater than min."),
         ]
     }
 
@@ -42,6 +46,7 @@ impl OpNumberRandomInteger {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Integer(0), None)
+                .with_description("Uniformly distributed random integer in [min, max).")
         ]
     }
 

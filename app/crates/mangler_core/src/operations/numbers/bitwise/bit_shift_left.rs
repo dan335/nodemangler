@@ -20,14 +20,17 @@ impl OpNumberBitwiseShiftLeft {
         NodeSettings {
             name: "shift left".to_string(),
             description: "Shifts an integer left by a specified number of bits.".to_string(),
+            help: "Returns input << amount, moving bits toward the high end and filling low bits with zeros. Each position shifted is equivalent to multiplying by two.\n\namount must be in the range 0..=31; values outside that range produce a node error rather than triggering Rust's undefined-shift behavior. Bits shifted into or past the sign position can flip the integer negative (no overflow check is performed).".to_string(),
         }
     }
 
     /// Creates the default input list: an integer input and a shift amount.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("amount".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Integer whose bits will be shifted left."),
+            Input::new("amount".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Number of bit positions to shift left; must be between 0 and 31."),
         ]
     }
 
@@ -35,6 +38,7 @@ impl OpNumberBitwiseShiftLeft {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Integer(0), None)
+                .with_description("Input shifted left by amount bits (input << amount).")
         ]
     }
 

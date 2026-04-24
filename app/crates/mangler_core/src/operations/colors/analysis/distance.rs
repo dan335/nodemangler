@@ -23,22 +23,27 @@ impl OpColorAnalysisDistance {
         NodeSettings {
             name: "distance".to_string(),
             description: "Computes the CIE76 Delta E perceptual distance and Euclidean RGB distance between two colors.".to_string(),
+            help: "delta_e is the straight Euclidean distance in CIE Lab space (L* 0-100, a*/b* roughly -128..128), so roughly 2.3 is the just-noticeable difference and values above 10 read as clearly different colors. This is the simple CIE76 formula; it is stable and fast but less perceptually uniform than CIEDE2000 in saturated regions.\n\nrgb_distance is the Euclidean distance between the raw sRGB channels (0-1 each) and is only useful when you need a cheap non-perceptual comparison. Alpha is ignored in both metrics.".to_string(),
         }
     }
 
     /// Creates the input definitions: two colors (a, b) to compare.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("b".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("a".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("First color used in the distance comparison."),
+            Input::new("b".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Second color used in the distance comparison."),
         ]
     }
 
     /// Creates the output definitions: Delta E (perceptual) and RGB (Euclidean) distances.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("delta_e".to_string(), Value::Decimal(0.0), None),
-            Output::new("rgb_distance".to_string(), Value::Decimal(0.0), None),
+            Output::new("delta_e".to_string(), Value::Decimal(0.0), None)
+                .with_description("CIE76 Delta E: perceptual distance between the colors in Lab space."),
+            Output::new("rgb_distance".to_string(), Value::Decimal(0.0), None)
+                .with_description("Euclidean distance between the colors in sRGB channel space."),
         ]
     }
 

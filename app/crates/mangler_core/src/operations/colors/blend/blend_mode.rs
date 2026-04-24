@@ -25,17 +25,23 @@ impl OpColorBlendMode {
         NodeSettings {
             name: "blend".to_string(),
             description: "Blends two colors using one of 17 blend modes in a chosen color space.".to_string(),
+            help: "a is the base layer and b is the top layer; amount (0-1) fades between the untouched a and the fully blended result. Supported modes include Normal, Lerp, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Burn, Darken/Lighten, Difference, Exclusion, Linear Burn/Dodge, Divide, and Subtract.\n\nThe color space input controls where the math happens: sRGB matches Photoshop-style compositing, Linear RGB gives physically correct light mixing, Lab and LCH keep perceptual uniformity, and HSL/HSV let hue-based blends follow a color wheel. Picking a different space can noticeably change the result, especially for multiply/screen on saturated colors.".to_string(),
         }
     }
 
     /// Creates the input definitions: two colors (a, b), a blend amount (0..1), a blend mode, and a color space.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("b".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("amount".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("blend mode".to_string(), Value::BlendMode(BlendMode::Over), None, None),
-            Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Srgb), None, None),
+            Input::new("a".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Base color (bottom layer) of the blend."),
+            Input::new("b".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Blend color (top layer) composited over the base."),
+            Input::new("amount".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Blend strength: 0 keeps color a, 1 fully applies the blend."),
+            Input::new("blend mode".to_string(), Value::BlendMode(BlendMode::Over), None, None)
+                .with_description("Which of the 17 blend modes (multiply, screen, overlay, etc.) to use."),
+            Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Srgb), None, None)
+                .with_description("Color space the blend math is performed in (affects perceptual result)."),
         ]
     }
 
@@ -43,6 +49,7 @@ impl OpColorBlendMode {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Color(Color::default()), None)
+                .with_description("The blended color result.")
         ]
     }
 

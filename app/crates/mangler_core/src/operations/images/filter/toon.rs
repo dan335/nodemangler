@@ -42,33 +42,41 @@ impl OpImageAdjustmentToon {
         NodeSettings {
             name: "toon".to_string(),
             description: "Cel-shade effect: pre-smooth, quantize lightness (preserving hue), and overlay DoG edges.".to_string(),
+            help: "Three-stage cel-shade pipeline. First a small box blur flattens texture so quantization produces clean bands. Then each pixel round-trips through HSV and only the V channel is snapped to `levels` bins — saturated colors stay saturated (darker red rather than desaturated) where a per-channel posterize would shift hue.\n\nFinally cel-boundary outlines are detected on the quantized V buffer (no threshold needed since V is the only piecewise-constant dimension), thickened with a box-blur plus smoothstep, and composited using `edge color` at `edge strength`.".to_string(),
         }
     }
 
     /// Creates the input ports for the toon operation.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to cel-shade with quantized lightness bands."),
             // number of lightness bands. 4 = classic shadow / midtone / highlight / specular
-            Input::new("levels".to_string(), Value::Integer(4), Some(InputSettings::DragValue { speed: None, clamp: Some((2.0, 8.0)) }), None),
+            Input::new("levels".to_string(), Value::Integer(4), Some(InputSettings::DragValue { speed: None, clamp: Some((2.0, 8.0)) }), None)
+                .with_description("Number of lightness bands; 4 gives classic shadow/midtone/highlight/specular."),
             // pre-blur radius (in pixels) applied to the image before quantization;
             // 0 disables smoothing, default 2 is a good starting point for most photos
-            Input::new("smoothing".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (0.0, 5.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("smoothing".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (0.0, 5.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Pre-quantization blur radius in pixels; larger values flatten texture before banding."),
             // blur radius (in pixels) applied to the binary cel-boundary mask;
             // 0 = sharp 1-pixel lines, larger = thicker / softer outlines.
             // Integer because the underlying box-blur radius is an integer pixel count.
-            Input::new("edge thickness".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (0.0, 5.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("edge thickness".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (0.0, 5.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Blur radius applied to the cel-boundary mask; 0 gives sharp 1-pixel outlines."),
             // color drawn on detected edges
-            Input::new("edge color".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("edge color".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Color drawn along the detected cel-band outlines."),
             // global multiplier on how strongly edges replace the underlying color
-            Input::new("edge strength".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("edge strength".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Opacity of the outline overlay; 0 disables edges, 1 fully replaces pixels with edge color."),
         ]
     }
 
     /// Creates the output port: the toon-shaded image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Cel-shaded image with banded lightness and overlaid cel-boundary outlines."),
         ]
     }
 

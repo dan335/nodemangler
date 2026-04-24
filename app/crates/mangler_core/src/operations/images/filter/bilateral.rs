@@ -33,26 +33,32 @@ impl OpImageAdjustmentBilateral {
         NodeSettings {
             name: "bilateral".to_string(),
             description: "Edge-preserving smoothing using combined spatial and color-similarity weights.".to_string(),
+            help: "Replaces each pixel with a weighted average of its neighbors where the weight is the product of a spatial Gaussian (falls off with pixel distance) and a range Gaussian (falls off with color difference to the center). Pixels on the far side of an edge have low range weight and barely contribute, so edges stay sharp while flat areas denoise.\n\nSmaller `range sigma` preserves edges more aggressively; `spatial sigma` typically tracks radius. Cost is O(r^2) per pixel; rows run in parallel via rayon. Alpha is excluded from the color-difference metric but still averaged.".to_string(),
         }
     }
 
     /// Creates the input ports: image, radius, spatial sigma, and range (color) sigma.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to smooth while keeping edges crisp."),
             // radius of the square window in pixels (full window is (2r+1) x (2r+1))
-            Input::new("radius".to_string(), Value::Integer(4), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("radius".to_string(), Value::Integer(4), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Half-size of the sampling window in pixels; larger values average over a wider area."),
             // spatial sigma: controls how fast spatial weight falls off with distance; tends to track radius
-            Input::new("spatial sigma".to_string(), Value::Decimal(2.0), Some(InputSettings::Slider { range: (0.1, 10.0), step_by: Some(0.1), clamp_to_range: true }), None),
+            Input::new("spatial sigma".to_string(), Value::Decimal(2.0), Some(InputSettings::Slider { range: (0.1, 10.0), step_by: Some(0.1), clamp_to_range: true }), None)
+                .with_description("Falloff of the spatial Gaussian; larger values smooth further across distance."),
             // range sigma: controls how tolerant the filter is of color differences (smaller = more edge-preserving)
-            Input::new("range sigma".to_string(), Value::Decimal(0.15), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("range sigma".to_string(), Value::Decimal(0.15), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Color-similarity tolerance; smaller values preserve edges more strongly."),
         ]
     }
 
     /// Creates the output port: the bilaterally filtered image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Bilaterally smoothed image with edges preserved."),
         ]
     }
 

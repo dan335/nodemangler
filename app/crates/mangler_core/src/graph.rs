@@ -604,28 +604,34 @@ impl Graph {
                         .get(&subgraph_input.name)
                         .cloned()
                         .unwrap_or_else(|| subgraph_input.value.clone());
-                    node.inputs.push(Input::new(
-                        subgraph_input.name.clone(),
-                        initial_value,
-                        None,
-                        Some(InputLink {
-                            node_id: subgraph_node_id.clone(),
-                            input_id: subgraph_input.id.clone(),
-                        }),
-                    ));
+                    node.inputs.push(
+                        Input::new(
+                            subgraph_input.name.clone(),
+                            initial_value,
+                            None,
+                            Some(InputLink {
+                                node_id: subgraph_node_id.clone(),
+                                input_id: subgraph_input.id.clone(),
+                            }),
+                        )
+                        .with_description(subgraph_input.description.clone()),
+                    );
                 }
             }
 
             for (output_index, subgraph_output) in subgraph_node.outputs.iter().enumerate() {
                 if subgraph_output.is_exposed {
-                    node.outputs.push(Output::new(
-                        subgraph_output.name.clone(),
-                        subgraph_output.value.clone(),
-                        Some(OutputLink {
-                            node_id: subgraph_node_id.clone(),
-                            output_index,
-                        }),
-                    ));
+                    node.outputs.push(
+                        Output::new(
+                            subgraph_output.name.clone(),
+                            subgraph_output.value.clone(),
+                            Some(OutputLink {
+                                node_id: subgraph_node_id.clone(),
+                                output_index,
+                            }),
+                        )
+                        .with_description(subgraph_output.description.clone()),
+                    );
                 }
             }
         }

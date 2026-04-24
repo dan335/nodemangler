@@ -32,6 +32,7 @@ impl OpImageAdjustmentCrossHatch {
         NodeSettings {
             name: "cross hatch".to_string(),
             description: "Pen-and-ink cross-hatch stylization — four progressive hatch layers driven by luminance.".to_string(),
+            help: "Stacks four parallel line screens at 45, -45, 0, and 90 degrees. A pixel belongs to a layer's line when the signed distance to the nearest parallel (via projection onto the layer's normal, modulo spacing) is within `thickness`. Layers activate progressively as luminance drops below each of the four thresholds, so bright areas stay clean and the darkest regions get all four layers crossing.\n\nSpacing sets stroke density; thickness sets stroke weight. Output is binary (black ink, white paper) with the input alpha preserved.".to_string(),
         }
     }
 
@@ -40,25 +41,33 @@ impl OpImageAdjustmentCrossHatch {
     /// below which that layer's strokes become active.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image whose luminance drives the density of hatch strokes."),
             // Distance (in pixels) between successive hatch lines in a layer
-            Input::new("spacing".to_string(), Value::Decimal(6.0), Some(InputSettings::Slider { range: (2.0, 32.0), step_by: Some(0.5), clamp_to_range: true }), None),
+            Input::new("spacing".to_string(), Value::Decimal(6.0), Some(InputSettings::Slider { range: (2.0, 32.0), step_by: Some(0.5), clamp_to_range: true }), None)
+                .with_description("Distance in pixels between parallel hatch lines in each layer."),
             // Half-width of each stroke (in pixels) — i.e. anti-alias-free radius
-            Input::new("thickness".to_string(), Value::Decimal(0.8), Some(InputSettings::Slider { range: (0.1, 4.0), step_by: Some(0.1), clamp_to_range: true }), None),
+            Input::new("thickness".to_string(), Value::Decimal(0.8), Some(InputSettings::Slider { range: (0.1, 4.0), step_by: Some(0.1), clamp_to_range: true }), None)
+                .with_description("Half-width of each stroke in pixels."),
             // Luminance cutoffs: below threshold_n → layer n draws ink. Ordered
             // so each subsequent darker tone keeps the previous layers and
             // adds another.
-            Input::new("threshold 1".to_string(), Value::Decimal(0.8), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("threshold 2".to_string(), Value::Decimal(0.6), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("threshold 3".to_string(), Value::Decimal(0.4), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("threshold 4".to_string(), Value::Decimal(0.2), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("threshold 1".to_string(), Value::Decimal(0.8), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Luminance cutoff below which the 45-degree hatch layer activates."),
+            Input::new("threshold 2".to_string(), Value::Decimal(0.6), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Luminance cutoff below which the -45-degree hatch layer activates."),
+            Input::new("threshold 3".to_string(), Value::Decimal(0.4), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Luminance cutoff below which the horizontal hatch layer activates."),
+            Input::new("threshold 4".to_string(), Value::Decimal(0.2), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Luminance cutoff below which the vertical hatch layer activates."),
         ]
     }
 
     /// Creates the output port: the cross-hatch binary image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Binary pen-and-ink image with hatch strokes drawn in dark regions."),
         ]
     }
 

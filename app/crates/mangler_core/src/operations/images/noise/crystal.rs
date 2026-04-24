@@ -33,24 +33,31 @@ impl OpImageNoiseCrystal {
         NodeSettings {
             name: "crystal noise".to_string(),
             description: "Creates a seamlessly tiling image with crystalline faceted patterns.".to_string(),
+            help: "A Voronoi/cellular-style generator: jittered points are scattered on a grid and each pixel is filled with the flat brightness of its nearest point's cell. The result is a mosaic of sharp-edged facets with no internal gradient.\n\nFrequency controls how many cells fit across the tile, so higher values shrink the facets. The distance function (Euclidean, Manhattan, Chebyshev, etc.) changes how cells meet: Euclidean gives natural angles, Manhattan and Chebyshev give rectilinear facets.\n\nGood for gemstones, mineral cross-sections, stained glass, and low-poly facet looks.".to_string(),
         }
     }
 
     /// Creates the default inputs: seed, width, height, distance function, and frequency.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("distance_function".to_string(), Value::NoiseWorleyDistanceFunction(NoiseWorleyDistanceFunction::EuclideanSquared), None, None),
-            Input::new("frequency".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (1.0, 50.0), step_by: Some(0.1), clamp_to_range: false }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed placing the crystal cell points and their brightness values."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("distance_function".to_string(), Value::NoiseWorleyDistanceFunction(NoiseWorleyDistanceFunction::EuclideanSquared), None, None)
+                .with_description("Distance metric used to assign each pixel to a cell; shapes the facet edges."),
+            Input::new("frequency".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (1.0, 50.0), step_by: Some(0.1), clamp_to_range: false }), None)
+                .with_description("Number of crystal cells across the image; higher values make smaller facets."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Seamlessly tiling grayscale image of flat-shaded crystalline facets."),
         ]
     }
 

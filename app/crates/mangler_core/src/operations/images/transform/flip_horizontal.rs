@@ -25,20 +25,23 @@ impl OpImageTransformFlipHorizontal {
         NodeSettings {
             name: "flip horizontal".to_string(),
             description: "Flips an image horizontally.".to_string(),
+            help: "Mirrors every pixel across the vertical center axis, so the pixel at (x, y) becomes (width - 1 - x, y). Output dimensions and channel count are identical to the input; no resampling or interpolation is performed, which means this is lossless and applying the operation twice restores the original image exactly.".to_string(),
         }
     }
 
     /// Creates the default inputs: a single source image.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image to flip left-to-right."),
         ]
     }
 
     /// Creates the default outputs: the flipped image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Image mirrored left-to-right."),
         ]
     }
 

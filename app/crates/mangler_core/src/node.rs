@@ -110,6 +110,7 @@ impl Node {
                 settings: NodeSettings {
                     name: "subgraph".to_string(),
                     description: "A subgraph.".to_string(),
+                    help: "A subgraph embeds another graph as a single node. Inputs and outputs exposed on the child surface here as sockets on the parent, so the subgraph behaves like any other operation.\n\nPick the subgraph file from the settings panel; its exposed I/O rebuild automatically when the file changes.".to_string(),
                 },
                 inputs: Vec::new(),
                 outputs: Vec::new(),

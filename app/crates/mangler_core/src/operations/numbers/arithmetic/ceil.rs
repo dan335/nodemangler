@@ -22,13 +22,15 @@ impl OpNumberMathCeil {
         NodeSettings {
             name: "ceil".to_string(),
             description: "Rounds up to the nearest integer.".to_string(),
+            help: "Returns the smallest integer greater than or equal to the input, using f32::ceil. The result is still returned as a decimal so it can be chained with other floating-point math.\n\nNote that ceiling always rounds toward positive infinity, so ceil(-1.5) yields -1.0, not -2.0. Pair with floor or round when you need different rounding semantics.".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Number to round up to the nearest integer."),
         ]
     }
 
@@ -36,6 +38,7 @@ impl OpNumberMathCeil {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Smallest integer value greater than or equal to the input.")
         ]
     }
 

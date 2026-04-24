@@ -31,22 +31,27 @@ impl OpImageInputClipboard {
         NodeSettings {
             name: "from clipboard".to_string(),
             description: "Grabs an image from the clipboard.".to_string(),
+            help: "Reads the current system clipboard contents as raw RGBA bytes via arboard and wraps them in a 4-channel FloatImage. Pressing the trigger button re-samples the clipboard on demand, so copying a new image elsewhere and clicking the button refreshes the output.\n\nThe node reports an error when the clipboard is empty or does not hold an image (for example when it only contains text).".to_string(),
         }
     }
 
     /// Creates the input definitions: a trigger button that initiates the clipboard read.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("copy from clipboard".to_string(), Value::Trigger, None, None),
+            Input::new("copy from clipboard".to_string(), Value::Trigger, None, None)
+                .with_description("Press to re-read the current clipboard image contents."),
         ]
     }
 
     /// Creates the output definitions: the grabbed image, its width, and its height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
-            Output::new("width".to_string(), Value::Integer(1), None),
-            Output::new("height".to_string(), Value::Integer(1), None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None)
+                .with_description("The image decoded from the clipboard."),
+            Output::new("width".to_string(), Value::Integer(1), None)
+                .with_description("Width of the clipboard image in pixels."),
+            Output::new("height".to_string(), Value::Integer(1), None)
+                .with_description("Height of the clipboard image in pixels."),
         ]
     }
 

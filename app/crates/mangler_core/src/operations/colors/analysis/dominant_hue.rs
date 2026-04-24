@@ -23,25 +23,33 @@ impl OpColorAnalysisDominantHue {
         NodeSettings {
             name: "dominant hue".to_string(),
             description: "Identifies which of the five input colors has the most dominant hue (highest HSV saturation × value). Returns the dominant color and its 1-based index.".to_string(),
+            help: "For each input, converts to HSV and computes the weight s * v. A fully saturated, fully bright color scores 1.0; grays, blacks, and whites tend toward 0.0.\n\nReturns the color with the highest weight and its 1-based position (1-5). Ties are resolved in favor of the lowest index, so equal inputs produce a deterministic pick. The actual hue angle is not used as a tiebreaker, only the saturation/value product, which means two different vivid hues at the same s*v pick the earlier slot.".to_string(),
         }
     }
 
     /// Creates the five input definitions: color_1 through color_5.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("color_1".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("color_2".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("color_3".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("color_4".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("color_5".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("color_1".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("First candidate color to evaluate for hue dominance."),
+            Input::new("color_2".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Second candidate color to evaluate for hue dominance."),
+            Input::new("color_3".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Third candidate color to evaluate for hue dominance."),
+            Input::new("color_4".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Fourth candidate color to evaluate for hue dominance."),
+            Input::new("color_5".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Fifth candidate color to evaluate for hue dominance."),
         ]
     }
 
     /// Creates the two output definitions: dominant_color and dominant_index (1-based).
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("dominant_color".to_string(), Value::Color(Color::default()), None),
-            Output::new("dominant_index".to_string(), Value::Integer(1), None),
+            Output::new("dominant_color".to_string(), Value::Color(Color::default()), None)
+                .with_description("The input color with the highest HSV saturation × value weight."),
+            Output::new("dominant_index".to_string(), Value::Integer(1), None)
+                .with_description("One-based index (1–5) identifying which input was dominant."),
         ]
     }
 

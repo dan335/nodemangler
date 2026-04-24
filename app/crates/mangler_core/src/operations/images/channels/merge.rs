@@ -22,20 +22,29 @@ pub struct OpImageChannelMerge {}
 
 impl OpImageChannelMerge {
     pub fn settings() -> NodeSettings {
-        NodeSettings { name: "channel merge".to_string(), description: "Merges R, G, B, A channel images into one RGBA image.".to_string() }
+        NodeSettings {
+            name: "channel merge".to_string(),
+            description: "Merges R, G, B, A channel images into one RGBA image.".to_string(),
+            help: "For every pixel of the red input, samples the red, green, blue, and alpha source images at the same coordinate and composes a new RGBA pixel from their luminance values. Each source image is reduced to a single scalar per pixel: if it has three or more channels the Rec. 601 weighted luminance 0.299 R + 0.587 G + 0.114 B is used, otherwise the first channel is taken directly.\n\nThe output size is taken from the red input; pixels outside the other sources' bounds are zero for RGB and 1 for alpha. No resizing is performed, so mismatched inputs simply get cropped/extended. Useful for round-tripping through `channels split` or building masks from arbitrary sources.".to_string(),
+        }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("red".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("green".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("blue".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("alpha".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("red".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Image whose luminance becomes the red channel of the output."),
+            Input::new("green".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Image whose luminance becomes the green channel of the output."),
+            Input::new("blue".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Image whose luminance becomes the blue channel of the output."),
+            Input::new("alpha".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Image whose luminance becomes the alpha channel of the output."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
-        vec![Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)]
+        vec![Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            .with_description("RGBA image assembled from the four per-channel source images.")]
     }
 
     /// Merges four images by taking each one's first channel (or luminance) as an RGBA component.

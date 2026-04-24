@@ -22,13 +22,15 @@ impl OpNumberMathIncrement {
         NodeSettings {
             name: "increment".to_string(),
             description: "Increments a number by 1.".to_string(),
+            help: "Adds 1 to a numeric input while preserving its type: integers gain 1 exactly, decimals gain 1.0.\n\nText inputs are handled specially by appending \" +1\" rather than attempting arithmetic, which can be handy for generating labels.".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
+            Input::new("a".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Value to increment; integers and decimals gain 1, text appends \" +1\"."),
         ]
     }
 
@@ -36,6 +38,7 @@ impl OpNumberMathIncrement {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(f32::default()), None)
+                .with_description("Input value with 1 added.")
         ]
     }
 

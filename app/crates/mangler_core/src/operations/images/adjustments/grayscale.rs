@@ -24,20 +24,23 @@ impl OpImageAdjustmentGrayscale {
         NodeSettings {
             name: "grayscale".to_string(),
             description: "Converts an image to grayscale using luminance weighting.".to_string(),
+            help: "Collapses colour to a single luminance channel using the Rec. 601 weights 0.299 R + 0.587 G + 0.114 B, producing a 1-channel FloatImage. Inputs that are already 1-channel are returned as-is without copying per-pixel data.\n\nAlpha is dropped because the output has no alpha channel; for mask-style workflows where alpha matters, extract the luminance via `channels split` instead. Downstream nodes that need an RGB image will see the grayscale replicated across channels on demand.".to_string(),
         }
     }
 
     /// Creates the input port: a single image to convert.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id:get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id:get_id() }, None, None)
+                .with_description("Source colour image to collapse into luminance."),
         ]
     }
 
     /// Creates the output port: the grayscale-converted image (1 channel).
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id:get_id() }, None)
+                .with_description("Single-channel image holding per-pixel luminance."),
         ]
     }
 

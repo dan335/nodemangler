@@ -25,22 +25,27 @@ impl OpImageAdjustmentCurves {
         NodeSettings {
             name: "curves".to_string(),
             description: "Applies a tone curve adjustment.".to_string(),
+            help: "Rotates each colour channel around a configurable midpoint pivot. The formula is output = midpoint + (input - midpoint) * (1 + strength * 2); strength is doubled internally for a perceptually useful range across -1 to 1.\n\nPositive strength steepens the curve and boosts contrast, negative strength flattens it toward the midpoint. Moving the midpoint away from 0.5 biases the rotation, preserving shadows or highlights depending on direction. Results are clamped to 0-1 and alpha is left alone. This is a simple linear pivot, not a spline-based curve editor.".to_string(),
         }
     }
 
     /// Creates the input ports: image, strength (-1..1), and midpoint (0..1).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("strength".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("midpoint".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image to apply the tone curve to."),
+            Input::new("strength".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Curve intensity; positive adds contrast, negative reduces it."),
+            Input::new("midpoint".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Pivot luminance the curve rotates around when reshaping tones."),
         ]
     }
 
     /// Creates the output port: the curve-adjusted image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Image with the tone curve applied per colour channel."),
         ]
     }
 

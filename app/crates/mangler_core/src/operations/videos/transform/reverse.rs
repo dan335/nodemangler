@@ -23,6 +23,7 @@ impl OpVideoReverse {
         NodeSettings {
             name: "video reverse".to_string(),
             description: "Plays the clip backwards. Metadata only — no re-encode.".to_string(),
+            help: "Appends a Reverse transform to the VideoRef, flipping the effective-to-source time mapping. Duration, fps, and frame count are unchanged; only the direction of playback is reversed.\n\nComposes with the other video transforms: reversing after a trim plays only the trimmed slice backwards; reversing before a loop repeats the reversed clip N times. Because this is metadata-only, arbitrary source seeking is still handled by the VideoDecoderCache at extract-frame time.".to_string(),
         }
     }
 
@@ -32,7 +33,8 @@ impl OpVideoReverse {
             Value::Video(VideoRef::default()),
             None,
             None,
-        )]
+        )
+        .with_description("Source video handle to play backwards.")]
     }
 
     pub fn create_outputs() -> Vec<Output> {
@@ -40,7 +42,8 @@ impl OpVideoReverse {
             "video".to_string(),
             Value::Video(VideoRef::default()),
             None,
-        )]
+        )
+        .with_description("Reversed video handle with the time axis flipped.")]
     }
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {

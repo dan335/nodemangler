@@ -22,23 +22,29 @@ impl OpColorOutputHsv {
         NodeSettings {
             name: "to hsv".to_string(),
             description: "Converts a color to the HSV color space.".to_string(),
+            help: "Splits the color into hue (0-360 degrees), saturation (0-1), value/brightness (0-1), and alpha. In HSV the pure saturated hue lives at value 1, contrasting with HSL where it sits at lightness 0.5.\n\nFor pure grays (max(R, G, B) == min(R, G, B)) hue is reported as 0 and saturation as 0 to avoid NaN. Alpha is passed through from the input untouched.".to_string(),
         }
     }
 
     /// Creates the single input definition accepting a color to decompose.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("input".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Color to decompose into HSV channels."),
         ]
     }
 
     /// Creates the output definitions: hue, saturation, value, and alpha as decimal values.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("hue".to_string(), Value::Decimal(0.5), None),
-            Output::new("saturation".to_string(), Value::Decimal(0.5), None),
-            Output::new("value".to_string(), Value::Decimal(0.5), None),
-            Output::new("alpha".to_string(), Value::Decimal(1.0), None),
+            Output::new("hue".to_string(), Value::Decimal(0.5), None)
+                .with_description("Hue angle in degrees (0–360) extracted from the input color."),
+            Output::new("saturation".to_string(), Value::Decimal(0.5), None)
+                .with_description("HSV saturation (0 = gray, 1 = fully saturated)."),
+            Output::new("value".to_string(), Value::Decimal(0.5), None)
+                .with_description("HSV value/brightness (0 = black, 1 = full brightness)."),
+            Output::new("alpha".to_string(), Value::Decimal(1.0), None)
+                .with_description("Alpha channel passed through from the input color."),
         ]
     }
 

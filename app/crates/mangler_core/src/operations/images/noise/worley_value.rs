@@ -34,24 +34,31 @@ impl OpImageNoiseWorleyValue {
         NodeSettings {
             name: "worley value noise".to_string(),
             description: "Creates a seamlessly tiling worley noise value image.".to_string(),
+            help: "Worley (cellular) noise in value mode: jittered cell points are scattered on a grid and each pixel is filled with the random scalar stored at its nearest point, giving flat-shaded cells with sharp boundaries rather than a distance gradient.\n\nFrequency sets how many cells span the tile, so higher values produce smaller flat regions. The distance function (Euclidean, Manhattan, Chebyshev, etc.) decides which neighbor is nearest, shaping the boundaries between cells: Euclidean gives rounded polygon borders, Manhattan and Chebyshev give axis-aligned ones.\n\nGood for mosaic tiles, cell masks, stained glass, and any patchwork pattern where flat cells read more cleanly than gradients.".to_string(),
         }
     }
 
     /// Creates the default inputs: seed, width, height, distance function, and frequency.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("distance_function".to_string(), Value::NoiseWorleyDistanceFunction(NoiseWorleyDistanceFunction::EuclideanSquared), None, None),
-            Input::new("frequency".to_string(), Value::Decimal(5.0), Some(InputSettings::Slider { range: (1.0, 50.0), step_by: Some(0.1), clamp_to_range: false }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed placing the cell points and their brightness values."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("distance_function".to_string(), Value::NoiseWorleyDistanceFunction(NoiseWorleyDistanceFunction::EuclideanSquared), None, None)
+                .with_description("Distance metric used to pick the nearest cell; shapes the region boundaries."),
+            Input::new("frequency".to_string(), Value::Decimal(5.0), Some(InputSettings::Slider { range: (1.0, 50.0), step_by: Some(0.1), clamp_to_range: false }), None)
+                .with_description("Number of cells across the tile; higher values produce smaller flat regions."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Seamlessly tiling grayscale Worley noise where each cell is a flat random brightness."),
         ]
     }
 

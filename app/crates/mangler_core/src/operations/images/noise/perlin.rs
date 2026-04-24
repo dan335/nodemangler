@@ -28,23 +28,29 @@ impl OpImageNoisePerlin {
         NodeSettings {
             name: "perlin noise".to_string(),
             description: "Creates a seamlessly tiling image from perlin noise.".to_string(),
+            help: "Classic Perlin gradient noise: each lattice corner holds a random gradient vector, the value at a point is a smooth interpolation of dot products with the four corner gradients. Output is continuous and differentiable with a single characteristic feature size - no fractal detail at other scales.\n\nScale is the lattice period (cells across the tile); higher values make smaller features. Tiling is done by using a periodic permutation table so the lattice wraps exactly at the scale boundary.\n\nThe building block for most procedural textures: feed it into fBm, warps, or thresholds to make terrain, clouds, marble, and more.".to_string(),
         }
     }
 
     /// Creates the default inputs: seed, width, height, and scale.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("scale".to_string(), Value::Integer(10), Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed for the Perlin gradient table; change to get a different pattern."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("scale".to_string(), Value::Integer(10), Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }), None)
+                .with_description("Number of lattice cells across the tile; higher values produce smaller features."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None)
+                .with_description("Seamlessly tiling grayscale Perlin gradient noise image."),
         ]
     }
 

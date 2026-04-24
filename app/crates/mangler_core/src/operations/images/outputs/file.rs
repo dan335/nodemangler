@@ -35,6 +35,7 @@ impl OpImageOutputFile {
         NodeSettings {
             name: "to file".to_string(),
             description: "Saves an image to a file.".to_string(),
+            help: "Encodes the input image and writes it into the chosen folder under the given base filename; the extension is appended automatically based on the selected image format. The color format selector controls the output bit depth and channel layout (Gray8/16, GrayA8/16, Rgb8/16/32F, Rgba8/16/32F).\n\nThe jpg quality slider only applies when saving as JPEG. Incompatible format/color-format combinations (for example an RGBA channel layout into a JPEG) are rejected before any file is written, and the full saved path is returned as an output for chaining.".to_string(),
         }
     }
 
@@ -42,25 +43,32 @@ impl OpImageOutputFile {
     /// JPEG quality, and color format.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("file name".to_string(), Value::Text("image01".to_string()), Some(InputSettings::SingleLineText), None),
+            Input::new("image".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Image to encode and save to disk."),
+            Input::new("file name".to_string(), Value::Text("image01".to_string()), Some(InputSettings::SingleLineText), None)
+                .with_description("Base filename for the saved file; extension is appended automatically."),
             Input::new("folder".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path {
                 extension_filter: vec![],
                 set_directory: None,
                 set_file_name: None,
                 set_title: None,
                 file_dialog_type: crate::input::FileDialogType::PickFolder,
-            }), None),
-            Input::new("image format".to_string(), Value::ImageType(ImageFormat::Jpeg), None, None),
-            Input::new("jpg quality".to_string(), Value::Integer(85), Some(InputSettings::Slider { range: (1.0, 100.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("color format".to_string(), Value::ColorFormat(ColorFormat::Rgb8), None, None),
+            }), None)
+                .with_description("Destination folder where the image file will be written."),
+            Input::new("image format".to_string(), Value::ImageType(ImageFormat::Jpeg), None, None)
+                .with_description("Image container format (JPEG, PNG, etc.) that determines the extension."),
+            Input::new("jpg quality".to_string(), Value::Integer(85), Some(InputSettings::Slider { range: (1.0, 100.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("JPEG compression quality from 1 (smallest) to 100 (best)."),
+            Input::new("color format".to_string(), Value::ColorFormat(ColorFormat::Rgb8), None, None)
+                .with_description("Pixel encoding (bit depth and channel layout) used to write the file."),
         ]
     }
 
     /// Creates the output definitions: the full file path where the image was saved.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("file path".to_string(), Value::Path(PathBuf::new()), None),
+            Output::new("file path".to_string(), Value::Path(PathBuf::new()), None)
+                .with_description("Full path of the file that was written."),
         ]
     }
 

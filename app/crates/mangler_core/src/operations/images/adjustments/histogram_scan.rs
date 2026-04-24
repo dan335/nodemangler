@@ -26,22 +26,27 @@ impl OpImageAdjustmentHistogramScan {
         NodeSettings {
             name: "histogram scan".to_string(),
             description: "Isolates a luminance range from the image.".to_string(),
+            help: "Computes Rec. 709 luminance per pixel, then produces a grayscale mask that is bright where luminance sits inside [position - range, position + range] and dark elsewhere. Soft smoothstep transitions at both edges (edge width equals max(0.01, range * 0.1)) avoid hard stair-step cutoffs.\n\nOutput is always a 4-channel image with the RGB channels set to the mask value and alpha forwarded from the source. Range 0 collapses the band to a razor-thin line and returns a nearly black mask. Useful for building selective adjustments, e.g. pulling midtones into a separate process chain.".to_string(),
         }
     }
 
     /// Creates the input ports: image, center position of the luminance band, and band width (range).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("position".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("range".to_string(), Value::Decimal(0.1), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image whose luminance is scanned for a narrow band."),
+            Input::new("position".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Centre luminance of the band that will become white in the mask."),
+            Input::new("range".to_string(), Value::Decimal(0.1), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Half-width of the selected band around the centre position."),
         ]
     }
 
     /// Creates the output port: the luminance isolation mask.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Grayscale mask that is bright inside the selected luminance band."),
         ]
     }
 

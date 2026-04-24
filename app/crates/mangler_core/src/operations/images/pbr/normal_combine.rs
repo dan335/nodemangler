@@ -30,21 +30,26 @@ impl OpImagePbrNormalCombine {
         NodeSettings {
             name: "normal combine".to_string(),
             description: "Combines two normal maps (e.g. base + detail) using Whiteout / RNM / partial-derivative / linear blending.".to_string(),
+            help: "Layers a detail normal over a base normal using one of four operators: 0 Whiteout (default; cheap and preserves overhang detail), 1 RNM / Reoriented Normal Mapping (Barre-Brisebois & Hill, matches Unity/Unreal), 2 Partial Derivative (sums dx/dy derivatives, predictable), 3 Linear (componentwise average; lowest fidelity).\n\nThe detail map is bilinearly resampled to match the base resolution, so the two inputs do not need matching dimensions. All variants re-normalise before packing back to the 0-1 range. For a straight opacity fade between two normals use the normal_blend node instead.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("base".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("detail".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("base".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Base normal map that provides the overall surface shape."),
+            Input::new("detail".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Detail normal map layered over the base."),
             // 0 = Whiteout (default), 1 = RNM, 2 = Partial Derivative, 3 = Linear
-            Input::new("mode".to_string(), Value::Integer(0), Some(InputSettings::Slider { range: (0.0, 3.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("mode".to_string(), Value::Integer(0), Some(InputSettings::Slider { range: (0.0, 3.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Blend algorithm: 0 Whiteout, 1 RNM, 2 Partial Derivative, 3 Linear."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Combined, re-normalised normal map of base plus detail."),
         ]
     }
 

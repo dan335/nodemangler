@@ -23,19 +23,23 @@ impl OpImageAdjustmentClose {
         NodeSettings {
             name: "close".to_string(),
             description: "Morphological closing — dilate then erode. Fills small dark gaps.".to_string(),
+            help: "Runs a dilation (per-channel max in a square window) immediately followed by an erosion (per-channel min) using the same radius. Fills pinholes, seals narrow dark cracks, and joins nearby bright blobs without growing the overall footprint of bright regions.\n\nPairs naturally with `open` for mask cleanup. Uses the separable morphology primitive from `erode.rs`, so cost is O(r) per pixel rather than O(r^2).".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("radius".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image or mask to close."),
+            Input::new("radius".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Structuring element radius in pixels; larger values fill bigger dark gaps."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Image after morphological closing that fills dark gaps and cracks."),
         ]
     }
 

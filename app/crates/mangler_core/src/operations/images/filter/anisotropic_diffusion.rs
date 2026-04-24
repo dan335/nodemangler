@@ -35,6 +35,7 @@ impl OpImageAdjustmentAnisotropicDiffusion {
         NodeSettings {
             name: "anisotropic diffusion".to_string(),
             description: "Perona–Malik iterative edge-preserving smoothing. Flattens texture while preserving edges.".to_string(),
+            help: "Iterative PDE-based smoothing from Perona and Malik (1990). Each iteration nudges every pixel toward its 4-neighbors with a conductance `c(x) = 1 / (1 + (x/kappa)^2)` that shrinks near strong gradients, so edges stay crisp while textures and noise diffuse away.\n\nKappa is the edge-stopping threshold: gradients much larger than kappa are preserved. Lambda must stay at or below 0.25 for stability with a 4-point stencil. Alpha is copied through unchanged; edges are clamped.".to_string(),
         }
     }
 
@@ -42,20 +43,25 @@ impl OpImageAdjustmentAnisotropicDiffusion {
     /// and per-step rate λ (≤ 0.25 for stability with a 4-neighborhood).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to smooth while preserving edges."),
             // number of diffusion iterations — more iterations = more smoothing
-            Input::new("iterations".to_string(), Value::Integer(10), Some(InputSettings::Slider { range: (1.0, 100.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("iterations".to_string(), Value::Integer(10), Some(InputSettings::Slider { range: (1.0, 100.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Number of diffusion steps; more iterations produce stronger smoothing."),
             // κ: gradient magnitudes much larger than κ are preserved as edges
-            Input::new("kappa".to_string(), Value::Decimal(0.1), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("kappa".to_string(), Value::Decimal(0.1), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Edge-stopping threshold; gradients much larger than this are preserved as edges."),
             // λ: step size, must be ≤ 0.25 for stability with a 4-point stencil
-            Input::new("lambda".to_string(), Value::Decimal(0.2), Some(InputSettings::Slider { range: (0.01, 0.25), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("lambda".to_string(), Value::Decimal(0.2), Some(InputSettings::Slider { range: (0.01, 0.25), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Per-iteration step size; must stay at or below 0.25 for stability."),
         ]
     }
 
     /// Creates the output port: the diffused image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Edge-preserving smoothed image after the diffusion iterations."),
         ]
     }
 

@@ -23,24 +23,37 @@ pub struct OpImageCombineBlend {}
 
 impl OpImageCombineBlend {
     pub fn settings() -> NodeSettings {
-        NodeSettings { name: "blend".to_string(), description: "Blends an image onto another using a blend mode.".to_string() }
+        NodeSettings {
+            name: "blend".to_string(),
+            description: "Blends an image onto another using a blend mode.".to_string(),
+            help: "Walks every background pixel, samples the foreground at the same coordinate minus the position offset, and composites it using the selected BlendMode (Normal, Multiply, Overlay, SoftLight, Difference, and 12 more). Math is performed in the chosen ColorSpace; sRGB, Linear RGB, HSL, HSV, Lab, LCH, CMYK, XYZ, and YUV are all supported and results are converted back to sRGBA for storage.\n\nThe amount input provides a global opacity; the alpha image (per-pixel, averaged to luminance) multiplies that opacity so you can restrict the blend with a mask. Source alpha channels feed into the blend math. Foreground pixels outside the background's bounds leave the background untouched. Output size is taken from the background; negative positions clamp to zero.".to_string(),
+        }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("background".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("foreground".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("amount".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("alpha".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("blend mode".to_string(), Value::BlendMode(crate::color::blend::BlendMode::Over), None, None),
-            Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Srgb), None, None),
-            Input::new("position x".to_string(), Value::Integer(i32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
-            Input::new("position y".to_string(), Value::Integer(i32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None),
+            Input::new("background".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Base image the foreground is composited onto; sets the output size."),
+            Input::new("foreground".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Image composited on top of the background using the chosen blend mode."),
+            Input::new("amount".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Global opacity applied to the blended foreground; 0 shows only the background."),
+            Input::new("alpha".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Optional mask image; its luminance multiplies the blend amount per pixel."),
+            Input::new("blend mode".to_string(), Value::BlendMode(crate::color::blend::BlendMode::Over), None, None)
+                .with_description("Compositing formula used to combine foreground and background."),
+            Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Srgb), None, None)
+                .with_description("Colour space the blend math runs in (sRGB, Linear, HSL, Lab, etc.)."),
+            Input::new("position x".to_string(), Value::Integer(i32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Horizontal offset in pixels from the background's origin to place the foreground."),
+            Input::new("position y".to_string(), Value::Integer(i32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
+                .with_description("Vertical offset in pixels from the background's origin to place the foreground."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
-        vec![Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)]
+        vec![Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+            .with_description("Composited RGBA image sized to match the background.")]
     }
 
     /// Composites the foreground onto the background using FloatImage directly.

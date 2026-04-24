@@ -25,21 +25,25 @@ impl OpImageAdjustmentPosterize {
         NodeSettings {
             name: "posterize".to_string(),
             description: "Reduces color depth to a specified number of levels per channel.".to_string(),
+            help: "Quantises each colour channel independently to the specified number of equally spaced steps using round-to-nearest: floor(value * (levels - 1) + 0.5) / (levels - 1). With levels = 2 the output collapses to pure black/white per channel; higher counts create progressively finer banding.\n\nAlpha is preserved and values are clamped to 0-1 after quantisation. Because channels are processed independently, RGB inputs produce colour banding rather than a flat grayscale poster; pre-run `grayscale` first if you want a simple tonal posterisation.".to_string(),
         }
     }
 
     /// Creates the input ports: image and number of quantization levels (2-256).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("levels".to_string(), Value::Integer(4), Some(InputSettings::DragValue { speed: None, clamp: Some((2.0, 256.0)) }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image whose colour channels will be quantised."),
+            Input::new("levels".to_string(), Value::Integer(4), Some(InputSettings::DragValue { speed: None, clamp: Some((2.0, 256.0)) }), None)
+                .with_description("Number of discrete steps per channel; 2 gives pure black and white."),
         ]
     }
 
     /// Creates the output port: the posterized image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Image with each channel collapsed to the requested number of levels."),
         ]
     }
 

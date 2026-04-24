@@ -22,24 +22,31 @@ impl OpColorOutputCmyk {
         NodeSettings {
             name: "to cmyk".to_string(),
             description: "Converts a color to the CMYK color space.".to_string(),
+            help: "Splits the input color into cyan, magenta, yellow, key (black), and alpha floats in 0-1. Internally K is computed as 1 - max(R, G, B), and C/M/Y are the remaining differences normalized by (1 - K); pure black collapses to K = 1 with C = M = Y = 0.\n\nThis is a generic CMYK model, not a color-managed print separation, so exact printer output will vary. Alpha is passed through untouched from the input.".to_string(),
         }
     }
 
     /// Creates the single input definition accepting a color to decompose.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("input".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Color to decompose into CMYK ink channels."),
         ]
     }
 
     /// Creates the output definitions: cyan, magenta, yellow, key (black), and alpha as decimal values.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("cyan".to_string(), Value::Decimal(0.5), None),
-            Output::new("magenta".to_string(), Value::Decimal(0.5), None),
-            Output::new("yellow".to_string(), Value::Decimal(0.5), None),
-            Output::new("key (black)".to_string(), Value::Decimal(0.5), None),
-            Output::new("alpha".to_string(), Value::Decimal(1.0), None),
+            Output::new("cyan".to_string(), Value::Decimal(0.5), None)
+                .with_description("Cyan ink amount (0–1) extracted from the input color."),
+            Output::new("magenta".to_string(), Value::Decimal(0.5), None)
+                .with_description("Magenta ink amount (0–1) extracted from the input color."),
+            Output::new("yellow".to_string(), Value::Decimal(0.5), None)
+                .with_description("Yellow ink amount (0–1) extracted from the input color."),
+            Output::new("key (black)".to_string(), Value::Decimal(0.5), None)
+                .with_description("Key (black) ink amount (0–1) extracted from the input color."),
+            Output::new("alpha".to_string(), Value::Decimal(1.0), None)
+                .with_description("Alpha channel passed through from the input color."),
         ]
     }
 

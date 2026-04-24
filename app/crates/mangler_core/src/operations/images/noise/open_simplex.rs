@@ -28,23 +28,29 @@ impl OpImageNoiseOpenSimplex {
         NodeSettings {
             name: "open simplex noise".to_string(),
             description: "Creates a seamlessly tiling image from open simplex noise.".to_string(),
+            help: "OpenSimplex is a patent-free alternative to Ken Perlin's simplex noise. It samples noise on a simplex lattice (triangles in 2D, tetrahedra in higher dims) rather than the cubic lattice of Perlin, which removes the subtle axis-aligned bias visible in Perlin noise. The output looks more isotropic and has softer curvature.\n\nSeamless tiling is done by sampling the 2D coordinates as a loop on a 4D torus, which OpenSimplex supports natively. Scale is the zoom factor on that torus: higher values pack more features into the tile.\n\nA drop-in upgrade over plain Perlin for clouds, terrain, and general organic textures.".to_string(),
         }
     }
 
     /// Creates the default inputs: seed, width, height, and scale.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("scale".to_string(), Value::Integer(10), Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed for the OpenSimplex pattern; change to get a different variation."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("scale".to_string(), Value::Integer(10), Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }), None)
+                .with_description("Zoom factor on the torus; higher values pack more features into the tile."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None)
+                .with_description("Seamlessly tiling grayscale OpenSimplex noise image."),
         ]
     }
 

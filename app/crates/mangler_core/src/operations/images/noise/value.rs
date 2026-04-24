@@ -28,23 +28,29 @@ impl OpImageNoiseValue {
         NodeSettings {
             name: "value noise".to_string(),
             description: "Creates a seamlessly tiling image from value noise.".to_string(),
+            help: "Value noise assigns a random scalar to each lattice corner and smoothly interpolates between them. Unlike Perlin's gradient noise, it is defined directly from values rather than dot-products with gradients, which makes it blockier and slightly biased toward the lattice - but cheaper and often visually useful.\n\nScale is the lattice period: higher values mean more, smaller cells across the tile. The lattice wraps at the period for seamless tiling.\n\nGood for soft cloudy masks, as a building block for fBm variants (see cloud noise), and as input to warp/threshold stages.".to_string(),
         }
     }
 
     /// Creates the default inputs: seed, width, height, and scale.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("scale".to_string(), Value::Integer(10), Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed for the lattice values; change to get a different pattern."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("scale".to_string(), Value::Integer(10), Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }), None)
+                .with_description("Number of lattice cells across the tile; higher values produce smaller blocks."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None)
+                .with_description("Seamlessly tiling grayscale value noise image with blocky interpolated cells."),
         ]
     }
 

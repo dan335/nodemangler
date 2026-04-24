@@ -20,13 +20,15 @@ impl OpNumberTrigCosh {
         NodeSettings {
             name: "cosh".to_string(),
             description: "Computes the hyperbolic cosine of a value.".to_string(),
+            help: "Returns (e^x + e^-x) / 2, the shape traced by a hanging chain (catenary). Output is always >= 1 and is symmetric: cosh(x) == cosh(-x).\n\nGrows exponentially for large |x| and can overflow f32 to infinity around |x| ~ 89. Useful for building U-shaped falloffs and hyperbolic geometry.".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Value to take the hyperbolic cosine of."),
         ]
     }
 
@@ -34,6 +36,7 @@ impl OpNumberTrigCosh {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Hyperbolic cosine of the input, always >= 1.")
         ]
     }
 

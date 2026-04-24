@@ -25,22 +25,27 @@ impl OpImageAdjustmentAutoLevels {
         NodeSettings {
             name: "auto levels".to_string(),
             description: "Automatically adjusts white and black points.".to_string(),
+            help: "Builds a 256-bin luminance histogram (Rec. 709 weighted for RGB, single channel for grayscale), then walks it from both ends to locate the black and white points after discarding the requested fractions of outlier pixels.\n\nThe remaining tonal range is linearly stretched so that the black point becomes 0 and the white point becomes 1, with every colour channel remapped by the same formula. Alpha is preserved. If the detected white point is not greater than the black point, the image is returned unchanged. Use higher clip fractions to ignore specular highlights or crushed shadows that would otherwise anchor the stretch.".to_string(),
         }
     }
 
     /// Creates the input ports: image and clip percentages for black and white ends of the histogram.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("clip black".to_string(), Value::Decimal(0.005), Some(InputSettings::Slider { range: (0.0, 0.5), step_by: Some(0.001), clamp_to_range: true }), None),
-            Input::new("clip white".to_string(), Value::Decimal(0.005), Some(InputSettings::Slider { range: (0.0, 0.5), step_by: Some(0.001), clamp_to_range: true }), None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image whose histogram is analyzed and stretched."),
+            Input::new("clip black".to_string(), Value::Decimal(0.005), Some(InputSettings::Slider { range: (0.0, 0.5), step_by: Some(0.001), clamp_to_range: true }), None)
+                .with_description("Fraction of darkest pixels to discard when finding the black point."),
+            Input::new("clip white".to_string(), Value::Decimal(0.005), Some(InputSettings::Slider { range: (0.0, 0.5), step_by: Some(0.001), clamp_to_range: true }), None)
+                .with_description("Fraction of brightest pixels to discard when finding the white point."),
         ]
     }
 
     /// Creates the output port: the auto-levels-adjusted image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Image remapped so its tonal range fills the full 0–1 interval."),
         ]
     }
 

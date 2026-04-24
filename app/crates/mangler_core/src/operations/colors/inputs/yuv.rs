@@ -23,16 +23,21 @@ impl OpColorInputYuv {
         NodeSettings {
             name: "yuv".to_string(),
             description: "Creates a color using the YUV color space.".to_string(),
+            help: "Builds an sRGB color from Y (luminance, 0-1), U (blue-difference chroma), and V (red-difference chroma). YUV separates brightness from color the way analog TV and modern video codecs do, so tweaking Y alone changes overall brightness while leaving hue roughly stable.\n\nU and V are expected as the standard video-range offsets (centered around 0.5 gives a neutral gray). Saturated or out-of-gamut YUV triplets will clip to the sRGB 0-1 range after conversion. Alpha is passed through straight.".to_string(),
         }
     }
 
     /// Creates the input definitions: Y (luminance), U (blue chrominance), V (red chrominance), and alpha.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("y (luminance)".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("u (chrominance blue)".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("v (chrominance red)".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("alpha".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("y (luminance)".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("Y luminance channel (0 = black, 1 = white) of the YUV color."),
+            Input::new("u (chrominance blue)".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("U blue-difference chrominance of the YUV color."),
+            Input::new("v (chrominance red)".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("V red-difference chrominance of the YUV color."),
+            Input::new("alpha".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Opacity of the resulting color (0 transparent, 1 opaque)."),
         ]
     }
 
@@ -40,6 +45,7 @@ impl OpColorInputYuv {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Color(Color::default()), None)
+                .with_description("Color assembled from the YUV + alpha channels.")
         ]
     }
 

@@ -28,22 +28,27 @@ impl OpColorHarmonyComplementary {
         NodeSettings {
             name: "complementary".to_string(),
             description: "Generates the complementary color (180°) and split-complementary pair (150°, 210°) from an input color.".to_string(),
+            help: "Converts the input to HSL and rotates the hue by 180, 150, and 210 degrees while preserving saturation, lightness, and alpha. The 180 output is the direct complement (the classic high-contrast opposite on the wheel), and the two split outputs flank the complement at ±30 degrees to soften the contrast while still feeling balanced.\n\nPure grays produce three identical outputs because hue is undefined without saturation. Because HSL is not perceptually uniform, the same numeric hue offset can feel unequal across different source hues.".to_string(),
         }
     }
 
     /// Creates the single input definition: the source color.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("color".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("color".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Base color whose complement and split-complements are generated."),
         ]
     }
 
     /// Creates the three output definitions: complementary, split_a, and split_b.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("complementary".to_string(), Value::Color(Color::default()), None),
-            Output::new("split_a".to_string(), Value::Color(Color::default()), None),
-            Output::new("split_b".to_string(), Value::Color(Color::default()), None),
+            Output::new("complementary".to_string(), Value::Color(Color::default()), None)
+                .with_description("Color directly opposite the base on the hue wheel (+180°)."),
+            Output::new("split_a".to_string(), Value::Color(Color::default()), None)
+                .with_description("Split-complementary color at the base hue shifted by +150°."),
+            Output::new("split_b".to_string(), Value::Color(Color::default()), None)
+                .with_description("Split-complementary color at the base hue shifted by +210°."),
         ]
     }
 

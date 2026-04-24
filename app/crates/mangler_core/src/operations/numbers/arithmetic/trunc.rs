@@ -24,13 +24,15 @@ impl OpNumberMathTrunc {
         NodeSettings {
             name: "truncate".to_string(),
             description: "Truncates a decimal to its integer part.".to_string(),
+            help: "Removes the fractional part of a decimal using f32::trunc, rounding toward zero. So trunc(3.7) is 3.0 and trunc(-3.7) is -3.0 (unlike floor, which would give -4.0).\n\nThe output stays a decimal so it can be fed into floating-point math; use \"to integer\" if you need an i32. Pairs with fract: trunc(x) + fract(x) equals x exactly.".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal input defaulting to 3.14.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(std::f32::consts::PI), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(std::f32::consts::PI), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Number to truncate toward zero, discarding the fractional part."),
         ]
     }
 
@@ -38,6 +40,7 @@ impl OpNumberMathTrunc {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Integer part of the input, returned as a decimal.")
         ]
     }
 

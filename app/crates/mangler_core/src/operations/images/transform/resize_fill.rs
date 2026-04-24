@@ -29,25 +29,33 @@ impl OpImageTransformResizeFill {
         NodeSettings {
             name: "resize fill".to_string(),
             description: "Resizes an image to fill a specific size.".to_string(),
+            help: "Scales the image so it completely covers the target rectangle while preserving aspect ratio, then center-crops the overflow to produce output at exactly the requested width and height.\n\nThis is the standard \"cover\" behaviour used for thumbnails and cards: no distortion, no letterboxing, but content on the longer axis will be clipped. Use `resize` if you want to letterbox instead, or `resize exact` to accept distortion. The filter type controls the resampling kernel; the image is round-tripped through DynamicImage internally.".to_string(),
         }
     }
 
     /// Creates the default inputs: source image, target width/height, and resampling filter type.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("width".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("filter type".to_string(), Value::FilterType(image::imageops::FilterType::Gaussian), None, None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image to resize."),
+            Input::new("width".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Target output width in pixels; image is scaled and center-cropped to fill."),
+            Input::new("height".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Target output height in pixels; image is scaled and center-cropped to fill."),
+            Input::new("filter type".to_string(), Value::FilterType(image::imageops::FilterType::Gaussian), None, None)
+                .with_description("Resampling filter used for the scale."),
         ]
     }
 
     /// Creates the default outputs: filled image, and its width and height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
-            Output::new("width".to_string(), Value::Integer(1), None),
-            Output::new("height".to_string(), Value::Integer(1), None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Scaled-and-cropped image filling the requested dimensions exactly."),
+            Output::new("width".to_string(), Value::Integer(1), None)
+                .with_description("Output width in pixels."),
+            Output::new("height".to_string(), Value::Integer(1), None)
+                .with_description("Output height in pixels."),
         ]
     }
 

@@ -28,25 +28,33 @@ impl OpImageTransformResizeExact {
         NodeSettings {
             name: "resize exact".to_string(),
             description: "Resizes an image to the exact width and height.".to_string(),
+            help: "Stretches or squashes the image so it matches the requested width and height exactly, without regard to aspect ratio. If the target aspect differs from the source, the image will appear distorted; prefer `resize` (aspect-preserving fit) or `resize fill` (aspect-preserving cover + crop) when that matters.\n\nThe filter type selects the resampling kernel (Nearest for blocky up-scaling, Lanczos3 for sharp photographic results, etc.). Internally the image is round-tripped through DynamicImage, so the output follows the image crate's channel conventions.".to_string(),
         }
     }
 
     /// Creates the default inputs: source image, target width/height, and resampling filter type.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("width".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None),
-            Input::new("filter type".to_string(), Value::FilterType(image::imageops::FilterType::Gaussian), None, None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image to resize."),
+            Input::new("width".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Exact output width in pixels; may distort aspect ratio."),
+            Input::new("height".to_string(), Value::Integer(1), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+                .with_description("Exact output height in pixels; may distort aspect ratio."),
+            Input::new("filter type".to_string(), Value::FilterType(image::imageops::FilterType::Gaussian), None, None)
+                .with_description("Resampling filter used for the scale."),
         ]
     }
 
     /// Creates the default outputs: resized image, and its width and height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
-            Output::new("width".to_string(), Value::Integer(1), None),
-            Output::new("height".to_string(), Value::Integer(1), None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Image resized to exactly the requested dimensions."),
+            Output::new("width".to_string(), Value::Integer(1), None)
+                .with_description("Output width in pixels."),
+            Output::new("height".to_string(), Value::Integer(1), None)
+                .with_description("Output height in pixels."),
         ]
     }
 

@@ -23,16 +23,21 @@ impl OpColorInputXyz {
         NodeSettings {
             name: "xyz".to_string(),
             description: "Creates a color using the XYZ color space.".to_string(),
+            help: "Builds an sRGB color from CIE 1931 XYZ tristimulus values. X approximates a red-green response, Y is the luminance response (and matches relative luminance directly), and Z approximates a blue response. The D65 white point is used for the conversion to sRGB.\n\nXYZ is device-independent, so this is the natural bridge when data comes from a colorimeter or another color space. Values outside the sRGB gamut will be clipped to 0-1 channels when converted. Alpha is carried through unchanged.".to_string(),
         }
     }
 
     /// Creates the input definitions: X, Y, Z tristimulus values and alpha.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("x".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("y".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-0.5, 0.5), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("z".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-0.5, 0.5), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("alpha".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("x".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("CIE X tristimulus value (red-green response)."),
+            Input::new("y".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-0.5, 0.5), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("CIE Y tristimulus value (overall luminance response)."),
+            Input::new("z".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-0.5, 0.5), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("CIE Z tristimulus value (blue response)."),
+            Input::new("alpha".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Opacity of the resulting color (0 transparent, 1 opaque)."),
         ]
     }
 
@@ -40,6 +45,7 @@ impl OpColorInputXyz {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Color(Color::default()), None)
+                .with_description("Color assembled from the CIE XYZ + alpha channels.")
         ]
     }
 

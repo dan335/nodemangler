@@ -27,23 +27,29 @@ impl OpImageAdjustmentDirectionalBlur {
         NodeSettings {
             name: "directional blur".to_string(),
             description: "Blurs an image along a specified angle.".to_string(),
+            help: "Samples the image at equally spaced positions along a line of length 2 * intensity centred on each output pixel, then averages them. The line direction is (cos(angle), sin(angle)) with angle in degrees counter-clockwise from +X, so 0 smears horizontally and 90 smears vertically.\n\nSamples are bilinear so sub-pixel offsets produce smooth results. Higher sample counts yield smoother motion trails but cost linearly more work. Work is parallelised across rows via rayon. Intensity 0 or one sample returns the image unchanged (each tap lands on the centre pixel).".to_string(),
         }
     }
 
     /// Creates the input ports: image, angle (degrees), sample count, and intensity (pixel spread).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("angle".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("samples".to_string(), Value::Integer(10), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 100.0)) }), None),
-            Input::new("intensity".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 100.0), step_by: Some(0.5), clamp_to_range: true }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to smear along a line."),
+            Input::new("angle".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Direction of the blur line in degrees, measured counter-clockwise from +X."),
+            Input::new("samples".to_string(), Value::Integer(10), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 100.0)) }), None)
+                .with_description("Number of taps averaged along the blur line; higher values are smoother but slower."),
+            Input::new("intensity".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 100.0), step_by: Some(0.5), clamp_to_range: true }), None)
+                .with_description("Half-length of the blur line in pixels."),
         ]
     }
 
     /// Creates the output port: the directionally blurred image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Image smeared along the configured direction."),
         ]
     }
 

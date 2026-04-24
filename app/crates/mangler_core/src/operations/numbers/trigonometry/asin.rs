@@ -22,13 +22,15 @@ impl OpNumberTrigAsin {
         NodeSettings {
             name: "asin".to_string(),
             description: "Computes the arcsine (inverse sine). Input must be in [-1, 1].".to_string(),
+            help: "Returns the angle in radians whose sine equals the input, always in the range [-pi/2, pi/2].\n\nInput is not clamped: values outside [-1, 1] return a node error rather than silently producing NaN. Pair with sin as its inverse for the principal branch.".to_string(),
         }
     }
 
     /// Creates the default input list: a single decimal drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("input".to_string(), Value::Decimal(0.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Sine value to invert; must lie in [-1, 1]."),
         ]
     }
 
@@ -36,6 +38,7 @@ impl OpNumberTrigAsin {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Arcsine of the input in radians, in the range [-pi/2, pi/2].")
         ]
     }
 

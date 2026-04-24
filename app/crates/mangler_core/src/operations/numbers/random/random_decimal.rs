@@ -23,13 +23,15 @@ impl OpNumberRandomDecimal {
         NodeSettings {
             name: "random decimal".to_string(),
             description: "Generates a random decimal number between 0 and 1.".to_string(),
+            help: "Rolls a uniformly distributed f32 in the half-open range [0.0, 1.0) each time the generate trigger fires, using the fastrand PRNG.\n\nThe generator is fast but non-cryptographic, and the seed is thread-local rather than graph-controlled, so results are not reproducible between runs. Scale or remap the output with a lerp or map range node if you need a different range.".to_string(),
         }
     }
 
     /// Creates the default input list: a single trigger input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("generate".to_string(), Value::Trigger, None, None),
+            Input::new("generate".to_string(), Value::Trigger, None, None)
+                .with_description("Trigger that causes the node to roll a new random value."),
         ]
     }
 
@@ -37,6 +39,7 @@ impl OpNumberRandomDecimal {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Uniformly distributed random decimal in [0.0, 1.0).")
         ]
     }
 

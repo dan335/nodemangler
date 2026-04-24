@@ -36,21 +36,27 @@ impl OpImagePatternFloodFill {
         NodeSettings {
             name: "flood fill".to_string(),
             description: "Labels 4-connected regions of a mask; packs per-cell index / random / bbox data into RGBA for use with flood fill mapper.".to_string(),
+            help: "Thresholds the input mask, labels 4-connected regions via union-find, and writes per-cell data into a four-channel output intended for downstream consumers rather than direct viewing.\n\nChannels: R is the normalized cell id in (0, 1] with 0 reserved for outside, G is a deterministic per-cell random value, and B/A hold the cell bounding-box width and height normalized to image size.\n\nCells below min size are dropped, and if the label count exceeds max cells the overflow is clamped to outside so the output stays well-defined.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("threshold".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("min size".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("max cells".to_string(), Value::Integer(65536), Some(InputSettings::DragValue { clamp: Some((1.0, 262144.0)), speed: None }), None),
+            Input::new("mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Binary mask whose luminance defines inside/outside regions."),
+            Input::new("threshold".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Luminance cutoff; pixels at or above this are considered inside."),
+            Input::new("min size".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Discard cells smaller than this many pixels."),
+            Input::new("max cells".to_string(), Value::Integer(65536), Some(InputSettings::DragValue { clamp: Some((1.0, 262144.0)), speed: None }), None)
+                .with_description("Maximum number of cells kept; overflow cells become outside."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("RGBA data image packing cell index, random value, and bbox width/height."),
         ]
     }
 

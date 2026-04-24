@@ -25,24 +25,31 @@ impl OpImageTransformMirror {
         NodeSettings {
             name: "mirror".to_string(),
             description: "Mirrors an image across X, Y, or both axes with configurable offset.".to_string(),
+            help: "Reflects pixels around a user-placed axis on each enabled side. `offset x` and `offset y` (0..1) place the split line as a fraction of width/height; the left/top side passes through untouched and the right/bottom side is filled by mirroring back across the split.\n\nWhen the reflection walks off the edge it clamps to the image border rather than wrapping, so an offset near 0 leaves most of the image as a copy of the narrow left/top strip. Output dimensions and channel count match the input, and pixel copies are nearest-neighbour (no interpolation).".to_string(),
         }
     }
 
     /// Creates the default inputs: source image, mirror X/Y toggles, and X/Y offset positions.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("mirror x".to_string(), Value::Bool(true), None, None),
-            Input::new("mirror y".to_string(), Value::Bool(false), None, None),
-            Input::new("offset x".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.001), clamp_to_range: true }), None),
-            Input::new("offset y".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.001), clamp_to_range: true }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to reflect."),
+            Input::new("mirror x".to_string(), Value::Bool(true), None, None)
+                .with_description("Enable reflection across the vertical axis."),
+            Input::new("mirror y".to_string(), Value::Bool(false), None, None)
+                .with_description("Enable reflection across the horizontal axis."),
+            Input::new("offset x".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.001), clamp_to_range: true }), None)
+                .with_description("Position of the vertical mirror axis as a fraction of width."),
+            Input::new("offset y".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.001), clamp_to_range: true }), None)
+                .with_description("Position of the horizontal mirror axis as a fraction of height."),
         ]
     }
 
     /// Creates the default outputs: the mirrored image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Image with content reflected across the selected axes."),
         ]
     }
 

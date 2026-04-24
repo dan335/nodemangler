@@ -22,16 +22,21 @@ impl OpColorInputRgbaLinear {
         NodeSettings {
             name: "rgb linear".to_string(),
             description: "Creates a color using the linear RGB color space.".to_string(),
+            help: "Treats the r, g, and b sliders as values in a gamma-removed linear RGB space (the same primaries as sRGB but without the transfer curve) and applies the sRGB OETF internally before storing as a Color.\n\nUse this when your numbers come from physically linear sources like renderers or shader outputs, or when you want 0.5 to mean half as much light rather than mid-brightness. Visually 0.5 linear is noticeably lighter than 0.5 sRGB. Alpha passes through straight.".to_string(),
         }
     }
 
     /// Creates the input definitions: red, green, blue, and alpha sliders (0..1 range).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("red".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("green".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("blue".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("alpha".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
+            Input::new("red".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("Red channel intensity (0–1) in linear, non-gamma-encoded RGB."),
+            Input::new("green".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("Green channel intensity (0–1) in linear, non-gamma-encoded RGB."),
+            Input::new("blue".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("Blue channel intensity (0–1) in linear, non-gamma-encoded RGB."),
+            Input::new("alpha".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Opacity of the resulting color (0 transparent, 1 opaque)."),
         ]
     }
 
@@ -39,6 +44,7 @@ impl OpColorInputRgbaLinear {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Color(Color::default()), None)
+                .with_description("Color assembled from the linear RGB + alpha channels.")
         ]
     }
 

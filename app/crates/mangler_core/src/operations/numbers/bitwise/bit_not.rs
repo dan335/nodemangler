@@ -20,13 +20,15 @@ impl OpNumberBitwiseNot {
         NodeSettings {
             name: "bitwise not".to_string(),
             description: "Computes the bitwise NOT (complement) of an integer.".to_string(),
+            help: "Returns !a, flipping every bit of the 32-bit signed integer.\n\nBecause of two's complement, !a is equivalent to -a - 1: for example, !0 is -1 and !5 is -6. For a logical boolean complement, use the logic category's `not` node instead.".to_string(),
         }
     }
 
     /// Creates the default input list: a single integer drag-value input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("a".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Integer whose bits will be inverted."),
         ]
     }
 
@@ -34,6 +36,7 @@ impl OpNumberBitwiseNot {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Integer(0), None)
+                .with_description("Bitwise complement of a (!a), flipping every bit.")
         ]
     }
 

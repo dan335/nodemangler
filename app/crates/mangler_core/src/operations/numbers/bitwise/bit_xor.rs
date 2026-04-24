@@ -20,14 +20,17 @@ impl OpNumberBitwiseXor {
         NodeSettings {
             name: "bitwise xor".to_string(),
             description: "Computes the bitwise XOR of two integers.".to_string(),
+            help: "Returns a ^ b, setting each output bit when exactly one of the corresponding input bits is 1 (and clearing it when both are 0 or both are 1).\n\nXOR is self-inverse: a ^ b ^ b == a. Useful for toggling bit flags and for simple parity/hash mixing. Operates on signed 32-bit integers.".to_string(),
         }
     }
 
     /// Creates the default input list: two integer drag-value inputs.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("b".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("a".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("First integer operand for the bitwise XOR."),
+            Input::new("b".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Second integer operand for the bitwise XOR."),
         ]
     }
 
@@ -35,6 +38,7 @@ impl OpNumberBitwiseXor {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Integer(0), None)
+                .with_description("Bitwise XOR of a and b (a ^ b).")
         ]
     }
 

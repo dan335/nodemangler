@@ -23,14 +23,17 @@ impl OpLogicBoolAnd {
         NodeSettings {
             name: "and".to_string(),
             description: "Returns true if both inputs are true.".to_string(),
+            help: "Standard two-input logical conjunction. Truth table: (false, false) -> false, (false, true) -> false, (true, false) -> false, (true, true) -> true.\n\nInputs are coerced to Bool before evaluation, so non-boolean sources (such as integers or decimals) use their truthy/zero interpretation. If an input cannot be converted, the node reports an input error rather than defaulting silently.".to_string(),
         }
     }
 
     /// Creates the default inputs: two boolean inputs `a` and `b`, both defaulting to `false`.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Bool(false), None, None),
-            Input::new("b".to_string(), Value::Bool(false), None, None),
+            Input::new("a".to_string(), Value::Bool(false), None, None)
+                .with_description("First boolean operand of the AND gate."),
+            Input::new("b".to_string(), Value::Bool(false), None, None)
+                .with_description("Second boolean operand of the AND gate."),
         ]
     }
 
@@ -38,6 +41,7 @@ impl OpLogicBoolAnd {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Bool(false), None)
+                .with_description("True when both a and b are true.")
         ]
     }
 

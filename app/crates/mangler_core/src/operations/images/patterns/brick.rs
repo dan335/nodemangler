@@ -26,25 +26,33 @@ impl OpImagePatternBrick {
         NodeSettings {
             name: "brick".to_string(),
             description: "Generates a brick pattern.".to_string(),
+            help: "Produces a tileable single-channel grayscale mask where bricks are 1.0 and mortar gaps are 0.0. Columns and rows determine the brick grid density; offset staggers odd rows horizontally (0.5 gives a classic running-bond layout, 0.0 a stacked grid).\n\nGap size is expressed as a fraction of cell size and applies symmetrically on every side, so increasing it shrinks each brick equally. The pattern wraps cleanly at the right edge, so the output remains seamlessly tileable.".to_string(),
         }
     }
 
     /// Creates the default inputs: width, height, columns, rows, offset, and gap_size.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("columns".to_string(), Value::Integer(8), Some(InputSettings::DragValue { clamp: Some((1.0, 64.0)), speed: None }), None),
-            Input::new("rows".to_string(), Value::Integer(16), Some(InputSettings::DragValue { clamp: Some((1.0, 64.0)), speed: None }), None),
-            Input::new("offset".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None),
-            Input::new("gap_size".to_string(), Value::Decimal(0.05), Some(InputSettings::Slider { range: (0.0, 0.5), step_by: None, clamp_to_range: true }), None),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("columns".to_string(), Value::Integer(8), Some(InputSettings::DragValue { clamp: Some((1.0, 64.0)), speed: None }), None)
+                .with_description("Number of brick columns across the image."),
+            Input::new("rows".to_string(), Value::Integer(16), Some(InputSettings::DragValue { clamp: Some((1.0, 64.0)), speed: None }), None)
+                .with_description("Number of brick rows down the image."),
+            Input::new("offset".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
+                .with_description("Horizontal stagger of odd rows as a fraction of brick width."),
+            Input::new("gap_size".to_string(), Value::Decimal(0.05), Some(InputSettings::Slider { range: (0.0, 0.5), step_by: None, clamp_to_range: true }), None)
+                .with_description("Mortar gap thickness as a fraction of cell size."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Grayscale brick mask: 1.0 for bricks, 0.0 for mortar gaps."),
         ]
     }
 

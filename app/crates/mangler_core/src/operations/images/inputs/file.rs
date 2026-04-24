@@ -31,6 +31,7 @@ impl OpImageInputFile {
         NodeSettings {
             name: "from file".to_string(),
             description: "Grabs an image from a file.".to_string(),
+            help: "Decodes an image file from disk using the image crate and converts it into a FloatImage, preserving the source channel count (grayscale stays 1ch, RGB 3ch, RGBA 4ch). The path input uses a picker filtered to the supported image extensions.\n\nErrors if the file cannot be opened or the format is unsupported. Note that pixel values are interpreted as sRGB by default; connect a linear-RGB conversion downstream if the file holds linear data like a normal or height map.".to_string(),
         }
     }
 
@@ -43,16 +44,20 @@ impl OpImageInputFile {
                 set_file_name: None,
                 set_title: Some("image".to_string()),
                 file_dialog_type: crate::input::FileDialogType::PickFile,
-            }), None),
+            }), None)
+                .with_description("Path to an image file to load from disk."),
         ]
     }
 
     /// Creates the output definitions: the decoded image, its width, and its height.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None),
-            Output::new("width".to_string(), Value::Integer(1), None),
-            Output::new("height".to_string(), Value::Integer(1), None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None)
+                .with_description("Image decoded from the file on disk."),
+            Output::new("width".to_string(), Value::Integer(1), None)
+                .with_description("Width of the loaded image in pixels."),
+            Output::new("height".to_string(), Value::Integer(1), None)
+                .with_description("Height of the loaded image in pixels."),
         ]
     }
 

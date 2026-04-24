@@ -34,27 +34,37 @@ impl OpImageNoiseErosion {
         NodeSettings {
             name: "erosion".to_string(),
             description: "Applies thermal erosion to fractal noise, creating weathered stone and terrain textures.".to_string(),
+            help: "Starts from an fBm heightmap and then runs a thermal-erosion simulation: on each iteration, every cell compares itself to its eight neighbors and transfers material down the steepest slope whose height difference exceeds the talus angle.\n\nFrequency and octaves shape the initial terrain. Talus sets the maximum stable slope, so smaller values produce smoother, more weathered surfaces. Erosion amount is the fraction of excess material moved per pass; iterations is how many passes run.\n\nProduces weathered rock, eroded mountains, dunes, and soft terrain heightmaps.".to_string(),
         }
     }
 
     /// Creates the default inputs: seed, dimensions, noise params, and erosion params.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None),
-            Input::new("octaves".to_string(), Value::Integer(6), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None),
-            Input::new("frequency".to_string(), Value::Decimal(4.0), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None),
-            Input::new("talus".to_string(), Value::Decimal(0.03), Some(InputSettings::DragValue { clamp: Some((0.001, 0.5)), speed: Some(0.001) }), None),
-            Input::new("erosion_amount".to_string(), Value::Decimal(0.3), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None),
-            Input::new("iterations".to_string(), Value::Integer(50), Some(InputSettings::DragValue { clamp: Some((1.0, 500.0)), speed: Some(1.0) }), None),
+            Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed for the starting heightmap before erosion."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("octaves".to_string(), Value::Integer(6), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Number of fBm octaves in the base heightmap before erosion runs."),
+            Input::new("frequency".to_string(), Value::Decimal(4.0), Some(InputSettings::DragValue { clamp: None, speed: Some(0.01) }), None)
+                .with_description("Base frequency of the initial heightmap; higher values make smaller terrain features."),
+            Input::new("talus".to_string(), Value::Decimal(0.03), Some(InputSettings::DragValue { clamp: Some((0.001, 0.5)), speed: Some(0.001) }), None)
+                .with_description("Maximum stable slope; material transfers only when a neighbor exceeds this height difference."),
+            Input::new("erosion_amount".to_string(), Value::Decimal(0.3), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Fraction of excess slope material moved per iteration; higher values erode faster."),
+            Input::new("iterations".to_string(), Value::Integer(50), Some(InputSettings::DragValue { clamp: Some((1.0, 500.0)), speed: Some(1.0) }), None)
+                .with_description("Number of thermal-erosion passes; more iterations smooth the terrain further."),
         ]
     }
 
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Seamlessly tiling grayscale heightmap after thermal erosion weathering."),
         ]
     }
 

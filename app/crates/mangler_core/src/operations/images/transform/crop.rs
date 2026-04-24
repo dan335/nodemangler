@@ -24,26 +24,35 @@ impl OpImageTransformCrop {
         NodeSettings {
             name: "crop".to_string(),
             description: "Extracts a rectangular region using position and size.".to_string(),
+            help: "Copies a rectangular sub-region of the source image starting at (x, y) with the requested width and height; the result is a new image whose dimensions are emitted on the width/height outputs.\n\nAll parameters are clamped to the source's valid range: x and y are clipped to the image's interior, and width and height are clipped so the region never extends past the right or bottom edge. No resampling is performed; channel count is preserved exactly.".to_string(),
         }
     }
 
     /// Creates the default inputs: source image, x/y position, and width/height of the crop region.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None),
-            Input::new("x".to_string(), Value::Integer(0), Some(InputSettings::DragValue {clamp:None, speed: None }), None),
-            Input::new("y".to_string(), Value::Integer(0), Some(InputSettings::DragValue {clamp:None, speed: None }), None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:None, speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:None, speed: None }), None),
+            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+                .with_description("Source image to crop."),
+            Input::new("x".to_string(), Value::Integer(0), Some(InputSettings::DragValue {clamp:None, speed: None }), None)
+                .with_description("Left edge of the crop region in source-image pixels."),
+            Input::new("y".to_string(), Value::Integer(0), Some(InputSettings::DragValue {clamp:None, speed: None }), None)
+                .with_description("Top edge of the crop region in source-image pixels."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:None, speed: None }), None)
+                .with_description("Width of the crop region in pixels; clamped to image bounds."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:None, speed: None }), None)
+                .with_description("Height of the crop region in pixels; clamped to image bounds."),
         ]
     }
 
     /// Creates the default outputs: cropped image, and its width and height as integers.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None),
-            Output::new("width".to_string(), Value::Integer(1), None),
-            Output::new("height".to_string(), Value::Integer(1), None),
+            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
+                .with_description("Cropped sub-region of the source image."),
+            Output::new("width".to_string(), Value::Integer(1), None)
+                .with_description("Actual cropped image width in pixels."),
+            Output::new("height".to_string(), Value::Integer(1), None)
+                .with_description("Actual cropped image height in pixels."),
         ]
     }
 

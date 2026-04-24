@@ -27,21 +27,25 @@ impl OpColorHarmonyTriadic {
         NodeSettings {
             name: "triadic".to_string(),
             description: "Generates two triadic harmony colors at +120° and +240° hue offsets.".to_string(),
+            help: "Converts the input to HSL, rotates the hue by 120 and 240 degrees while keeping saturation, lightness, and alpha, and returns the two colors that form an equilateral triangle with the input on the color wheel.\n\nTriadic schemes feel balanced and vibrant because the three hues are maximally spaced. Neutral grays produce duplicates of the input since hue rotation has no effect without saturation, and the HSL conversion means equal hue offsets can produce perceptually unequal steps across the wheel.".to_string(),
         }
     }
 
     /// Creates the single input definition: the source color.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("color".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("color".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Base color whose two triadic partners are generated."),
         ]
     }
 
     /// Creates the two output definitions: triadic_a (+120°) and triadic_b (+240°).
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("triadic_a".to_string(), Value::Color(Color::default()), None),
-            Output::new("triadic_b".to_string(), Value::Color(Color::default()), None),
+            Output::new("triadic_a".to_string(), Value::Color(Color::default()), None)
+                .with_description("Triadic partner at the base hue shifted by +120°."),
+            Output::new("triadic_b".to_string(), Value::Color(Color::default()), None)
+                .with_description("Triadic partner at the base hue shifted by +240°."),
         ]
     }
 

@@ -36,26 +36,37 @@ impl OpImagePatternSplatter {
         NodeSettings {
             name: "splatter".to_string(),
             description: "Stamps a pattern image at random positions with per-stamp rotation / scale / color tint.".to_string(),
+            help: "Places `count` copies of the pattern at deterministic pseudo-random positions across the canvas, using an LCG keyed on `seed` so the same seed always produces the same layout.\n\nEach stamp draws at `stamp size` pixels with a per-instance scale jittered by `scale random`, a rotation in +/- `rotation random` degrees, and an RGB tint whose strength is controlled by `color variation`. Stamps that fall off the edge are clipped (no wrapping), and overlapping stamps are composited with a max blend per channel, so the output tends toward the brightest contribution. Output channel count matches the input pattern.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("pattern".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None),
-            Input::new("count".to_string(), Value::Integer(32), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None),
-            Input::new("stamp size".to_string(), Value::Decimal(64.0), Some(InputSettings::DragValue { clamp: Some((1.0, 2048.0)), speed: None }), None),
-            Input::new("scale random".to_string(), Value::Decimal(0.25), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None),
-            Input::new("rotation random".to_string(), Value::Decimal(180.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: true }), None),
-            Input::new("color variation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None),
-            Input::new("seed".to_string(), Value::Integer(42), Some(InputSettings::DragValue { clamp: None, speed: None }), None),
+            Input::new("pattern".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image stamped at each random position."),
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image width in pixels."),
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Output image height in pixels."),
+            Input::new("count".to_string(), Value::Integer(32), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None)
+                .with_description("Number of stamps to place across the output."),
+            Input::new("stamp size".to_string(), Value::Decimal(64.0), Some(InputSettings::DragValue { clamp: Some((1.0, 2048.0)), speed: None }), None)
+                .with_description("Base stamp size in pixels before per-instance random scaling."),
+            Input::new("scale random".to_string(), Value::Decimal(0.25), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
+                .with_description("Random variation applied to each stamp's scale."),
+            Input::new("rotation random".to_string(), Value::Decimal(180.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: true }), None)
+                .with_description("Maximum random rotation per stamp in degrees."),
+            Input::new("color variation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
+                .with_description("Amount of random per-channel tint applied to each stamp."),
+            Input::new("seed".to_string(), Value::Integer(42), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
+                .with_description("Random seed; same seed always produces the same layout."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Composite image with all stamps placed using max blending."),
         ]
     }
 

@@ -24,14 +24,17 @@ impl OpNumberMathPow {
         NodeSettings {
             name: "power".to_string(),
             description: "Raises base to an exponent.".to_string(),
+            help: "Computes base^exponent. The computation is performed in f64 internally to preserve precision, then cast back to f32 for the output.\n\nSupports fractional and negative exponents. Raising a negative base to a fractional exponent is mathematically undefined for real numbers and will return NaN. Use nth root for the complementary operation.".to_string(),
         }
     }
 
     /// Creates the default input list: `base` (2.0) and `exponent` (2.0).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("base".to_string(), Value::Decimal(2.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
-            Input::new("exponent".to_string(), Value::Decimal(2.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None),
+            Input::new("base".to_string(), Value::Decimal(2.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Base value that is raised to the exponent."),
+            Input::new("exponent".to_string(), Value::Decimal(2.0), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
+                .with_description("Power to raise the base to; fractional exponents are supported."),
         ]
     }
 
@@ -39,6 +42,7 @@ impl OpNumberMathPow {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Decimal(0.0), None)
+                .with_description("Result of base raised to exponent, computed with f64 precision.")
         ]
     }
 

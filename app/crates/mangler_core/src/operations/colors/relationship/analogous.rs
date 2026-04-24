@@ -27,27 +27,32 @@ impl OpColorHarmonyAnalogous {
         NodeSettings {
             name: "analogous".to_string(),
             description: "Generates two analogous harmony colors offset by a configurable angle.".to_string(),
+            help: "Converts the input color to HSL, rotates the hue by +angle and -angle while keeping saturation, lightness, and alpha, then converts back to sRGB. Analogous schemes sit next to each other on the color wheel and feel quiet and cohesive.\n\nThe angle slider is restricted to 10-60 degrees: smaller values stay very close to the base color, larger ones push toward triadic territory. Neutral grays produce three indistinguishable outputs because hue rotation has no visual effect when saturation is 0.".to_string(),
         }
     }
 
     /// Creates the two input definitions: the source color and the hue offset angle (10–60°).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("color".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("color".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Base color whose hue the analogous pair is generated from."),
             Input::new(
                 "angle".to_string(),
                 Value::Decimal(30.0),
                 Some(InputSettings::Slider { range: (10.0, 60.0), step_by: Some(1.0), clamp_to_range: true }),
                 None,
-            ),
+            )
+            .with_description("Hue offset in degrees (10–60) used on either side of the base color."),
         ]
     }
 
     /// Creates the two output definitions: analogous_a (+angle) and analogous_b (-angle).
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("analogous_a".to_string(), Value::Color(Color::default()), None),
-            Output::new("analogous_b".to_string(), Value::Color(Color::default()), None),
+            Output::new("analogous_a".to_string(), Value::Color(Color::default()), None)
+                .with_description("Analogous color at the base hue shifted by +angle."),
+            Output::new("analogous_b".to_string(), Value::Color(Color::default()), None)
+                .with_description("Analogous color at the base hue shifted by -angle."),
         ]
     }
 

@@ -41,22 +41,26 @@ impl OpImageAdjustmentFloydSteinberg {
         NodeSettings {
             name: "floyd steinberg".to_string(),
             description: "Floyd–Steinberg error-diffusion dithering. Distributes quantization error to unprocessed neighbors.".to_string(),
+            help: "In scan order, quantizes each pixel to the nearest of `levels` per-channel palette steps, then pushes the quantization error to the four unprocessed neighbors with weights 7/16 right, 3/16 down-left, 5/16 down, and 1/16 down-right.\n\nConverts banding into a high-frequency dot pattern that looks visually smooth. Inherently serial because each pixel depends on error from earlier pixels, so it runs single-threaded. Alpha is passed through unchanged so transparency doesn't interact with the dither.".to_string(),
         }
     }
 
     /// Creates input ports: image and the per-channel palette size (levels).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to quantize with Floyd-Steinberg error diffusion."),
             // Number of quantization levels per channel; 2 → 1-bit per channel
-            Input::new("levels".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (2.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None),
+            Input::new("levels".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (2.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Number of quantization steps per channel; 2 yields 1-bit per channel."),
         ]
     }
 
     /// Creates the output port: the dithered image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Dithered image with quantization error diffused to neighboring pixels."),
         ]
     }
 

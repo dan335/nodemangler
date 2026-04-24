@@ -24,20 +24,25 @@ impl OpImagePbrNormalInvert {
         NodeSettings {
             name: "normal invert".to_string(),
             description: "Flips the X and/or Y components of a normal map (OpenGL ↔ DirectX).".to_string(),
+            help: "Operates directly on the 0-1 packed representation using v = 1 - v, which is equivalent to negating the -1..1 component after unpacking. X is stored in red, Y in green; Z (blue) and alpha are passed through untouched.\n\nFlipping Y is the standard conversion between OpenGL (Y up) and DirectX (Y down) tangent-space conventions; flipping X handles horizontally mirrored UVs. Channel count of the source is preserved, so 3-channel normal maps stay 3-channel.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("invert x".to_string(), Value::Bool(false), None, None),
-            Input::new("invert y".to_string(), Value::Bool(true), None, None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Normal map whose X and/or Y components will be flipped."),
+            Input::new("invert x".to_string(), Value::Bool(false), None, None)
+                .with_description("Flips the red (X) channel to mirror normals horizontally."),
+            Input::new("invert y".to_string(), Value::Bool(true), None, None)
+                .with_description("Flips the green (Y) channel to switch between OpenGL and DirectX conventions."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Normal map with the selected axes inverted."),
         ]
     }
 

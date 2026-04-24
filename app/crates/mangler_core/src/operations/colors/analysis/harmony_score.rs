@@ -33,21 +33,25 @@ impl OpColorAnalysisHarmonyScore {
         NodeSettings {
             name: "harmony score".to_string(),
             description: "Scores the harmonic relationship between two colors (0–1) using Gaussian peaks at monochromatic (0°), analogous (30°), triadic (120°), split-complementary (150°), and complementary (180°) angles.".to_string(),
+            help: "Extracts HSL hue from each color and measures the shortest angular distance between them (0-180 degrees). Five Gaussian peaks at 0, 30, 120, 150, and 180 degrees score each classical harmony relationship; the output is the single highest peak rather than a sum, so only the closest harmony wins.\n\nSaturation and lightness are ignored, so two neutral grays still score as monochromatic. The peaks have different amplitudes (complementary at 0.95, split-complementary at 0.75) to reflect how strongly each relationship is perceived.".to_string(),
         }
     }
 
     /// Creates the two input definitions: colors `a` and `b`.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Color(Color::default()), None, None),
-            Input::new("b".to_string(), Value::Color(Color::default()), None, None),
+            Input::new("a".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("First color whose hue is compared against the second."),
+            Input::new("b".to_string(), Value::Color(Color::default()), None, None)
+                .with_description("Second color whose hue is compared against the first."),
         ]
     }
 
     /// Creates the single output definition: score (0.0–1.0).
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("score".to_string(), Value::Decimal(0.0), None),
+            Output::new("score".to_string(), Value::Decimal(0.0), None)
+                .with_description("Harmony score (0–1); higher near monochromatic, analogous, triadic, or complementary hues."),
         ]
     }
 

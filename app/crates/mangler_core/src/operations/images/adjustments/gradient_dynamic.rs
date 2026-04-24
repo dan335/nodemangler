@@ -30,22 +30,29 @@ impl OpImageAdjustmentGradientDynamic {
         NodeSettings {
             name: "gradient dynamic".to_string(),
             description: "Maps image luminance to a gradient, shifted per-pixel by a vector-field projection along a chosen angle.".to_string(),
+            help: "Extends the plain gradient map by perturbing the sample position with a flow vector. Each pixel computes luminance (Rec. 709 for RGB) as the base gradient parameter, then projects the RG channels of the vector-field image (remapped from 0-1 to -1 to 1) onto the unit vector at angle degrees to produce a signed shift.\n\nThe final sample position is clamped (not wrapped) to 0-1 and bilinear-sampled along the horizontal axis of the gradient strip. The field image is stretched to fit the source with bilinear sampling, so smaller flow maps still drive large inputs. Strength scales the shift; values above 1 over-project and can push most pixels to the endpoints. Source alpha is multiplied onto the gradient's alpha.".to_string(),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("gradient".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("vector field".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("strength".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (-2.0, 2.0), step_by: Some(0.01), clamp_to_range: false }), None),
-            Input::new("angle".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: false }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image whose luminance drives the base gradient lookup."),
+            Input::new("gradient".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Horizontal gradient strip sampled left-to-right based on luminance plus offset."),
+            Input::new("vector field".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Normal-map-style RG field; R and G map to signed X/Y flow vectors."),
+            Input::new("strength".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (-2.0, 2.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("How strongly the field projection shifts the gradient sample position."),
+            Input::new("angle".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Angle in degrees along which the vector field is projected into a scalar shift."),
         ]
     }
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Gradient-mapped image with per-pixel sample position modulated by the field."),
         ]
     }
 

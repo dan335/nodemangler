@@ -24,21 +24,25 @@ impl OpImageAdjustmentSharpen {
         NodeSettings {
             name: "sharpen".to_string(),
             description: "Sharpens an image using a convolution kernel.".to_string(),
+            help: "Applies a 3x3 discrete-Laplacian sharpening kernel with center weight `1 + 4*intensity` and cardinal neighbors `-intensity` (corners zero). The result emphasizes local contrast at edges: flat regions pass through, but gradient transitions are amplified.\n\nCheap single-pass convolution; unlike `unsharpen`, there is no tunable blur radius, so it only affects the finest detail. Alpha is preserved; boundaries are handled with edge clamping. High intensity values can push output out of range (clamped to [0, 1]) and exaggerate noise.".to_string(),
         }
     }
 
     /// Creates the input ports: an image and an intensity controlling sharpening strength.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-            Input::new("intensity".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 10.0), step_by: Some(0.1), clamp_to_range: true }), None),
+            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Source image to sharpen with a 3x3 convolution kernel."),
+            Input::new("intensity".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 10.0), step_by: Some(0.1), clamp_to_range: true }), None)
+                .with_description("Sharpening strength; higher values boost local contrast at edges more aggressively."),
         ]
     }
 
     /// Creates the output port: the sharpened image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Sharpened image with edge contrast enhanced."),
         ]
     }
 

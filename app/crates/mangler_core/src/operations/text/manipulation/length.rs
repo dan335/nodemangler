@@ -22,20 +22,23 @@ impl OpTextLength {
         NodeSettings {
             name: "length".to_string(),
             description: "Returns the number of characters in a text value.".to_string(),
+            help: "Counts Unicode scalar values (Rust's char), not bytes and not grapheme clusters. ASCII strings therefore report the expected length, but multi-byte characters (emoji, accented letters, CJK) count as one each regardless of their UTF-8 byte size.\n\nNote that some user-visible glyphs are built from multiple scalars (e.g. family emoji, flag sequences); those can report a count greater than 1 even though they render as a single glyph.".to_string(),
         }
     }
 
     /// Creates the default inputs: a single empty `Text` input.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("input".to_string(), Value::Text(String::new()), None, None),
+            Input::new("input".to_string(), Value::Text(String::new()), None, None)
+                .with_description("Text value whose character count will be measured."),
         ]
     }
 
     /// Creates the default output: a single `Integer` value.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Integer(0), None),
+            Output::new("output".to_string(), Value::Integer(0), None)
+                .with_description("Number of Unicode scalar values (characters) in the input."),
         ]
     }
 
