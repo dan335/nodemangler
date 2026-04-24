@@ -135,13 +135,30 @@ impl OperationListItem {
         }
     }
 
-    /// Recursively sorts all categories and operations alphabetically by name.
+    /// Recursively orders menu items: the "input" subcategory first, then
+    /// "output", then everything else alphabetically by name. Applied at every
+    /// category depth so an "images" category and a nested "adjustments"
+    /// category both follow the same rule.
     pub fn sort_alphabetically(items: &mut Vec<OperationListItem>) {
-        items.sort_by_key(|a| a.sort_name());
+        items.sort_by(|a, b| {
+            let ra = Self::menu_rank(a);
+            let rb = Self::menu_rank(b);
+            ra.cmp(&rb).then_with(|| a.sort_name().cmp(&b.sort_name()))
+        });
         for item in items.iter_mut() {
             if let OperationListItem::Category { operation_list_items, .. } = item {
                 Self::sort_alphabetically(operation_list_items);
             }
+        }
+    }
+
+    /// Sort rank pinning "input" and "output" subcategories to the top of
+    /// their siblings; everything else falls through to alphabetical order.
+    fn menu_rank(item: &OperationListItem) -> u8 {
+        match item {
+            OperationListItem::Category { name, .. } if name == "input" => 0,
+            OperationListItem::Category { name, .. } if name == "output" => 1,
+            _ => 2,
         }
     }
 }
@@ -379,11 +396,36 @@ operations! {
     OpImageAdjustmentToon(crate::operations::images::filter::toon::OpImageAdjustmentToon),
     OpImageAdjustmentMedian(crate::operations::images::filter::median::OpImageAdjustmentMedian),
     OpImageAdjustmentGuided(crate::operations::images::filter::guided::OpImageAdjustmentGuided),
+    OpImageAdjustmentDog(crate::operations::images::filter::dog::OpImageAdjustmentDog),
+    OpImageAdjustmentCanny(crate::operations::images::filter::canny::OpImageAdjustmentCanny),
+    OpImageAdjustmentErode(crate::operations::images::filter::erode::OpImageAdjustmentErode),
+    OpImageAdjustmentDilate(crate::operations::images::filter::dilate::OpImageAdjustmentDilate),
+    OpImageAdjustmentOpen(crate::operations::images::filter::open::OpImageAdjustmentOpen),
+    OpImageAdjustmentClose(crate::operations::images::filter::close::OpImageAdjustmentClose),
+    OpImageAdjustmentHighpass(crate::operations::images::filter::highpass::OpImageAdjustmentHighpass),
+    OpImageAdjustmentLuminanceHighpass(crate::operations::images::filter::luminance_highpass::OpImageAdjustmentLuminanceHighpass),
+    OpImageAdjustmentNonLocalMeans(crate::operations::images::filter::non_local_means::OpImageAdjustmentNonLocalMeans),
+    OpImageAdjustmentAnisotropicDiffusion(crate::operations::images::filter::anisotropic_diffusion::OpImageAdjustmentAnisotropicDiffusion),
+    OpImageAdjustmentOilPaint(crate::operations::images::filter::oil_paint::OpImageAdjustmentOilPaint),
+    OpImageAdjustmentHalftone(crate::operations::images::filter::halftone::OpImageAdjustmentHalftone),
+    OpImageAdjustmentOrderedDither(crate::operations::images::filter::ordered_dither::OpImageAdjustmentOrderedDither),
+    OpImageAdjustmentCrossHatch(crate::operations::images::filter::cross_hatch::OpImageAdjustmentCrossHatch),
+    OpImageAdjustmentFloydSteinberg(crate::operations::images::filter::floyd_steinberg::OpImageAdjustmentFloydSteinberg),
+    OpImageAdjustmentAscii(crate::operations::images::filter::ascii::OpImageAdjustmentAscii),
     OpImageAdjustmentPosterize(crate::operations::images::adjustments::posterize::OpImageAdjustmentPosterize),
+    OpImageAdjustmentDither(crate::operations::images::adjustments::dither::OpImageAdjustmentDither),
     OpImageAdjustmentHistogramScan(crate::operations::images::adjustments::histogram_scan::OpImageAdjustmentHistogramScan),
     OpImageAdjustmentHistogramRange(crate::operations::images::adjustments::histogram_range::OpImageAdjustmentHistogramRange),
+    OpImageAdjustmentHistogramSelect(crate::operations::images::adjustments::histogram_select::OpImageAdjustmentHistogramSelect),
     OpImageAdjustmentAutoLevels(crate::operations::images::adjustments::auto_levels::OpImageAdjustmentAutoLevels),
+    OpImageAdjustmentColorMatch(crate::operations::images::adjustments::color_match::OpImageAdjustmentColorMatch),
+    OpImageAdjustmentGradientDynamic(crate::operations::images::adjustments::gradient_dynamic::OpImageAdjustmentGradientDynamic),
     OpImageAdjustmentDistance(crate::operations::images::adjustments::distance::OpImageAdjustmentDistance),
+
+    // mask fx
+    OpImageFxDropShadow(crate::operations::images::fx::drop_shadow::OpImageFxDropShadow),
+    OpImageFxOuterGlow(crate::operations::images::fx::outer_glow::OpImageFxOuterGlow),
+    OpImageFxInnerGlow(crate::operations::images::fx::inner_glow::OpImageFxInnerGlow),
 
     OpImageChannelSplit(crate::operations::images::channels::split::OpImageChannelSplit),
     OpImageChannelMerge(crate::operations::images::channels::merge::OpImageChannelMerge),
@@ -420,18 +462,28 @@ operations! {
     OpImageShapePolygon(crate::operations::images::shapes::polygon::OpImageShapePolygon),
     OpImageShapeStar(crate::operations::images::shapes::star::OpImageShapeStar),
     OpImageShapeLine(crate::operations::images::shapes::line::OpImageShapeLine),
+    OpImageShapeParaboloid(crate::operations::images::shapes::paraboloid::OpImageShapeParaboloid),
+    OpImageShapePyramid(crate::operations::images::shapes::pyramid::OpImageShapePyramid),
+    OpImageShapeCone(crate::operations::images::shapes::cone::OpImageShapeCone),
 
     // patterns
     OpImagePatternBrick(crate::operations::images::patterns::brick::OpImagePatternBrick),
     OpImagePatternHexagonal(crate::operations::images::patterns::hexagonal::OpImagePatternHexagonal),
     OpImagePatternWeave(crate::operations::images::patterns::weave::OpImagePatternWeave),
     OpImagePatternTileSampler(crate::operations::images::patterns::tile_sampler::OpImagePatternTileSampler),
+    OpImagePatternFloodFill(crate::operations::images::patterns::flood_fill::OpImagePatternFloodFill),
+    OpImagePatternFloodFillMapper(crate::operations::images::patterns::flood_fill_mapper::OpImagePatternFloodFillMapper),
+    OpImagePatternSplatter(crate::operations::images::patterns::splatter::OpImagePatternSplatter),
 
     // pbr
     OpImagePbrNormalFromHeight(crate::operations::images::pbr::normal_from_height::OpImagePbrNormalFromHeight),
     OpImagePbrAoFromHeight(crate::operations::images::pbr::ao_from_height::OpImagePbrAoFromHeight),
     OpImagePbrCurvature(crate::operations::images::pbr::curvature::OpImagePbrCurvature),
     OpImagePbrHeightBlend(crate::operations::images::pbr::height_blend::OpImagePbrHeightBlend),
+    OpImagePbrNormalCombine(crate::operations::images::pbr::normal_combine::OpImagePbrNormalCombine),
+    OpImagePbrNormalBlend(crate::operations::images::pbr::normal_blend::OpImagePbrNormalBlend),
+    OpImagePbrNormalInvert(crate::operations::images::pbr::normal_invert::OpImagePbrNormalInvert),
+    OpImagePbrBevel(crate::operations::images::pbr::bevel::OpImagePbrBevel),
 
     OpImageCastToImage(crate::operations::images::cast::to_image::OpImageCastToImage),
 
@@ -471,7 +523,13 @@ operations! {
     OpNumberBitwiseShiftRight(crate::operations::numbers::bitwise::bit_shift_right::OpNumberBitwiseShiftRight),
 
     // videos
-    OpVideoInputFile(crate::operations::videos::inputs::file::OpVideoInputFile),
+    OpVideoFromFile(crate::operations::videos::inputs::file::OpVideoFromFile),
+    OpExtractFrameByIndex(crate::operations::videos::transform::extract_frame_by_index::OpExtractFrameByIndex),
+    OpExtractFrameByTime(crate::operations::videos::transform::extract_frame_by_time::OpExtractFrameByTime),
+    OpVideoTrim(crate::operations::videos::transform::trim::OpVideoTrim),
+    OpVideoSpeed(crate::operations::videos::transform::speed::OpVideoSpeed),
+    OpVideoReverse(crate::operations::videos::transform::reverse::OpVideoReverse),
+    OpVideoLoop(crate::operations::videos::transform::loop_video::OpVideoLoop),
     OpVideoOutputFile(crate::operations::videos::outputs::file::OpVideoOutputFile),
 }
 
@@ -480,7 +538,10 @@ impl Operation {
     /// value that the engine should drive during a video render. Used by the
     /// render task to identify which nodes to override each frame.
     pub fn is_time_aware(&self) -> bool {
-        matches!(self, Operation::OpVideoInputFile)
+        matches!(
+            self,
+            Operation::OpExtractFrameByIndex | Operation::OpExtractFrameByTime,
+        )
     }
 
     /// Engine hook invoked once per render frame before `graph.run()`. Updates
@@ -489,11 +550,13 @@ impl Operation {
     /// false.
     pub fn apply_render_time(&self, inputs: &mut [crate::input::Input], render_time_seconds: f64) {
         match self {
-            Operation::OpVideoInputFile => {
-                crate::operations::videos::inputs::file::OpVideoInputFile::apply_render_time(
-                    inputs,
-                    render_time_seconds,
-                );
+            Operation::OpExtractFrameByIndex => {
+                crate::operations::videos::transform::extract_frame_by_index::
+                    OpExtractFrameByIndex::apply_render_time(inputs, render_time_seconds);
+            }
+            Operation::OpExtractFrameByTime => {
+                crate::operations::videos::transform::extract_frame_by_time::
+                    OpExtractFrameByTime::apply_render_time(inputs, render_time_seconds);
             }
             _ => {}
         }
@@ -690,9 +753,13 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentAutoLevels },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentCurves },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentGradientMap },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentGradientDynamic },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentColorMatch },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentPosterize },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentDither },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentHistogramScan },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentHistogramRange },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentHistogramSelect },
             ]},
             OperationListItem::Category { name: "blur".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentBlur },
@@ -703,16 +770,32 @@ pub fn operation_list() -> Vec<OperationListItem> {
             ]},
             OperationListItem::Category { name: "filter".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentEdgeDetect },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentCanny },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentDog },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentEmboss },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentSharpen },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentUnsharpen },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentHighpass },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentLuminanceHighpass },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentKuwahara },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentAnisotropicKuwahara },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentAnisotropicDiffusion },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentBilateral },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentNonLocalMeans },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentSnn },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentToon },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentOilPaint },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentHalftone },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentOrderedDither },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentFloydSteinberg },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentCrossHatch },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentAscii },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentMedian },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentGuided },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentErode },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentDilate },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentOpen },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentClose },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentDistance },
             ]},
             OperationListItem::Category { name: "pbr".to_string(), operation_list_items: vec![
@@ -720,6 +803,15 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImagePbrAoFromHeight },
                 OperationListItem::Operation { operation: Operation::OpImagePbrCurvature },
                 OperationListItem::Operation { operation: Operation::OpImagePbrHeightBlend },
+                OperationListItem::Operation { operation: Operation::OpImagePbrNormalCombine },
+                OperationListItem::Operation { operation: Operation::OpImagePbrNormalBlend },
+                OperationListItem::Operation { operation: Operation::OpImagePbrNormalInvert },
+                OperationListItem::Operation { operation: Operation::OpImagePbrBevel },
+            ]},
+            OperationListItem::Category { name: "fx".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpImageFxDropShadow },
+                OperationListItem::Operation { operation: Operation::OpImageFxOuterGlow },
+                OperationListItem::Operation { operation: Operation::OpImageFxInnerGlow },
             ]},
             OperationListItem::Category { name: "channels".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageChannelSplit },
@@ -732,12 +824,18 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageShapePolygon },
                 OperationListItem::Operation { operation: Operation::OpImageShapeStar },
                 OperationListItem::Operation { operation: Operation::OpImageShapeLine },
+                OperationListItem::Operation { operation: Operation::OpImageShapeParaboloid },
+                OperationListItem::Operation { operation: Operation::OpImageShapePyramid },
+                OperationListItem::Operation { operation: Operation::OpImageShapeCone },
             ]},
             OperationListItem::Category { name: "patterns".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImagePatternBrick },
                 OperationListItem::Operation { operation: Operation::OpImagePatternHexagonal },
                 OperationListItem::Operation { operation: Operation::OpImagePatternWeave },
                 OperationListItem::Operation { operation: Operation::OpImagePatternTileSampler },
+                OperationListItem::Operation { operation: Operation::OpImagePatternSplatter },
+                OperationListItem::Operation { operation: Operation::OpImagePatternFloodFill },
+                OperationListItem::Operation { operation: Operation::OpImagePatternFloodFillMapper },
             ]},
             OperationListItem::Category { name: "noise".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageNoiseOpenSimplex },
@@ -806,15 +904,25 @@ pub fn operation_list() -> Vec<OperationListItem> {
         ]},
         OperationListItem::Category { name: "videos".to_string(), operation_list_items: vec![
             OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::OpVideoInputFile },
+                OperationListItem::Operation { operation: Operation::OpVideoFromFile },
+            ]},
+            OperationListItem::Category { name: "transform".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpExtractFrameByIndex },
+                OperationListItem::Operation { operation: Operation::OpExtractFrameByTime },
+                OperationListItem::Operation { operation: Operation::OpVideoTrim },
+                OperationListItem::Operation { operation: Operation::OpVideoSpeed },
+                OperationListItem::Operation { operation: Operation::OpVideoReverse },
+                OperationListItem::Operation { operation: Operation::OpVideoLoop },
             ]},
             OperationListItem::Category { name: "output".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpVideoOutputFile },
             ]},
         ]},
-        OperationListItem::Subgraph,
     ];
     OperationListItem::sort_alphabetically(&mut list);
+    // Subgraph is appended after sorting so it always appears at the bottom
+    // of the node menu rather than slotting alphabetically between categories.
+    list.push(OperationListItem::Subgraph);
     list
 }
 

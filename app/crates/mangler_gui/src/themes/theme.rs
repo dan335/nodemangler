@@ -142,7 +142,7 @@ impl Theme {
 }
 
 pub fn set_theme(ctx: &egui::Context, theme: Theme) {
-    ctx.style_mut(|style| {
+    ctx.global_style_mut(|style| {
         style.spacing.item_spacing.y = 5.0;
         style.spacing.button_padding = egui::vec2(13.0, 4.0);
         style.spacing.interact_size.y = 20.0;

@@ -4,7 +4,7 @@ use image::imageops::FilterType;
 use mangler_core::{
     input::{Input, InputSettings},
     operations::Operation,
-    value::{ColorFormat, Value, TextHAlign, TextVAlign, VideoType},
+    value::{ColorFormat, Value, TextHAlign, TextVAlign, VideoCodec, VideoContainer},
     AddNodeType, ChangeGraphMessage, ChangeNodeMessage,
     operations::images::noise::worley_distance::NoiseWorleyDistanceFunction,
     color::{color_spaces::ColorSpace, blend::BlendMode},
@@ -103,7 +103,7 @@ pub fn show(
     node: &mut GraphNode,
     tx_change_node: &Sender<ChangeNodeMessage>,
     tx_change_graph: &Sender<ChangeGraphMessage>,
-    render_state: Option<&RenderProgressUiState>,
+    render_state: &mut Option<RenderProgressUiState>,
     theme: &Theme,
 ) -> NodeSettingsResponse {
     let mut node_settings_response = NodeSettingsResponse::new();
@@ -127,6 +127,7 @@ pub fn show(
     // render on a separate task; progress comes back via GraphChangedMessage
     // and is plumbed into `render_state` by Program.
     if matches!(&node.node_type, Some(AddNodeType::Operation(Operation::OpVideoOutputFile))) {
+        show_video_compat_warning(ui, node, theme);
         show_render_section(ui, node, tx_change_graph, render_state, theme);
         ui.add_space(12.0);
     }
@@ -216,7 +217,17 @@ pub fn show(
                 body.row(30.0, |mut row| {
                     row.col(|ui| {
                         ui.horizontal_centered(|ui| {
-                            ui.label(&input.name);
+                            // Double-clicking the input name resets the value
+                            // to the operation's default. `Sense::click()` is
+                            // needed because `ui.label` allocates a
+                            // hover-only rect that can't detect clicks.
+                            let label_response = ui
+                                .add(Label::new(&input.name).sense(egui::Sense::click()))
+                                .on_hover_text("Double-click to reset to default");
+                            if label_response.double_clicked() {
+                                let default = input.default_value.clone();
+                                change_value(tx_change_node, &node.id, input_index, input, default);
+                            }
                         });
                     });
 
@@ -433,7 +444,16 @@ fn output_value(ui: &mut egui::Ui, value: &Value) {
         Value::BlendMode(v) => { ui.add(Label::new(format!("{:?}", v))); }
         Value::TextHAlign(v) => { ui.add(Label::new(format!("{:?}", v))); }
         Value::TextVAlign(v) => { ui.add(Label::new(format!("{:?}", v))); }
-        Value::VideoType(v) => { ui.add(Label::new(format!("{:?}", v))); }
+        Value::VideoContainer(v) => { ui.add(Label::new(format!("{:?}", v))); }
+        Value::VideoCodec(v) => { ui.add(Label::new(format!("{:?}", v))); }
+        Value::Video(v) => {
+            // Just show the filename — full path can be long and the
+            // thumbnail handles visual identification.
+            let name = v.path.file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("(no video)");
+            ui.add(Label::new(name));
+        }
     }
 }
 
@@ -470,7 +490,13 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 if let Some(input_type) = &input.settings {
                     match input_type {
                         InputSettings::DragValue { clamp, speed: _ } => {
-                            let mut drag = egui::DragValue::new(&mut x);
+                            // update_while_editing(false): keyboard typing only
+                            // commits on Enter / blur, not per keystroke. Dragging
+                            // still streams continuously — that path ignores this
+                            // flag. Without this, typing "500" fires three
+                            // SetInputs (5, 50, 500) and each runs a full decode.
+                            let mut drag = egui::DragValue::new(&mut x)
+                                .update_while_editing(false);
 
                             drag = if let Some(clamp) = clamp {
                                 drag.range(clamp.0..=clamp.1)
@@ -478,7 +504,12 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                                 drag
                             };
 
-                            if ui.add(drag).changed() {
+                            ui.add(drag);
+                            // Compare against the captured starting value rather
+                            // than trusting response.changed() — TextEdit inside
+                            // DragValue fires .changed() on every keystroke even
+                            // when the committed value hasn't moved.
+                            if x != a {
                                 change_value(tx_change_node, node_id, input_index, input, Value::Integer(x));
                             }
                         },
@@ -502,7 +533,10 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 if let Some(input_type) = &input.settings {
                     match input_type {
                         InputSettings::DragValue { speed, clamp } => {
-                            let mut drag = egui::DragValue::new(&mut x);
+                            // See Integer DragValue above for why update_while_editing(false)
+                            // and x-compare instead of response.changed().
+                            let mut drag = egui::DragValue::new(&mut x)
+                                .update_while_editing(false);
 
                             if let Some(speed) = *speed {
                                 drag = drag.speed(speed);
@@ -511,7 +545,8 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                                 drag = drag.range(clamp.0..=clamp.1);
                             }
 
-                            if ui.add(drag).changed() {
+                            ui.add(drag);
+                            if x != a {
                                 change_value(tx_change_node, node_id, input_index, input, Value::Decimal(x));
                             }
                         },
@@ -754,19 +789,93 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 );
             }
         }
-        Value::VideoType(a) => {
+        Value::VideoContainer(a) => {
             if input.connection.is_some() {
                 ui.label(format!("{:?}", a));
             } else {
-                let variants = VideoType::types();
+                let variants = VideoContainer::types();
                 show_enum_combo(
-                    ui, "video format", a, &variants,
+                    ui, "container", a, &variants,
                     |v| format!("{:?}", v),
                     input, input_index, node_id, tx_change_node,
-                    |v| Value::VideoType(*v),
+                    |v| Value::VideoContainer(*v),
                 );
             }
         }
+        Value::VideoCodec(a) => {
+            if input.connection.is_some() {
+                ui.label(format!("{:?}", a));
+            } else {
+                let variants = VideoCodec::types();
+                show_enum_combo(
+                    ui, "codec", a, &variants,
+                    |v| format!("{:?}", v),
+                    input, input_index, node_id, tx_change_node,
+                    |v| Value::VideoCodec(*v),
+                );
+            }
+        }
+        Value::Video(v) => {
+            // Read-only: Video values are produced by the `video from file`
+            // node; inputs only take them via connection. Show the filename
+            // (or "(no video)" for an unconnected/default handle).
+            let name = v.path.file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("(no video)");
+            ui.label(name);
+        }
+    }
+}
+
+
+/// Soft warning row shown on `OpVideoOutputFile` nodes when the currently
+/// selected `(container, codec)` pair is either (a) invalid per the
+/// compatibility matrix, or (b) valid but not yet implemented by the encoder.
+///
+/// Doesn't block render or save — the hard stop is at `VideoEncoder::open`.
+/// Silent when the combo is fine.
+fn show_video_compat_warning(ui: &mut egui::Ui, node: &GraphNode, theme: &Theme) {
+    let container = node.inputs.iter().find_map(|i| match &i.value {
+        Value::VideoContainer(v) => Some(*v),
+        _ => None,
+    });
+    let codec = node.inputs.iter().find_map(|i| match &i.value {
+        Value::VideoCodec(v) => Some(*v),
+        _ => None,
+    });
+
+    let (Some(container), Some(codec)) = (container, codec) else { return };
+
+    // Pick the more specific message: illegal combos take priority over
+    // not-yet-implemented, since the user's first fix is to change the combo.
+    let message = if !codec.is_supported_in(container) {
+        let supported: Vec<_> = container
+            .supported_codecs()
+            .iter()
+            .map(|c| format!("{:?}", c))
+            .collect();
+        Some(format!(
+            "⚠ {:?} is not valid in a {:?} container. Supported in {:?}: {}.",
+            codec,
+            container,
+            container,
+            supported.join(", "),
+        ))
+    } else if !mangler_core::video::VideoEncoder::has_encoder_preset(container, codec) {
+        Some(format!(
+            "⚠ Encoder for {:?} + {:?} is not yet implemented. Try {:?} + H264 for now.",
+            container, codec, container,
+        ))
+    } else {
+        None
+    };
+
+    if let Some(text) = message {
+        // Use the theme's "error" color (currently reused for connection-dot
+        // errors). If a dedicated warning swatch is added later, swap this in.
+        let warning_color = theme.get().grid_connection_dot_error;
+        ui.label(egui::RichText::new(text).color(warning_color).size(12.0));
+        ui.add_space(6.0);
     }
 }
 
@@ -781,7 +890,7 @@ fn show_render_section(
     ui: &mut egui::Ui,
     node: &GraphNode,
     tx_change_graph: &Sender<ChangeGraphMessage>,
-    render_state: Option<&RenderProgressUiState>,
+    render_state: &mut Option<RenderProgressUiState>,
     theme: &Theme,
 ) {
     ui.heading("render");
@@ -793,35 +902,76 @@ fn show_render_section(
     ui.add_space(8.0);
 
     if let Some(rs) = render_state {
+        // `total == 0` is the "preparing" sentinel — set locally on the
+        // button click before the engine's first RenderProgress arrives so
+        // the UI reacts immediately instead of sitting on a Render button
+        // for a few seconds while the warm-up graph run finishes.
+        let is_preparing = rs.total == 0;
         let total = rs.total.max(1) as f32;
         let progress = rs.frame as f32 / total;
-        ui.add(
-            egui::ProgressBar::new(progress.clamp(0.0, 1.0))
-                .text(format!("{} / {}", rs.frame, rs.total))
-                .animate(true),
-        );
-        let eta = if rs.frame > 0 {
-            let elapsed = rs.started_at.elapsed().as_secs_f32();
-            let remaining_frames = rs.total.saturating_sub(rs.frame) as f32;
-            let per_frame = elapsed / rs.frame as f32;
-            (remaining_frames * per_frame).max(0.0)
+        let label = if is_preparing {
+            "Starting render…".to_string()
         } else {
-            0.0
+            format!("{} / {}", rs.frame, rs.total)
         };
-        ui.label(format!(
-            "Rendering — ~{:.1}s remaining",
-            eta
-        ));
+        // egui's ProgressBar always left-aligns its label (`outer_rect.
+        // left_center()` in the widget impl). To centre, render the bar
+        // without text and paint a centred galley on top of the response
+        // rect ourselves — same text style & colour the widget would use.
+        let bar = egui::ProgressBar::new(progress.clamp(0.0, 1.0)).corner_radius(2.0);
+        let response = ui.add(bar);
+        let visuals = ui.visuals().clone();
+        let text_color = visuals
+            .override_text_color
+            .unwrap_or(visuals.selection.stroke.color);
+        let font_id = egui::TextStyle::Button.resolve(ui.style());
+        ui.painter().with_clip_rect(response.rect).text(
+            response.rect.center(),
+            egui::Align2::CENTER_CENTER,
+            &label,
+            font_id,
+            text_color,
+        );
+        if !is_preparing {
+            let eta = if rs.frame > 0 {
+                let elapsed = rs.started_at.elapsed().as_secs_f32();
+                let remaining_frames = rs.total.saturating_sub(rs.frame) as f32;
+                let per_frame = elapsed / rs.frame as f32;
+                (remaining_frames * per_frame).max(0.0)
+            } else {
+                0.0
+            };
+            ui.label(format!("rendering: {:.1}s remaining", eta));
+        }
     } else {
-        // Big, obvious render button.
-        let button = egui::Button::new(RichText::new("Render").size(16.0).strong())
-            .min_size(egui::vec2(ui.available_width().min(200.0), 30.0));
+        // Full-width render button with centred text. egui's AtomLayout
+        // pushes atoms flush-left by default; wrapping the text between two
+        // `Atom::grow()` spacers makes the layout distribute extra space
+        // equally on both sides, centring the label in the button's min_size.
+        let button = egui::Button::new((
+            egui::Atom::grow(),
+            RichText::new("Render").size(16.0),
+            egui::Atom::grow(),
+        ))
+        .min_size(egui::vec2(ui.available_width(), 30.0));
         if ui.add(button).clicked() {
             let msg = ChangeGraphMessage::StartRender {
                 output_node_id: node.id.clone(),
             };
             if let Err(err) = tx_change_graph.try_send(msg) {
                 println!("Error sending StartRender: {:?}", err);
+            } else {
+                // Immediate UI feedback: flip into the "preparing" state.
+                // The engine tick + warm-up graph.run() can take seconds on
+                // a big clip, so without this the button just sits there
+                // unresponsive. Cleared when the first RenderProgress
+                // arrives (real totals replace the 0/0 placeholder) or when
+                // RenderFinished / RenderFailed resets render_state.
+                *render_state = Some(RenderProgressUiState {
+                    frame: 0,
+                    total: 0,
+                    started_at: std::time::Instant::now(),
+                });
             }
         }
     }

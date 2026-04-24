@@ -32,5 +32,7 @@ pub mod shapes;
 pub mod patterns;
 /// Physically-based rendering map operations.
 pub mod pbr;
+/// Mask-driven effect layers (drop shadow, glows).
+pub mod fx;
 /// Cast operations for converting values to images.
 pub mod cast;

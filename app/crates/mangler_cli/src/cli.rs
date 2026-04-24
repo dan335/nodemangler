@@ -29,7 +29,8 @@ Examples:
   mangle graph.json show-output --node <id>      Run and inspect one node's output
   mangle graph.json show-output --node <id> --stats          Image statistics
   mangle graph.json show-output --node <id> --sample 0,0     Pixel at (0,0)
-  mangle graph.json show-output --node <id> --save out.png   Save image to file")]
+  mangle graph.json show-output --node <id> --save out.png   Save image to file
+  mangle graph.json render --node <id>           Render a video output node to its configured file")]
 pub(crate) struct Cli {
     /// Path to the graph JSON file (required for most commands, placed before the subcommand)
     pub path: Option<PathBuf>,
@@ -240,6 +241,30 @@ the child loads immediately and its exposed slots surface as parent I/O."
     /// Execute the graph and print all node output values
     #[command(override_usage = "mangle <PATH> run")]
     Run,
+
+    /// Render a Video Output node to the file path set on its `path` input.
+    ///
+    /// Reads output path / container / codec / fps / duration from the node's
+    /// inputs (set them via `set-input` beforehand), drives time-aware nodes
+    /// frame-by-frame, and writes the encoded video.
+    #[command(
+        override_usage = "mangle <PATH> render --node <NODE>",
+        after_help = "\
+Examples:
+  mangle g.json render --node out1
+
+The target node must be a `video to file` operation. Configure its inputs first:
+  mangle g.json set-input --node out1 --input 1 --value path:out.mp4
+  mangle g.json set-input --node out1 --input 4 --value decimal:30.0
+  mangle g.json set-input --node out1 --input 5 --value decimal:2.0
+Then run:
+  mangle g.json render --node out1"
+    )]
+    Render {
+        /// ID of the `video to file` node that drives the render
+        #[arg(long)]
+        node: String,
+    },
 
     /// Run the graph and inspect a specific node's output (with optional image stats, pixel sampling, and save)
     #[command(

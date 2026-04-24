@@ -21,6 +21,7 @@ fn add_node(editor: &mut GraphEditor, id: &str, pos: Pos2) {
 }
 
 /// Helper to add a node with inputs and outputs.
+#[allow(dead_code)] // Test helper, kept for future tests.
 fn add_node_with_io(
     editor: &mut GraphEditor,
     id: &str,

@@ -5,6 +5,7 @@
 //! in the node settings panel for any node with image outputs.
 
 use eframe::egui;
+#[allow(unused_imports)] // Stroke/StrokeKind retained for commented-out debug drawing below.
 use epaint::{vec2, Color32, Rect, Stroke, StrokeKind};
 use mangler_core::float_image::FloatImage;
 use mangler_core::value::Value;

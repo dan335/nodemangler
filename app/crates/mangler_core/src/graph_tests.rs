@@ -1691,3 +1691,75 @@ async fn test_check_subgraphs_handles_missing_file() {
         "child graph snapshot should be preserved when file is missing"
     );
 }
+
+/// Regression guard for Phase 15 (async thumbnail service):
+/// when a node with a `Value::Image` output runs, the `OutputChanged`
+/// message sent to the UI must carry `thumbnail: None` — the actual
+/// thumbnail follows asynchronously via `ThumbnailReady`. This protects
+/// against accidental re-inlining of `create_thumbnail()` on the engine
+/// thread in the image output path.
+#[tokio::test]
+async fn test_image_output_defers_thumbnail() {
+    use std::time::Duration;
+    use tokio::time::timeout;
+
+    let (tx_graph_changed, _rx_graph_changed) = mpsc::channel::<GraphChangedMessage>(32);
+    let (tx_node_changed, mut rx_node_changed) = mpsc::channel::<NodeChangedMessage>(256);
+    let mut graph =
+        Graph::new(get_id(), tx_node_changed, tx_graph_changed, false).unwrap();
+
+    assert!(
+        graph.thumbnail_service.is_some(),
+        "tokio::test provides a runtime; the thumbnail service should spawn"
+    );
+
+    // image_from_color: outputs a Value::Image with no file I/O. First output
+    // slot is the image.
+    let node_id = graph
+        .add_node(
+            get_id(),
+            AddNodeType::Operation(Operation::OpImageInputColor),
+            glam::Vec2::ZERO, true, None,
+        )
+        .await;
+    graph.run().await;
+
+    // Drain messages for up to a couple of seconds, collecting any
+    // OutputChanged for slot 0 and any ThumbnailReady for slot 0.
+    let mut output_saw_image_with_no_thumb = false;
+    let mut thumbnail_ready_seen = false;
+    let deadline = Duration::from_millis(2000);
+    for _ in 0..64 {
+        let Ok(Some(m)) = timeout(deadline, rx_node_changed.recv()).await else { break };
+        match m {
+            NodeChangedMessage::OutputChanged {
+                node_id: id,
+                output_index: 0,
+                value: Value::Image { .. },
+                thumbnail,
+            } if id == node_id => {
+                assert!(
+                    thumbnail.is_none(),
+                    "engine should NOT inline thumbnail for Image outputs \
+                     when the async service is available — got {:?}",
+                    thumbnail,
+                );
+                output_saw_image_with_no_thumb = true;
+            }
+            NodeChangedMessage::ThumbnailReady {
+                node_id: id,
+                output_index: 0,
+                ..
+            } if id == node_id => {
+                thumbnail_ready_seen = true;
+                break;
+            }
+            _ => {}
+        }
+    }
+    assert!(output_saw_image_with_no_thumb, "never saw the image OutputChanged");
+    assert!(
+        thumbnail_ready_seen,
+        "async service did not deliver ThumbnailReady within 2s"
+    );
+}

@@ -10,6 +10,7 @@
 use crate::input::{Input, InputLink};
 use crate::node_type::NodeType;
 use crate::output::{Output, OutputLink};
+use crate::thumbnail_service::ThumbnailService;
 use crate::{AddNodeType, NodeChangedMessage, GraphChangedMessage};
 use crate::{
     node::Node, value::Value,
@@ -49,6 +50,10 @@ pub struct Graph {
     pub save_path: Option<PathBuf>,
     /// Whether this graph is embedded inside a subgraph node (affects save behavior).
     pub is_subgraph: bool,
+    /// Async thumbnail worker. Spawned alongside `tx_node_changed`; `None`
+    /// on detached graphs (which don't emit UI messages). See
+    /// [`crate::thumbnail_service`].
+    pub thumbnail_service: Option<std::sync::Arc<ThumbnailService>>,
 }
 
 impl Graph {
@@ -59,6 +64,11 @@ impl Graph {
         tx_graph_changed: Sender<GraphChangedMessage>,
         is_subgraph: bool,
     ) -> Result<Graph, NewGraphError> {
+        // Only spawns when called from inside a tokio runtime; non-async
+        // contexts (e.g. unit tests that don't use #[tokio::test]) get None
+        // and fall back to inline thumbnails.
+        let thumbnail_service =
+            ThumbnailService::try_spawn(tx_node_changed.clone()).map(std::sync::Arc::new);
         Ok(Graph {
             nodes: HashMap::new(),
             is_dirty: false,
@@ -68,6 +78,7 @@ impl Graph {
             id,
             name: "new graph".to_string(),
             is_subgraph,
+            thumbnail_service,
         })
     }
 
@@ -84,6 +95,10 @@ impl Graph {
         match fs::read_to_string(&save_path) {
             Ok(data) => match serde_json::from_str::<GraphSaveData>(&data) {
                 Ok(json) => {
+                    let thumbnail_service = tx_node_changed
+                        .as_ref()
+                        .and_then(|tx| ThumbnailService::try_spawn(tx.clone()))
+                        .map(std::sync::Arc::new);
                     let mut graph = Graph {
                         is_dirty: false,
                         tx_node_changed,
@@ -92,7 +107,8 @@ impl Graph {
                         id: json.id,
                         name: json.name,
                         tx_graph_changed,
-                        is_subgraph
+                        is_subgraph,
+                        thumbnail_service,
                     };
 
                     for (_node_id, node) in graph.nodes.iter_mut() {
@@ -252,6 +268,12 @@ impl Graph {
 
         // remove node
         self.nodes.remove(&node_id);
+
+        // Drop any pending thumbnail work so late ThumbnailReady messages
+        // for this node don't reach the UI after the node is gone.
+        if let Some(service) = &self.thumbnail_service {
+            service.forget_node(&node_id);
+        }
 
         if let Some(tx) = &self.tx_graph_changed {
             let message = GraphChangedMessage::RemovedNode {
@@ -695,6 +717,9 @@ impl Graph {
             is_dirty: true,
             save_path: None,
             is_subgraph: self.is_subgraph,
+            // No UI channel -> no thumbnail worker. Node::run falls back
+            // to inline create_thumbnail when the service is absent.
+            thumbnail_service: None,
         }
     }
 
@@ -812,13 +837,39 @@ impl Graph {
 
                         output.value = passthrough_value.clone();
 
-                        // Notify UI of output change.
+                        // Notify UI of output change. Image thumbnails are
+                        // deferred to the async service when available; see
+                        // `crate::thumbnail_service`.
                         if let Some(tx) = &self.tx_node_changed {
+                            let thumbnail = match &passthrough_value {
+                                crate::value::Value::Image { data, change_id }
+                                    if self.thumbnail_service.is_some() =>
+                                {
+                                    self.thumbnail_service.as_ref().unwrap().request(
+                                        node_id.clone(),
+                                        out_idx,
+                                        change_id.clone(),
+                                        std::sync::Arc::clone(data),
+                                    );
+                                    None
+                                }
+                                crate::value::Value::Video(video)
+                                    if self.thumbnail_service.is_some() =>
+                                {
+                                    self.thumbnail_service.as_ref().unwrap().request_video(
+                                        node_id.clone(),
+                                        out_idx,
+                                        video.path.clone(),
+                                    );
+                                    None
+                                }
+                                _ => passthrough_value.create_thumbnail(),
+                            };
                             let _ = tx.try_send(NodeChangedMessage::OutputChanged {
                                 node_id: node_id.clone(),
                                 output_index: out_idx,
                                 value: passthrough_value.clone(),
-                                thumbnail: passthrough_value.create_thumbnail(),
+                                thumbnail,
                             });
                         }
 
@@ -855,7 +906,10 @@ impl Graph {
             let mut output_data: Vec<(String, usize, Value)> = Vec::new();
 
             if let Some(node) = self.nodes.get_mut(&node_id) {
-                node.run(self.tx_node_changed.clone()).await;
+                node.run(
+                    self.tx_node_changed.clone(),
+                    self.thumbnail_service.as_deref(),
+                ).await;
                 node.cached_input_hash = Some(input_hash);
 
                 // gather data to pass to connections

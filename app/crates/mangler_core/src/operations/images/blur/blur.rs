@@ -69,33 +69,44 @@ impl OpImageAdjustmentBlur {
             });
         }
 
-        let ch = data.channels() as usize;
-        let (width, height) = data.dimensions();
-        let len = (width * height) as usize;
+        let output = gaussian_blur_image(&data, sigma);
 
-        // Compute three box radii that approximate a Gaussian with this sigma
-        let boxes = box_sizes_for_gaussian(sigma, 3);
-
-        // Copy input data directly — FloatImage is already f32
-        let mut buf: Vec<f32> = data.as_raw().to_vec();
-        let mut tmp = vec![0.0f32; len * ch];
-
-        // Three passes of horizontal + vertical box blur
-        for radius in &boxes {
-            box_blur_h(&buf, &mut tmp, width, height, ch, *radius);
-            box_blur_v(&tmp, &mut buf, width, height, ch, *radius);
-        }
-
-        // Build the output FloatImage from the blurred flat buffer
-        let output = FloatImage::from_raw(width, height, data.channels(), buf).unwrap();
-
-        Ok(OperationResponse { 
+        Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Image { data: Arc::new(output), change_id: get_id() } },
             ],
         })
     }
+}
+
+/// Apply a Gaussian blur to a [`FloatImage`] using a 3-pass box blur approximation.
+///
+/// Shared helper exposed so other operations (highpass, glows, bevel smoothing)
+/// can reuse the same blur implementation without going through the full input
+/// plumbing of [`OpImageAdjustmentBlur`]. For `sigma <= 0`, returns a clone of
+/// the input.
+pub(crate) fn gaussian_blur_image(data: &FloatImage, sigma: f32) -> FloatImage {
+    let sigma = sigma.max(0.0);
+    if sigma < f32::EPSILON {
+        return data.clone();
+    }
+
+    let ch = data.channels() as usize;
+    let (width, height) = data.dimensions();
+    let len = (width * height) as usize;
+
+    let boxes = box_sizes_for_gaussian(sigma, 3);
+
+    let mut buf: Vec<f32> = data.as_raw().to_vec();
+    let mut tmp = vec![0.0f32; len * ch];
+
+    for radius in &boxes {
+        box_blur_h(&buf, &mut tmp, width, height, ch, *radius);
+        box_blur_v(&tmp, &mut buf, width, height, ch, *radius);
+    }
+
+    FloatImage::from_raw(width, height, data.channels(), buf).unwrap()
 }
 
 /// Compute box radii for an n-pass box blur that approximates a Gaussian with the given sigma.

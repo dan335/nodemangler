@@ -11,7 +11,7 @@ egui_glow = "0.34"
 epaint = "0.34"
 glow = "0.17"
 image = "0.25"
-mangler_core = { path = "../mangler_core" }
+mangler_core = { path = "../mangler_core", features = ["video"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 puffin = "0.19"

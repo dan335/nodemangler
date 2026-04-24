@@ -47,7 +47,7 @@ cargo test
 
 ## How It Works
 
-1. **Values** flow between nodes. The type system includes: Bool, Integer, Decimal, String, Color, Image, Path, FilterType, ImageType, ColorFormat, ColorSpace, BlendMode, NoiseWorleyDistanceFunction, and Trigger. Values auto-convert where possible (e.g. Integer to Decimal, Bool to Color). Images are stored internally as `FloatImage` — 1–4 channel `f32` data — and only converted at I/O boundaries.
+1. **Values** flow between nodes. The type system includes: Bool, Integer, Decimal, Text, Color, Image, Path, FilterType, ImageType, ColorFormat, ColorSpace, BlendMode, NoiseWorleyDistanceFunction, TextHAlign, TextVAlign, VideoContainer, VideoCodec, Video, and Trigger. Values auto-convert where possible (e.g. Integer to Decimal, Bool to Color). Images are stored internally as `FloatImage` — 1–4 channel `f32` data — and only converted at I/O boundaries. A `Video` value is a lightweight handle (path + cached metadata) produced by the loader node and consumed by extract-frame ops; decoded frames are cached in a shared per-file ring buffer.
 
 2. **Nodes** are created from operations. Each operation defines its inputs, outputs, and processing logic. Operations are registered via the `operations!` macro which generates the `Operation` enum and dispatch code.
 
@@ -100,7 +100,14 @@ cargo test
 
 ### Text
 - **Input:** Text
-- **Manipulation:** Append, Length, To Uppercase, To Lowercase
+- **Manipulation:** Append, Length, To Uppercase, To Lowercase, To String
+
+### Videos
+- **Input:** Video from File — opens a clip, emits a `Video` handle plus individual width/height/fps/duration/total_frames/container/codec sockets
+- **Transform:** Extract Frame By Index, Extract Frame By Time — take a `Video` + frame-number/seconds, output the decoded frame as an `Image`
+- **Output:** Video to File — renders the connected `image` stream to a video file via the Render button. Containers: MP4, MOV, MKV, WebM, AVI. Codecs: H.264 wired up today; H.265, VP8, VP9, AV1, MPEG-4, ProRes reserved in the compatibility matrix for future wiring.
+
+> **Building with video support.** The `video` feature requires FFmpeg development libraries with `libx264`/`libx265`/`libvpx`/`libaom` compiled in. See `app/crates/mangler_core/docs/video-setup.md` — vcpkg's default `ffmpeg` port omits these and renders will fail with "Invalid argument" until you reinstall with the GPL feature set.
 
 ## Subgraphs
 

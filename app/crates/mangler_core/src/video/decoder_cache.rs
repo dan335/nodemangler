@@ -17,24 +17,34 @@ use dashmap::DashMap;
 use tokio::sync::Mutex;
 
 use crate::float_image::FloatImage;
+use crate::value::{VideoCodec, VideoContainer, VideoMeta};
+
+#[cfg(test)]
+#[path = "decoder_cache_tests.rs"]
+mod tests;
 
 /// Number of recently decoded frames kept per file.
-const RING_CAPACITY: usize = 8;
+///
+/// Sized for interactive scrubbing: while dragging `current_frame` back and
+/// forth, small excursions should hit cache instead of re-decoding. At
+/// 1080p RGBA f32 that's ~32 MB per frame × 64 = ~2 GB worst case per open
+/// clip; acceptable for one clip open at a time, re-evaluate if users open
+/// many clips simultaneously.
+const RING_CAPACITY: usize = 64;
 
 /// If the target frame is more than this many frames past `last_decoded_index`,
 /// or is before it, fall through to a `seek_to_frame` call rather than
 /// decoding forward.
-const SEEK_THRESHOLD: u32 = 30;
+///
+/// H.264 GOPs are commonly 30-120 frames between keyframes. Setting this
+/// higher than typical GOP length means forward-decoding (within GOP) is
+/// preferred over seeking (which always lands at or before a keyframe and
+/// re-decodes to the target anyway).
+const SEEK_THRESHOLD: u32 = 60;
 
-/// Immutable metadata extracted from a video file on first open.
-#[derive(Debug, Clone, Copy)]
-pub struct VideoMeta {
-    pub width: u32,
-    pub height: u32,
-    pub fps: f32,
-    pub duration_seconds: f64,
-    pub total_frames: u32,
-}
+// `VideoMeta` moved to `value.rs` so it can be carried inside `Value::Video`
+// without gating that variant on the `video` feature. Re-exported via
+// `video/mod.rs` for call sites that previously imported it from here.
 
 /// Errors returned by the decoder cache.
 #[derive(Debug, Clone)]
@@ -65,6 +75,13 @@ struct VideoEntry {
     decoder: video_rs::decode::Decoder,
     ring: VecDeque<(u32, Arc<FloatImage>)>,
     last_decoded_index: Option<u32>,
+    /// Reclaimed pixel buffer from an evicted ring entry — handed back to
+    /// `convert_frame_to_float_image` so successive decodes on the same clip
+    /// avoid allocating a fresh `Vec<f32>` (~33 MB at 4K) every time.
+    /// `None` after the buffer has been taken by an in-flight decode;
+    /// `Some` after a ring eviction where we were the only holder of the
+    /// outgoing Arc.
+    scratch_buf: Option<Vec<f32>>,
 }
 
 /// Public-facing cache entry: the immutable meta is duplicated out here so it
@@ -105,26 +122,54 @@ impl VideoEntry {
         } else {
             1
         };
+
+        // Read container + codec via a parallel ffmpeg input context. Cheap —
+        // header parse only, dropped after metadata extraction. video-rs owns
+        // its Reader privately so we can't borrow it for this.
+        let (container, codec) = read_container_and_codec(path)?;
+
         let meta = VideoMeta {
             width,
             height,
             fps,
             duration_seconds,
             total_frames,
+            container,
+            codec,
         };
         let entry = Self {
             decoder,
             ring: VecDeque::with_capacity(RING_CAPACITY),
             last_decoded_index: None,
+            scratch_buf: None,
         };
         Ok((meta, entry))
     }
 
     fn push_ring(&mut self, index: u32, frame: Arc<FloatImage>) {
         if self.ring.len() == RING_CAPACITY {
-            self.ring.pop_front();
+            if let Some((_, evicted)) = self.ring.pop_front() {
+                // If we're the only holder, reclaim the pixel buffer for the
+                // next decode. Fails (drops) when a downstream node is still
+                // holding the Arc — common during active graph runs. That's
+                // fine; we just allocate a fresh Vec in that case and try
+                // again on the next eviction.
+                self.try_reclaim_scratch(evicted);
+            }
         }
         self.ring.push_back((index, frame));
+    }
+
+    /// Evict helper: reclaim the Vec<f32> from `frame` into `scratch_buf`
+    /// if we're the only holder. Never overwrites an existing scratch (first
+    /// reclaim wins until it's consumed).
+    fn try_reclaim_scratch(&mut self, frame: Arc<FloatImage>) {
+        if self.scratch_buf.is_some() {
+            return;
+        }
+        if let Ok(float_image) = Arc::try_unwrap(frame) {
+            self.scratch_buf = Some(float_image.into_data());
+        }
     }
 
     fn find_ring(&self, index: u32) -> Option<Arc<FloatImage>> {
@@ -158,7 +203,11 @@ impl VideoEntry {
             self.decoder
                 .seek_to_frame(frame_index as i64)
                 .map_err(VideoError::from)?;
-            self.ring.clear();
+            // Drain the ring, trying to reclaim the oldest buffer on the way.
+            // First uniquely-held one wins; the rest drop normally.
+            while let Some((_, evicted)) = self.ring.pop_front() {
+                self.try_reclaim_scratch(evicted);
+            }
             self.last_decoded_index = None;
         }
 
@@ -169,7 +218,7 @@ impl VideoEntry {
         for _ in 0..max_decodes {
             let (pts, mut raw) = self.decoder.decode().map_err(VideoError::from)?;
             let idx = pts_to_frame_index(&pts, meta.fps, meta.total_frames);
-            let float = convert_frame_to_float_image(&mut raw)?;
+            let float = convert_frame_to_float_image(&mut raw, self.scratch_buf.take())?;
             let arc = Arc::new(float);
             self.push_ring(idx, arc.clone());
             self.last_decoded_index = Some(idx);
@@ -199,7 +248,16 @@ fn pts_to_frame_index(pts: &video_rs::Time, fps: f32, total_frames: u32) -> u32 
 ///
 /// Divides by 255 to get an sRGB float, and sets alpha to 1.0. Uses rayon for
 /// the per-pixel loop on large frames.
-fn convert_frame_to_float_image(frame: &mut video_rs::Frame) -> Result<FloatImage, VideoError> {
+///
+/// `scratch` is an optional reclaimed pixel buffer from an evicted ring
+/// entry. If its capacity fits the needed size we skip the allocation
+/// entirely; otherwise (or when `None`) we allocate fresh. Every decoded
+/// frame's `Vec<f32>` is ~33 MB at 4K — reuse across a clip's worth of
+/// frames is a meaningful chunk of allocator pressure removed.
+fn convert_frame_to_float_image(
+    frame: &mut video_rs::Frame,
+    scratch: Option<Vec<f32>>,
+) -> Result<FloatImage, VideoError> {
     use rayon::prelude::*;
 
     let (h, w, c) = {
@@ -218,7 +276,22 @@ fn convert_frame_to_float_image(frame: &mut video_rs::Frame) -> Result<FloatImag
         .ok_or_else(|| VideoError("frame was not contiguous".into()))?;
 
     let pixel_count = (w * h) as usize;
-    let mut data = vec![0.0f32; pixel_count * 4];
+    let needed = pixel_count * 4;
+
+    // Reuse the scratch buffer when big enough; fall back to fresh alloc.
+    // par_chunks_mut below overwrites every element, so a memset to zero
+    // here would be wasted — `resize` with 1.0 (the alpha default) is cheap
+    // and keeps the vec initialized in case any future consumer reads
+    // without overwriting.
+    let mut data = match scratch {
+        Some(mut buf) if buf.capacity() >= needed => {
+            buf.clear();
+            buf.resize(needed, 0.0);
+            buf
+        }
+        _ => vec![0.0f32; needed],
+    };
+
     data.par_chunks_mut(4).enumerate().for_each(|(i, out)| {
         let src = i * c as usize;
         out[0] = slice[src] as f32 / 255.0;
@@ -229,6 +302,92 @@ fn convert_frame_to_float_image(frame: &mut video_rs::Frame) -> Result<FloatImag
 
     FloatImage::from_raw(w, h, 4, data)
         .ok_or_else(|| VideoError("from_raw length mismatch".into()))
+}
+
+/// Open a short-lived ffmpeg input context, read container + best-video-stream
+/// codec, drop it. Errors with a user-facing message if either is outside our
+/// supported enum variants.
+fn read_container_and_codec(path: &Path) -> Result<(VideoContainer, VideoCodec), VideoError> {
+    use ffmpeg_next as ffmpeg;
+    let input = ffmpeg::format::input(&path.to_path_buf()).map_err(|e| {
+        VideoError(format!("ffmpeg could not open {}: {}", path.display(), e))
+    })?;
+    let format_name = input.format().name().to_string();
+    let container = classify_container(&format_name, path)?;
+
+    let stream = input
+        .streams()
+        .best(ffmpeg::media::Type::Video)
+        .ok_or_else(|| VideoError(format!("no video stream in {}", path.display())))?;
+    let codec_id = stream.parameters().id();
+    let codec = classify_codec(codec_id)?;
+
+    Ok((container, codec))
+}
+
+/// Map an FFmpeg demuxer short-name (comma-separated, e.g. `"mov,mp4,m4a,3gp,3g2,mj2"`)
+/// to a [`VideoContainer`].
+///
+/// FFmpeg groups structurally-similar containers under a single demuxer, so the
+/// returned name can't always disambiguate MP4 from MOV. When the path's
+/// extension matches one of the name tokens, we use the extension as a
+/// tiebreak *within the set ffmpeg already confirmed*. Otherwise we pick the
+/// first token that matches a known variant.
+fn classify_container(format_name: &str, path: &Path) -> Result<VideoContainer, VideoError> {
+    let tokens: Vec<&str> = format_name.split(',').map(str::trim).collect();
+
+    // Extension-as-tiebreak within ffmpeg's reported family.
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        let ext_lc = ext.to_ascii_lowercase();
+        if tokens.iter().any(|t| t.eq_ignore_ascii_case(&ext_lc)) {
+            if let Some(c) = match_container_token(&ext_lc) {
+                return Ok(c);
+            }
+        }
+    }
+
+    for token in &tokens {
+        if let Some(c) = match_container_token(token) {
+            return Ok(c);
+        }
+    }
+
+    Err(VideoError(format!(
+        "Unsupported container format '{}' (mangler supports: mp4, mov, mkv, webm, avi).",
+        format_name
+    )))
+}
+
+/// Matches a single short-name token against known containers. Case-insensitive.
+/// Returns `None` for unrecognized tokens (caller decides whether that's an error).
+fn match_container_token(token: &str) -> Option<VideoContainer> {
+    match token.to_ascii_lowercase().as_str() {
+        "mp4" | "m4v" => Some(VideoContainer::Mp4),
+        "mov" => Some(VideoContainer::Mov),
+        "matroska" | "mkv" => Some(VideoContainer::Mkv),
+        "webm" => Some(VideoContainer::WebM),
+        "avi" => Some(VideoContainer::Avi),
+        _ => None,
+    }
+}
+
+/// Map an FFmpeg `codec::Id` to a [`VideoCodec`]. Unsupported codecs (Theora,
+/// DNxHD, MJPEG, etc.) surface as an error rather than silently decoding.
+fn classify_codec(id: ffmpeg_next::codec::Id) -> Result<VideoCodec, VideoError> {
+    use ffmpeg_next::codec::Id;
+    match id {
+        Id::H264 => Ok(VideoCodec::H264),
+        Id::HEVC | Id::H265 => Ok(VideoCodec::H265),
+        Id::VP8 => Ok(VideoCodec::Vp8),
+        Id::VP9 => Ok(VideoCodec::Vp9),
+        Id::AV1 => Ok(VideoCodec::Av1),
+        Id::MPEG4 => Ok(VideoCodec::Mpeg4),
+        Id::PRORES => Ok(VideoCodec::ProRes),
+        other => Err(VideoError(format!(
+            "Unsupported codec '{:?}' (mangler supports: H264, H265, VP8, VP9, AV1, MPEG-4, ProRes).",
+            other
+        ))),
+    }
 }
 
 /// Process-global cache of open video decoders.

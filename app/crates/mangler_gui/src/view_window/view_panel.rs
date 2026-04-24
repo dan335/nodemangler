@@ -83,6 +83,11 @@ impl ViewPanel {
                 .with_title(title)
                 .with_inner_size([600.0, 400.0]),
             |ctx, _class| {
+                // CentralPanel::show is deprecated in egui 0.34 in favor of show_inside,
+                // but show_inside requires a Ui — which only CentralPanel::show can produce
+                // at the top level of a viewport. egui itself wraps its internals with
+                // `#![expect(deprecated)]` for the same reason.
+                #[allow(deprecated)]
                 egui::CentralPanel::default().show(ctx, |ui| {
                     let cursor_position = ctx.input(|i| {
                         i.pointer.hover_pos().unwrap_or(Pos2::ZERO)
@@ -197,7 +202,19 @@ impl ViewPanel {
                 mangler_core::value::Value::BlendMode(value) => TextViewer::show(ui, format!("{:?}", value)),
                 mangler_core::value::Value::TextHAlign(value) => TextViewer::show(ui, format!("{:?}", value)),
                 mangler_core::value::Value::TextVAlign(value) => TextViewer::show(ui, format!("{:?}", value)),
-                mangler_core::value::Value::VideoType(value) => TextViewer::show(ui, format!("{:?}", value)),
+                mangler_core::value::Value::VideoContainer(value) => TextViewer::show(ui, format!("{:?}", value)),
+                mangler_core::value::Value::VideoCodec(value) => TextViewer::show(ui, format!("{:?}", value)),
+                mangler_core::value::Value::Video(value) => TextViewer::show(
+                    ui,
+                    format!(
+                        "{} — {}×{} @ {}fps, {}",
+                        value.path.display(),
+                        value.meta.width,
+                        value.meta.height,
+                        value.meta.fps,
+                        value.meta.total_frames,
+                    ),
+                ),
                 mangler_core::value::Value::Image { .. } => unreachable!(),
             }
         }

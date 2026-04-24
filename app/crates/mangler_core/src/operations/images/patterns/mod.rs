@@ -5,6 +5,9 @@
 //! a tile sampler that scatters an input pattern across a grid with randomization.
 
 pub mod brick;
+pub mod flood_fill;
+pub mod flood_fill_mapper;
 pub mod hexagonal;
-pub mod weave;
+pub mod splatter;
 pub mod tile_sampler;
+pub mod weave;

@@ -365,67 +365,66 @@ impl Program {
                         if let Some(output) = node.outputs.get_mut(output_index) {
                             output.value = value.clone();
                             if output_index == 0 {
-                                node.thumbnail = match thumbnail {
-                                    Some(thumb) => match thumb {
-                                        mangler_core::thumbnail::Thumbnail::Image(thumbnail) => {
-                                            match value {
-                                                Value::Color(_) => {
-                                                    let pixels = thumbnail.as_flat_samples();
-
-                                                    let size = [
-                                                        thumbnail.width() as usize,
-                                                        thumbnail.height() as usize,
-                                                    ];
-
-                                                    let color_image =
-                                                        ColorImage::from_rgba_unmultiplied(
-                                                            size,
-                                                            pixels.as_slice(),
-                                                        );
-
-                                                    Some(GraphNodeThumbnail::Color {
-                                                        texture_handle: ui.ctx().load_texture(
-                                                            node.id.clone(),
-                                                            color_image,
-                                                            Default::default(),
-                                                        ),
-                                                    })
-                                                }
-                                                Value::Image { data, change_id: _ } => {
-                                                    let pixels = thumbnail.as_flat_samples();
-
-                                                    let size = [
-                                                        thumbnail.width() as usize,
-                                                        thumbnail.height() as usize,
-                                                    ];
-
-                                                    let color_image =
-                                                        ColorImage::from_rgba_unmultiplied(
-                                                            size,
-                                                            pixels.as_slice(),
-                                                        );
-
-                                                    Some(GraphNodeThumbnail::Image {
-                                                        texture_handle: ui.ctx().load_texture(
-                                                            node.id.clone(),
-                                                            color_image,
-                                                            Default::default(),
-                                                        ),
-                                                        width: data.width(),
-                                                        height: data.height(),
-                                                        channels: data.channels(),
-                                                    })
-                                                }
-                                                _ => None,
-                                            }
-                                        }
-                                        mangler_core::thumbnail::Thumbnail::Text(v) => {
-                                            Some(GraphNodeThumbnail::Text(v))
-                                        }
-                                    },
-                                    None => Some(GraphNodeThumbnail::Text("None".to_string())),
-                                };
+                                // Image & Video outputs with `thumbnail: None`
+                                // are the "deferred to the async service"
+                                // cases. Leave the existing thumbnail in
+                                // place so the node preview doesn't flash
+                                // blank between OutputChanged and
+                                // ThumbnailReady.
+                                let is_deferred = matches!(
+                                    (&value, &thumbnail),
+                                    (Value::Image { .. }, None) | (Value::Video(_), None)
+                                );
+                                if !is_deferred {
+                                    node.thumbnail = build_graph_node_thumbnail(
+                                        ui.ctx(),
+                                        &node.id,
+                                        thumbnail,
+                                        &value,
+                                    );
+                                }
                             }
+                        }
+                    }
+                }
+
+                NodeChangedMessage::ThumbnailReady {
+                    node_id,
+                    output_index,
+                    change_id,
+                    thumbnail,
+                } => {
+                    // Only the slot-0 thumbnail drives the visible node
+                    // preview today; still, honour the output_index so this
+                    // stays correct if slot-N previews are added later.
+                    if output_index != 0 {
+                        continue;
+                    }
+                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
+                        if let Some(output) = node.outputs.get(output_index) {
+                            // Stale-reject: if the output's current value no
+                            // longer matches the id this thumbnail was built
+                            // for, the engine has already produced a newer
+                            // value and dropping here avoids flashing an
+                            // outdated preview. Image uses its change_id;
+                            // Video uses the path string (matches how
+                            // ThumbnailService::request_video encodes it).
+                            let is_current = match &output.value {
+                                Value::Image { change_id: cid, .. } => *cid == change_id,
+                                Value::Video(v) => {
+                                    v.path.to_string_lossy() == change_id
+                                }
+                                _ => false,
+                            };
+                            if !is_current {
+                                continue;
+                            }
+                            node.thumbnail = build_graph_node_thumbnail(
+                                ui.ctx(),
+                                &node.id,
+                                Some(thumbnail),
+                                &output.value,
+                            );
                         }
                     }
                 }
@@ -595,7 +594,7 @@ impl Program {
                                 node,
                                 &self.tx_change_node,
                                 &self.tx_change_graph,
-                                self.render_state.as_ref(),
+                                &mut self.render_state,
                                 theme,
                             );
                         show_graph_settings = false;
@@ -1211,6 +1210,81 @@ fn detect_copy_paste(events: &[egui::Event]) -> (bool, Option<String>) {
         }
     }
     (copy, paste_text)
+}
+
+/// Convert a `Thumbnail` + output `Value` into the GUI's per-node thumbnail
+/// representation. Used by both the `OutputChanged` handler (with an inline
+/// thumbnail) and the `ThumbnailReady` handler (where the async service
+/// delivers the thumbnail after the value has already been stored).
+///
+/// Passing `None` for `thumbnail` produces `Text("None")` — the UI's
+/// equivalent of "no thumbnail data" — which mirrors the pre-async
+/// behaviour. Callers that want to preserve the previous thumbnail (e.g.
+/// mid-scrub, before the async one arrives) should skip calling this and
+/// leave `node.thumbnail` untouched.
+fn build_graph_node_thumbnail(
+    ctx: &egui::Context,
+    node_id: &str,
+    thumbnail: Option<mangler_core::thumbnail::Thumbnail>,
+    value: &Value,
+) -> Option<GraphNodeThumbnail> {
+    use mangler_core::thumbnail::Thumbnail;
+    match thumbnail {
+        Some(Thumbnail::Image(thumbnail)) => match value {
+            Value::Color(_) => {
+                let pixels = thumbnail.as_flat_samples();
+                let size = [thumbnail.width() as usize, thumbnail.height() as usize];
+                let color_image =
+                    ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                Some(GraphNodeThumbnail::Color {
+                    texture_handle: ctx.load_texture(
+                        node_id.to_owned(),
+                        color_image,
+                        Default::default(),
+                    ),
+                })
+            }
+            Value::Image { data, change_id: _ } => {
+                let pixels = thumbnail.as_flat_samples();
+                let size = [thumbnail.width() as usize, thumbnail.height() as usize];
+                let color_image =
+                    ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                Some(GraphNodeThumbnail::Image {
+                    texture_handle: ctx.load_texture(
+                        node_id.to_owned(),
+                        color_image,
+                        Default::default(),
+                    ),
+                    width: data.width(),
+                    height: data.height(),
+                    channels: data.channels(),
+                })
+            }
+            // Video thumbnails come from the async service (first-frame
+            // decode) — same rasterised Image shape as a regular image
+            // output. Use the source clip's dimensions so the node
+            // preview's aspect ratio matches its content.
+            Value::Video(video_ref) => {
+                let pixels = thumbnail.as_flat_samples();
+                let size = [thumbnail.width() as usize, thumbnail.height() as usize];
+                let color_image =
+                    ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                Some(GraphNodeThumbnail::Image {
+                    texture_handle: ctx.load_texture(
+                        node_id.to_owned(),
+                        color_image,
+                        Default::default(),
+                    ),
+                    width: video_ref.meta.width.max(1),
+                    height: video_ref.meta.height.max(1),
+                    channels: 4,
+                })
+            }
+            _ => None,
+        },
+        Some(Thumbnail::Text(v)) => Some(GraphNodeThumbnail::Text(v)),
+        None => Some(GraphNodeThumbnail::Text("None".to_string())),
+    }
 }
 
 #[cfg(test)]

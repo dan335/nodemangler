@@ -201,7 +201,15 @@ impl Node {
     ///
     /// For subgraph nodes, this propagates inputs into the child graph, runs it,
     /// and copies exposed outputs back to this node's outputs.
-    pub async fn run(&mut self, tx_node_changed: Option<Sender<NodeChangedMessage>>) {
+    ///
+    /// `thumbnail_service` is consulted for `Value::Image` outputs; see
+    /// [`crate::thumbnail_service`]. When `None` (detached render graphs,
+    /// tests with no UI), thumbnails are computed inline instead.
+    pub async fn run(
+        &mut self,
+        tx_node_changed: Option<Sender<NodeChangedMessage>>,
+        thumbnail_service: Option<&crate::thumbnail_service::ThumbnailService>,
+    ) {
         match &mut self.node_type {
             // if node is an operation
             NodeType::Operation { operation } => {
@@ -290,13 +298,42 @@ impl Node {
 
                         // TODO: change response to a Result?
                         for (index, response) in operation_response.responses.into_iter().enumerate() {
+                            // Image thumbnails are slow (resize + to_rgba8 of a
+                            // full-resolution FloatImage). When the async
+                            // service is available, enqueue instead of
+                            // computing inline; the UI receives a follow-up
+                            // ThumbnailReady once ready. Scalar/enum
+                            // thumbnails stay inline because they're trivial.
+                            let thumbnail = match &response.value {
+                                Value::Image { data, change_id }
+                                    if thumbnail_service.is_some() =>
+                                {
+                                    thumbnail_service.unwrap().request(
+                                        self.id.clone(),
+                                        index,
+                                        change_id.clone(),
+                                        std::sync::Arc::clone(data),
+                                    );
+                                    None
+                                }
+                                Value::Video(video) if thumbnail_service.is_some() => {
+                                    thumbnail_service.unwrap().request_video(
+                                        self.id.clone(),
+                                        index,
+                                        video.path.clone(),
+                                    );
+                                    None
+                                }
+                                _ => response.value.create_thumbnail(),
+                            };
+
                             // send messages to ui that outputs changed
                             if let Some(tx) = tx_node_changed.clone() {
                                 let message = NodeChangedMessage::OutputChanged {
                                     node_id: self.id.clone(),
                                     output_index: index,
                                     value: response.value.clone(),
-                                    thumbnail: response.value.create_thumbnail(),
+                                    thumbnail,
                                 };
 
                                 match tx.try_send(message) {
@@ -465,11 +502,34 @@ impl Node {
                     // let ui know that outputs changed
                     if let Some(tx) = tx_node_changed {
                         for (output_index, output) in self.outputs.iter().enumerate() {
+                            let thumbnail = match &output.value {
+                                Value::Image { data, change_id }
+                                    if thumbnail_service.is_some() =>
+                                {
+                                    thumbnail_service.unwrap().request(
+                                        self.id.clone(),
+                                        output_index,
+                                        change_id.clone(),
+                                        std::sync::Arc::clone(data),
+                                    );
+                                    None
+                                }
+                                Value::Video(video) if thumbnail_service.is_some() => {
+                                    thumbnail_service.unwrap().request_video(
+                                        self.id.clone(),
+                                        output_index,
+                                        video.path.clone(),
+                                    );
+                                    None
+                                }
+                                _ => output.value.create_thumbnail(),
+                            };
+
                             let message = NodeChangedMessage::OutputChanged {
                                 node_id: self.id.clone(),
                                 output_index,
                                 value: output.value.clone(),
-                                thumbnail: output.value.create_thumbnail(),
+                                thumbnail,
                             };
 
                             match tx.try_send(message) {

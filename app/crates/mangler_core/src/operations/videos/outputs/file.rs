@@ -16,7 +16,7 @@ use crate::input::{FileDialogType, Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{default_image, OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, VideoType};
+use crate::value::{Value, VideoCodec, VideoContainer};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -60,8 +60,14 @@ impl OpVideoOutputFile {
                 None,
             ),
             Input::new(
-                "video_format".to_string(),
-                Value::VideoType(VideoType::Mp4),
+                "container".to_string(),
+                Value::VideoContainer(VideoContainer::Mp4),
+                None,
+                None,
+            ),
+            Input::new(
+                "codec".to_string(),
+                Value::VideoCodec(VideoCodec::H264),
                 None,
                 None,
             ),
@@ -88,12 +94,15 @@ impl OpVideoOutputFile {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("rendered_path".to_string(), Value::Path(PathBuf::new()), None),
+            // last_frame is slot 0 so the node preview uses the decoded
+            // image as its thumbnail (program.rs keys the node thumbnail
+            // off output_index == 0).
             Output::new(
                 "last_frame".to_string(),
                 Value::Image { data: default_image(), change_id: get_id() },
                 None,
             ),
+            Output::new("rendered_path".to_string(), Value::Path(PathBuf::new()), None),
         ]
     }
 
@@ -120,8 +129,8 @@ impl OpVideoOutputFile {
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse { value: Value::Path(path) },
                 OutputResponse { value: Value::Image { data, change_id } },
+                OutputResponse { value: Value::Path(path) },
             ],
         })
     }
