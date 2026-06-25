@@ -10,3 +10,7 @@ pub mod split;
 pub mod merge;
 /// Remaps image channels by selecting which source channel (R/G/B/A) feeds each output channel.
 pub mod shuffle;
+/// Extracts a single source channel as a 1-channel grayscale image.
+pub mod select;
+/// Per-output-channel linear combinations of the input R/G/B channels plus bias.
+pub mod mixer;

@@ -367,6 +367,8 @@ operations! {
     OpImageTransformMakeTile(crate::operations::images::transform::make_tile::OpImageTransformMakeTile),
     OpImageTransformMirror(crate::operations::images::transform::mirror::OpImageTransformMirror),
     OpImageTransformSeamCarve(crate::operations::images::transform::seam_carve::OpImageTransformSeamCarve),
+    OpImageTransformSwirl(crate::operations::images::transform::swirl::OpImageTransformSwirl),
+    OpImageTransformKaleidoscope(crate::operations::images::transform::kaleidoscope::OpImageTransformKaleidoscope),
 
     // blur
     OpImageAdjustmentBlur(crate::operations::images::blur::blur::OpImageAdjustmentBlur),
@@ -421,6 +423,13 @@ operations! {
     OpImageAdjustmentColorMatch(crate::operations::images::adjustments::color_match::OpImageAdjustmentColorMatch),
     OpImageAdjustmentGradientDynamic(crate::operations::images::adjustments::gradient_dynamic::OpImageAdjustmentGradientDynamic),
     OpImageAdjustmentDistance(crate::operations::images::adjustments::distance::OpImageAdjustmentDistance),
+    OpImageAdjustmentColorToMask(crate::operations::images::adjustments::color_to_mask::OpImageAdjustmentColorToMask),
+    OpImageAdjustmentReplaceColor(crate::operations::images::adjustments::replace_color::OpImageAdjustmentReplaceColor),
+    OpImageAdjustmentHsl(crate::operations::images::adjustments::hsl::OpImageAdjustmentHsl),
+    OpImageAdjustmentFrequencySplit(crate::operations::images::adjustments::frequency_split::OpImageAdjustmentFrequencySplit),
+    OpImageAdjustmentOutline(crate::operations::images::filter::outline::OpImageAdjustmentOutline),
+    OpImageAdjustmentPixelate(crate::operations::images::filter::pixelate::OpImageAdjustmentPixelate),
+    OpImageAdjustmentVectorMorphology(crate::operations::images::filter::vector_morphology::OpImageAdjustmentVectorMorphology),
 
     // mask fx
     OpImageFxDropShadow(crate::operations::images::fx::drop_shadow::OpImageFxDropShadow),
@@ -430,6 +439,8 @@ operations! {
     OpImageChannelSplit(crate::operations::images::channels::split::OpImageChannelSplit),
     OpImageChannelMerge(crate::operations::images::channels::merge::OpImageChannelMerge),
     OpImageChannelShuffle(crate::operations::images::channels::shuffle::OpImageChannelShuffle),
+    OpImageChannelSelect(crate::operations::images::channels::select::OpImageChannelSelect),
+    OpImageChannelMixer(crate::operations::images::channels::mixer::OpImageChannelMixer),
 
     OpImageNoisePerlin(crate::operations::images::noise::perlin::OpImageNoisePerlin),
     OpImageNoiseWorleyDistance(crate::operations::images::noise::worley_distance::OpImageNoiseWorleyDistance),
@@ -455,6 +466,7 @@ operations! {
     OpImageNoisePlasma(crate::operations::images::noise::plasma::OpImageNoisePlasma),
     OpImageNoiseAnisotropic(crate::operations::images::noise::anisotropic::OpImageNoiseAnisotropic),
     OpImageNoiseDirt(crate::operations::images::noise::dirt::OpImageNoiseDirt),
+    OpImageNoiseCheckerboard(crate::operations::images::noise::checkerboard::OpImageNoiseCheckerboard),
 
     // shapes
     OpImageShapeRectangle(crate::operations::images::shapes::rectangle::OpImageShapeRectangle),
@@ -474,6 +486,7 @@ operations! {
     OpImagePatternFloodFill(crate::operations::images::patterns::flood_fill::OpImagePatternFloodFill),
     OpImagePatternFloodFillMapper(crate::operations::images::patterns::flood_fill_mapper::OpImagePatternFloodFillMapper),
     OpImagePatternSplatter(crate::operations::images::patterns::splatter::OpImagePatternSplatter),
+    OpImagePatternTileGenerator(crate::operations::images::patterns::tile_generator::OpImagePatternTileGenerator),
 
     // pbr
     OpImagePbrNormalFromHeight(crate::operations::images::pbr::normal_from_height::OpImagePbrNormalFromHeight),
@@ -484,6 +497,7 @@ operations! {
     OpImagePbrNormalBlend(crate::operations::images::pbr::normal_blend::OpImagePbrNormalBlend),
     OpImagePbrNormalInvert(crate::operations::images::pbr::normal_invert::OpImagePbrNormalInvert),
     OpImagePbrBevel(crate::operations::images::pbr::bevel::OpImagePbrBevel),
+    OpImagePbrNormalToHeight(crate::operations::images::pbr::normal_to_height::OpImagePbrNormalToHeight),
 
     OpImageCastToImage(crate::operations::images::cast::to_image::OpImageCastToImage),
 
@@ -742,6 +756,8 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageTransformMakeTile },
                 OperationListItem::Operation { operation: Operation::OpImageTransformMirror },
                 OperationListItem::Operation { operation: Operation::OpImageTransformSeamCarve },
+                OperationListItem::Operation { operation: Operation::OpImageTransformSwirl },
+                OperationListItem::Operation { operation: Operation::OpImageTransformKaleidoscope },
             ]},
             OperationListItem::Category { name: "adjustments".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentContrast },
@@ -760,6 +776,10 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentHistogramScan },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentHistogramRange },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentHistogramSelect },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentHsl },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentColorToMask },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentReplaceColor },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentFrequencySplit },
             ]},
             OperationListItem::Category { name: "blur".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentBlur },
@@ -797,6 +817,9 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentOpen },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentClose },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentDistance },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentOutline },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentPixelate },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentVectorMorphology },
             ]},
             OperationListItem::Category { name: "pbr".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImagePbrNormalFromHeight },
@@ -806,6 +829,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImagePbrNormalCombine },
                 OperationListItem::Operation { operation: Operation::OpImagePbrNormalBlend },
                 OperationListItem::Operation { operation: Operation::OpImagePbrNormalInvert },
+                OperationListItem::Operation { operation: Operation::OpImagePbrNormalToHeight },
                 OperationListItem::Operation { operation: Operation::OpImagePbrBevel },
             ]},
             OperationListItem::Category { name: "fx".to_string(), operation_list_items: vec![
@@ -817,6 +841,8 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageChannelSplit },
                 OperationListItem::Operation { operation: Operation::OpImageChannelMerge },
                 OperationListItem::Operation { operation: Operation::OpImageChannelShuffle },
+                OperationListItem::Operation { operation: Operation::OpImageChannelSelect },
+                OperationListItem::Operation { operation: Operation::OpImageChannelMixer },
             ]},
             OperationListItem::Category { name: "shapes".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageShapeRectangle },
@@ -833,6 +859,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImagePatternHexagonal },
                 OperationListItem::Operation { operation: Operation::OpImagePatternWeave },
                 OperationListItem::Operation { operation: Operation::OpImagePatternTileSampler },
+                OperationListItem::Operation { operation: Operation::OpImagePatternTileGenerator },
                 OperationListItem::Operation { operation: Operation::OpImagePatternSplatter },
                 OperationListItem::Operation { operation: Operation::OpImagePatternFloodFill },
                 OperationListItem::Operation { operation: Operation::OpImagePatternFloodFillMapper },
@@ -862,6 +889,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageNoisePlasma },
                 OperationListItem::Operation { operation: Operation::OpImageNoiseAnisotropic },
                 OperationListItem::Operation { operation: Operation::OpImageNoiseDirt },
+                OperationListItem::Operation { operation: Operation::OpImageNoiseCheckerboard },
             ]},
             OperationListItem::Category { name: "cast".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageCastToImage },

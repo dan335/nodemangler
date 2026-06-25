@@ -49,6 +49,10 @@ pub mod oil_paint;
 pub mod open;
 /// Ordered (Bayer-matrix) dithering to N quantization levels.
 pub mod ordered_dither;
+/// Mask outline / stroke via dilate/erode difference.
+pub mod outline;
+/// Mosaic / pixelate: block-average each cell to a single colour.
+pub mod pixelate;
 /// Sharpening filter to enhance image detail.
 pub mod sharpen;
 /// Symmetric Nearest Neighbor edge-preserving smoothing.
@@ -57,3 +61,5 @@ pub mod snn;
 pub mod toon;
 /// Unsharp mask sharpening with configurable radius and threshold.
 pub mod unsharpen;
+/// Vector erode/dilate that picks a coherent neighbouring vector on normal-map-like fields.
+pub mod vector_morphology;

@@ -12,6 +12,7 @@ pub mod normal_blend;
 pub mod normal_combine;
 pub mod normal_from_height;
 pub mod normal_invert;
+pub mod normal_to_height;
 
 /// Unpack a normal-map pixel in `[0, 1]` packed form back into a signed `[-1, 1]`
 /// 3-vector. Pixels with fewer than three channels are treated as `(px[0], 0.5, 1.0)`

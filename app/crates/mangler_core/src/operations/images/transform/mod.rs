@@ -19,3 +19,5 @@ pub mod safe_transform;
 pub mod make_tile;
 pub mod mirror;
 pub mod seam_carve;
+pub mod swirl;
+pub mod kaleidoscope;

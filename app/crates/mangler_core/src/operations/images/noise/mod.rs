@@ -123,7 +123,7 @@ pub mod worley_distance;
 pub mod worley_value;
 pub mod basic_multifractal;
 pub mod billow;
-//pub mod checkerboard;
+pub mod checkerboard;
 pub mod cylinders;
 pub mod domain_warp_fbm;
 pub mod erosion;

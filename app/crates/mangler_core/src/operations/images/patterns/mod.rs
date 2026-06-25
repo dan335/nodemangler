@@ -9,5 +9,6 @@ pub mod flood_fill;
 pub mod flood_fill_mapper;
 pub mod hexagonal;
 pub mod splatter;
+pub mod tile_generator;
 pub mod tile_sampler;
 pub mod weave;
