@@ -109,6 +109,8 @@ cargo test
 
 > **Building with video support.** The `video` feature requires FFmpeg development libraries with `libx264`/`libx265`/`libvpx`/`libaom` compiled in. See `app/crates/mangler_core/docs/video-setup.md` — vcpkg's default `ffmpeg` port omits these and renders will fail with "Invalid argument" until you reinstall with the GPL feature set.
 
+> **Video licensing.** The H.264/H.265 encoders (`libx264`/`libx265`) are GPL, so a binary built with the `video` feature and linked against a GPL FFmpeg is subject to the GPL when **distributed**. Building locally, or distributing without the video feature (or against an LGPL-only FFmpeg), avoids this. The `video` feature is off by default in `mangler_core`. See [video-setup.md](app/crates/mangler_core/docs/video-setup.md#licensing-read-before-distributing-builds) for the full breakdown and attribution.
+
 ## Subgraphs
 
 Nodes can contain entire graphs, enabling composition and reuse of processing pipelines.
