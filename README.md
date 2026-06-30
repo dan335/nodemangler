@@ -114,3 +114,12 @@ cargo test
 ## Subgraphs
 
 Nodes can contain entire graphs, enabling composition and reuse of processing pipelines.
+
+## License
+
+NodeMangler is split-licensed by crate:
+
+- **`mangler_core`** — the reusable engine — is licensed under **MIT OR Apache-2.0** (at your option).
+- **`mangler_gui`** and **`mangler_cli`** — the distributed applications — are licensed under **GPL-3.0-or-later**, because they link GPL FFmpeg (`libx264`/`libx265`) via the `video` feature.
+
+See [LICENSE.md](LICENSE.md) for the rationale and your obligations when distributing builds. Unless you state otherwise, a contribution to a crate is offered under that crate's license.

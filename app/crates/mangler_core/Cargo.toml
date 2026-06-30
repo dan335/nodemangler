@@ -2,6 +2,13 @@
 name = "mangler_core"
 version = "0.1.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Core engine for NodeMangler: a value system, async node-graph executor, and a large library of image, color, and noise operations with 9-color-space conversions."
+repository = "https://github.com/dan335/nodemangler"
+readme = "README.md"
+authors = ["Daniel Phillips <danphi@gmail.com>"]
+keywords = ["image-processing", "node-graph", "color", "noise", "graphics"]
+categories = ["multimedia::images", "graphics"]
 
 [dependencies]
 nanoid = "0.5"
