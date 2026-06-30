@@ -32,11 +32,12 @@ fn test_lch_roundtrip_multiple() {
     }
 }
 
-/// Absolute LCH values. Note this module uses a D65 reference white (unlike the
-/// D50 `lab` module), and L/C are normalized by 100. White is achromatic with
-/// L=1; the primaries sit at their known LCH hue angles.
+/// LCH must be the cylindrical form of the (D50) `lab` module — verify that
+/// relationship directly so the two stay on the same reference white. Absolute
+/// L*a*b* magnitudes are pinned independently in `lab_tests.rs`.
 #[test]
-fn test_lch_absolute_values() {
+fn test_lch_matches_lab() {
+    // White is achromatic: L=1 (normalized), chroma ~0.
     let white = Color::from_srgb_float(1.0, 1.0, 1.0, 1.0).to_lch();
     assert!(
         (white.0 - 1.0).abs() < 1e-3 && white.1.abs() < 1e-3,
@@ -44,17 +45,26 @@ fn test_lch_absolute_values() {
         white
     );
 
-    // (L/100, C/100, hue-degrees) for the sRGB primaries (D65).
-    let cases = [
-        ((1.0, 0.0, 0.0), 0.5324, 1.0455, 40.0),
-        ((0.0, 1.0, 0.0), 0.8773, 1.1978, 136.0),
-        ((0.0, 0.0, 1.0), 0.3230, 1.3381, 306.3),
-    ];
-    for ((r, g, b), el, ec, eh) in cases {
-        let (l, c, h, _) = Color::from_srgb_float(r, g, b, 1.0).to_lch();
-        assert!((l - el).abs() < 0.01, "L {} vs {}", l, el);
-        assert!((c - ec).abs() < 0.01, "C {} vs {}", c, ec);
-        assert!((h - eh).abs() < 0.5, "H {} vs {}", h, eh);
+    // For arbitrary colors, (L, C, H) is exactly the polar form of to_lab().
+    for (r, g, b) in [
+        (1.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0),
+        (0.0, 0.0, 1.0),
+        (0.75, 0.5, 0.25),
+    ] {
+        let color = Color::from_srgb_float(r, g, b, 1.0);
+        let (ll, la, lb, _) = color.to_lab();
+        let (l, c, h, _) = color.to_lch();
+
+        let expected_c = ((la * la + lb * lb).sqrt() / 100.0).clamp(0.0, 1.5);
+        let mut expected_h = lb.atan2(la).to_degrees();
+        if expected_h < 0.0 {
+            expected_h += 360.0;
+        }
+
+        assert!((l - (ll / 100.0).clamp(0.0, 1.5)).abs() < EPSILON, "L {} vs {}", l, ll / 100.0);
+        assert!((c - expected_c).abs() < EPSILON, "C {} vs {}", c, expected_c);
+        assert!((h - expected_h).abs() < 0.1, "H {} vs {}", h, expected_h);
     }
 
     // from_lch of a neutral (L=1, C=0) yields white.

@@ -295,6 +295,167 @@ impl Color {
 
         Color::from_yuv(y, u, v, alpha)
     }
+
+    /// Blends two colors in Oklab color space.
+    ///
+    /// L is in `[0, 1]`; the a/b axes (≈ -0.4..0.4) are normalized to `[0, 1]`
+    /// with a midpoint of 0.5 at 0. Oklab's perceptual uniformity makes it a
+    /// strong choice for gradients and mixing.
+    pub fn blend_oklab(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
+        let la = a.to_oklab();
+        let lb = b.to_oklab();
+
+        let (l, ca, cb, alpha) = match blend_mode {
+            BlendMode::Over => (
+                lerp(la.0, lb.0, amount * lb.3),
+                lerp(la.1, lb.1, amount * lb.3),
+                lerp(la.2, lb.2, amount * lb.3),
+                la.3,
+            ),
+            BlendMode::Lerp => (
+                lerp(la.0, lb.0, amount),
+                lerp(la.1, lb.1, amount),
+                lerp(la.2, lb.2, amount),
+                lerp(la.3, lb.3, amount),
+            ),
+            _ => (
+                blend_ch(la.0, lb.0, blend_mode, amount, lb.3, 1.0, 0.0),
+                blend_ch(la.1, lb.1, blend_mode, amount, lb.3, 0.8, -0.4),
+                blend_ch(la.2, lb.2, blend_mode, amount, lb.3, 0.8, -0.4),
+                la.3,
+            ),
+        };
+
+        Color::from_oklab(l, ca, cb, alpha)
+    }
+
+    /// Blends two colors in Oklch color space.
+    ///
+    /// L is in `[0, 1]` and chroma in `[0, ~0.4]` (normalized by 0.4); hue is in
+    /// `[0, 360°]`. Ideal for hue-preserving perceptual gradients.
+    pub fn blend_oklch(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
+        let la = a.to_oklch();
+        let lb = b.to_oklch();
+
+        let (l, c, h, alpha) = match blend_mode {
+            BlendMode::Over => (
+                lerp(la.0, lb.0, amount * lb.3),
+                lerp(la.1, lb.1, amount * lb.3),
+                lerp(la.2, lb.2, amount * lb.3),
+                la.3,
+            ),
+            BlendMode::Lerp => (
+                lerp(la.0, lb.0, amount),
+                lerp(la.1, lb.1, amount),
+                lerp(la.2, lb.2, amount),
+                lerp(la.3, lb.3, amount),
+            ),
+            _ => (
+                blend_ch(la.0, lb.0, blend_mode, amount, lb.3, 1.0, 0.0),
+                blend_ch(la.1, lb.1, blend_mode, amount, lb.3, 0.4, 0.0),
+                blend_ch(la.2, lb.2, blend_mode, amount, lb.3, 360.0, 0.0),
+                la.3,
+            ),
+        };
+
+        Color::from_oklch(l, c, h, alpha)
+    }
+
+    /// Blends two colors in HWB color space.
+    ///
+    /// Hue (0–360°) is normalized to `[0, 1]`; whiteness and blackness are
+    /// already in `[0, 1]`.
+    pub fn blend_hwb(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
+        let la = a.to_hwb();
+        let lb = b.to_hwb();
+
+        let (h, w, bl, alpha) = match blend_mode {
+            BlendMode::Over => (
+                lerp(la.0, lb.0, amount * lb.3),
+                lerp(la.1, lb.1, amount * lb.3),
+                lerp(la.2, lb.2, amount * lb.3),
+                la.3,
+            ),
+            BlendMode::Lerp => (
+                lerp(la.0, lb.0, amount),
+                lerp(la.1, lb.1, amount),
+                lerp(la.2, lb.2, amount),
+                lerp(la.3, lb.3, amount),
+            ),
+            _ => (
+                blend_ch(la.0, lb.0, blend_mode, amount, lb.3, 360.0, 0.0),
+                blend_ch(la.1, lb.1, blend_mode, amount, lb.3, 1.0, 0.0),
+                blend_ch(la.2, lb.2, blend_mode, amount, lb.3, 1.0, 0.0),
+                la.3,
+            ),
+        };
+
+        Color::from_hwb(h, w, bl, alpha)
+    }
+
+    /// Blends two colors in YCbCr (BT.709) color space.
+    ///
+    /// Y is in `[0, 1]`; Cb and Cr (±0.5) are normalized to `[0, 1]` centered at
+    /// 0.5.
+    pub fn blend_ycbcr(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
+        let la = a.to_ycbcr();
+        let lb = b.to_ycbcr();
+
+        let (y, cb, cr, alpha) = match blend_mode {
+            BlendMode::Over => (
+                lerp(la.0, lb.0, amount * lb.3),
+                lerp(la.1, lb.1, amount * lb.3),
+                lerp(la.2, lb.2, amount * lb.3),
+                la.3,
+            ),
+            BlendMode::Lerp => (
+                lerp(la.0, lb.0, amount),
+                lerp(la.1, lb.1, amount),
+                lerp(la.2, lb.2, amount),
+                lerp(la.3, lb.3, amount),
+            ),
+            _ => (
+                blend_ch(la.0, lb.0, blend_mode, amount, lb.3, 1.0, 0.0),
+                blend_ch(la.1, lb.1, blend_mode, amount, lb.3, 1.0, -0.5),
+                blend_ch(la.2, lb.2, blend_mode, amount, lb.3, 1.0, -0.5),
+                la.3,
+            ),
+        };
+
+        Color::from_ycbcr(y, cb, cr, alpha)
+    }
+
+    /// Blends two colors in CIE xyY color space.
+    ///
+    /// Chromaticity (x, y) and luminance (Y) are all treated as `[0, 1]` for the
+    /// photoshop-style blend formulas.
+    pub fn blend_xyy(a: Color, b: Color, blend_mode: &BlendMode, amount: f32) -> Color {
+        let la = a.to_xyy();
+        let lb = b.to_xyy();
+
+        let (x, y, big_y, alpha) = match blend_mode {
+            BlendMode::Over => (
+                lerp(la.0, lb.0, amount * lb.3),
+                lerp(la.1, lb.1, amount * lb.3),
+                lerp(la.2, lb.2, amount * lb.3),
+                la.3,
+            ),
+            BlendMode::Lerp => (
+                lerp(la.0, lb.0, amount),
+                lerp(la.1, lb.1, amount),
+                lerp(la.2, lb.2, amount),
+                lerp(la.3, lb.3, amount),
+            ),
+            _ => (
+                blend_ch(la.0, lb.0, blend_mode, amount, lb.3, 1.0, 0.0),
+                blend_ch(la.1, lb.1, blend_mode, amount, lb.3, 1.0, 0.0),
+                blend_ch(la.2, lb.2, blend_mode, amount, lb.3, 1.0, 0.0),
+                la.3,
+            ),
+        };
+
+        Color::from_xyy(x, y, big_y, alpha)
+    }
 }
 
 /// Available blend modes for compositing two colors.

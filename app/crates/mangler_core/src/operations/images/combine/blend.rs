@@ -135,6 +135,11 @@ impl OpImageCombineBlend {
                         crate::color::color_spaces::ColorSpace::Lab => Color::blend_lab(background_color, foreground_color, &blend_mode, blend_amount).to_srgb_float(),
                         crate::color::color_spaces::ColorSpace::Yuv => Color::blend_yuv(background_color, foreground_color, &blend_mode, blend_amount).to_srgb_float(),
                         crate::color::color_spaces::ColorSpace::Cmyk => Color::blend_cmyk(background_color, foreground_color, &blend_mode, blend_amount).to_srgb_float(),
+                        crate::color::color_spaces::ColorSpace::Oklab => Color::blend_oklab(background_color, foreground_color, &blend_mode, blend_amount).to_srgb_float(),
+                        crate::color::color_spaces::ColorSpace::Oklch => Color::blend_oklch(background_color, foreground_color, &blend_mode, blend_amount).to_srgb_float(),
+                        crate::color::color_spaces::ColorSpace::Hwb => Color::blend_hwb(background_color, foreground_color, &blend_mode, blend_amount).to_srgb_float(),
+                        crate::color::color_spaces::ColorSpace::Ycbcr => Color::blend_ycbcr(background_color, foreground_color, &blend_mode, blend_amount).to_srgb_float(),
+                        crate::color::color_spaces::ColorSpace::Xyy => Color::blend_xyy(background_color, foreground_color, &blend_mode, blend_amount).to_srgb_float(),
                     };
 
                     output.put_pixel(x, y, &[new_color.0, new_color.1, new_color.2, new_color.3]);

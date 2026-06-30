@@ -167,6 +167,36 @@ impl OpImageShapesCircle {
                     write_row(&mut image, y, width, blended);
                 }
             },
+            ColorSpace::Oklab => {
+                for y in 0..height {
+                    let blended = Color::blend_oklab(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
+                    write_row(&mut image, y, width, blended);
+                }
+            },
+            ColorSpace::Oklch => {
+                for y in 0..height {
+                    let blended = Color::blend_oklch(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
+                    write_row(&mut image, y, width, blended);
+                }
+            },
+            ColorSpace::Hwb => {
+                for y in 0..height {
+                    let blended = Color::blend_hwb(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
+                    write_row(&mut image, y, width, blended);
+                }
+            },
+            ColorSpace::Ycbcr => {
+                for y in 0..height {
+                    let blended = Color::blend_ycbcr(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
+                    write_row(&mut image, y, width, blended);
+                }
+            },
+            ColorSpace::Xyy => {
+                for y in 0..height {
+                    let blended = Color::blend_xyy(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
+                    write_row(&mut image, y, width, blended);
+                }
+            },
         }
 
         Ok(OperationResponse { 
