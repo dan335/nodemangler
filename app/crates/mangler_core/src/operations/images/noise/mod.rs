@@ -118,6 +118,20 @@ pub fn build_perm_tables(seed: u32, count: usize) -> Vec<PermutationTable> {
     (0..count).map(|i| PermutationTable::new(seed + i as u32)).collect()
 }
 
+/// Hash two coordinates and a seed into a pseudo-random value in [0, 1].
+///
+/// Uses wrapping multiply and XOR-shift mixing for a fast, uniform
+/// distribution. Shared by the white-noise and blue-noise generators.
+#[inline(always)]
+pub(crate) fn pixel_hash(x: u32, y: u32, seed: u32) -> f32 {
+    let mut h = x.wrapping_mul(1597334677)
+        ^ y.wrapping_mul(2943785939)
+        ^ seed.wrapping_mul(1013904223);
+    h = h.wrapping_mul(h ^ (h >> 16));
+    h = h.wrapping_mul(h ^ (h >> 16));
+    (h & 0x00FFFFFF) as f32 / 0x01000000 as f32
+}
+
 pub mod perlin;
 pub mod worley_distance;
 pub mod worley_value;
@@ -144,3 +158,6 @@ pub mod crystal;
 pub mod gaussian;
 pub mod plasma;
 pub mod dirt;
+pub mod wave;
+pub mod blue_noise;
+pub mod curl;

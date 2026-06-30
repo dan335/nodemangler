@@ -293,6 +293,11 @@ operations! {
     OpColorInputRgb(crate::operations::colors::inputs::srgb::OpColorInputRgba),
     OpColorInputXyz(crate::operations::colors::inputs::xyz::OpColorInputXyz),
     OpColorInputYuv(crate::operations::colors::inputs::yuv::OpColorInputYuv),
+    OpColorInputOklab(crate::operations::colors::inputs::oklab::OpColorInputOklab),
+    OpColorInputOklch(crate::operations::colors::inputs::oklch::OpColorInputOklch),
+    OpColorInputHwb(crate::operations::colors::inputs::hwb::OpColorInputHwb),
+    OpColorInputYcbcr(crate::operations::colors::inputs::ycbcr::OpColorInputYcbcr),
+    OpColorInputXyy(crate::operations::colors::inputs::xyy::OpColorInputXyy),
 
     OpColorOutputCmyk(crate::operations::colors::outputs::to_cmyk::OpColorOutputCmyk),
     OpColorOutputHsl(crate::operations::colors::outputs::to_hsl::OpColorOutputHsl),
@@ -303,6 +308,11 @@ operations! {
     OpColorOutputRgb(crate::operations::colors::outputs::to_srgb::OpColorOutputRgb),
     OpColorOutputXyz(crate::operations::colors::outputs::to_xyz::OpColorOutputXyz),
     OpColorOutputYuv(crate::operations::colors::outputs::to_yuv::OpColorOutputYuv),
+    OpColorOutputOklab(crate::operations::colors::outputs::to_oklab::OpColorOutputOklab),
+    OpColorOutputOklch(crate::operations::colors::outputs::to_oklch::OpColorOutputOklch),
+    OpColorOutputHwb(crate::operations::colors::outputs::to_hwb::OpColorOutputHwb),
+    OpColorOutputYcbcr(crate::operations::colors::outputs::to_ycbcr::OpColorOutputYcbcr),
+    OpColorOutputXyy(crate::operations::colors::outputs::to_xyy::OpColorOutputXyy),
 
     OpColorBlendMode(crate::operations::colors::blend::blend_mode::OpColorBlendMode),
 
@@ -369,6 +379,9 @@ operations! {
     OpImageTransformSeamCarve(crate::operations::images::transform::seam_carve::OpImageTransformSeamCarve),
     OpImageTransformSwirl(crate::operations::images::transform::swirl::OpImageTransformSwirl),
     OpImageTransformKaleidoscope(crate::operations::images::transform::kaleidoscope::OpImageTransformKaleidoscope),
+    OpImageTransformPolarCoordinates(crate::operations::images::transform::polar_coordinates::OpImageTransformPolarCoordinates),
+    OpImageTransformSpherize(crate::operations::images::transform::spherize::OpImageTransformSpherize),
+    OpImageTransformPerspective(crate::operations::images::transform::perspective::OpImageTransformPerspective),
 
     // blur
     OpImageAdjustmentBlur(crate::operations::images::blur::blur::OpImageAdjustmentBlur),
@@ -404,6 +417,10 @@ operations! {
     OpImageAdjustmentDilate(crate::operations::images::filter::dilate::OpImageAdjustmentDilate),
     OpImageAdjustmentOpen(crate::operations::images::filter::open::OpImageAdjustmentOpen),
     OpImageAdjustmentClose(crate::operations::images::filter::close::OpImageAdjustmentClose),
+    OpImageAdjustmentConvolution(crate::operations::images::filter::convolution::OpImageAdjustmentConvolution),
+    OpImageAdjustmentMorphGradient(crate::operations::images::filter::morphological_gradient::OpImageAdjustmentMorphGradient),
+    OpImageAdjustmentTopHat(crate::operations::images::filter::top_hat::OpImageAdjustmentTopHat),
+    OpImageAdjustmentBlackHat(crate::operations::images::filter::black_hat::OpImageAdjustmentBlackHat),
     OpImageAdjustmentHighpass(crate::operations::images::filter::highpass::OpImageAdjustmentHighpass),
     OpImageAdjustmentLuminanceHighpass(crate::operations::images::filter::luminance_highpass::OpImageAdjustmentLuminanceHighpass),
     OpImageAdjustmentNonLocalMeans(crate::operations::images::filter::non_local_means::OpImageAdjustmentNonLocalMeans),
@@ -430,6 +447,12 @@ operations! {
     OpImageAdjustmentOutline(crate::operations::images::filter::outline::OpImageAdjustmentOutline),
     OpImageAdjustmentPixelate(crate::operations::images::filter::pixelate::OpImageAdjustmentPixelate),
     OpImageAdjustmentVectorMorphology(crate::operations::images::filter::vector_morphology::OpImageAdjustmentVectorMorphology),
+    OpImageAdjustmentSaturation(crate::operations::images::adjustments::saturation::OpImageAdjustmentSaturation),
+    OpImageAdjustmentThreshold(crate::operations::images::adjustments::threshold::OpImageAdjustmentThreshold),
+    OpImageAdjustmentVignette(crate::operations::images::adjustments::vignette::OpImageAdjustmentVignette),
+    OpImageAdjustmentWhiteBalance(crate::operations::images::adjustments::white_balance::OpImageAdjustmentWhiteBalance),
+    OpImageAdjustmentColorBalance(crate::operations::images::adjustments::color_balance::OpImageAdjustmentColorBalance),
+    OpImageAdjustmentSelectiveColor(crate::operations::images::adjustments::selective_color::OpImageAdjustmentSelectiveColor),
 
     // mask fx
     OpImageFxDropShadow(crate::operations::images::fx::drop_shadow::OpImageFxDropShadow),
@@ -466,6 +489,9 @@ operations! {
     OpImageNoisePlasma(crate::operations::images::noise::plasma::OpImageNoisePlasma),
     OpImageNoiseAnisotropic(crate::operations::images::noise::anisotropic::OpImageNoiseAnisotropic),
     OpImageNoiseDirt(crate::operations::images::noise::dirt::OpImageNoiseDirt),
+    OpImageNoiseWave(crate::operations::images::noise::wave::OpImageNoiseWave),
+    OpImageNoiseBlue(crate::operations::images::noise::blue_noise::OpImageNoiseBlue),
+    OpImageNoiseCurl(crate::operations::images::noise::curl::OpImageNoiseCurl),
     OpImageNoiseCheckerboard(crate::operations::images::noise::checkerboard::OpImageNoiseCheckerboard),
 
     // shapes
@@ -477,6 +503,7 @@ operations! {
     OpImageShapeParaboloid(crate::operations::images::shapes::paraboloid::OpImageShapeParaboloid),
     OpImageShapePyramid(crate::operations::images::shapes::pyramid::OpImageShapePyramid),
     OpImageShapeCone(crate::operations::images::shapes::cone::OpImageShapeCone),
+    OpImageShapesCircle(crate::operations::images::shapes::circle::OpImageShapesCircle),
 
     // patterns
     OpImagePatternBrick(crate::operations::images::patterns::brick::OpImagePatternBrick),
@@ -538,6 +565,7 @@ operations! {
 
     // videos
     OpVideoFromFile(crate::operations::videos::inputs::file::OpVideoFromFile),
+    OpVideoFromUrl(crate::operations::videos::inputs::url::OpVideoFromUrl),
     OpExtractFrameByIndex(crate::operations::videos::transform::extract_frame_by_index::OpExtractFrameByIndex),
     OpExtractFrameByTime(crate::operations::videos::transform::extract_frame_by_time::OpExtractFrameByTime),
     OpVideoTrim(crate::operations::videos::transform::trim::OpVideoTrim),
@@ -676,6 +704,11 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpColorInputRgbLinear },
                 OperationListItem::Operation { operation: Operation::OpColorInputXyz },
                 OperationListItem::Operation { operation: Operation::OpColorInputYuv },
+                OperationListItem::Operation { operation: Operation::OpColorInputOklab },
+                OperationListItem::Operation { operation: Operation::OpColorInputOklch },
+                OperationListItem::Operation { operation: Operation::OpColorInputHwb },
+                OperationListItem::Operation { operation: Operation::OpColorInputYcbcr },
+                OperationListItem::Operation { operation: Operation::OpColorInputXyy },
             ]},
             OperationListItem::Category { name: "output".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpColorOutputCmyk },
@@ -687,6 +720,11 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpColorOutputRgbLinear },
                 OperationListItem::Operation { operation: Operation::OpColorOutputXyz },
                 OperationListItem::Operation { operation: Operation::OpColorOutputYuv },
+                OperationListItem::Operation { operation: Operation::OpColorOutputOklab },
+                OperationListItem::Operation { operation: Operation::OpColorOutputOklch },
+                OperationListItem::Operation { operation: Operation::OpColorOutputHwb },
+                OperationListItem::Operation { operation: Operation::OpColorOutputYcbcr },
+                OperationListItem::Operation { operation: Operation::OpColorOutputXyy },
             ]},
             OperationListItem::Category { name: "analysis".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpColorSampleMostCommonColors },
@@ -758,13 +796,22 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageTransformSeamCarve },
                 OperationListItem::Operation { operation: Operation::OpImageTransformSwirl },
                 OperationListItem::Operation { operation: Operation::OpImageTransformKaleidoscope },
+                OperationListItem::Operation { operation: Operation::OpImageTransformPolarCoordinates },
+                OperationListItem::Operation { operation: Operation::OpImageTransformSpherize },
+                OperationListItem::Operation { operation: Operation::OpImageTransformPerspective },
             ]},
             OperationListItem::Category { name: "adjustments".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentContrast },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentGrayscale },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentInvert },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentBrighten },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentSaturation },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentHueRotate },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentThreshold },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentVignette },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentWhiteBalance },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentColorBalance },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentSelectiveColor },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentLevels },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentAutoLevels },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentCurves },
@@ -816,6 +863,10 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentDilate },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentOpen },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentClose },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentMorphGradient },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentTopHat },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentBlackHat },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentConvolution },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentDistance },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentOutline },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentPixelate },
@@ -853,6 +904,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageShapeParaboloid },
                 OperationListItem::Operation { operation: Operation::OpImageShapePyramid },
                 OperationListItem::Operation { operation: Operation::OpImageShapeCone },
+                OperationListItem::Operation { operation: Operation::OpImageShapesCircle },
             ]},
             OperationListItem::Category { name: "patterns".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImagePatternBrick },
@@ -889,6 +941,9 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageNoisePlasma },
                 OperationListItem::Operation { operation: Operation::OpImageNoiseAnisotropic },
                 OperationListItem::Operation { operation: Operation::OpImageNoiseDirt },
+                OperationListItem::Operation { operation: Operation::OpImageNoiseWave },
+                OperationListItem::Operation { operation: Operation::OpImageNoiseBlue },
+                OperationListItem::Operation { operation: Operation::OpImageNoiseCurl },
                 OperationListItem::Operation { operation: Operation::OpImageNoiseCheckerboard },
             ]},
             OperationListItem::Category { name: "cast".to_string(), operation_list_items: vec![
@@ -928,11 +983,13 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpTextLength },
                 OperationListItem::Operation { operation: Operation::OpTextToUppercase },
                 OperationListItem::Operation { operation: Operation::OpTextToLowercase },
+                OperationListItem::Operation { operation: Operation::OpTextToString },
             ]},
         ]},
         OperationListItem::Category { name: "videos".to_string(), operation_list_items: vec![
             OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpVideoFromFile },
+                OperationListItem::Operation { operation: Operation::OpVideoFromUrl },
             ]},
             OperationListItem::Category { name: "transform".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpExtractFrameByIndex },

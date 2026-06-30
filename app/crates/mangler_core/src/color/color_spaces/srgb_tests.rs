@@ -47,3 +47,20 @@ fn test_default_is_black() {
     assert_eq!(color.b, 0.0);
     assert_eq!(color.a, 1.0);
 }
+
+/// Absolute values: 8-bit input is value/255, and to_srgb_u8 clamps out-of-range
+/// channels to 0..=255 instead of wrapping.
+#[test]
+fn test_srgb_absolute_values() {
+    let c = Color::from_srgb_u8(255, 0, 128, 64);
+    assert!((c.r - 1.0).abs() < 1e-6, "r {}", c.r);
+    assert!(c.g.abs() < 1e-6, "g {}", c.g);
+    assert!((c.b - 128.0 / 255.0).abs() < 1e-6, "b {}", c.b);
+    assert!((c.a - 64.0 / 255.0).abs() < 1e-6, "a {}", c.a);
+
+    // Out-of-range floats clamp (do not wrap) when packed to 8-bit.
+    assert_eq!(
+        Color::from_srgb_float(1.5, -0.5, 1.0, 0.0).to_srgb_u8(),
+        (255, 0, 255, 0)
+    );
+}

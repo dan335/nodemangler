@@ -21,3 +21,13 @@ pub mod to_srgb;
 pub mod to_xyz;
 /// Decompose a color into YUV (luminance + chrominance) + alpha channels.
 pub mod to_yuv;
+/// Decompose a color into Oklab (perceptual L, a, b) + alpha channels.
+pub mod to_oklab;
+/// Decompose a color into Oklch (perceptual L, chroma, hue) + alpha channels.
+pub mod to_oklch;
+/// Decompose a color into HWB (Hue, Whiteness, Blackness) + alpha channels.
+pub mod to_hwb;
+/// Decompose a color into YCbCr (BT.709 luma + chroma) + alpha channels.
+pub mod to_ycbcr;
+/// Decompose a color into CIE xyY (chromaticity + luminance) + alpha channels.
+pub mod to_xyy;

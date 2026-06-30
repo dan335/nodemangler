@@ -111,6 +111,11 @@ impl OpImageInputGradient {
             ColorSpace::Lab       => Color::blend_lab,
             ColorSpace::Yuv       => Color::blend_yuv,
             ColorSpace::Cmyk      => Color::blend_cmyk,
+            ColorSpace::Oklab     => Color::blend_oklab,
+            ColorSpace::Oklch     => Color::blend_oklch,
+            ColorSpace::Hwb       => Color::blend_hwb,
+            ColorSpace::Ycbcr     => Color::blend_ycbcr,
+            ColorSpace::Xyy       => Color::blend_xyy,
         };
 
         // Blend per-row in the selected color space, storing sRGB floats directly

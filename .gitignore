@@ -19,3 +19,7 @@ Desktop.ini
 # Editor / tooling
 .claude/
 .vscode/
+
+# Committed build output / scratch dirs — keep out of the repo
+bin/
+temp/

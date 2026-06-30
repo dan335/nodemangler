@@ -21,3 +21,6 @@ pub mod mirror;
 pub mod seam_carve;
 pub mod swirl;
 pub mod kaleidoscope;
+pub mod polar_coordinates;
+pub mod spherize;
+pub mod perspective;

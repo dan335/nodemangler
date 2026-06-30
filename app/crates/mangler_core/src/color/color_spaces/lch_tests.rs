@@ -31,3 +31,47 @@ fn test_lch_roundtrip_multiple() {
         assert_color_approx(&color, &back, EPSILON);
     }
 }
+
+/// LCH must be the cylindrical form of the (D50) `lab` module — verify that
+/// relationship directly so the two stay on the same reference white. Absolute
+/// L*a*b* magnitudes are pinned independently in `lab_tests.rs`.
+#[test]
+fn test_lch_matches_lab() {
+    // White is achromatic: L=1 (normalized), chroma ~0.
+    let white = Color::from_srgb_float(1.0, 1.0, 1.0, 1.0).to_lch();
+    assert!(
+        (white.0 - 1.0).abs() < 1e-3 && white.1.abs() < 1e-3,
+        "white -> {:?}",
+        white
+    );
+
+    // For arbitrary colors, (L, C, H) is exactly the polar form of to_lab().
+    for (r, g, b) in [
+        (1.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0),
+        (0.0, 0.0, 1.0),
+        (0.75, 0.5, 0.25),
+    ] {
+        let color = Color::from_srgb_float(r, g, b, 1.0);
+        let (ll, la, lb, _) = color.to_lab();
+        let (l, c, h, _) = color.to_lch();
+
+        let expected_c = ((la * la + lb * lb).sqrt() / 100.0).clamp(0.0, 1.5);
+        let mut expected_h = lb.atan2(la).to_degrees();
+        if expected_h < 0.0 {
+            expected_h += 360.0;
+        }
+
+        assert!((l - (ll / 100.0).clamp(0.0, 1.5)).abs() < EPSILON, "L {} vs {}", l, ll / 100.0);
+        assert!((c - expected_c).abs() < EPSILON, "C {} vs {}", c, expected_c);
+        assert!((h - expected_h).abs() < 0.1, "H {} vs {}", h, expected_h);
+    }
+
+    // from_lch of a neutral (L=1, C=0) yields white.
+    let w = Color::from_lch(1.0, 0.0, 0.0, 1.0);
+    assert!(
+        (w.r - 1.0).abs() < 1e-3 && (w.g - 1.0).abs() < 1e-3 && (w.b - 1.0).abs() < 1e-3,
+        "from_lch white -> {:?}",
+        w
+    );
+}

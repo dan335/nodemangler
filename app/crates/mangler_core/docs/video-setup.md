@@ -8,6 +8,40 @@ libraries via
 crates needs **FFmpeg development libraries** on the system — not just the
 `ffmpeg.exe` CLI.
 
+## Licensing (read before distributing builds)
+
+FFmpeg core is LGPL, but the encoders you need for real output are not:
+
+- **`libx264` (H.264) and `libx265` (H.265) are GPL.** Linking them requires
+  building FFmpeg with `--enable-gpl`, which makes that FFmpeg GPL-licensed as a
+  whole. These are exactly the encoders the setup steps above enable.
+- **`libvpx` (VP8/VP9) and `libaom` (AV1)** are permissively licensed (BSD /
+  Alliance for Open Media), so on their own they impose no copyleft.
+
+What this means in practice:
+
+- **Building locally for yourself** — no obligations; do whatever you like.
+- **Distributing a binary** of `mangler_gui` / `mangler_cli` linked against a GPL
+  FFmpeg (one built with x264/x265 + `--enable-gpl`) makes the *combined
+  distributed work* subject to the GPL: you must license the whole under
+  GPL-compatible terms and offer the corresponding source. A permissive project
+  license (MIT/Apache) does **not** override this for that binary.
+- **To distribute without copyleft**, build with the `video` feature disabled, or
+  link an LGPL-only FFmpeg (no `libx264`/`libx265`, no `--enable-gpl`) — you keep
+  decode and VP8/VP9/AV1 encode but lose x264/x265 encode.
+
+The `video` feature is **off by default** in `mangler_core` (`default = []`);
+`mangler_gui` and `mangler_cli` opt in via their own `Cargo.toml`, so a default
+`cargo build` of the core has no FFmpeg/GPL footprint at all.
+
+### Attribution
+
+- FFmpeg — <https://ffmpeg.org> (LGPL-2.1+, or GPL-2.0+ with `--enable-gpl`)
+- x264 — <https://www.videolan.org/developers/x264.html> (GPL-2.0+)
+- x265 — <https://www.x265.org> (GPL-2.0+)
+- libvpx — <https://www.webmproject.org/code> (BSD-3-Clause)
+- libaom — <https://aomedia.googlesource.com/aom> (BSD-2-Clause + AOM Patent License)
+
 ## Quick check
 
 ```bash

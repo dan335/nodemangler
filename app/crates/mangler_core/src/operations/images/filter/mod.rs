@@ -11,10 +11,14 @@ pub mod anisotropic_kuwahara;
 pub mod ascii;
 /// Bilateral edge-preserving smoothing using spatial + color similarity weights.
 pub mod bilateral;
+/// Black top-hat: morphological closing minus the image (small dark details).
+pub mod black_hat;
 /// Canny multi-stage edge detector with non-max suppression and hysteresis.
 pub mod canny;
 /// Morphological closing: dilate then erode.
 pub mod close;
+/// Generic 3x3 convolution with divisor and bias.
+pub mod convolution;
 /// Cross-hatch pen-and-ink stylization with layered hatch angles.
 pub mod cross_hatch;
 /// Morphological dilation: per-channel max in a square window.
@@ -41,6 +45,8 @@ pub mod kuwahara;
 pub mod luminance_highpass;
 /// Median filter for cartoon/blocky edge-preserving smoothing.
 pub mod median;
+/// Morphological gradient: dilation minus erosion (edge band).
+pub mod morphological_gradient;
 /// Non-Local Means denoising (Buades, Coll & Morel 2005).
 pub mod non_local_means;
 /// Oil paint stylization via intensity-histogram quantization.
@@ -59,6 +65,8 @@ pub mod sharpen;
 pub mod snn;
 /// Toon / cel-shade filter: posterize plus edge overlay.
 pub mod toon;
+/// White top-hat: image minus its morphological opening (small bright details).
+pub mod top_hat;
 /// Unsharp mask sharpening with configurable radius and threshold.
 pub mod unsharpen;
 /// Vector erode/dilate that picks a coherent neighbouring vector on normal-map-like fields.

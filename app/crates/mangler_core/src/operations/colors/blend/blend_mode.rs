@@ -88,6 +88,11 @@ impl OpColorBlendMode {
             ColorSpace::Xyz => Color::blend_xyz(a, b, &blend_mode, amount),
             ColorSpace::Yuv => Color::blend_yuv(a, b, &blend_mode, amount),
             ColorSpace::Cmyk => Color::blend_cmyk(a, b, &blend_mode, amount),
+            ColorSpace::Oklab => Color::blend_oklab(a, b, &blend_mode, amount),
+            ColorSpace::Oklch => Color::blend_oklch(a, b, &blend_mode, amount),
+            ColorSpace::Hwb => Color::blend_hwb(a, b, &blend_mode, amount),
+            ColorSpace::Ycbcr => Color::blend_ycbcr(a, b, &blend_mode, amount),
+            ColorSpace::Xyy => Color::blend_xyy(a, b, &blend_mode, amount),
         };
 
         Ok(OperationResponse { 

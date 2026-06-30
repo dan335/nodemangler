@@ -34,3 +34,47 @@ fn test_all_operations_have_valid_settings() {
     }
     check_items(&operation_list());
 }
+
+/// Every node must be reachable from the add-node menu / search — both are
+/// driven by `operation_list()` in the GUI (`menu_panel.rs`,
+/// `node_search_popup.rs`). A node registered in the `operations!` macro but
+/// left out of `operation_list()` compiles and unit-tests fine yet can never
+/// be placed in a graph. This pins the recently added nodes to the menu.
+#[test]
+fn test_added_nodes_are_reachable_in_menu() {
+    fn collect_names(items: &[OperationListItem], out: &mut std::collections::HashSet<String>) {
+        for item in items {
+            match item {
+                OperationListItem::Category { operation_list_items, .. } => {
+                    collect_names(operation_list_items, out)
+                }
+                OperationListItem::Operation { operation } => {
+                    out.insert(operation.settings().name);
+                }
+                OperationListItem::Subgraph => {}
+            }
+        }
+    }
+
+    let mut names = std::collections::HashSet::new();
+    collect_names(&operation_list(), &mut names);
+
+    let expected = [
+        // adjustments
+        "saturation", "threshold", "vignette", "white balance", "color balance", "selective color",
+        // transform
+        "polar coordinates", "swirl", "spherize", "perspective",
+        // filter
+        "convolution", "morphological gradient", "top hat", "black hat",
+        // noise
+        "wave", "blue noise", "curl noise",
+        // video input
+        "video from url",
+    ];
+    for name in expected {
+        assert!(
+            names.contains(name),
+            "operation '{name}' is missing from the node menu (operation_list)"
+        );
+    }
+}

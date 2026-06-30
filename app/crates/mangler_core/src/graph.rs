@@ -145,20 +145,9 @@ impl Graph {
 
                     // Auto-reload any subgraph nodes that have a saved path.
                     // Subgraph.graph/rx_node_changed are #[serde(skip)] so they
-                    // come back as None; re-running set_subgraph_path rebuilds
-                    // the child graph and repopulates exposed inputs/outputs.
-                    let subgraph_paths: Vec<(String, PathBuf)> = graph.nodes.iter()
-                        .filter_map(|(id, node)| match &node.node_type {
-                            NodeType::Subgraph { path, .. } if !path.as_os_str().is_empty() => {
-                                Some((id.clone(), path.clone()))
-                            }
-                            _ => None,
-                        })
-                        .collect();
-
-                    for (subgraph_node_id, path) in subgraph_paths {
-                        graph.set_subgraph_path(subgraph_node_id, path);
-                    }
+                    // come back as None; this rebuilds each child graph and
+                    // repopulates the exposed inputs/outputs.
+                    graph.rehydrate_subgraphs();
 
                     Ok(graph)
                 }
@@ -664,6 +653,38 @@ impl Graph {
         }
     }
 
+    /// Re-load the child graph for every subgraph node that has a saved path.
+    ///
+    /// A subgraph node's `graph`/`rx_node_changed` are `#[serde(skip)]` *and*
+    /// are dropped to `None` by `NodeType::clone` (neither `Graph` nor the
+    /// channel is cloneable). So after a `load` from disk **or** after
+    /// [`detached`](Self::detached) clones the graph, those nodes come back as
+    /// hollow shells that would silently skip execution at run time. Routing
+    /// each one back through [`set_subgraph_path`](Self::set_subgraph_path)
+    /// rebuilds the child from disk and repopulates the exposed inputs/outputs.
+    ///
+    /// Because `set_subgraph_path` itself goes through `Graph::load`, nested
+    /// subgraphs are rehydrated recursively for free. Child graphs are pure,
+    /// disk-backed functions with no in-place editing, so reloading from disk
+    /// reproduces the exact computation — the user-driven input values live on
+    /// the parent node and are preserved across the reload.
+    pub fn rehydrate_subgraphs(&mut self) {
+        // Collect (node_id, path) up front so we can mutate `self` via
+        // `set_subgraph_path` without holding a borrow on `self.nodes`.
+        let subgraph_paths: Vec<(String, PathBuf)> = self.nodes.iter()
+            .filter_map(|(id, node)| match &node.node_type {
+                NodeType::Subgraph { path, .. } if !path.as_os_str().is_empty() => {
+                    Some((id.clone(), path.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+
+        for (subgraph_node_id, path) in subgraph_paths {
+            self.set_subgraph_path(subgraph_node_id, path);
+        }
+    }
+
     /// Re-read any subgraph node whose child `.mangle.json` has been modified
     /// on disk since the last load. Call this once per engine tick to pick up
     /// edits made from another tab or an external editor.
@@ -714,7 +735,7 @@ impl Graph {
             node.is_dirty = true;
             node.cached_input_hash = None;
         }
-        Graph {
+        let mut snapshot = Graph {
             id: self.id.clone(),
             name: self.name.clone(),
             tx_node_changed: None,
@@ -726,7 +747,14 @@ impl Graph {
             // No UI channel -> no thumbnail worker. Node::run falls back
             // to inline create_thumbnail when the service is absent.
             thumbnail_service: None,
-        }
+        };
+        // Cloning the nodes dropped every subgraph node's loaded child graph and
+        // readback channel to None (see NodeType::clone), so the snapshot would
+        // otherwise skip all subgraph execution at run time and emit stale/
+        // default outputs. Rebuild them from disk so renders and other detached
+        // runs produce the same result as the live graph.
+        snapshot.rehydrate_subgraphs();
+        snapshot
     }
 
     // returns a list of node_ids that ran

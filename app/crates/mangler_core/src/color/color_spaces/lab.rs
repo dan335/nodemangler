@@ -75,11 +75,12 @@ fn lab_to_xyz(lab: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
 /// Chromatic adaptation from D65 to D50 illuminant using a Bradford matrix.
 fn d65_to_d50(xyz: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
     let v = Vec3::new(xyz.0, xyz.1, xyz.2);
+    // Written row-major; from_cols_array reads column-major, so transpose.
     let m: Mat3 = Mat3::from_cols_array(&[
         1.047_929_8, 0.022_946_794, -0.050_192_23,
         0.029_627_815, 0.990_434_47, -0.017_073_825,
         -0.009_243_058, 0.015_055_145, 0.751_874_27,
-    ]);
+    ]).transpose();
     let r = m * v;
     (r[0], r[1], r[2], xyz.3)
 }
@@ -87,11 +88,12 @@ fn d65_to_d50(xyz: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
 /// Chromatic adaptation from D50 to D65 illuminant using a Bradford matrix.
 fn d50_to_d65(xyz: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
     let v = Vec3::new(xyz.0, xyz.1, xyz.2);
+    // Written row-major; from_cols_array reads column-major, so transpose.
     let m: Mat3 = Mat3::from_cols_array(&[
         0.955_473_4, -0.023_098_538, 0.063_259_31,
         -0.028_369_706, 1.009_995_5, 0.021_041_399,
         0.012_314_002, -0.020_507_697, 1.330_365_9,
-    ]);
+    ]).transpose();
     let r = m * v;
     (r[0], r[1], r[2], xyz.3)
 }

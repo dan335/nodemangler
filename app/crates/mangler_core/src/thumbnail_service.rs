@@ -58,10 +58,6 @@ enum ThumbnailSource {
     Image(Arc<FloatImage>),
     /// Video-handle outputs — the worker must decode frame 0 via
     /// [`crate::video::VideoDecoderCache`] before resizing.
-    ///
-    /// `path` is read only by the `video`-feature-enabled decode arm in
-    /// `decode_source`; the no-video build path ignores it.
-    #[cfg_attr(not(feature = "video"), allow(dead_code))]
     Video { path: PathBuf },
 }
 

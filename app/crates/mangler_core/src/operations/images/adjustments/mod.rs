@@ -3,8 +3,11 @@
 //! This module contains operations that modify image appearance without changing
 //! dimensions: contrast, levels, color grading, and more.
 
+pub(crate) mod common;
+
 pub mod auto_levels;
 pub mod brighten;
+pub mod color_balance;
 pub mod color_match;
 pub mod color_to_mask;
 pub mod contrast;
@@ -24,3 +27,8 @@ pub mod invert;
 pub mod levels;
 pub mod posterize;
 pub mod replace_color;
+pub mod saturation;
+pub mod selective_color;
+pub mod threshold;
+pub mod vignette;
+pub mod white_balance;

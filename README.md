@@ -22,10 +22,11 @@ The repository is organized as a monorepo:
 See each crate's README for details:
 - [mangler_core README](app/crates/mangler_core/README.md) — the engine and operation library
 - [mangler_gui README](app/crates/mangler_gui/README.md) — the desktop application
+- [mangler_cli README](app/crates/mangler_cli/README.md) — the headless command-line interface
 
 ## Requirements
 
-- **Rust nightly** toolchain (configured in `app/rust-toolchain.toml`)
+- **Rust stable** toolchain (pinned in `app/rust-toolchain.toml`)
 
 ## Build & Run
 
@@ -69,27 +70,27 @@ cargo test
 - **Bitwise:** And, Or, Xor, Not, Left Shift, Right Shift
 
 ### Colors
-- **Input:** from 9 color spaces — sRGB, Linear RGB, HSL, HSV, Lab, LCH, CMYK, XYZ, YUV
-- **Output:** decompose to any of those same 9 color spaces
-- **Generation:** From Hex, To Hex, Random Color
-- **Manipulation:** Invert, Grayscale, Adjust HSV, Clamp, Set Alpha, Blend Mode (17 modes: Normal, Lerp, Multiply, Screen, Overlay, SoftLight, HardLight, ColorDodge, ColorBurn, Darken, Lighten, Difference, Exclusion, LinearBurn, LinearDodge, Divide, Subtract)
+- **Input:** from 14 color spaces — sRGB, Linear RGB, HSL, HSV, HWB, Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YUV (BT.601), YCbCr (BT.709)
+- **Output:** decompose to any of those same 14 color spaces
+- **Generation:** From Hex, To Hex, Random Color, To Color
+- **Manipulation:** Invert, Grayscale, Adjust HSV, Clamp, Set Alpha, Blend Mode (17 modes: Over, Lerp, Multiply, Screen, Overlay, SoftLight, HardLight, ColorDodge, ColorBurn, Darken, Lighten, Difference, Exclusion, LinearBurn, LinearDodge, Divide, Subtract)
 - **Analysis:** Most Common Colors (sampled from image), Distance, Luminance, Contrast Ratio, Color Temperature, Dominant Hue, Harmony Score, Mix Ratio
 - **Harmony:** Complementary, Triadic, Analogous, Tetradic, Double Split Complementary, Monochromatic
-- **Cast:** To Color
 
 ### Images
 - **Input:** File, URL, Clipboard, Solid Color, Gradient, Text
 - **Output:** File, Clipboard
 - **Combine:** Blit, Blend (17 blend modes), Compare
-- **Transform:** Crop, Resize, Resize Exact, Resize Fill, Flip H/V, Rotate 90/180/270, Rotate Around Center, Warp, Directional Warp, Safe Transform, Make Tile, Mirror, Seam Carve
-- **Adjustments:** Contrast, Grayscale, Invert, Brighten, Hue Rotate, Levels, Auto Levels, Curves, Gradient Map, Posterize, Histogram Scan, Histogram Range, Distance
+- **Transform:** Crop, Resize, Resize Exact, Resize Fill, Flip H/V, Rotate 90/180/270, Rotate Around Center, Warp, Directional Warp, Safe Transform, Make Tile, Mirror, Seam Carve, Polar Coordinates, Swirl, Spherize, Perspective
+- **Adjustments:** Contrast, Grayscale, Invert, Brighten, Saturation, Hue Rotate, Threshold, Vignette, White Balance, Color Balance, Selective Color, Levels, Auto Levels, Curves, Gradient Map, Gradient Dynamic, Color Match, Posterize, Dither, Histogram Scan, Histogram Range, Histogram Select
 - **Blur:** Gaussian Blur, Directional Blur, Radial Blur, Slope Blur, Non-Uniform Blur
-- **Filter:** Edge Detect, Emboss, Sharpen, Unsharpen
+- **Filter:** Edge Detect, Canny, Difference of Gaussians, Emboss, Sharpen, Unsharpen, Highpass, Luminance Highpass, Kuwahara, Anisotropic Kuwahara, Anisotropic Diffusion, Bilateral, Non-Local Means, Symmetric Nearest Neighbor, Toon, Oil Paint, Halftone, Ordered Dither, Floyd–Steinberg, Cross Hatch, ASCII, Median, Guided, Erode, Dilate, Open, Close, Morphological Gradient, Top Hat, Black Hat, Convolution (custom 3×3 kernel), Distance Field
+- **FX:** Drop Shadow, Outer Glow, Inner Glow
 - **Channels:** Split, Merge, Shuffle
-- **Shapes:** Rectangle, Ellipse, Polygon, Star, Line
-- **Patterns:** Brick, Hexagonal, Weave, Tile Sampler
-- **PBR:** Normal from Height, AO from Height, Curvature, Height Blend
-- **Noise:** OpenSimplex, SuperSimplex, Perlin, Worley Distance, Worley Value, Billow, Cylinders, Domain Warp FBM, FBM, Heterogeneous Multifractal, Hybrid Multifractal, Ridged Multifractal, Value, Voronoi Crack, Voronoise, Reaction Diffusion, Erosion, Gabor, Gaussian, Crystal, Clouds, Plasma, Anisotropic, Dirt
+- **Shapes:** Rectangle, Ellipse, Circle, Polygon, Star, Line, Cone, Pyramid, Paraboloid
+- **Patterns:** Brick, Hexagonal, Weave, Tile Sampler, Splatter, Flood Fill, Flood Fill Mapper
+- **PBR:** Normal from Height, AO from Height, Curvature, Height Blend, Normal Combine, Normal Blend, Normal Invert, Bevel
+- **Noise:** OpenSimplex, SuperSimplex, Perlin, Worley Distance, Worley Value, Billow, Cylinders, Domain Warp FBM, FBM, Heterogeneous Multifractal, Hybrid Multifractal, Ridged Multifractal, Value, Voronoi Crack, Voronoise, Reaction Diffusion, Erosion, Gabor, White Noise, Crystal, Clouds, Plasma, Anisotropic, Dirt, Wave, Blue Noise, Curl Noise, Checkerboard
 - **Cast:** To Image
 
 ### Logic
@@ -103,12 +104,23 @@ cargo test
 - **Manipulation:** Append, Length, To Uppercase, To Lowercase, To String
 
 ### Videos
-- **Input:** Video from File — opens a clip, emits a `Video` handle plus individual width/height/fps/duration/total_frames/container/codec sockets
-- **Transform:** Extract Frame By Index, Extract Frame By Time — take a `Video` + frame-number/seconds, output the decoded frame as an `Image`
+- **Input:** Video from File / Video from URL — open a local clip or download a remote one, emitting a `Video` handle plus individual width/height/fps/duration/total_frames/container/codec sockets (the URL loader downloads to a hashed local cache file first, since frames are decoded lazily by path)
+- **Transform:** Extract Frame By Index, Extract Frame By Time — take a `Video` + frame-number/seconds and output the decoded frame as an `Image`; Trim, Speed, Reverse, Loop — metadata-only retimes that produce a new `Video` handle (no re-encode)
 - **Output:** Video to File — renders the connected `image` stream to a video file via the Render button. Containers: MP4, MOV, MKV, WebM, AVI. Codecs: H.264 wired up today; H.265, VP8, VP9, AV1, MPEG-4, ProRes reserved in the compatibility matrix for future wiring.
 
 > **Building with video support.** The `video` feature requires FFmpeg development libraries with `libx264`/`libx265`/`libvpx`/`libaom` compiled in. See `app/crates/mangler_core/docs/video-setup.md` — vcpkg's default `ffmpeg` port omits these and renders will fail with "Invalid argument" until you reinstall with the GPL feature set.
 
+> **Video licensing.** The H.264/H.265 encoders (`libx264`/`libx265`) are GPL, so a binary built with the `video` feature and linked against a GPL FFmpeg is subject to the GPL when **distributed**. Building locally, or distributing without the video feature (or against an LGPL-only FFmpeg), avoids this. The `video` feature is off by default in `mangler_core`. See [video-setup.md](app/crates/mangler_core/docs/video-setup.md#licensing-read-before-distributing-builds) for the full breakdown and attribution.
+
 ## Subgraphs
 
 Nodes can contain entire graphs, enabling composition and reuse of processing pipelines.
+
+## License
+
+NodeMangler is split-licensed by crate:
+
+- **`mangler_core`** — the reusable engine — is licensed under **MIT OR Apache-2.0** (at your option).
+- **`mangler_gui`** and **`mangler_cli`** — the distributed applications — are licensed under **GPL-3.0-or-later**, because they link GPL FFmpeg (`libx264`/`libx265`) via the `video` feature.
+
+See [LICENSE.md](LICENSE.md) for the rationale and your obligations when distributing builds. Unless you state otherwise, a contribution to a crate is offered under that crate's license.

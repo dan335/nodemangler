@@ -8,7 +8,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -53,24 +53,14 @@ impl OpImageNoiseCheckerboard {
     /// Generates a checkerboard pattern image from the given inputs.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // Collect every input conversion into the shared error buffer so all
-        // malformed inputs surface in a single error response, matching the
-        // rest of the operation library.
-        let width_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let size_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Integer(size) = size_converted.unwrap() else { unreachable!() };
-
-        let width = width.max(1);
-        let height = height.max(1);
-        let size = size.max(1);
+        let Ok(Value::Integer(mut width)) = inputs[0].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { input_errors: vec![(0, "Unable to convert to integer.".to_string())], node_error: None })};
+        let Ok(Value::Integer(mut height)) = inputs[1].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { input_errors: vec![(1, "Unable to convert to integer.".to_string())], node_error: None })};
+        let Ok(Value::Integer(mut size)) = inputs[2].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { input_errors: vec![(2, "Unable to convert to integer.".to_string())], node_error: None })};
+        
+        width = width.max(1);
+        height = height.max(1);
+        size = size.max(1);
 
         // Build a single-channel FloatImage from the checkerboard pattern
         let mut float_image = FloatImage::new(width as u32, height as u32, 1);

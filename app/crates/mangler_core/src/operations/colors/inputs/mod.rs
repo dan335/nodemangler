@@ -21,3 +21,13 @@ pub mod srgb;
 pub mod xyz;
 /// Construct a color from YUV (luminance + chrominance) + alpha channels.
 pub mod yuv;
+/// Construct a color from Oklab (perceptual L, a, b) + alpha channels.
+pub mod oklab;
+/// Construct a color from Oklch (perceptual L, chroma, hue) + alpha channels.
+pub mod oklch;
+/// Construct a color from HWB (Hue, Whiteness, Blackness) + alpha channels.
+pub mod hwb;
+/// Construct a color from YCbCr (BT.709 luma + chroma) + alpha channels.
+pub mod ycbcr;
+/// Construct a color from CIE xyY (chromaticity + luminance) + alpha channels.
+pub mod xyy;

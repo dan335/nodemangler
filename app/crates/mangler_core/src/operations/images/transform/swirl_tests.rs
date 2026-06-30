@@ -1,82 +1,73 @@
 //! Tests for the swirl transform.
 
 use super::*;
+
 use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::Input;
 use crate::value::Value;
 use std::sync::Arc;
 
+/// A per-pixel gradient so resampling is observable.
+fn gradient(w: u32, h: u32) -> Value {
+    let mut img = FloatImage::new(w, h, 4);
+    for y in 0..h {
+        for x in 0..w {
+            img.put_pixel(x, y, &[x as f32 / w as f32, y as f32 / h as f32, 0.25, 1.0]);
+        }
+    }
+    Value::Image { data: Arc::new(img), change_id: get_id() }
+}
+
+fn uniform(w: u32, h: u32) -> Value {
+    Value::Image { data: Arc::new(FloatImage::from_pixel(w, h, 4, &[0.6, 0.2, 0.1, 1.0])), change_id: get_id() }
+}
+
+async fn run(image: Value, angle: f32, radius: f32) -> Value {
+    let mut inputs = vec![
+        Input::new("image".to_string(), image, None, None),
+        Input::new("angle".to_string(), Value::Decimal(angle), None, None),
+        Input::new("radius".to_string(), Value::Decimal(radius), None, None),
+    ];
+    OpImageTransformSwirl::run(&mut inputs).await.unwrap().responses[0].value.clone()
+}
+
+#[tokio::test]
+async fn settings_and_ports() {
+    assert_eq!(OpImageTransformSwirl::settings().name, "swirl");
+    assert_eq!(OpImageTransformSwirl::create_inputs().len(), 3);
+    assert_eq!(OpImageTransformSwirl::create_outputs().len(), 1);
+}
+
 #[tokio::test]
 async fn zero_angle_is_identity() {
-    // Small checkerboard so a rotation would be visible.
-    let mut img = FloatImage::new(8, 8, 4);
-    for y in 0..8u32 {
-        for x in 0..8u32 {
-            let on = ((x ^ y) & 1) == 0;
-            let v = if on { 1.0 } else { 0.0 };
-            img.put_pixel(x, y, &[v, v, v, 1.0]);
-        }
-    }
-    let source = Arc::new(img);
-
-    let mut inputs = vec![
-        Input::new("image".into(), Value::Image { data: source.clone(), change_id: get_id() }, None, None),
-        Input::new("center x".into(), Value::Decimal(0.5), None, None),
-        Input::new("center y".into(), Value::Decimal(0.5), None, None),
-        Input::new("angle".into(), Value::Decimal(0.0), None, None),
-        Input::new("radius".into(), Value::Decimal(0.5), None, None),
-    ];
-    let r = OpImageTransformSwirl::run(&mut inputs).await.unwrap();
-    let Value::Image { data, .. } = &r.responses[0].value else { panic!() };
-    for y in 0..8 {
-        for x in 0..8 {
-            let before = source.get_pixel(x, y);
-            let after = data.get_pixel(x, y);
-            for c in 0..4 {
-                assert!((before[c] - after[c]).abs() < 1e-3);
-            }
-        }
+    let src = gradient(16, 16);
+    let Value::Image { data: src_data, .. } = &src else { panic!() };
+    let src_data = src_data.clone();
+    let Value::Image { data, .. } = run(src, 0.0, 1.0).await else { panic!() };
+    for (a, b) in data.as_raw().iter().zip(src_data.as_raw().iter()) {
+        assert!((a - b).abs() < 1e-5, "zero-angle swirl drifted: {a} vs {b}");
     }
 }
 
 #[tokio::test]
-async fn centre_pixel_stays_put() {
-    // Pixel at zero radius from the swirl centre has t = 1, rotation = max.
-    // Because rotating a zero-length vector by any angle yields zero, the
-    // sample coordinate equals the centre exactly — so the centre pixel's
-    // colour survives unchanged.
-    //
-    // Using a 5×5 image with centre placed ON pixel (2, 2) by picking
-    // `center_x = center_y = 2/5 = 0.4` so `cpx = cpy = 2.0`.
-    let img = Arc::new(FloatImage::from_pixel(5, 5, 4, &[0.2, 0.4, 0.6, 0.8]));
-    let mut marked = (*img).clone();
-    marked.put_pixel(2, 2, &[1.0, 0.0, 0.0, 1.0]);
-    let mut inputs = vec![
-        Input::new("image".into(), Value::Image { data: Arc::new(marked), change_id: get_id() }, None, None),
-        Input::new("center x".into(), Value::Decimal(0.4), None, None),
-        Input::new("center y".into(), Value::Decimal(0.4), None, None),
-        Input::new("angle".into(), Value::Decimal(180.0), None, None),
-        Input::new("radius".into(), Value::Decimal(0.5), None, None),
-    ];
-    let r = OpImageTransformSwirl::run(&mut inputs).await.unwrap();
-    let Value::Image { data, .. } = &r.responses[0].value else { panic!() };
-    let px = data.get_pixel(2, 2);
-    assert!((px[0] - 1.0).abs() < 1e-3, "centre pixel R={} not preserved", px[0]);
+async fn uniform_stays_uniform() {
+    let Value::Image { data, .. } = run(uniform(16, 16), 360.0, 1.0).await else { panic!() };
+    assert!(data.pixels().all(|p| (p[0] - 0.6).abs() < 1e-5 && (p[1] - 0.2).abs() < 1e-5));
 }
 
 #[tokio::test]
-async fn output_same_dimensions_as_input() {
-    let img = Arc::new(FloatImage::from_pixel(10, 7, 3, &[0.1, 0.2, 0.3]));
-    let mut inputs = vec![
-        Input::new("image".into(), Value::Image { data: img, change_id: get_id() }, None, None),
-        Input::new("center x".into(), Value::Decimal(0.5), None, None),
-        Input::new("center y".into(), Value::Decimal(0.5), None, None),
-        Input::new("angle".into(), Value::Decimal(90.0), None, None),
-        Input::new("radius".into(), Value::Decimal(0.5), None, None),
-    ];
-    let r = OpImageTransformSwirl::run(&mut inputs).await.unwrap();
-    let Value::Image { data, .. } = &r.responses[0].value else { panic!() };
-    assert_eq!(data.dimensions(), (10, 7));
-    assert_eq!(data.channels(), 3);
+async fn nonzero_angle_changes_pixels() {
+    let src = gradient(16, 16);
+    let Value::Image { data: src_data, .. } = &src else { panic!() };
+    let src_data = src_data.clone();
+    let Value::Image { data, .. } = run(gradient(16, 16), 180.0, 1.0).await else { panic!() };
+    let changed = data.as_raw().iter().zip(src_data.as_raw().iter()).any(|(a, b)| (a - b).abs() > 1e-3);
+    assert!(changed, "swirl with a large angle should alter the image");
+}
+
+#[tokio::test]
+async fn preserves_dimensions() {
+    let Value::Image { data, .. } = run(gradient(13, 7), 90.0, 0.5).await else { panic!() };
+    assert_eq!(data.dimensions(), (13, 7));
 }

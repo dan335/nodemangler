@@ -1161,6 +1161,91 @@ async fn test_subgraph_propagates_value_end_to_end() {
     let _ = fs::remove_file(&tmp_path);
 }
 
+// A detached() snapshot (the basis for video renders) must still execute its
+// subgraph nodes. NodeType::clone drops the loaded child graph + channel to
+// None, so without rehydration the snapshot silently skips the subgraph and
+// emits a stale/default output. This test drives an exposed input, snapshots
+// the parent WITHOUT running it live, then runs only the snapshot and asserts
+// the value flowed through the child — i.e. the subgraph really executed.
+#[tokio::test]
+async fn test_detached_snapshot_executes_subgraph() {
+    use std::fs;
+    use crate::GraphSaveData;
+
+    // Build a child graph: one exposed decimal passthrough node, saved to disk.
+    let (child_tx_nc, _child_rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
+    let (child_tx_gc, _child_rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut child = Graph::new(get_id(), child_tx_nc, child_tx_gc, true).unwrap();
+
+    let child_node_id = child
+        .add_node(
+            get_id(),
+            AddNodeType::Operation(Operation::OpNumberInputDecimal),
+            glam::Vec2::ZERO,
+            true,
+            None,
+        )
+        .await;
+
+    {
+        let node = child.nodes.get_mut(&child_node_id).unwrap();
+        node.inputs[0].is_exposed = true;
+        node.outputs[0].is_exposed = true;
+    }
+
+    let tmp_path = std::env::temp_dir()
+        .join(format!("mangler_subgraph_detached_test_{}.mangle.json", get_id()));
+    let save_data = GraphSaveData {
+        id: child.id.clone(),
+        name: child.name.clone(),
+        nodes: child.nodes.clone(),
+    };
+    fs::write(&tmp_path, serde_json::to_string(&save_data).unwrap())
+        .expect("failed to write child graph tempfile");
+
+    // Build the parent, attach the child, and drive the exposed input — but do
+    // NOT run the parent. If we ran it, the live output would already hold the
+    // value and get cloned into the snapshot, masking a skipped subgraph.
+    let mut parent = create_test_graph();
+    let subgraph_node_id = parent
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None)
+        .await;
+    parent.set_subgraph_path(subgraph_node_id.clone(), tmp_path.clone());
+    parent.set_input(subgraph_node_id.clone(), 0, Value::Decimal(42.0));
+
+    // Sanity: before any run the surfaced output is still the child default,
+    // so a later 42.0 can only come from actually executing the subgraph.
+    {
+        let parent_node = parent.nodes.get(&subgraph_node_id).unwrap();
+        match &parent_node.outputs[0].value {
+            Value::Decimal(v) => assert!(
+                (*v - 42.0).abs() > 1e-6,
+                "precondition: output should not already be 42.0"
+            ),
+            other => panic!("expected Decimal output, got {:?}", other),
+        }
+    }
+
+    // Snapshot and run only the snapshot.
+    let mut snapshot = parent.detached();
+    snapshot.run().await;
+
+    let snap_node = snapshot
+        .nodes
+        .get(&subgraph_node_id)
+        .expect("subgraph node should survive detach");
+    match &snap_node.outputs[0].value {
+        Value::Decimal(v) => assert!(
+            (*v - 42.0).abs() < 1e-6,
+            "detached snapshot must execute the subgraph; expected 42.0, got {}",
+            v
+        ),
+        other => panic!("expected Decimal output from detached subgraph, got {:?}", other),
+    }
+
+    let _ = fs::remove_file(&tmp_path);
+}
+
 // Graph::load restores Input.default_value, Output.value, and Output.default_value
 // from each Operation node's create_inputs()/create_outputs(), since those fields
 // are #[serde(skip)] and otherwise come back as Value::Bool(false).

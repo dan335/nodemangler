@@ -1,27 +1,29 @@
-//! Circle shape / gradient image generator.
+//! Circle shape image generator.
 //!
-//! Generates a vertical color gradient between two colors, blended in a
-//! configurable color space. Despite the name "circle", this currently produces
-//! a vertical gradient strip and outputs width/height alongside the image.
-//! Outputs a 4-channel (RGBA) FloatImage.
+//! Generates an anti-aliased filled circle as a grayscale SDF image with a
+//! configurable radius and center. Unlike the `ellipse` node (which scales its
+//! X and Y axes independently in normalized space), the circle is measured in
+//! pixel space, so it stays perfectly round on non-square canvases. Outputs a
+//! single-channel FloatImage mask with values in [0.0, 1.0].
 
-use std::sync::Arc;
-use crate::color::Color;
-use crate::color::color_spaces::ColorSpace;
 use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Instant;
 
-/// Operation that generates a vertical color gradient between two colors.
-///
-/// Supports blending in multiple color spaces (sRGB, Linear RGB, HSL, HSV,
-/// Lab, LCH, XYZ, YUV, CMYK) for perceptually different interpolation results.
+/// Hermite interpolation between two edges, producing a smooth transition.
+fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Operation that generates a filled circle as a grayscale SDF image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageShapesCircle {}
 
@@ -30,151 +32,92 @@ impl OpImageShapesCircle {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "circle".to_string(),
-            description: "Creates a circle.".to_string(),
-            help: "Despite the name, this node currently emits a vertical two-color gradient strip rather than a disc; use the ellipse node for a true circular shape. It fills a 4-channel RGBA FloatImage by blending the color input (top) toward the background (bottom) in the chosen color space using Lerp.\n\nThe padding input is reserved for future circle-layout work and is not used by the current implementation. Colors are quantised to u8 and then re-floated, so expect ~1/255 precision compared with the gradient node.".to_string(),
+            description: "Generates a filled circle as a grayscale SDF.".to_string(),
+            help: "Rasterises a filled circle into a 1-channel FloatImage by evaluating a signed distance function in pixel space and applying smoothstep anti-aliasing at a one-and-a-half-pixel edge width. Output is 1.0 inside the disc and 0.0 outside.\n\nradius is normalised so that 1.0 spans half of the shorter image dimension, which keeps the shape perfectly round even on non-square canvases (the ellipse node, by contrast, normalises each axis independently). center_x and center_y offset the disc from the middle in units of half the canvas (0 = centred, 1 = the corresponding edge). Handy as an alpha matte or mask for blend nodes.".to_string(),
         }
     }
 
-    /// Creates the default inputs: color, background, width, height, padding, color space, and blend mode.
+    /// Creates the default inputs: width, height, radius, center_x, and center_y.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("color".to_string(), Value::Color(Color::default()), None, None)
-                .with_description("Starting color at the top of the vertical gradient."),
-            Input::new("background".to_string(), Value::Color(Color::from_srgb_u8(0, 0, 0, 0)), None, None)
-                .with_description("Ending color at the bottom of the vertical gradient."),
-            Input::new("width".to_string(), Value::Decimal(512.0), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+            Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
                 .with_description("Width of the generated image in pixels."),
-            Input::new("height".to_string(), Value::Decimal(512.0), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
+            Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
                 .with_description("Height of the generated image in pixels."),
-            Input::new("padding".to_string(), Value::Decimal(5.0), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
-                .with_description("Padding value reserved for circle layout (currently unused)."),
-            Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Lab), None, None)
-                .with_description("Color space used to interpolate between the two colors."),
-            Input::new("blend mode".to_string(), Value::BlendMode(crate::color::blend::BlendMode::Lerp), None, None)
-                .with_description("Blend mode used when mixing the two gradient colors."),
+            Input::new("radius".to_string(), Value::Decimal(0.4), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Circle radius; 1.0 spans half the shorter image dimension."),
+            Input::new("center_x".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Horizontal center offset from the middle, in units of half the canvas width."),
+            Input::new("center_y".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: None, clamp_to_range: false }), None)
+                .with_description("Vertical center offset from the middle, in units of half the canvas height."),
         ]
     }
 
-    /// Creates the default outputs: the gradient image, width, and height.
+    /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None)
-                .with_description("RGBA gradient image blending the two colors from top to bottom."),
-            Output::new("width".to_string(), Value::Integer(1), None)
-                .with_description("Final width of the generated image in pixels."),
-            Output::new("height".to_string(), Value::Integer(1), None)
-                .with_description("Final height of the generated image in pixels."),
+            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+                .with_description("Grayscale mask with the circle filled white on a black background."),
         ]
     }
 
-    /// Generates a vertical color gradient image blended in the selected color space.
+    /// Generates an anti-aliased filled-circle image from the given inputs.
     ///
-    /// The output is a 4-channel (RGBA) FloatImage with values in [0.0, 1.0].
+    /// The output is a 1-channel FloatImage where 1.0 = inside the circle and
+    /// 0.0 = outside, with smooth anti-aliased edges.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs
-        // gather errors
+        let width_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
+        let height_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
+        let radius_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
+        let center_x_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
+        let center_y_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
 
         // return if error
-        if input_errors.len() > 0 { return Err(OperationError { input_errors, node_error: None }); }
+        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         // get values
+        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
+        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(radius) = radius_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(center_x) = center_x_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(center_y) = center_y_converted.unwrap() else { unreachable!() };
+
         // run node
-
-        let Ok(Value::Color(a)) = inputs[0].value.try_convert_to(ValueType::Color) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        let Ok(Value::Color(b)) = inputs[1].value.try_convert_to(ValueType::Color) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-
-        let Ok(Value::Integer(mut width)) = inputs[2].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-        let Ok(Value::Integer(mut height)) = inputs[3].value.try_convert_to(ValueType::Integer) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-
-        let Ok(Value::ColorSpace(color_space)) = inputs[4].value.try_convert_to(ValueType::ColorSpace) else { return Err(OperationError { message: "Unable to convert to integer.".to_string() })};
-
         width = width.max(1);
         height = height.max(1);
 
-        // 4-channel RGBA output
-        let mut image = FloatImage::new(width as u32, height as u32, 4);
+        // Work in pixel space so the circle stays round regardless of aspect.
+        let min_dim = width.min(height) as f64;
+        let radius_px = (radius as f64).max(0.0) * min_dim * 0.5;
+        let center_px_x = width as f64 * 0.5 * (1.0 + center_x as f64);
+        let center_px_y = height as f64 * 0.5 * (1.0 + center_y as f64);
+        // anti-aliasing half-width, in pixels
+        let aa = 1.5;
 
-        let blend_mode = crate::color::blend::BlendMode::Lerp;
+        // 1-channel grayscale mask
+        let mut image = FloatImage::new(width as u32, height as u32, 1);
 
-        /// Helper to write a blended color row into the FloatImage.
-        fn write_row(image: &mut FloatImage, y: i32, width: i32, blended: (u8, u8, u8, u8)) {
-            // Convert u8 sRGB to f32 [0.0, 1.0]
-            let rf = blended.0 as f32 / 255.0;
-            let gf = blended.1 as f32 / 255.0;
-            let bf = blended.2 as f32 / 255.0;
-            let af = blended.3 as f32 / 255.0;
+        for y in 0..height {
             for x in 0..width {
-                image.put_pixel(x as u32, y as u32, &[rf, gf, bf, af]);
+                // Sample at the pixel center.
+                let dx = (x as f64 + 0.5) - center_px_x;
+                let dy = (y as f64 + 0.5) - center_px_y;
+                // Signed distance to the circle edge (negative inside).
+                let dist = (dx * dx + dy * dy).sqrt() - radius_px;
+                // smoothstep for anti-aliased edge, result in [0.0, 1.0]
+                let alpha = 1.0 - smoothstep(-aa, aa, dist);
+                image.put_pixel(x as u32, y as u32, &[alpha as f32]);
             }
         }
 
-        // Blend the two colors row-by-row using the selected color space
-        match color_space {
-            ColorSpace::Srgb => {
-                for y in 0..height {
-                    let blended = Color::blend_srgb(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    write_row(&mut image, y, width, blended);
-                }
-            },
-            ColorSpace::RgbLinear => {
-                for y in 0..height {
-                    let blended = Color::blend_linear(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    write_row(&mut image, y, width, blended);
-                }
-            },
-            ColorSpace::Hsl => {
-                for y in 0..height {
-                    let blended = Color::blend_hsl(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    write_row(&mut image, y, width, blended);
-                }
-            },
-            ColorSpace::Hsv => {
-                for y in 0..height {
-                    let blended = Color::blend_hsv(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    write_row(&mut image, y, width, blended);
-                }
-            },
-            ColorSpace::Lch => {
-                for y in 0..height {
-                    let blended = Color::blend_lch(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    write_row(&mut image, y, width, blended);
-                }
-            },
-            ColorSpace::Xyz => {
-                for y in 0..height {
-                    let blended = Color::blend_xyz(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    write_row(&mut image, y, width, blended);
-                }
-            },
-            ColorSpace::Lab => {
-                for y in 0..height {
-                    let blended = Color::blend_lab(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    write_row(&mut image, y, width, blended);
-                }
-            },
-            ColorSpace::Yuv => {
-                for y in 0..height {
-                    let blended = Color::blend_yuv(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    write_row(&mut image, y, width, blended);
-                }
-            },
-            ColorSpace::Cmyk => {
-                for y in 0..height {
-                    let blended = Color::blend_cmyk(a, b, &blend_mode, y as f32 / height as f32).to_srgb_u8();
-                    write_row(&mut image, y, width, blended);
-                }
-            },
-        }
-
-        Ok(OperationResponse { 
+        Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Image { data: Arc::new(image), change_id: get_id() } },
-                OutputResponse { value: Value::Integer(width as i32) },
-                OutputResponse { value: Value::Integer(height as i32) },
             ],
         })
     }
