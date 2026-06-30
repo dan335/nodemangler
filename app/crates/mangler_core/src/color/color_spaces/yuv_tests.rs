@@ -42,3 +42,21 @@ fn test_yuv_roundtrip_multiple() {
         assert_color_approx(&color, &back, EPSILON);
     }
 }
+
+/// Absolute YUV values from the BT.601 definition:
+/// Y = 0.299R + 0.587G + 0.114B, U = 0.492(B-Y), V = 0.877(R-Y).
+#[test]
+fn test_yuv_absolute_values() {
+    let cases = [
+        ((1.0, 0.0, 0.0), (0.299, -0.147108, 0.614777)), // red
+        ((0.0, 1.0, 0.0), (0.587, -0.288804, -0.514799)), // green
+        ((0.0, 0.0, 1.0), (0.114, 0.435912, -0.099978)), // blue
+        ((1.0, 1.0, 1.0), (1.0, 0.0, 0.0)),              // white -> neutral chroma
+    ];
+    for ((r, g, b), (ey, eu, ev)) in cases {
+        let (y, u, v, _) = Color::from_srgb_float(r, g, b, 1.0).to_yuv();
+        assert!((y - ey).abs() < 1e-4, "Y {} vs {}", y, ey);
+        assert!((u - eu).abs() < 1e-4, "U {} vs {}", u, eu);
+        assert!((v - ev).abs() < 1e-4, "V {} vs {}", v, ev);
+    }
+}

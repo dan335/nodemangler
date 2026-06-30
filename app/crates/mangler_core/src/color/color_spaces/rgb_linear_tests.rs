@@ -70,3 +70,28 @@ fn test_srgb_roundtrip_multiple_colors() {
         assert_color_approx(&color, &back, EPSILON);
     }
 }
+
+/// Absolute reference points for the sRGB transfer function (IEC 61966-2-1),
+/// covering both the linear segment near zero and the power-curve region.
+#[test]
+fn test_transfer_function_absolute_values() {
+    // sRGB -> linear.
+    assert!((nonlinear_to_linear_rgb(1.0) - 1.0).abs() < 1e-6);
+    assert!(
+        (nonlinear_to_linear_rgb(0.5) - 0.214041).abs() < 1e-4,
+        "{}",
+        nonlinear_to_linear_rgb(0.5)
+    );
+    // Linear segment below the 0.04045 knee: n / 12.92.
+    assert!((nonlinear_to_linear_rgb(0.04) - 0.04 / 12.92).abs() < 1e-7);
+
+    // linear -> sRGB (inverse).
+    assert!((linear_to_nonlinear_srgb(1.0) - 1.0).abs() < 1e-6);
+    assert!(
+        (linear_to_nonlinear_srgb(0.214041) - 0.5).abs() < 1e-4,
+        "{}",
+        linear_to_nonlinear_srgb(0.214041)
+    );
+    // Linear segment below the 0.0031308 knee: n * 12.92.
+    assert!((linear_to_nonlinear_srgb(0.003) - 0.003 * 12.92).abs() < 1e-7);
+}

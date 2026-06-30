@@ -60,3 +60,25 @@ fn test_cmyk_roundtrip_multiple() {
         assert_color_approx(&color, &back, EPSILON);
     }
 }
+
+/// Absolute (c, m, y, k) for known colors.
+#[test]
+fn test_cmyk_absolute_values() {
+    let cases = [
+        ((0.0, 1.0, 0.0), (1.0, 0.0, 1.0, 0.0)),               // green
+        ((0.0, 0.0, 1.0), (1.0, 1.0, 0.0, 0.0)),               // blue
+        ((0.5, 0.5, 0.5), (0.0, 0.0, 0.0, 0.5)),               // gray -> pure K
+        ((0.75, 0.5, 0.25), (0.0, 1.0 / 3.0, 2.0 / 3.0, 0.25)), // mix
+    ];
+    for ((r, g, b), (ec, em, ey, ek)) in cases {
+        let (c, m, y, k, _) = Color::from_srgb_float(r, g, b, 1.0).to_cmyk();
+        assert!((c - ec).abs() < 1e-4, "c {} vs {}", c, ec);
+        assert!((m - em).abs() < 1e-4, "m {} vs {}", m, em);
+        assert!((y - ey).abs() < 1e-4, "y {} vs {}", y, ey);
+        assert!((k - ek).abs() < 1e-4, "k {} vs {}", k, ek);
+    }
+
+    // from_cmyk: pure cyan ink -> (0, 1, 1).
+    let cyan = Color::from_cmyk(1.0, 0.0, 0.0, 0.0, 1.0);
+    assert!(cyan.r.abs() < 1e-6 && (cyan.g - 1.0).abs() < 1e-6 && (cyan.b - 1.0).abs() < 1e-6);
+}

@@ -15,6 +15,11 @@ pub mod xyz;
 pub mod lab;
 pub mod yuv;
 pub mod cmyk;
+pub mod oklab;
+pub mod oklch;
+pub mod hwb;
+pub mod ycbcr;
+pub mod xyy;
 
 /// Enumerates all supported color spaces for conversion and blending.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

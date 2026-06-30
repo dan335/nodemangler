@@ -293,6 +293,11 @@ operations! {
     OpColorInputRgb(crate::operations::colors::inputs::srgb::OpColorInputRgba),
     OpColorInputXyz(crate::operations::colors::inputs::xyz::OpColorInputXyz),
     OpColorInputYuv(crate::operations::colors::inputs::yuv::OpColorInputYuv),
+    OpColorInputOklab(crate::operations::colors::inputs::oklab::OpColorInputOklab),
+    OpColorInputOklch(crate::operations::colors::inputs::oklch::OpColorInputOklch),
+    OpColorInputHwb(crate::operations::colors::inputs::hwb::OpColorInputHwb),
+    OpColorInputYcbcr(crate::operations::colors::inputs::ycbcr::OpColorInputYcbcr),
+    OpColorInputXyy(crate::operations::colors::inputs::xyy::OpColorInputXyy),
 
     OpColorOutputCmyk(crate::operations::colors::outputs::to_cmyk::OpColorOutputCmyk),
     OpColorOutputHsl(crate::operations::colors::outputs::to_hsl::OpColorOutputHsl),
@@ -303,6 +308,11 @@ operations! {
     OpColorOutputRgb(crate::operations::colors::outputs::to_srgb::OpColorOutputRgb),
     OpColorOutputXyz(crate::operations::colors::outputs::to_xyz::OpColorOutputXyz),
     OpColorOutputYuv(crate::operations::colors::outputs::to_yuv::OpColorOutputYuv),
+    OpColorOutputOklab(crate::operations::colors::outputs::to_oklab::OpColorOutputOklab),
+    OpColorOutputOklch(crate::operations::colors::outputs::to_oklch::OpColorOutputOklch),
+    OpColorOutputHwb(crate::operations::colors::outputs::to_hwb::OpColorOutputHwb),
+    OpColorOutputYcbcr(crate::operations::colors::outputs::to_ycbcr::OpColorOutputYcbcr),
+    OpColorOutputXyy(crate::operations::colors::outputs::to_xyy::OpColorOutputXyy),
 
     OpColorBlendMode(crate::operations::colors::blend::blend_mode::OpColorBlendMode),
 
@@ -680,6 +690,11 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpColorInputRgbLinear },
                 OperationListItem::Operation { operation: Operation::OpColorInputXyz },
                 OperationListItem::Operation { operation: Operation::OpColorInputYuv },
+                OperationListItem::Operation { operation: Operation::OpColorInputOklab },
+                OperationListItem::Operation { operation: Operation::OpColorInputOklch },
+                OperationListItem::Operation { operation: Operation::OpColorInputHwb },
+                OperationListItem::Operation { operation: Operation::OpColorInputYcbcr },
+                OperationListItem::Operation { operation: Operation::OpColorInputXyy },
             ]},
             OperationListItem::Category { name: "output".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpColorOutputCmyk },
@@ -691,6 +706,11 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpColorOutputRgbLinear },
                 OperationListItem::Operation { operation: Operation::OpColorOutputXyz },
                 OperationListItem::Operation { operation: Operation::OpColorOutputYuv },
+                OperationListItem::Operation { operation: Operation::OpColorOutputOklab },
+                OperationListItem::Operation { operation: Operation::OpColorOutputOklch },
+                OperationListItem::Operation { operation: Operation::OpColorOutputHwb },
+                OperationListItem::Operation { operation: Operation::OpColorOutputYcbcr },
+                OperationListItem::Operation { operation: Operation::OpColorOutputXyy },
             ]},
             OperationListItem::Category { name: "analysis".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpColorSampleMostCommonColors },
@@ -935,6 +955,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpTextLength },
                 OperationListItem::Operation { operation: Operation::OpTextToUppercase },
                 OperationListItem::Operation { operation: Operation::OpTextToLowercase },
+                OperationListItem::Operation { operation: Operation::OpTextToString },
             ]},
         ]},
         OperationListItem::Category { name: "videos".to_string(), operation_list_items: vec![

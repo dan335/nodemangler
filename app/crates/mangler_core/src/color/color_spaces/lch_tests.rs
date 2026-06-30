@@ -31,3 +31,37 @@ fn test_lch_roundtrip_multiple() {
         assert_color_approx(&color, &back, EPSILON);
     }
 }
+
+/// Absolute LCH values. Note this module uses a D65 reference white (unlike the
+/// D50 `lab` module), and L/C are normalized by 100. White is achromatic with
+/// L=1; the primaries sit at their known LCH hue angles.
+#[test]
+fn test_lch_absolute_values() {
+    let white = Color::from_srgb_float(1.0, 1.0, 1.0, 1.0).to_lch();
+    assert!(
+        (white.0 - 1.0).abs() < 1e-3 && white.1.abs() < 1e-3,
+        "white -> {:?}",
+        white
+    );
+
+    // (L/100, C/100, hue-degrees) for the sRGB primaries (D65).
+    let cases = [
+        ((1.0, 0.0, 0.0), 0.5324, 1.0455, 40.0),
+        ((0.0, 1.0, 0.0), 0.8773, 1.1978, 136.0),
+        ((0.0, 0.0, 1.0), 0.3230, 1.3381, 306.3),
+    ];
+    for ((r, g, b), el, ec, eh) in cases {
+        let (l, c, h, _) = Color::from_srgb_float(r, g, b, 1.0).to_lch();
+        assert!((l - el).abs() < 0.01, "L {} vs {}", l, el);
+        assert!((c - ec).abs() < 0.01, "C {} vs {}", c, ec);
+        assert!((h - eh).abs() < 0.5, "H {} vs {}", h, eh);
+    }
+
+    // from_lch of a neutral (L=1, C=0) yields white.
+    let w = Color::from_lch(1.0, 0.0, 0.0, 1.0);
+    assert!(
+        (w.r - 1.0).abs() < 1e-3 && (w.g - 1.0).abs() < 1e-3 && (w.b - 1.0).abs() < 1e-3,
+        "from_lch white -> {:?}",
+        w
+    );
+}

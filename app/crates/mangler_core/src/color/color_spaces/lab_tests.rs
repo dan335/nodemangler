@@ -40,3 +40,41 @@ fn test_lab_roundtrip_multiple() {
         assert_color_approx(&color, &back, EPSILON);
     }
 }
+
+/// Absolute CIELab (D50) values for sRGB colors, checked against published
+/// references rather than just round-trip consistency. A transposed
+/// chromatic-adaptation matrix (the bug this guards against) passes round-trips
+/// but fails these.
+#[test]
+fn test_lab_absolute_values() {
+    // sRGB white must be the D50 reference white: exactly (100, 0, 0).
+    let white = Color::from_srgb_float(1.0, 1.0, 1.0, 1.0).to_lab();
+    assert!(
+        (white.0 - 100.0).abs() < 0.05 && white.1.abs() < 0.05 && white.2.abs() < 0.05,
+        "white -> {:?}",
+        white
+    );
+
+    // (L, a, b) references for the sRGB primaries (CIELab, D50, 2deg).
+    let cases = [
+        ((1.0, 0.0, 0.0), (54.29, 80.81, 69.89)),
+        ((0.0, 1.0, 0.0), (87.82, -79.27, 80.99)),
+        ((0.0, 0.0, 1.0), (29.57, 68.29, -112.03)),
+    ];
+    for ((r, g, b), (el, ea, eb)) in cases {
+        let (l, a, bb, _) = Color::from_srgb_float(r, g, b, 1.0).to_lab();
+        assert!((l - el).abs() < 0.1, "L {} vs {}", l, el);
+        assert!((a - ea).abs() < 0.1, "a {} vs {}", a, ea);
+        assert!((bb - eb).abs() < 0.1, "b {} vs {}", bb, eb);
+    }
+
+    // Any neutral gray must be achromatic (a = b = 0). The transposed-matrix
+    // bug produced nonzero a/b here.
+    let gray = Color::from_srgb_float(0.5, 0.5, 0.5, 1.0).to_lab();
+    assert!(
+        gray.1.abs() < 0.05 && gray.2.abs() < 0.05,
+        "gray a/b -> ({}, {})",
+        gray.1,
+        gray.2
+    );
+}

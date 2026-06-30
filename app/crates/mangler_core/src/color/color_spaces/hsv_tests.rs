@@ -57,3 +57,24 @@ fn test_hsv_roundtrip_multiple() {
         assert_color_approx(&color, &back, EPSILON);
     }
 }
+
+/// Absolute (hue, saturation, value) for known colors.
+#[test]
+fn test_hsv_absolute_values() {
+    let cases = [
+        ((0.0, 1.0, 0.0), (120.0, 1.0, 1.0)),            // green
+        ((0.0, 0.0, 1.0), (240.0, 1.0, 1.0)),            // blue
+        ((0.5, 0.5, 0.5), (0.0, 0.0, 0.5)),              // gray (achromatic)
+        ((0.75, 0.5, 0.25), (30.0, 2.0 / 3.0, 0.75)),    // mix
+    ];
+    for ((r, g, b), (eh, es, ev)) in cases {
+        let (h, s, v, _) = Color::from_srgb_float(r, g, b, 1.0).to_hsv();
+        assert!((h - eh).abs() < 1e-3, "hue {} vs {}", h, eh);
+        assert!((s - es).abs() < 1e-3, "sat {} vs {}", s, es);
+        assert!((v - ev).abs() < 1e-3, "val {} vs {}", v, ev);
+    }
+
+    // from_hsv reconstructs the primaries.
+    let blue = Color::from_hsv(240.0, 1.0, 1.0, 1.0);
+    assert!(blue.r.abs() < 1e-4 && blue.g.abs() < 1e-4 && (blue.b - 1.0).abs() < 1e-4);
+}

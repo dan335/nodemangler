@@ -105,7 +105,7 @@ Video ops live behind the `video` cargo feature on `mangler_core`. `mangler_gui`
 ### text/
 - `inputs/` — text
 - `manipulation/` — append, length, to_uppercase, to_lowercase, to_string
-- `text_from_clipboard` — paste text from the clipboard
+- (`text/text_from_clipboard.rs` exists but is an unimplemented stub — not a registered node)
 
 ### colors/
 - `inputs/` — srgb, rgb_linear, hsl, hsv, lab, lch, cmyk, xyz, yuv (construct a color from each of the 9 color spaces)
