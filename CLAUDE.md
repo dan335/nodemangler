@@ -141,3 +141,33 @@ Video ops live behind the `video` cargo feature on `mangler_core`. `mangler_gui`
 ## Known Issues
 
 None currently.
+
+
+---
+
+## Implementation Pattern (for all new operations)
+
+Every new operation follows the established pattern:
+
+1. Create struct in appropriate directory with `#[derive(Debug, Clone, Serialize, Deserialize)]`
+2. Implement `settings()` → `NodeSettings { name, description }`
+3. Implement `create_inputs()` → `Vec<Input>` with `InputSettings` (Slider, DragValue, etc.)
+4. Implement `create_outputs()` → `Vec<Output>`
+5. Implement `async fn run(inputs)` using `convert_input()` + the 5-step pattern
+6. Register in `operations!` macro in `app/crates/mangler_core/src/operations/mod.rs`
+7. Add to `operation_list()` in appropriate category
+8. Add `pub mod` in parent `mod.rs` files
+
+**Key files to modify for every operation:**
+- `app/crates/mangler_core/src/operations/mod.rs` — macro registration + menu
+- Parent category `mod.rs` — module declaration
+
+---
+
+## Verification
+
+After each phase (from `app/` directory):
+- `cargo build` — must compile cleanly
+- `cargo test -p mangler_core` — all existing tests pass
+- `cargo run -p mangler_gui` — new nodes appear in menu, can be placed and connected
+- Manual test: create a small graph exercising the new nodes, verify output images are correct

@@ -1,126 +1,141 @@
 # NodeMangler
 
-A node-based visual programming tool for image and color manipulation, built in Rust.
+A node-based tool for image, video and color manipulation.  Comparable to
+Substance Designer, Blender's compositor, or TouchDesigner.  Written in Rust.
 
-NodeMangler lets you construct processing pipelines by connecting nodes in a visual graph editor. Each node performs a single operation — load an image, adjust contrast, convert color spaces, generate noise — and data flows through connections between them. The result is a non-destructive, composable workflow for image and color work.
+I wrote the framework for this project back in 2023 but lost interest.  Picked it up again in 2026 with the help of Claude.
 
-## Repository Structure
+Includes a desktop GUI and headless CLI.  Create graphs in the GUI, save them as JSON, then run them from the CLI or vice versa.  CLI is intended to be easy for LLMs to use.
 
-The repository is organized as a monorepo:
+## Features
+
+- Hundreds of operations across numbers, colors, images, logic, text, and video.
+- Color spaces with lossless conversion between them: sRGB, Linear RGB, HSL, HSV,
+  HWB, Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YUV, YCbCr — plus color analysis nodes.
+- Procedural generation: noise types, patterns, shapes, and PBR
+  (normal/height/AO/curvature) nodes.
+- Images are processed as floating-point internally (1–4 channel `f32`) and only
+  converted at I/O.
+- Optional video support (behind the `video` feature): load clips, extract/retime
+  frames, encode a graph to a video file.
+
+## Repository structure
+
+This is a monorepo:
 
 - `app/` — Rust application (Cargo workspace)
 - `website/` — Website (future)
 
-### App Crates
+### Crates
 
 | Crate | Path | Purpose |
 |-------|------|---------|
-| **mangler_core** | `app/crates/mangler_core/` | Core library — value system, node graph engine, operations, color spaces |
-| **mangler_gui** | `app/crates/mangler_gui/` | Desktop GUI application built with egui/eframe |
-| **mangler_cli** | `app/crates/mangler_cli/` | Headless CLI for running graphs without the GUI |
+| **mangler_core** | `app/crates/mangler_core/` | The engine — value system, node graph, operation library, color spaces, video pipeline |
+| **mangler_gui** | `app/crates/mangler_gui/` | Desktop GUI app built with egui/eframe |
+| **mangler_cli** | `app/crates/mangler_cli/` | Headless CLI for building and running graphs |
 
-See each crate's README for details:
-- [mangler_core README](app/crates/mangler_core/README.md) — the engine and operation library
+Each crate has its own README with the full details:
+
+- [mangler_core README](app/crates/mangler_core/README.md) — engine internals and the complete operation reference
 - [mangler_gui README](app/crates/mangler_gui/README.md) — the desktop application
-- [mangler_cli README](app/crates/mangler_cli/README.md) — the headless command-line interface
+- [mangler_cli README](app/crates/mangler_cli/README.md) — the command-line interface
 
 ## Requirements
 
 - **Rust stable** toolchain (pinned in `app/rust-toolchain.toml`)
+- *(Optional)* FFmpeg development libraries to build with video support — see
+  [video-setup.md](app/crates/mangler_core/docs/video-setup.md)
 
-## Build & Run
+## Build & run
 
 ```bash
 cd app
 
-# Build everything
-cargo build
-
-# Run the GUI application
-cargo run -p mangler_gui
-
-# Run a graph headless from the CLI
-cargo run -p mangler_cli
-
-# Run tests
-cargo test
+cargo build                 # build everything
+cargo run -p mangler_gui    # launch the desktop app
+cargo run -p mangler_cli    # run graphs headless (see the CLI README)
+cargo test                  # run the test suite
 ```
 
-## How It Works
+## How it works
 
-1. **Values** flow between nodes. The type system includes: Bool, Integer, Decimal, Text, Color, Image, Path, FilterType, ImageType, ColorFormat, ColorSpace, BlendMode, NoiseWorleyDistanceFunction, TextHAlign, TextVAlign, VideoContainer, VideoCodec, Video, and Trigger. Values auto-convert where possible (e.g. Integer to Decimal, Bool to Color). Images are stored internally as `FloatImage` — 1–4 channel `f32` data — and only converted at I/O boundaries. A `Video` value is a lightweight handle (path + cached metadata) produced by the loader node and consumed by extract-frame ops; decoded frames are cached in a shared per-file ring buffer.
+1. **Values flow between nodes.** The type system covers Bool, Integer, Decimal, Text,
+   Color, Image, Path, Video, Trigger, and a set of enum types (FilterType, ImageType,
+   ColorFormat, ColorSpace, BlendMode, and more). Values auto-convert where it makes
+   sense (Integer → Decimal, Bool → Color, …). Images are stored internally as
+   `FloatImage` — 1–4 channel `f32` data — and only converted at I/O boundaries, so
+   precision is preserved through the whole pipeline. A `Video` value is a lightweight
+   handle (path + cached metadata); frames are decoded lazily and cached.
 
-2. **Nodes** are created from operations. Each operation defines its inputs, outputs, and processing logic. Operations are registered via the `operations!` macro which generates the `Operation` enum and dispatch code.
+2. **Nodes are instances of operations.** Each operation declares its inputs, outputs,
+   and async processing logic. Operations are registered through the `operations!` macro,
+   which generates the `Operation` enum and all dispatch code.
 
-3. **The graph engine** runs asynchronously on a tokio runtime. When an input changes, the engine determines which nodes are dirty and re-executes them. Results flow through connections to downstream nodes.
+3. **The graph engine runs asynchronously** on a tokio runtime. When an input changes,
+   the engine marks the affected nodes dirty and re-executes them in dependency order;
+   results propagate downstream through connections.
 
-4. **The GUI** communicates with the engine through mpsc channels. `ChangeGraphMessage` and `ChangeNodeMessage` go from the UI to the engine; `GraphChangedMessage` and `NodeChangedMessage` come back with results, thumbnails, and status updates.
+4. **The GUI and engine talk over channels.** `ChangeGraphMessage` and
+   `ChangeNodeMessage` go UI → engine; `GraphChangedMessage` and `NodeChangedMessage`
+   come back with outputs, thumbnails, timing, and status.
 
-## Available Operations
+5. **Subgraphs** let a single node contain an entire nested graph, so you can package and
+   reuse whole pipelines.
 
-### Numbers
-- **Input:** Integer, Decimal, Pi, Tau, E
-- **Arithmetic:** Add, Subtract, Multiply, Divide, Increment, Decrement, Max, Min, Clamp, Modulus, Round, Sign, Negate, Reciprocal, Average, Ceil, Floor, Trunc, Frac
-- **Interpolation:** Step, Smoothstep, Lerp, Map Range
-- **Trigonometry:** Sin, Cos, Tan, Asin, Acos, Atan, Atan2, Sinh, Cosh, Tanh
-- **Algebra:** Abs, Sqrt, Cbrt, Nth Root, Pow, Factorial, GCD, LCM
-- **Logarithmic:** Log, Ln, Exp, Log2, Log10
-- **Random:** Random Integer, Random Decimal
-- **Cast:** To Integer, To Decimal
-- **Bitwise:** And, Or, Xor, Not, Left Shift, Right Shift
+## Operations
 
-### Colors
-- **Input:** from 14 color spaces — sRGB, Linear RGB, HSL, HSV, HWB, Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YUV (BT.601), YCbCr (BT.709)
-- **Output:** decompose to any of those same 14 color spaces
-- **Generation:** From Hex, To Hex, Random Color, To Color
-- **Manipulation:** Invert, Grayscale, Adjust HSV, Clamp, Set Alpha, Blend Mode (17 modes: Over, Lerp, Multiply, Screen, Overlay, SoftLight, HardLight, ColorDodge, ColorBurn, Darken, Lighten, Difference, Exclusion, LinearBurn, LinearDodge, Divide, Subtract)
-- **Analysis:** Most Common Colors (sampled from image), Distance, Luminance, Contrast Ratio, Color Temperature, Dominant Hue, Harmony Score, Mix Ratio
-- **Harmony:** Complementary, Triadic, Analogous, Tetradic, Double Split Complementary, Monochromatic
+An overview of the operation library. See the
+[mangler_core README](app/crates/mangler_core/README.md) for the full list.
 
-### Images
-- **Input:** File, URL, Clipboard, Solid Color, Gradient, Text
-- **Output:** File, Clipboard
-- **Combine:** Blit, Blend (17 blend modes), Compare
-- **Transform:** Crop, Resize, Resize Exact, Resize Fill, Flip H/V, Rotate 90/180/270, Rotate Around Center, Warp, Directional Warp, Safe Transform, Make Tile, Mirror, Seam Carve, Polar Coordinates, Swirl, Kaleidoscope, Spherize, Perspective
-- **Adjustments:** Contrast, Grayscale, Invert, Brighten, Saturation, Hue Rotate, HSL, Threshold, Vignette, White Balance, Color Balance, Selective Color, Color to Mask, Replace Color, Frequency Split, Levels, Auto Levels, Curves, Gradient Map, Gradient Dynamic, Color Match, Posterize, Dither, Histogram Scan, Histogram Range, Histogram Select
-- **Blur:** Gaussian Blur, Directional Blur, Radial Blur, Slope Blur, Non-Uniform Blur
-- **Filter:** Edge Detect, Canny, Difference of Gaussians, Emboss, Sharpen, Unsharpen, Highpass, Luminance Highpass, Kuwahara, Anisotropic Kuwahara, Anisotropic Diffusion, Bilateral, Non-Local Means, Symmetric Nearest Neighbor, Toon, Oil Paint, Halftone, Ordered Dither, Floyd–Steinberg, Cross Hatch, ASCII, Median, Guided, Erode, Dilate, Open, Close, Morphological Gradient, Top Hat, Black Hat, Outline, Pixelate, Vector Morphology, Convolution (custom 3×3 kernel), Distance Field
-- **FX:** Drop Shadow, Outer Glow, Inner Glow
-- **Channels:** Split, Merge, Shuffle, Select, Mixer
-- **Shapes:** Rectangle, Ellipse, Circle, Polygon, Star, Line, Cone, Pyramid, Paraboloid
-- **Patterns:** Brick, Hexagonal, Weave, Tile Sampler, Tile Generator, Splatter, Flood Fill, Flood Fill Mapper
-- **PBR:** Normal from Height, Normal to Height, AO from Height, Curvature, Height Blend, Normal Combine, Normal Blend, Normal Invert, Bevel
-- **Noise:** OpenSimplex, SuperSimplex, Perlin, Worley Distance, Worley Value, Billow, Cylinders, Domain Warp FBM, FBM, Heterogeneous Multifractal, Hybrid Multifractal, Ridged Multifractal, Value, Voronoi Crack, Voronoise, Reaction Diffusion, Erosion, Gabor, White Noise, Crystal, Clouds, Plasma, Anisotropic, Dirt, Wave, Blue Noise, Curl Noise, Checkerboard
-- **Cast:** To Image
+- **Numbers** — arithmetic, trigonometry, algebra, logarithms, interpolation, bitwise,
+  random, casts, and constants (π, τ, e).
+- **Colors** — construct from / decompose into all 14 color spaces; hex conversion; HSV
+  adjustment, grayscale, invert, alpha; 17 blend modes; harmony (complementary, triadic,
+  analogous, tetradic, …); and analysis (luminance, contrast ratio, temperature, harmony
+  score, dominant colors sampled from an image).
+- **Images** — the largest category:
+  - *Inputs/outputs:* file, URL, clipboard, solid color, gradient, text
+  - *Transform:* crop, resize, rotate, flip, warp, mirror, make-tile, seam carve, swirl,
+    kaleidoscope, polar, spherize, perspective
+  - *Adjustments:* contrast, levels/curves, saturation, hue, white/color balance,
+    selective color, threshold, posterize, gradient map, histograms, and more
+  - *Blur & filter:* gaussian/directional/radial/slope blur; edge detect, Canny, emboss,
+    sharpen, bilateral, Kuwahara, oil paint, halftone, ASCII, morphology, convolution…
+  - *FX, combine, channels, shapes, patterns, PBR* (normal/height/AO/curvature/bevel)
+  - *Noise:* 28 generators (Perlin, OpenSimplex, FBM family, Worley/Voronoi, Gabor,
+    reaction-diffusion, erosion, curl, plasma, clouds, …)
+- **Logic** — comparisons, boolean ops, and a `select` multiplexer.
+- **Text** — append, length, case conversion, to-string.
+- **Video** *(behind the `video` feature)* — load from file/URL, extract or retime
+  frames, and encode a graph to a video file.
 
-### Logic
-- **Input:** Bool
-- **Comparison:** Equal, Not Equal, Less Than, Less Equal, Greater Than, Greater Equal
-- **Boolean:** And, Or, Not, Xor, Nand, Nor
-- **Flow:** Select (mux — picks between two values based on a bool condition)
+## Video support
 
-### Text
-- **Input:** Text
-- **Manipulation:** Append, Length, To Uppercase, To Lowercase, To String
+Video operations live behind the `video` Cargo feature (enabled by default in
+`mangler_gui` and `mangler_cli`, off by default in `mangler_core`).
 
-### Videos
-- **Input:** Video from File / Video from URL — open a local clip or download a remote one, emitting a `Video` handle plus individual width/height/fps/duration/total_frames/container/codec sockets (the URL loader downloads to a hashed local cache file first, since frames are decoded lazily by path)
-- **Transform:** Extract Frame By Index, Extract Frame By Time — take a `Video` + frame-number/seconds and output the decoded frame as an `Image`; Trim, Speed, Reverse, Loop — metadata-only retimes that produce a new `Video` handle (no re-encode)
-- **Output:** Video to File — renders the connected `image` stream to a video file via the Render button. Containers: MP4, MOV, MKV, WebM, AVI. Codecs: H.264 wired up today; H.265, VP8, VP9, AV1, MPEG-4, ProRes reserved in the compatibility matrix for future wiring.
+> **Building with video.** The feature requires FFmpeg development libraries compiled
+> with `libx264`/`libx265`/`libvpx`/`libaom` and `gpl`. See
+> [video-setup.md](app/crates/mangler_core/docs/video-setup.md) — vcpkg's default
+> `ffmpeg` port omits these and renders fail with a cryptic "Invalid argument" until you
+> reinstall with the GPL feature set.
 
-> **Building with video support.** The `video` feature requires FFmpeg development libraries with `libx264`/`libx265`/`libvpx`/`libaom` compiled in. See `app/crates/mangler_core/docs/video-setup.md` — vcpkg's default `ffmpeg` port omits these and renders will fail with "Invalid argument" until you reinstall with the GPL feature set.
-
-> **Video licensing.** The H.264/H.265 encoders (`libx264`/`libx265`) are GPL, so a binary built with the `video` feature and linked against a GPL FFmpeg is subject to the GPL when **distributed**. Building locally, or distributing without the video feature (or against an LGPL-only FFmpeg), avoids this. The `video` feature is off by default in `mangler_core`. See [video-setup.md](app/crates/mangler_core/docs/video-setup.md#licensing-read-before-distributing-builds) for the full breakdown and attribution.
-
-## Subgraphs
-
-Nodes can contain entire graphs, enabling composition and reuse of processing pipelines.
+> **Licensing.** A binary built with the `video` feature and linked against GPL FFmpeg
+> (`libx264`/`libx265`) is subject to the GPL **when distributed**. Building locally, or
+> distributing without the video feature (or against an LGPL-only FFmpeg), avoids this.
+> See [video-setup.md](app/crates/mangler_core/docs/video-setup.md#licensing-read-before-distributing-builds)
+> for the full breakdown and attribution.
 
 ## License
 
 NodeMangler is split-licensed by crate:
 
-- **`mangler_core`** — the reusable engine — is licensed under **MIT OR Apache-2.0** (at your option).
-- **`mangler_gui`** and **`mangler_cli`** — the distributed applications — are licensed under **GPL-3.0-or-later**, because they link GPL FFmpeg (`libx264`/`libx265`) via the `video` feature.
+- **`mangler_core`** — the reusable engine — is licensed under **MIT OR Apache-2.0**
+  (at your option).
+- **`mangler_gui`** and **`mangler_cli`** — the distributed applications — are licensed
+  under **GPL-3.0-or-later**, because they link GPL FFmpeg (`libx264`/`libx265`) via the
+  `video` feature.
 
-See [LICENSE.md](LICENSE.md) for the rationale and your obligations when distributing builds. Unless you state otherwise, a contribution to a crate is offered under that crate's license.
+See [LICENSE.md](LICENSE.md) for the rationale and your obligations when distributing
+builds. Unless you state otherwise, a contribution to a crate is offered under that
+crate's license.

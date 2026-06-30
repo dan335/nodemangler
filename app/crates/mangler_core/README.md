@@ -1,133 +1,195 @@
-# mangler
+# mangler_core
 
-Core library for NodeMangler. Provides the value type system, node graph engine, operation definitions, and color space conversions.
+The engine behind [NodeMangler](../../../README.md): the value type system, node graph
+engine, operation library, color-space math, async thumbnail service, and (optionally)
+the video decode/encode pipeline.
 
-This crate has no GUI — it is the engine that powers the [nodemangler](../nodemangler/) application, and can be used as a library independently.
+This crate has **no GUI**. It powers both the [mangler_gui](../mangler_gui/) desktop app
+and the [mangler_cli](../mangler_cli/) headless tool, and can be embedded as a library in
+your own program. It is licensed **MIT OR Apache-2.0**.
 
 ## Usage
 
 ```bash
-cargo build -p mangler
-cargo test -p mangler
+cargo build -p mangler_core
+cargo test  -p mangler_core
+
+# with the optional video pipeline (needs FFmpeg dev libs — see docs/video-setup.md)
+cargo build -p mangler_core --features video
 ```
 
 ## Architecture
 
-### Value System (`value.rs`)
+### Value system (`value.rs`)
 
-All data flowing between nodes is represented by the `Value` enum:
+Everything that flows between nodes is a `Value`:
 
 - `Bool`, `Integer`, `Decimal`, `Text` — primitives
-- `Color` — sRGBA float color with conversions to many color spaces
-- `Image { data: Arc<FloatImage>, change_id: String }` — image data as a 1–4 channel f32 buffer; `change_id` drives stale-thumbnail rejection and cache invalidation
-- `Path` — filesystem path
-- `FilterType` — image resampling filter (Nearest, Triangle, CatmullRom, Gaussian, Lanczos3)
-- `ColorFormat` — pixel format (Rgba8, Rgb16, Rgba32F, etc.)
-- `ImageType` — image file format (PNG, JPEG, WebP, TIFF, OpenEXR, etc.)
-- `ColorSpace`, `BlendMode`, `Trigger`, `NoiseWorleyDistanceFunction`, `TextHAlign`, `TextVAlign`
-- `VideoContainer` (Mp4, Mov, Mkv, WebM, Avi), `VideoCodec` (H264, H265, Vp8, Vp9, Av1, Mpeg4, ProRes) — orthogonal; a static compatibility matrix (`VideoContainer::supported_codecs`) encodes which pairs are valid
-- `Video(VideoRef)` — lightweight handle (path + cached `VideoMeta`) produced by the loader op; decoders live in the process-global `VideoDecoderCache`
+- `Color` — an sRGBA float color with conversions to many color spaces (see below)
+- `Image { data: Arc<FloatImage>, change_id: String }` — image data as an `Arc`-shared
+  1–4 channel `f32` buffer; `change_id` drives cache invalidation and stale-thumbnail
+  rejection
+- `Path` — a filesystem path
+- `Trigger` — a fire-once signal
+- Enum-backed types: `FilterType` (Nearest, Triangle, CatmullRom, Gaussian, Lanczos3),
+  `ColorFormat` (Rgba8, Rgb16, Rgba32F, …), `ImageType` (PNG, JPEG, WebP, TIFF, OpenEXR,
+  …), `ColorSpace`, `BlendMode`, `NoiseWorleyDistanceFunction`, `TextHAlign`, `TextVAlign`
+- `VideoContainer` (Mp4, Mov, Mkv, WebM, Avi) and `VideoCodec` (H264, H265, Vp8, Vp9,
+  Av1, Mpeg4, ProRes) — orthogonal enums; a static compatibility matrix
+  (`VideoContainer::supported_codecs`) encodes which pairs are legal
+- `Video(VideoRef)` — a lightweight handle (path + cached `VideoMeta`) produced by the
+  loader op; decoders live in the process-global `VideoDecoderCache`
 
-Values support type conversion where it makes sense (`Value::try_convert_to`). For example, Bool converts to Integer (0/1), Decimal, Text, Color (black/white), and Image.
+Values convert between types where it makes sense via `Value::try_convert_to` — e.g. Bool
+→ Integer (0/1), Decimal, Text, Color (black/white), and Image. Each value can produce a
+`Thumbnail` for the UI and a `fingerprint()` hash for cheap change detection. `Image` and
+`Video` thumbnails are computed asynchronously (see the thumbnail service) so the graph
+run loop never blocks on resize or frame-decode work.
 
-Each value can produce a `Thumbnail` for display in the UI and a `fingerprint()` hash for efficient change detection. `Value::Image` and `Value::Video` thumbnails are computed asynchronously by `ThumbnailService` (see below) so the engine's graph-run loop isn't blocked by resize or frame-decode work.
+> **No backwards compatibility** for saved graphs: field renames, value-type splits, and
+> output-order changes land without migration paths. Old graphs re-wire or re-export.
 
-### Color System (`color/`)
+### Color system (`color/`)
 
-Colors are stored internally as sRGBA floats (`Color { r, g, b, a }`). The color module provides conversions to and from:
+Colors are stored as sRGBA floats (`Color { r, g, b, a }`) and convert to and from
+**14 color spaces**:
 
-- **sRGB** (the storage format)
-- **Linear RGB** (gamma-decoded)
-- **HSL** (Hue, Saturation, Lightness)
-- **HSV** (Hue, Saturation, Value)
-- **Lab** (CIELAB perceptual)
-- **LCH** (Cylindrical Lab)
-- **CMYK** (Cyan, Magenta, Yellow, Key)
-- **XYZ** (CIE 1931)
-- **YUV** (Luma + Chrominance)
+| Space | Notes |
+|-------|-------|
+| **sRGB** | the storage format |
+| **Linear RGB** | gamma-decoded |
+| **HSL** | hue, saturation, lightness |
+| **HSV** | hue, saturation, value |
+| **HWB** | hue, whiteness, blackness |
+| **Lab** | CIELAB perceptual |
+| **LCH** | cylindrical Lab |
+| **Oklab** | perceptual, modern |
+| **Oklch** | cylindrical Oklab |
+| **CMYK** | cyan, magenta, yellow, key |
+| **XYZ** | CIE 1931 |
+| **xyY** | CIE chromaticity + luminance |
+| **YUV** | luma + chrominance (BT.601) |
+| **YCbCr** | luma + chroma (BT.709) |
 
-The `blend` module provides color blending modes.
+Lab and LCH share a unified white point. The `blend` submodule implements the 17 blend
+modes used by the color and image blend ops.
 
-### Graph Engine (`graph.rs`)
+### Graph engine (`graph.rs`)
 
-The `Graph` struct holds a `HashMap<String, Node>` and manages execution:
+The `Graph` struct owns a `HashMap<String, Node>` and drives execution:
 
-- **Adding/removing nodes** and connections
-- **Dirty tracking** — when inputs change, downstream nodes are marked dirty
-- **Async execution** — the graph runs on a tokio task, processing changes from mpsc channels
-- **Topological evaluation** — nodes execute in dependency order
+- **Add/remove** nodes and connections
+- **Dirty tracking** — changing an input marks downstream nodes dirty
+- **Async execution** — the graph runs on a tokio task, draining change messages from
+  mpsc channels
+- **Topological evaluation** — nodes run in dependency order
 - **Serialization** — graphs save/load as JSON via `GraphSaveData`
-- **Subgraph support** — a node can contain an entire nested graph
+- **Subgraphs** — a node can contain an entire nested graph
+
+`Node::run` (`node.rs`) dispatches to the operation and emits `OutputChanged`,
+`ThumbnailReady`, `Busy`, and `Error` messages as it goes.
 
 ### Operations (`operations/`)
 
-Operations define what nodes do. Each operation is a struct that implements:
+An operation defines what a node does. Each is a struct implementing:
 
-- `settings()` — returns `NodeSettings` (name, category, color)
-- `create_inputs()` — defines input connections with names, default values, valid types, and UI widgets
-- `create_outputs()` — defines output connections
-- `run(inputs)` — async function that processes inputs and returns `OperationResponse`
+- `settings()` → `NodeSettings` (name, category, color)
+- `create_inputs()` → input sockets with names, defaults, accepted types, and UI widgets
+- `create_outputs()` → output sockets
+- `async fn run(inputs)` → `OperationResponse`
 
-Operations are registered in the `operations!` macro, which generates the `Operation` enum and all dispatch `match` arms automatically.
-
-Operations are organized into six categories:
+Operations are registered in the `operations!` macro, which generates the `Operation`
+enum and every dispatch `match` arm — including the `is_time_aware` / `apply_render_time`
+hooks the video render loop relies on. The categories:
 
 | Category | Modules |
 |----------|---------|
-| **numbers** | `inputs`, `arithmetic`, `interpolation`, `algebra`, `trigonometry`, `random`, `cast`, `logarithmic`, `bitwise` |
-| **colors** | `inputs` (9 color spaces), `outputs` (9 color spaces), `blend`, `analysis` (`sample_image`), `cast` |
-| **images** | `inputs`, `outputs`, `transform`, `adjustments`, `combine`, `blur`, `filter`, `noise` (14+ types), `channels`, `shapes`, `patterns`, `pbr` |
-| **logic** | `inputs`, `comparison`, `boolean`, `flow` (`select`) |
+| **numbers** | `inputs` (decimal, integer, e, pi, tau), `arithmetic`, `algebra`, `trigonometry`, `interpolation`, `logarithmic`, `bitwise`, `random`, `cast` |
+| **logic** | `inputs` (bool), `comparison`, `boolean`, `flow` (`select` mux) |
 | **text** | `inputs` (text), `manipulation` (append, length, uppercase, lowercase, to_string) |
-| **videos** | `inputs` (`video from file`), `transform` (`extract_frame_by_index`, `extract_frame_by_time`), `outputs` (`video to file`) — feature-gated behind `video`; see `docs/video-setup.md` |
+| **colors** | `inputs`/`outputs` (all 14 color spaces), `generation` (from/to hex, random), `manipulation` (adjust_hsv, clamp, grayscale, invert, set_alpha), `relationship` (harmony), `analysis`, `blend`, `cast`, `sample_image` |
+| **images** | `inputs`, `outputs`, `transform`, `adjustments`, `blur`, `filter`, `fx`, `combine`, `channels`, `shapes`, `patterns`, `pbr`, `noise` (28 generators), `cast` |
+| **videos** | `inputs` (from file/url), `transform` (extract/trim/speed/reverse/loop), `outputs` (to file) — feature-gated behind `video` |
 
-### Async Thumbnail Service (`thumbnail_service.rs`)
+Per-category shared helpers (e.g. `adjustments/common.rs`, `noise/mod.rs` hash/perm
+tables, `erode.rs` separable morphology) keep the individual op files small.
 
-`ThumbnailService` runs on a dedicated tokio task and handles expensive thumbnails off the engine thread:
+Tests live in a sibling `{op}_tests.rs` file linked via
+`#[cfg(test)] #[path = "..."] mod tests;`, which keeps source files short while still
+reaching private functions.
 
-- **Image sources** — resize + to_rgba8 of a `FloatImage` (~15–50ms on large frames)
-- **Video sources** — decode frame 0 via `VideoDecoderCache` then resize
+### Async thumbnail service (`thumbnail_service.rs`)
 
-Requests are coalesced by `(node_id, output_index)` using a monotonic sequence number, so scrubbing through a video doesn't queue hundreds of wasted thumbnail jobs. Stale jobs are dropped both before and after the spawn_blocking compute, and once more at the UI so that late thumbnails for a replaced value never overwrite the correct preview. Scalar/enum thumbnails (text) stay on the inline path.
+`ThumbnailService` runs on a dedicated tokio task and keeps expensive thumbnails off the
+engine thread:
 
-### Video Pipeline (`video/`, feature-gated behind `video`)
+- **Image sources** — resize + `to_rgba8` of a `FloatImage` (~15–50 ms on large frames)
+- **Video sources** — decode frame 0 via `VideoDecoderCache`, then resize
 
-- `VideoDecoderCache` — process-global ring-buffer cache keyed on path. Size 64 frames per clip with a 60-frame seek threshold tuned for scrub-friendly interactive use. Reclaims pixel buffers (`Arc<FloatImage>` → `Vec<f32>`) on ring eviction so successive decodes on the same clip share one allocation.
-- `VideoEncoder` — wraps `video-rs`'s encoder; takes an explicit `(VideoContainer, VideoCodec)` pair, validates the combo against the static matrix, then dispatches to an `EncoderPreset`. H.264 MP4/MOV/MKV are wired up today; other legal matrix pairs return a distinct "not yet implemented" error so encoder coverage can expand independently.
-- Container/codec classification reads FFmpeg's demuxer short-name + codec id via a parallel `ffmpeg::format::input(&path)`; strict — unknown containers/codecs return errors rather than silently degrading.
+Requests are coalesced per `(node_id, output_index)` with a monotonic sequence number, so
+scrubbing a video doesn't queue hundreds of wasted jobs. Stale jobs are dropped before
+and after the `spawn_blocking` compute and again at the UI, so a late thumbnail for a
+replaced value never overwrites the correct preview. Scalar/enum thumbnails stay on the
+inline path.
 
-### Render Task (`render.rs`, feature-gated behind `video`)
+### Video pipeline (`video/`, feature `video`)
 
-The Video Output node's Render button sends `ChangeGraphMessage::StartRender` to the engine, which spawns `render::run_render` on a detached graph snapshot. The render loop discovers every time-aware node (`Operation::is_time_aware`), drives each frame by calling the op's own `apply_render_time` hook, then `graph.run().await`s and pulls the encoded frame from the output node's `image` input. Progress is streamed back to the UI as `GraphChangedMessage::RenderProgress`; success and failure both reset any "starting…" UI state.
+- **`VideoDecoderCache`** — process-global ring-buffer cache keyed on path (64 frames per
+  clip, 60-frame seek threshold tuned for scrub-friendly playback). Reclaims pixel
+  buffers (`Arc<FloatImage>` → `Vec<f32>`) on eviction so repeat decodes share one
+  allocation.
+- **`VideoEncoder`** — wraps `video-rs`'s encoder; takes an explicit
+  `(VideoContainer, VideoCodec)` pair, validates it against the static matrix, then
+  dispatches to an `EncoderPreset`. H.264 MP4/MOV/MKV are wired up today; other legal
+  pairs return a distinct "not yet implemented" error so coverage can grow independently.
+- **Metadata classification** reads FFmpeg's demuxer short-name and codec id via a
+  parallel `ffmpeg::format::input(&path)`; it's strict — unknown containers/codecs error
+  rather than silently degrading.
 
-### Message-Driven Communication (`lib.rs`)
+### Render task (`render.rs`, feature `video`)
 
-The engine uses four message types for communication:
+The Video Output node's Render button sends `ChangeGraphMessage::StartRender`. The engine
+spawns `render::run_render` on a detached graph snapshot, discovers every time-aware node
+(`Operation::is_time_aware`), drives each frame through the op's `apply_render_time` hook,
+`graph.run().await`s, and pulls the encoded frame from the output node's `image` input.
+Progress streams back as `GraphChangedMessage::RenderProgress`; success and failure both
+reset any "starting…" UI state.
 
-- `ChangeGraphMessage` — UI tells engine to add/remove nodes or connections, save path, start a render
-- `ChangeNodeMessage` — UI tells engine to update a node's input value or position
-- `GraphChangedMessage` — engine tells UI a node/connection was added, removed, or loaded; render progress
-- `NodeChangedMessage` — engine tells UI an output value changed (`OutputChanged`), a deferred thumbnail arrived (`ThumbnailReady`), or busy/error/timing state changed
+### Message-driven API (`lib.rs`)
+
+The engine communicates over four message types:
+
+- `ChangeGraphMessage` — UI → engine: add/remove nodes and connections, set save
+  path/name, start a render
+- `ChangeNodeMessage` — UI → engine: set an input value or node position, expose
+  inputs/outputs
+- `GraphChangedMessage` — engine → UI: node/connection added, removed, or loaded; render
+  progress
+- `NodeChangedMessage` — engine → UI: `OutputChanged` (value changed), `ThumbnailReady`
+  (deferred thumbnail), and busy/error/timing state
 
 ## Dependencies
 
-- `image` / `imageproc` — image loading, saving, and processing
+- `image` / `imageproc` — image load/save/processing
 - `tokio` — async runtime for graph execution
-- `serde` / `serde_json` — serialization for save/load
+- `serde` / `serde_json` — save/load serialization
 - `glam` — 2D vector math (node positions)
-- `noise` — procedural noise generation
-- `nanoid` — unique ID generation
+- `noise` — procedural noise primitives
+- `nanoid` — unique IDs
 - `arboard` — clipboard access
-- `reqwest` — HTTP requests (image from URL)
+- `reqwest` — HTTP (image/video from URL)
 - `fastrand` — random number generation
 - `dashmap` — lock-free per-key maps (decoder cache, thumbnail service)
-- `rayon` — data-parallel pixel-loop primitives
+- `rayon` — data-parallel pixel loops
 - `ab_glyph` — text rendering for the `text` image-input node
 
-### Feature-gated (`video` feature)
+### Feature `video`
 
-- `video-rs` — high-level ffmpeg wrapper for decode/encode
-- `ffmpeg-next` — direct ffmpeg bindings for metadata introspection
-- `ndarray` — required by `video-rs` for frame buffers
+- `video-rs` — high-level FFmpeg wrapper for decode/encode
+- `ffmpeg-next` — direct FFmpeg bindings for metadata introspection
+- `ndarray` — frame buffers required by `video-rs`
 
-Enabling the `video` feature requires FFmpeg development libraries built with `libx264`, `libx265`, `libvpx`, `libaom`, and `gpl`. See `docs/video-setup.md` for platform-specific install instructions.
+Enabling `video` requires FFmpeg development libraries built with `libx264`, `libx265`,
+`libvpx`, `libaom`, and `gpl`. See [`docs/video-setup.md`](docs/video-setup.md) for
+platform-specific install instructions and the licensing implications of distributing a
+GPL-linked build.
