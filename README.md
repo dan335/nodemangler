@@ -1,6 +1,6 @@
-# NodeMangler
+# Mangler
 
-A node-based tool for image, video and color manipulation.  Comparable to
+A node-based tool for image and color manipulation.  Comparable to
 Substance Designer, Blender's compositor, or TouchDesigner.  Written in Rust.
 
 ![NodeMangler screenshot](screenshot.jpg)
@@ -11,15 +11,13 @@ Includes a desktop GUI and headless CLI.  Create graphs in the GUI, save them as
 
 ## Features
 
-- Hundreds of operations across numbers, colors, images, logic, text, and video.
+- Hundreds of operations across numbers, colors, images, logic, and text.
 - Color spaces with lossless conversion between them: sRGB, Linear RGB, HSL, HSV,
   HWB, Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YUV, YCbCr — plus color analysis nodes.
 - Procedural generation: noise types, patterns, shapes, and PBR
   (normal/height/AO/curvature) nodes.
 - Images are processed as floating-point internally (1–4 channel `f32`) and only
   converted at I/O.
-- Optional video support (behind the `video` feature): load clips, extract/retime
-  frames, encode a graph to a video file.
 
 ## Repository structure
 
@@ -32,7 +30,7 @@ This is a monorepo:
 
 | Crate | Path | Purpose |
 |-------|------|---------|
-| **mangler_core** | `app/crates/mangler_core/` | The engine — value system, node graph, operation library, color spaces, video pipeline |
+| **mangler_core** | `app/crates/mangler_core/` | The engine — value system, node graph, operation library, color spaces |
 | **mangler_gui** | `app/crates/mangler_gui/` | Desktop GUI app built with egui/eframe |
 | **mangler_cli** | `app/crates/mangler_cli/` | Headless CLI for building and running graphs |
 
@@ -45,8 +43,6 @@ Each crate has its own README with the full details:
 ## Requirements
 
 - **Rust stable** toolchain (pinned in `app/rust-toolchain.toml`)
-- *(Optional)* FFmpeg development libraries to build with video support — see
-  [video-setup.md](app/crates/mangler_core/docs/video-setup.md)
 
 ## Build & run
 
@@ -62,12 +58,11 @@ cargo test                  # run the test suite
 ## How it works
 
 1. **Values flow between nodes.** The type system covers Bool, Integer, Decimal, Text,
-   Color, Image, Path, Video, Trigger, and a set of enum types (FilterType, ImageType,
+   Color, Image, Path, Trigger, and a set of enum types (FilterType, ImageType,
    ColorFormat, ColorSpace, BlendMode, and more). Values auto-convert where it makes
    sense (Integer → Decimal, Bool → Color, …). Images are stored internally as
    `FloatImage` — 1–4 channel `f32` data — and only converted at I/O boundaries, so
-   precision is preserved through the whole pipeline. A `Video` value is a lightweight
-   handle (path + cached metadata); frames are decoded lazily and cached.
+   precision is preserved through the whole pipeline.
 
 2. **Nodes are instances of operations.** Each operation declares its inputs, outputs,
    and async processing logic. Operations are registered through the `operations!` macro,
@@ -108,36 +103,11 @@ An overview of the operation library. See the
     reaction-diffusion, erosion, curl, plasma, clouds, …)
 - **Logic** — comparisons, boolean ops, and a `select` multiplexer.
 - **Text** — append, length, case conversion, to-string.
-- **Video** *(behind the `video` feature)* — load from file/URL, extract or retime
-  frames, and encode a graph to a video file.
-
-## Video support
-
-Video operations live behind the `video` Cargo feature (enabled by default in
-`mangler_gui` and `mangler_cli`, off by default in `mangler_core`).
-
-> **Building with video.** The feature requires FFmpeg development libraries compiled
-> with `libx264`/`libx265`/`libvpx`/`libaom` and `gpl`. See
-> [video-setup.md](app/crates/mangler_core/docs/video-setup.md) — vcpkg's default
-> `ffmpeg` port omits these and renders fail with a cryptic "Invalid argument" until you
-> reinstall with the GPL feature set.
-
-> **Licensing.** A binary built with the `video` feature and linked against GPL FFmpeg
-> (`libx264`/`libx265`) is subject to the GPL **when distributed**. Building locally, or
-> distributing without the video feature (or against an LGPL-only FFmpeg), avoids this.
-> See [video-setup.md](app/crates/mangler_core/docs/video-setup.md#licensing-read-before-distributing-builds)
-> for the full breakdown and attribution.
 
 ## License
 
-NodeMangler is split-licensed by crate:
+Every crate in NodeMangler — `mangler_core`, `mangler_gui`, and `mangler_cli` — is
+licensed under **MIT OR Apache-2.0** (at your option).
 
-- **`mangler_core`** — the reusable engine — is licensed under **MIT OR Apache-2.0**
-  (at your option).
-- **`mangler_gui`** and **`mangler_cli`** — the distributed applications — are licensed
-  under **GPL-3.0-or-later**, because they link GPL FFmpeg (`libx264`/`libx265`) via the
-  `video` feature.
-
-See [LICENSE.md](LICENSE.md) for the rationale and your obligations when distributing
-builds. Unless you state otherwise, a contribution to a crate is offered under that
-crate's license.
+See [LICENSE.md](LICENSE.md) for details. Unless you state otherwise, a contribution is
+offered under the same terms, with no additional conditions.

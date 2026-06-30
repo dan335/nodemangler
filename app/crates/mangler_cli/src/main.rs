@@ -67,7 +67,6 @@ async fn run(cli: Cli) -> Result<(), String> {
         Commands::ExposeOutput { node, output, expose } => commands::cmd_expose_output(path, node, output, expose, json),
         Commands::SetEnabled { node, enabled } => commands::cmd_set_enabled(path, node, enabled, json),
         Commands::Run => commands::cmd_run(path, json).await,
-        Commands::Render { node } => commands::cmd_render(path, node, json).await,
         Commands::ShowOutput { node, output, stats, sample, save } => {
             commands::cmd_show_output(path, node, output, stats, sample, save, json).await
         }

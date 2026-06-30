@@ -1,8 +1,7 @@
 # mangler_core
 
 The engine behind [NodeMangler](../../../README.md): the value type system, node graph
-engine, operation library, color-space math, async thumbnail service, and (optionally)
-the video decode/encode pipeline.
+engine, operation library, color-space math, and async thumbnail service.
 
 This crate has **no GUI**. It powers both the [mangler_gui](../mangler_gui/) desktop app
 and the [mangler_cli](../mangler_cli/) headless tool, and can be embedded as a library in
@@ -13,9 +12,6 @@ your own program. It is licensed **MIT OR Apache-2.0**.
 ```bash
 cargo build -p mangler_core
 cargo test  -p mangler_core
-
-# with the optional video pipeline (needs FFmpeg dev libs — see docs/video-setup.md)
-cargo build -p mangler_core --features video
 ```
 
 ## Architecture
@@ -34,17 +30,12 @@ Everything that flows between nodes is a `Value`:
 - Enum-backed types: `FilterType` (Nearest, Triangle, CatmullRom, Gaussian, Lanczos3),
   `ColorFormat` (Rgba8, Rgb16, Rgba32F, …), `ImageType` (PNG, JPEG, WebP, TIFF, OpenEXR,
   …), `ColorSpace`, `BlendMode`, `NoiseWorleyDistanceFunction`, `TextHAlign`, `TextVAlign`
-- `VideoContainer` (Mp4, Mov, Mkv, WebM, Avi) and `VideoCodec` (H264, H265, Vp8, Vp9,
-  Av1, Mpeg4, ProRes) — orthogonal enums; a static compatibility matrix
-  (`VideoContainer::supported_codecs`) encodes which pairs are legal
-- `Video(VideoRef)` — a lightweight handle (path + cached `VideoMeta`) produced by the
-  loader op; decoders live in the process-global `VideoDecoderCache`
 
 Values convert between types where it makes sense via `Value::try_convert_to` — e.g. Bool
 → Integer (0/1), Decimal, Text, Color (black/white), and Image. Each value can produce a
-`Thumbnail` for the UI and a `fingerprint()` hash for cheap change detection. `Image` and
-`Video` thumbnails are computed asynchronously (see the thumbnail service) so the graph
-run loop never blocks on resize or frame-decode work.
+`Thumbnail` for the UI and a `fingerprint()` hash for cheap change detection. `Image`
+thumbnails are computed asynchronously (see the thumbnail service) so the graph
+run loop never blocks on resize work.
 
 > **No backwards compatibility** for saved graphs: field renames, value-type splits, and
 > output-order changes land without migration paths. Old graphs re-wire or re-export.
@@ -99,8 +90,7 @@ An operation defines what a node does. Each is a struct implementing:
 - `async fn run(inputs)` → `OperationResponse`
 
 Operations are registered in the `operations!` macro, which generates the `Operation`
-enum and every dispatch `match` arm — including the `is_time_aware` / `apply_render_time`
-hooks the video render loop relies on. The categories:
+enum and every dispatch `match` arm. The categories:
 
 | Category | Modules |
 |----------|---------|
@@ -109,7 +99,6 @@ hooks the video render loop relies on. The categories:
 | **text** | `inputs` (text), `manipulation` (append, length, uppercase, lowercase, to_string) |
 | **colors** | `inputs`/`outputs` (all 14 color spaces), `generation` (from/to hex, random), `manipulation` (adjust_hsv, clamp, grayscale, invert, set_alpha), `relationship` (harmony), `analysis`, `blend`, `cast`, `sample_image` |
 | **images** | `inputs`, `outputs`, `transform`, `adjustments`, `blur`, `filter`, `fx`, `combine`, `channels`, `shapes`, `patterns`, `pbr`, `noise` (28 generators), `cast` |
-| **videos** | `inputs` (from file/url), `transform` (extract/trim/speed/reverse/loop), `outputs` (to file) — feature-gated behind `video` |
 
 Per-category shared helpers (e.g. `adjustments/common.rs`, `noise/mod.rs` hash/perm
 tables, `erode.rs` separable morphology) keep the individual op files small.
@@ -124,47 +113,22 @@ reaching private functions.
 engine thread:
 
 - **Image sources** — resize + `to_rgba8` of a `FloatImage` (~15–50 ms on large frames)
-- **Video sources** — decode frame 0 via `VideoDecoderCache`, then resize
 
 Requests are coalesced per `(node_id, output_index)` with a monotonic sequence number, so
-scrubbing a video doesn't queue hundreds of wasted jobs. Stale jobs are dropped before
+a burst of updates doesn't queue hundreds of wasted jobs. Stale jobs are dropped before
 and after the `spawn_blocking` compute and again at the UI, so a late thumbnail for a
 replaced value never overwrites the correct preview. Scalar/enum thumbnails stay on the
 inline path.
-
-### Video pipeline (`video/`, feature `video`)
-
-- **`VideoDecoderCache`** — process-global ring-buffer cache keyed on path (64 frames per
-  clip, 60-frame seek threshold tuned for scrub-friendly playback). Reclaims pixel
-  buffers (`Arc<FloatImage>` → `Vec<f32>`) on eviction so repeat decodes share one
-  allocation.
-- **`VideoEncoder`** — wraps `video-rs`'s encoder; takes an explicit
-  `(VideoContainer, VideoCodec)` pair, validates it against the static matrix, then
-  dispatches to an `EncoderPreset`. H.264 MP4/MOV/MKV are wired up today; other legal
-  pairs return a distinct "not yet implemented" error so coverage can grow independently.
-- **Metadata classification** reads FFmpeg's demuxer short-name and codec id via a
-  parallel `ffmpeg::format::input(&path)`; it's strict — unknown containers/codecs error
-  rather than silently degrading.
-
-### Render task (`render.rs`, feature `video`)
-
-The Video Output node's Render button sends `ChangeGraphMessage::StartRender`. The engine
-spawns `render::run_render` on a detached graph snapshot, discovers every time-aware node
-(`Operation::is_time_aware`), drives each frame through the op's `apply_render_time` hook,
-`graph.run().await`s, and pulls the encoded frame from the output node's `image` input.
-Progress streams back as `GraphChangedMessage::RenderProgress`; success and failure both
-reset any "starting…" UI state.
 
 ### Message-driven API (`lib.rs`)
 
 The engine communicates over four message types:
 
 - `ChangeGraphMessage` — UI → engine: add/remove nodes and connections, set save
-  path/name, start a render
+  path/name
 - `ChangeNodeMessage` — UI → engine: set an input value or node position, expose
   inputs/outputs
-- `GraphChangedMessage` — engine → UI: node/connection added, removed, or loaded; render
-  progress
+- `GraphChangedMessage` — engine → UI: node/connection added, removed, or loaded
 - `NodeChangedMessage` — engine → UI: `OutputChanged` (value changed), `ThumbnailReady`
   (deferred thumbnail), and busy/error/timing state
 
@@ -177,19 +141,8 @@ The engine communicates over four message types:
 - `noise` — procedural noise primitives
 - `nanoid` — unique IDs
 - `arboard` — clipboard access
-- `reqwest` — HTTP (image/video from URL)
+- `reqwest` — HTTP (image from URL)
 - `fastrand` — random number generation
-- `dashmap` — lock-free per-key maps (decoder cache, thumbnail service)
+- `dashmap` — lock-free per-key maps (thumbnail service)
 - `rayon` — data-parallel pixel loops
 - `ab_glyph` — text rendering for the `text` image-input node
-
-### Feature `video`
-
-- `video-rs` — high-level FFmpeg wrapper for decode/encode
-- `ffmpeg-next` — direct FFmpeg bindings for metadata introspection
-- `ndarray` — frame buffers required by `video-rs`
-
-Enabling `video` requires FFmpeg development libraries built with `libx264`, `libx265`,
-`libvpx`, `libaom`, and `gpl`. See [`docs/video-setup.md`](docs/video-setup.md) for
-platform-specific install instructions and the licensing implications of distributing a
-GPL-linked build.

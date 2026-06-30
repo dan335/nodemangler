@@ -721,7 +721,7 @@ impl Graph {
     }
 
     /// Create a self-contained snapshot of this graph for running on a
-    /// separate task (e.g. a video render).
+    /// separate task.
     ///
     /// The snapshot owns a deep copy of all nodes. Its UI senders are cleared
     /// to `None`, so running it emits no `NodeChangedMessage` / `GraphChangedMessage`
@@ -884,16 +884,6 @@ impl Graph {
                                         out_idx,
                                         change_id.clone(),
                                         std::sync::Arc::clone(data),
-                                    );
-                                    None
-                                }
-                                crate::value::Value::Video(video)
-                                    if self.thumbnail_service.is_some() =>
-                                {
-                                    self.thumbnail_service.as_ref().unwrap().request_video(
-                                        node_id.clone(),
-                                        out_idx,
-                                        video.path.clone(),
                                     );
                                     None
                                 }

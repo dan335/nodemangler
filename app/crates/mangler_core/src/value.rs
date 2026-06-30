@@ -80,13 +80,6 @@ pub enum Value {
     TextHAlign(TextHAlign),
     /// Vertical alignment for text rendering.
     TextVAlign(TextVAlign),
-    /// The wrapper file format of a video (MP4, MKV, WebM, ...).
-    VideoContainer(VideoContainer),
-    /// The video stream codec (H.264, VP9, AV1, ...).
-    VideoCodec(VideoCodec),
-    /// A lightweight handle to a video file — carries path + metadata.
-    /// Produced by the `video from file` node; consumed by extract-frame ops.
-    Video(VideoRef),
 }
 
 /// Modes for file/folder picker dialogs.
@@ -147,13 +140,6 @@ impl Value {
             Value::BlendMode(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::TextHAlign(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::TextVAlign(value) => Some(Thumbnail::Text(format!("{:?}", value))),
-            Value::VideoContainer(value) => Some(Thumbnail::Text(format!("{:?}", value))),
-            Value::VideoCodec(value) => Some(Thumbnail::Text(format!("{:?}", value))),
-            // Thumbnail is deferred to the async ThumbnailService, which
-            // resolves the first frame from the decoder cache off-thread.
-            // Returning None here signals the engine's emit sites to
-            // enqueue instead of inlining.
-            Value::Video(_) => None,
         }
     }
 
@@ -186,9 +172,6 @@ impl Value {
             Value::BlendMode(bm) => format!("{:?}", bm).hash(&mut h),
             Value::TextHAlign(v) => format!("{:?}", v).hash(&mut h),
             Value::TextVAlign(v) => format!("{:?}", v).hash(&mut h),
-            Value::VideoContainer(v) => (*v as u8).hash(&mut h),
-            Value::VideoCodec(v) => (*v as u8).hash(&mut h),
-            Value::Video(v) => v.path.hash(&mut h),
         }
         h.finish()
     }
@@ -216,9 +199,6 @@ impl Value {
             Value::BlendMode(_) => ValueType::BlendMode,
             Value::TextHAlign(_) => ValueType::TextHAlign,
             Value::TextVAlign(_) => ValueType::TextVAlign,
-            Value::VideoContainer(_) => ValueType::VideoContainer,
-            Value::VideoCodec(_) => ValueType::VideoCodec,
-            Value::Video(_) => ValueType::Video,
         }
     }
 
@@ -400,18 +380,6 @@ impl Value {
                 ValueType::TextVAlign => Ok(Value::TextVAlign(*a)),
                 _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
             },
-            Value::VideoContainer(a) => match other {
-                ValueType::VideoContainer => Ok(Value::VideoContainer(*a)),
-                _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
-            },
-            Value::VideoCodec(a) => match other {
-                ValueType::VideoCodec => Ok(Value::VideoCodec(*a)),
-                _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
-            },
-            Value::Video(a) => match other {
-                ValueType::Video => Ok(Value::Video(a.clone())),
-                _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
-            },
             Value::Text(a) => match other {
                 ValueType::Text => Ok(Value::Text(a.clone())),
                 ValueType::Path => Ok(Value::Path(PathBuf::from(a))),
@@ -490,12 +458,6 @@ pub enum ValueType {
     TextHAlign,
     /// Vertical text alignment type.
     TextVAlign,
-    /// Video container/wrapper format type (MP4, MKV, WebM, ...).
-    VideoContainer,
-    /// Video stream codec type (H.264, VP9, AV1, ...).
-    VideoCodec,
-    /// A video-file handle ([`VideoRef`] = path + metadata).
-    Video,
 }
 
 impl ValueType {
@@ -541,9 +503,6 @@ impl ValueType {
             ValueType::BlendMode => Value::BlendMode(crate::color::blend::BlendMode::Over),
             ValueType::TextHAlign => Value::TextHAlign(TextHAlign::Center),
             ValueType::TextVAlign => Value::TextVAlign(TextVAlign::Middle),
-            ValueType::VideoContainer => Value::VideoContainer(VideoContainer::Mp4),
-            ValueType::VideoCodec => Value::VideoCodec(VideoCodec::H264),
-            ValueType::Video => Value::Video(VideoRef::default()),
         }
     }
 
@@ -566,9 +525,6 @@ impl ValueType {
             ValueType::BlendMode => "blend mode".to_string(),
             ValueType::TextHAlign => "text h-align".to_string(),
             ValueType::TextVAlign => "text v-align".to_string(),
-            ValueType::VideoContainer => "video container".to_string(),
-            ValueType::VideoCodec => "video codec".to_string(),
-            ValueType::Video => "video".to_string(),
         }
     }
 
@@ -651,9 +607,6 @@ impl ValueType {
             ValueType::BlendMode => vec![ValueType::BlendMode, ValueType::Trigger],
             ValueType::TextHAlign => vec![ValueType::TextHAlign, ValueType::Trigger],
             ValueType::TextVAlign => vec![ValueType::TextVAlign, ValueType::Trigger],
-            ValueType::VideoContainer => vec![ValueType::VideoContainer, ValueType::Trigger],
-            ValueType::VideoCodec => vec![ValueType::VideoCodec, ValueType::Trigger],
-            ValueType::Video => vec![ValueType::Video, ValueType::Trigger],
         }
     }
 
@@ -852,317 +805,6 @@ impl ImageType {
         ];
 
         types
-    }
-}
-
-/// The wrapper file format of a video. Independent of the codec that
-/// compresses the actual stream — a single container can carry many different
-/// codecs (`Mkv + H264`, `Mkv + Vp9`, ...), subject to per-container support.
-///
-/// Used on both the video-input node (to report what the file is) and the
-/// video-output node (to select the encoding target).
-///
-/// `#[repr(u8)]` is set so the discriminant can be used directly in
-/// `Value::fingerprint` without a format!() hash.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[repr(u8)]
-pub enum VideoContainer {
-    Mp4,
-    Mov,
-    Mkv,
-    WebM,
-    Avi,
-}
-
-impl VideoContainer {
-    /// Return the canonical file extension (without dot).
-    pub fn extension(&self) -> &'static str {
-        match self {
-            VideoContainer::Mp4 => "mp4",
-            VideoContainer::Mov => "mov",
-            VideoContainer::Mkv => "mkv",
-            VideoContainer::WebM => "webm",
-            VideoContainer::Avi => "avi",
-        }
-    }
-
-    /// Return every variant, for dropdown enumeration.
-    pub fn types() -> [VideoContainer; 5] {
-        [
-            VideoContainer::Mp4,
-            VideoContainer::Mov,
-            VideoContainer::Mkv,
-            VideoContainer::WebM,
-            VideoContainer::Avi,
-        ]
-    }
-
-    /// List of codecs this container legally carries. Single source of truth
-    /// for the compatibility matrix — see `test_container_codec_matrix`.
-    pub fn supported_codecs(&self) -> &'static [VideoCodec] {
-        use VideoCodec::*;
-        match self {
-            VideoContainer::Mp4 => &[H264, H265, Av1, Mpeg4],
-            VideoContainer::Mov => &[H264, H265, Mpeg4, ProRes],
-            VideoContainer::Mkv => &[H264, H265, Vp8, Vp9, Av1, Mpeg4, ProRes],
-            VideoContainer::WebM => &[Vp8, Vp9, Av1],
-            VideoContainer::Avi => &[H264, Mpeg4],
-        }
-    }
-}
-
-/// The codec that compresses a video stream. Orthogonal to [`VideoContainer`];
-/// not every codec fits every container — use
-/// [`VideoCodec::is_supported_in`] or [`VideoContainer::supported_codecs`] to
-/// validate a pair.
-///
-/// `#[repr(u8)]` is set so the discriminant can be used directly in
-/// `Value::fingerprint` without a format!() hash.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[repr(u8)]
-pub enum VideoCodec {
-    H264,
-    H265,
-    Vp8,
-    Vp9,
-    Av1,
-    Mpeg4,
-    ProRes,
-}
-
-impl VideoCodec {
-    /// Return every variant, for dropdown enumeration.
-    pub fn types() -> [VideoCodec; 7] {
-        [
-            VideoCodec::H264,
-            VideoCodec::H265,
-            VideoCodec::Vp8,
-            VideoCodec::Vp9,
-            VideoCodec::Av1,
-            VideoCodec::Mpeg4,
-            VideoCodec::ProRes,
-        ]
-    }
-
-    /// Whether this codec can legally be muxed into the given container.
-    pub fn is_supported_in(&self, container: VideoContainer) -> bool {
-        container.supported_codecs().contains(self)
-    }
-}
-
-/// Immutable metadata extracted from a video file on open. Carried inside
-/// [`VideoRef`] so downstream nodes can read width/height/fps/etc. without
-/// re-querying the decoder cache.
-///
-/// Lives in `value.rs` (rather than the feature-gated `video` module) so
-/// `Value::Video` is usable in builds without the `video` feature — saved
-/// graphs containing video nodes still deserialize; they just can't run.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct VideoMeta {
-    pub width: u32,
-    pub height: u32,
-    pub fps: f32,
-    pub duration_seconds: f64,
-    pub total_frames: u32,
-    pub container: VideoContainer,
-    pub codec: VideoCodec,
-}
-
-impl Default for VideoMeta {
-    fn default() -> Self {
-        Self {
-            width: 0,
-            height: 0,
-            fps: 0.0,
-            duration_seconds: 0.0,
-            total_frames: 0,
-            container: VideoContainer::Mp4,
-            codec: VideoCodec::H264,
-        }
-    }
-}
-
-/// A metadata-level transform applied to a [`VideoRef`].
-///
-/// Transforms compose left-to-right (in `VideoRef::transforms` order) to
-/// build the effective timeline seen by downstream nodes. None of these
-/// touch pixels — they only remap how an effective time/frame maps back
-/// to a source frame index when an extract-frame op decodes.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum VideoTransformOp {
-    /// Restrict playback to source seconds `[start, end]`.
-    Trim { start_seconds: f64, end_seconds: f64 },
-    /// Scale playback speed. `factor > 1.0` plays faster (shorter effective duration).
-    Speed { factor: f32 },
-    /// Play backwards.
-    Reverse,
-    /// Repeat the clip `count` times. `count = 1` is the identity.
-    Loop { count: u32 },
-}
-
-impl VideoTransformOp {
-    /// Apply this op in-place to a `VideoMeta`, updating `duration_seconds`
-    /// and `total_frames`. All four current transforms are time-only, so
-    /// width/height/fps/container/codec are preserved.
-    pub fn apply_to_meta(&self, meta: &mut VideoMeta) {
-        let new_dur = self.apply_to_duration(meta.duration_seconds);
-        meta.duration_seconds = new_dur;
-        meta.total_frames = if meta.fps > 0.0 {
-            (new_dur * meta.fps as f64).round() as u32
-        } else {
-            0
-        };
-    }
-
-    /// Effective duration produced by applying this op to a clip of
-    /// `input_duration` seconds.
-    pub fn apply_to_duration(&self, input_duration: f64) -> f64 {
-        match *self {
-            VideoTransformOp::Trim { start_seconds, end_seconds } => {
-                let start = start_seconds.max(0.0).min(input_duration.max(0.0));
-                let end = end_seconds.max(start).min(input_duration.max(0.0));
-                end - start
-            }
-            VideoTransformOp::Speed { factor } => {
-                if factor > 0.0 { input_duration / factor as f64 } else { input_duration }
-            }
-            VideoTransformOp::Reverse => input_duration,
-            VideoTransformOp::Loop { count } => input_duration * count.max(1) as f64,
-        }
-    }
-
-    /// Inverse time mapping. Given a time `t_out` in this op's output timeline
-    /// (and the op's input-side duration), returns the corresponding time in
-    /// its input timeline — i.e. peels one transform layer off.
-    pub fn reverse_time(&self, t_out: f64, input_duration: f64) -> f64 {
-        let input_duration = input_duration.max(0.0);
-        match *self {
-            VideoTransformOp::Trim { start_seconds, end_seconds } => {
-                let start = start_seconds.max(0.0).min(input_duration);
-                let end = end_seconds.max(start).min(input_duration);
-                let clamped = t_out.max(0.0).min((end - start).max(0.0));
-                (start + clamped).min(input_duration)
-            }
-            VideoTransformOp::Speed { factor } => {
-                let k = if factor > 0.0 { factor as f64 } else { 1.0 };
-                (t_out * k).max(0.0).min(input_duration)
-            }
-            VideoTransformOp::Reverse => {
-                (input_duration - t_out).max(0.0).min(input_duration)
-            }
-            VideoTransformOp::Loop { count: _ } => {
-                if input_duration > 0.0 {
-                    t_out.rem_euclid(input_duration)
-                } else {
-                    0.0
-                }
-            }
-        }
-    }
-}
-
-/// Lightweight handle to a video file. Produced by the `video from file`
-/// node and consumed by extract-frame ops; decoding state lives in the
-/// global [`crate::video::VideoDecoderCache`] keyed by path.
-///
-/// Cloning is cheap — a `PathBuf`, two small `VideoMeta` copies, and a
-/// small transform vector.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct VideoRef {
-    /// Path to the underlying video file on disk.
-    pub path: PathBuf,
-    /// Effective metadata exposed to downstream nodes (fps, duration, total
-    /// frames). Equals `source_meta` when `transforms` is empty; otherwise
-    /// reflects the transform chain's composed effect.
-    pub meta: VideoMeta,
-    /// Original metadata read from the file on load. Needed to translate an
-    /// effective-timeline query back to a source frame index for decoding.
-    #[serde(default)]
-    pub source_meta: VideoMeta,
-    /// Metadata-level transform chain applied to the source. Empty = identity.
-    #[serde(default)]
-    pub transforms: Vec<VideoTransformOp>,
-}
-
-impl Default for VideoRef {
-    fn default() -> Self {
-        Self {
-            path: PathBuf::new(),
-            meta: VideoMeta::default(),
-            source_meta: VideoMeta::default(),
-            transforms: Vec::new(),
-        }
-    }
-}
-
-impl VideoRef {
-    /// Recompute `meta` from `source_meta` by walking `transforms` in order.
-    /// Call after mutating the transform chain so downstream nodes see a
-    /// consistent effective duration / total-frame count.
-    pub fn recompute_effective_meta(&mut self) {
-        let mut meta = self.source_meta;
-        for op in &self.transforms {
-            op.apply_to_meta(&mut meta);
-        }
-        self.meta = meta;
-    }
-
-    /// Append a transform and recompute `meta`. Convenience for the
-    /// trim/speed/reverse/loop ops.
-    pub fn with_transform(mut self, op: VideoTransformOp) -> Self {
-        self.transforms.push(op);
-        self.recompute_effective_meta();
-        self
-    }
-
-    /// Map an effective-timeline second to a second in the source file's
-    /// timeline by peeling the transform chain off in reverse application order.
-    pub fn effective_to_source_seconds(&self, effective_seconds: f64) -> f64 {
-        // Walk forward once to record the input-side duration for each op —
-        // Reverse and Loop need it to invert their mapping.
-        let mut durations_before = Vec::with_capacity(self.transforms.len());
-        let mut cur = self.source_meta.duration_seconds;
-        for op in &self.transforms {
-            durations_before.push(cur);
-            cur = op.apply_to_duration(cur);
-        }
-
-        let mut t = effective_seconds;
-        for (op, d_in) in self.transforms.iter().zip(durations_before.iter()).rev() {
-            t = op.reverse_time(t, *d_in);
-        }
-        t
-    }
-
-    /// Convert an effective-timeline second into a source frame index suitable
-    /// for `VideoDecoderCache::frame`. Clamps to `[0, source_total_frames - 1]`.
-    /// Returns `0` if the source has no fps (unknown / zero-fps clips).
-    pub fn source_frame_for_effective_time(&self, effective_seconds: f64) -> u32 {
-        let source_seconds = self.effective_to_source_seconds(effective_seconds);
-        let src_fps = self.source_meta.fps as f64;
-        if src_fps > 0.0 {
-            let max_idx = self.source_meta.total_frames.saturating_sub(1) as i64;
-            let idx = (source_seconds.max(0.0) * src_fps).round() as i64;
-            idx.clamp(0, max_idx.max(0)) as u32
-        } else {
-            0
-        }
-    }
-
-    /// Convert an effective-timeline frame index into a source frame index.
-    /// Goes via effective-time using `meta.fps` so that frame→source remains
-    /// consistent with time→source even when transforms change fps or duration.
-    pub fn source_frame_for_effective_frame(&self, effective_frame: u32) -> u32 {
-        let eff_fps = self.meta.fps as f64;
-        if eff_fps > 0.0 {
-            let t = effective_frame as f64 / eff_fps;
-            self.source_frame_for_effective_time(t)
-        } else {
-            // Degenerate case: no effective fps. Treat the effective frame as
-            // already being a source frame and clamp.
-            let max_idx = self.source_meta.total_frames.saturating_sub(1);
-            effective_frame.min(max_idx)
-        }
     }
 }
 

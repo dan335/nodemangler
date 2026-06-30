@@ -23,11 +23,6 @@ mod all_operations_perf {
         "image to file",
         "image to clipboard",
         "text from clipboard",
-        // Video sources need a real file / network fetch — never do those in a
-        // unit test (matched by exact name; the bare "from url"/"from file"
-        // entries above only cover the image inputs).
-        "video from file",
-        "video from url",
     ];
 
     /// Create a 512x512 gradient test image as a 4-channel FloatImage.

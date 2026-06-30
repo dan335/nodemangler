@@ -1,13 +1,12 @@
 # mangler_cli
 
 The headless command-line interface for [NodeMangler](../../../README.md) — create, edit,
-run, and render node graphs without the GUI.
+and run node graphs without the GUI.
 
 It drives the same [mangler_core](../mangler_core/) engine and reads/writes the same graph
 JSON as the [desktop app](../mangler_gui/), so files round-trip freely between the two.
 That makes it handy for automation, scripting, CI, batch processing, and driving the
-engine from agents/LLMs. Licensed **GPL-3.0-or-later** (it links GPL FFmpeg via the
-default `video` feature).
+engine from agents/LLMs. Licensed **MIT OR Apache-2.0**.
 
 ## Running
 
@@ -66,8 +65,6 @@ Pass the global `--json` flag for machine-readable output instead of human-reada
   run, then inspect one node's output: per-channel image statistics, pixel sampling
   (`x,y` or named positions like `center`), and saving images (or JSON for non-image
   values) to a file
-- `render --node <id>` — render a `video to file` node to its configured path, driving
-  time-aware nodes frame-by-frame (requires the `video` feature, on by default here)
 
 ## Value format
 
@@ -110,14 +107,11 @@ cargo run -p mangler_cli -- g.json show-output --node sum     # -> 5
 
 ## Dependencies
 
-- `mangler_core` (with the `video` feature) — the engine and operation library
+- `mangler_core` — the engine and operation library
 - `clap` — argument parsing (derive)
 - `tokio` — async runtime for graph execution
 - `serde_json` — graph (de)serialization
 - `image` — saving image outputs
 - `glam` — vector math
 
-The `video` feature is enabled by default, so `render` works out of the box — it requires
-FFmpeg development libraries (see the
-[core video setup doc](../mangler_core/docs/video-setup.md)). Because that links GPL
-FFmpeg, the `mangler_cli` binary is licensed **GPL-3.0-or-later**.
+The `mangler_cli` binary is licensed **MIT OR Apache-2.0**.

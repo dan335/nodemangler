@@ -24,7 +24,6 @@
 //! (`Thumbnail::Text`) are cheap enough to compute inline on the engine
 //! thread and flow through `NodeChangedMessage::OutputChanged.thumbnail`.
 
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -52,26 +51,17 @@ struct ThumbnailKey {
     output_index: usize,
 }
 
-/// What a thumbnail request is built from.
-enum ThumbnailSource {
-    /// Image outputs — the pixel buffer is already in-memory; just resize.
-    Image(Arc<FloatImage>),
-    /// Video-handle outputs — the worker must decode frame 0 via
-    /// [`crate::video::VideoDecoderCache`] before resizing.
-    Video { path: PathBuf },
-}
-
 /// An enqueued thumbnail job.
 struct ThumbnailRequest {
     key: ThumbnailKey,
     /// Monotonic sequence for this key. Supersedes older requests for the
     /// same `(node_id, output_index)` via `latest_seq` comparison.
     seq: u64,
-    /// Echoed back to the UI so it can stale-reject. For Image values this
-    /// is the `change_id` field; for Video values it's the handle's path
-    /// (the UI's stale-check has a matching arm).
+    /// Echoed back to the UI so it can stale-reject — the source value's
+    /// `change_id`.
     change_id: String,
-    source: ThumbnailSource,
+    /// The pixel buffer to resize into a thumbnail.
+    image: Arc<FloatImage>,
 }
 
 /// Handle on the running thumbnail worker. Owned by `Graph`; clone-able so
@@ -127,22 +117,7 @@ impl ThumbnailService {
         change_id: String,
         data: Arc<FloatImage>,
     ) {
-        self.enqueue(node_id, output_index, change_id, ThumbnailSource::Image(data));
-    }
-
-    /// Enqueue a video-thumbnail job (first-frame). Worker decodes frame 0
-    /// via the shared [`crate::video::VideoDecoderCache`] before resizing.
-    /// Uses the video's path as `change_id` — the UI stale-checks against
-    /// the current `Value::Video`'s path so late thumbnails for a file the
-    /// user has since swapped don't overwrite the correct preview.
-    pub fn request_video(&self, node_id: String, output_index: usize, path: PathBuf) {
-        let change_id = path.to_string_lossy().into_owned();
-        self.enqueue(
-            node_id,
-            output_index,
-            change_id,
-            ThumbnailSource::Video { path },
-        );
+        self.enqueue(node_id, output_index, change_id, data);
     }
 
     fn enqueue(
@@ -150,7 +125,7 @@ impl ThumbnailService {
         node_id: String,
         output_index: usize,
         change_id: String,
-        source: ThumbnailSource,
+        image: Arc<FloatImage>,
     ) {
         let key = ThumbnailKey {
             node_id,
@@ -163,7 +138,7 @@ impl ThumbnailService {
             key,
             seq,
             change_id,
-            source,
+            image,
         };
 
         // Drop on channel-full. See module doc.
@@ -198,13 +173,7 @@ async fn worker_loop(
         let change_id = req.change_id.clone();
         let seq = req.seq;
 
-        // Resolve the source to an Arc<FloatImage>. For Image this is
-        // trivial; for Video we ask the decoder cache for frame 0, which
-        // may take hundreds of ms but happens off the engine thread.
-        let float_image = match resolve_source(req.source).await {
-            Some(img) => img,
-            None => continue,
-        };
+        let float_image = req.image;
 
         // CPU-bound resize lives on the blocking pool so the worker task
         // itself stays free to drain the next request.
@@ -240,36 +209,5 @@ async fn worker_loop(
             change_id,
             thumbnail,
         });
-    }
-}
-
-/// Resolve a request's source into the `Arc<FloatImage>` that gets resized.
-/// Image sources are already pixels — cheap. Video sources decode frame 0
-/// via [`crate::video::VideoDecoderCache`]; returns `None` on decode error
-/// (logged, request dropped).
-async fn resolve_source(source: ThumbnailSource) -> Option<Arc<FloatImage>> {
-    match source {
-        ThumbnailSource::Image(arc) => Some(arc),
-        #[cfg(feature = "video")]
-        ThumbnailSource::Video { path } => {
-            match crate::video::VideoDecoderCache::global().frame(&path, 0).await {
-                Ok(frame) => Some(frame),
-                Err(err) => {
-                    eprintln!(
-                        "thumbnail_service: video frame-0 decode failed for {}: {}",
-                        path.display(),
-                        err.0,
-                    );
-                    None
-                }
-            }
-        }
-        #[cfg(not(feature = "video"))]
-        ThumbnailSource::Video { path: _ } => {
-            // Without the video feature, Value::Video outputs can exist (to
-            // support loading saved graphs) but there's no way to decode.
-            // Drop silently — the run() stub has already errored on the node.
-            None
-        }
     }
 }

@@ -68,8 +68,6 @@ fn test_added_nodes_are_reachable_in_menu() {
         "convolution", "morphological gradient", "top hat", "black hat",
         // noise
         "wave", "blue noise", "curl noise",
-        // video input
-        "video from url",
     ];
     for name in expected {
         assert!(

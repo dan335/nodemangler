@@ -202,19 +202,6 @@ impl ViewPanel {
                 mangler_core::value::Value::BlendMode(value) => TextViewer::show(ui, format!("{:?}", value)),
                 mangler_core::value::Value::TextHAlign(value) => TextViewer::show(ui, format!("{:?}", value)),
                 mangler_core::value::Value::TextVAlign(value) => TextViewer::show(ui, format!("{:?}", value)),
-                mangler_core::value::Value::VideoContainer(value) => TextViewer::show(ui, format!("{:?}", value)),
-                mangler_core::value::Value::VideoCodec(value) => TextViewer::show(ui, format!("{:?}", value)),
-                mangler_core::value::Value::Video(value) => TextViewer::show(
-                    ui,
-                    format!(
-                        "{} — {}×{} @ {}fps, {}",
-                        value.path.display(),
-                        value.meta.width,
-                        value.meta.height,
-                        value.meta.fps,
-                        value.meta.total_frames,
-                    ),
-                ),
                 mangler_core::value::Value::Image { .. } => unreachable!(),
             }
         }

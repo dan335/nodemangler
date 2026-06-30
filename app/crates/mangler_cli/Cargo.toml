@@ -1,9 +1,9 @@
 [package]
 name = "mangler_cli"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
-license = "GPL-3.0-or-later"
-description = "NodeMangler headless CLI: run node graphs and render outputs without the GUI."
+license = "MIT OR Apache-2.0"
+description = "NodeMangler headless CLI: run node graphs without the GUI."
 repository = "https://github.com/dan335/nodemangler"
 authors = ["Daniel Phillips <danphi@gmail.com>"]
 
@@ -12,7 +12,7 @@ name = "mangler_cli"
 path = "src/main.rs"
 
 [dependencies]
-mangler_core = { path = "../mangler_core", features = ["video"] }
+mangler_core = { path = "../mangler_core" }
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 serde_json = "1"

@@ -25,8 +25,6 @@ pub mod colors;
 pub mod logic;
 /// Text operations (clipboard).
 pub mod text;
-/// Video operations (file input, frame extraction).
-pub mod videos;
 
 /// Describes a single input or output connection slot on a node.
 ///
@@ -562,47 +560,6 @@ operations! {
     OpNumberBitwiseNot(crate::operations::numbers::bitwise::bit_not::OpNumberBitwiseNot),
     OpNumberBitwiseShiftLeft(crate::operations::numbers::bitwise::bit_shift_left::OpNumberBitwiseShiftLeft),
     OpNumberBitwiseShiftRight(crate::operations::numbers::bitwise::bit_shift_right::OpNumberBitwiseShiftRight),
-
-    // videos
-    OpVideoFromFile(crate::operations::videos::inputs::file::OpVideoFromFile),
-    OpVideoFromUrl(crate::operations::videos::inputs::url::OpVideoFromUrl),
-    OpExtractFrameByIndex(crate::operations::videos::transform::extract_frame_by_index::OpExtractFrameByIndex),
-    OpExtractFrameByTime(crate::operations::videos::transform::extract_frame_by_time::OpExtractFrameByTime),
-    OpVideoTrim(crate::operations::videos::transform::trim::OpVideoTrim),
-    OpVideoSpeed(crate::operations::videos::transform::speed::OpVideoSpeed),
-    OpVideoReverse(crate::operations::videos::transform::reverse::OpVideoReverse),
-    OpVideoLoop(crate::operations::videos::transform::loop_video::OpVideoLoop),
-    OpVideoOutputFile(crate::operations::videos::outputs::file::OpVideoOutputFile),
-}
-
-impl Operation {
-    /// Returns true if this operation's output depends on a render-clock time
-    /// value that the engine should drive during a video render. Used by the
-    /// render task to identify which nodes to override each frame.
-    pub fn is_time_aware(&self) -> bool {
-        matches!(
-            self,
-            Operation::OpExtractFrameByIndex | Operation::OpExtractFrameByTime,
-        )
-    }
-
-    /// Engine hook invoked once per render frame before `graph.run()`. Updates
-    /// time-driven inputs on the node so the next run produces the frame for
-    /// `render_time_seconds`. No-op for operations where `is_time_aware()` is
-    /// false.
-    pub fn apply_render_time(&self, inputs: &mut [crate::input::Input], render_time_seconds: f64) {
-        match self {
-            Operation::OpExtractFrameByIndex => {
-                crate::operations::videos::transform::extract_frame_by_index::
-                    OpExtractFrameByIndex::apply_render_time(inputs, render_time_seconds);
-            }
-            Operation::OpExtractFrameByTime => {
-                crate::operations::videos::transform::extract_frame_by_time::
-                    OpExtractFrameByTime::apply_render_time(inputs, render_time_seconds);
-            }
-            _ => {}
-        }
-    }
 }
 
 /// Returns the full hierarchical menu of available operations.
@@ -984,23 +941,6 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpTextToUppercase },
                 OperationListItem::Operation { operation: Operation::OpTextToLowercase },
                 OperationListItem::Operation { operation: Operation::OpTextToString },
-            ]},
-        ]},
-        OperationListItem::Category { name: "videos".to_string(), operation_list_items: vec![
-            OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::OpVideoFromFile },
-                OperationListItem::Operation { operation: Operation::OpVideoFromUrl },
-            ]},
-            OperationListItem::Category { name: "transform".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::OpExtractFrameByIndex },
-                OperationListItem::Operation { operation: Operation::OpExtractFrameByTime },
-                OperationListItem::Operation { operation: Operation::OpVideoTrim },
-                OperationListItem::Operation { operation: Operation::OpVideoSpeed },
-                OperationListItem::Operation { operation: Operation::OpVideoReverse },
-                OperationListItem::Operation { operation: Operation::OpVideoLoop },
-            ]},
-            OperationListItem::Category { name: "output".to_string(), operation_list_items: vec![
-                OperationListItem::Operation { operation: Operation::OpVideoOutputFile },
             ]},
         ]},
     ];

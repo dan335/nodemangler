@@ -27,7 +27,7 @@ impl OpLogicFlowSelect {
         NodeSettings {
             name: "select".to_string(),
             description: "Outputs one of two values based on a boolean condition (if/else).".to_string(),
-            help: "Acts as a ternary (condition ? if_true : if_false). Only the condition input is coerced to Bool; the selected branch is passed through with its original type preserved, so the output can be any Value kind (number, color, image, text, video, etc.).\n\nBoth branches accept any type (accepts_any_type = true), which means the two inputs do not have to match. The output's runtime type will follow whichever branch was taken, which can change the downstream type from frame to frame if the condition toggles.".to_string(),
+            help: "Acts as a ternary (condition ? if_true : if_false). Only the condition input is coerced to Bool; the selected branch is passed through with its original type preserved, so the output can be any Value kind (number, color, image, text, etc.).\n\nBoth branches accept any type (accepts_any_type = true), which means the two inputs do not have to match. The output's runtime type will follow whichever branch was taken, which can change the downstream type from frame to frame if the condition toggles.".to_string(),
         }
     }
 

@@ -7,7 +7,7 @@ editor for image and color manipulation, built with
 
 It drives the [mangler_core](../mangler_core/) engine and reads/writes the same graph
 JSON as the [mangler_cli](../mangler_cli/), so files round-trip between the two. Licensed
-**GPL-3.0-or-later** (it links GPL FFmpeg via the default `video` feature).
+**MIT OR Apache-2.0**.
 
 ## Running
 
@@ -35,7 +35,7 @@ zoomable grid, and the graph re-evaluates automatically whenever an input change
 ### Node menu
 
 A categorized, searchable panel on the left listing every available operation, grouped
-into Numbers, Colors, Images, Logic, Text, and Videos (with subcategories like input,
+into Numbers, Colors, Images, Logic, and Text (with subcategories like input,
 transform, adjustments, filter, noise, …). Drag an operation onto the canvas to create a
 node.
 
@@ -53,15 +53,9 @@ Selecting a node shows its input parameters. The widget shown depends on the inp
 
 Click a node's output to inspect its result in the viewer panel — images, colors, and
 text all render as visual previews. Compact thumbnails also appear directly on nodes for
-quick reference. Image and video thumbnails are produced asynchronously by the engine's
-thumbnail service, so the UI stays responsive while large frames resize or video frames
-decode; a node shows its preview as soon as the deferred `ThumbnailReady` message lands.
-
-### Video rendering
-
-When the `video` feature is enabled (it is by default), a `video to file` node exposes a
-**Render** button that encodes the connected image stream to disk, driving time-aware
-nodes frame-by-frame. Progress is reported back into the UI as the render runs.
+quick reference. Image thumbnails are produced asynchronously by the engine's
+thumbnail service, so the UI stays responsive while large frames resize; a node shows its
+preview as soon as the deferred `ThumbnailReady` message lands.
 
 ### Themes
 
@@ -104,9 +98,9 @@ compatibility for older files — they re-wire or re-export.
 The GUI talks to the [mangler_core](../mangler_core/) engine over tokio mpsc channels:
 
 ```
-UI ──ChangeGraphMessage──▶ Engine   (add/remove nodes & connections, save path, render)
+UI ──ChangeGraphMessage──▶ Engine   (add/remove nodes & connections, save path)
 UI ──ChangeNodeMessage───▶ Engine   (set input values, positions, expose in/outputs)
-Engine ──GraphChangedMessage──▶ UI  (node/connection added, removed, loaded; progress)
+Engine ──GraphChangedMessage──▶ UI  (node/connection added, removed, loaded)
 Engine ──NodeChangedMessage───▶ UI  (output values, thumbnails, timing, errors)
 ```
 
@@ -118,7 +112,7 @@ updates its visual state accordingly.
 - `eframe` / `epaint` — egui framework for native desktop apps
 - `egui_extras` — additional egui widgets
 - `egui-phosphor` — icon font
-- `mangler_core` (with the `video` feature) — the engine and operation library
+- `mangler_core` — the engine and operation library
 - `tokio` — async runtime
 - `image` — icon loading
 - `rfd` — native file dialogs (open/save)
@@ -129,7 +123,4 @@ updates its visual state accordingly.
 - `fastrand` — random number generation
 - `winapi` (Windows only) — native window APIs
 
-Because `mangler_core`'s `video` feature is enabled by default, the GUI requires FFmpeg
-development libraries to build — see the
-[core video setup doc](../mangler_core/docs/video-setup.md). Linking GPL FFmpeg is why
-this binary is licensed **GPL-3.0-or-later**.
+This binary is licensed **MIT OR Apache-2.0**.

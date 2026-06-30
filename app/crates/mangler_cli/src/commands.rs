@@ -4,10 +4,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use mangler_core::{
-    get_id, graph::Graph, render, AddNodeType, GraphChangedMessage, GraphSaveData,
+    get_id, graph::Graph, AddNodeType, GraphSaveData,
     value::Value,
 };
-use tokio::sync::mpsc;
 
 use crate::format::{
     format_info_human, format_info_json, format_run_human, format_run_json,
@@ -518,76 +517,6 @@ pub(crate) async fn cmd_run(path: PathBuf, json_output: bool) -> Result<(), Stri
         print!("{}", format_run_human(&graph));
     }
     Ok(())
-}
-
-/// `mangle render <path> --node <id>` — render a video output node headlessly.
-///
-/// Spawns `render::run_render` on a detached snapshot of the graph and streams
-/// progress to stdout until `RenderFinished` or `RenderFailed` arrives. The
-/// graph JSON is unchanged (render writes only the configured video file).
-pub(crate) async fn cmd_render(
-    path: PathBuf,
-    node: String,
-    json_output: bool,
-) -> Result<(), String> {
-    let graph = load_graph(&path)?;
-
-    if !graph.nodes.contains_key(&node) {
-        return Err(node_not_found_error(&graph, &node));
-    }
-
-    let (tx, mut rx) = mpsc::channel::<GraphChangedMessage>(64);
-    let snapshot = graph.detached();
-    let node_for_task = node.clone();
-    let join = tokio::spawn(async move {
-        render::run_render(snapshot, node_for_task, tx).await;
-    });
-
-    let mut last_percent: i32 = -1;
-    let result: Result<(), String> = loop {
-        match rx.recv().await {
-            Some(GraphChangedMessage::RenderProgress { frame, total }) => {
-                if json_output {
-                    println!("{}", serde_json::json!({
-                        "event": "progress",
-                        "frame": frame,
-                        "total": total,
-                    }));
-                } else {
-                    let pct = if total == 0 { 0 }
-                        else { ((frame as f64 / total as f64) * 100.0).round() as i32 };
-                    if pct != last_percent {
-                        last_percent = pct;
-                        println!("[render] frame {frame}/{total} ({pct}%)");
-                    }
-                }
-            }
-            Some(GraphChangedMessage::RenderFinished { path: out_path, elapsed }) => {
-                if json_output {
-                    println!("{}", serde_json::json!({
-                        "event": "finished",
-                        "path": out_path.display().to_string(),
-                        "elapsed_ms": elapsed.as_millis() as u64,
-                    }));
-                } else {
-                    println!(
-                        "[render] wrote {} in {:.2}s",
-                        out_path.display(),
-                        elapsed.as_secs_f64(),
-                    );
-                }
-                break Ok(());
-            }
-            Some(GraphChangedMessage::RenderFailed { message }) => break Err(message),
-            Some(_) => {}
-            None => break Err("render task exited without result".to_string()),
-        }
-    };
-
-    if let Err(e) = join.await {
-        return Err(format!("render task panicked: {e}"));
-    }
-    result
 }
 
 /// `mangle show-output <path> --node <id> [--output <n>] [--stats] [--sample <coord>...] [--save <path>]`

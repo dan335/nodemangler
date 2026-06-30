@@ -46,17 +46,6 @@ pub struct Program {
     node_search_popup: NodeSearchPopup,
     /// Temporary status message shown on screen (text, expiry time).
     status_message: Option<(String, std::time::Instant)>,
-    /// State of an in-progress video render (if any). `None` when no render
-    /// is running.
-    render_state: Option<RenderProgressUiState>,
-}
-
-/// Snapshot of a render's progress for the inspector pane.
-#[derive(Debug, Clone)]
-pub struct RenderProgressUiState {
-    pub frame: u32,
-    pub total: u32,
-    pub started_at: std::time::Instant,
 }
 
 impl Program {
@@ -92,7 +81,6 @@ impl Program {
                 graph_run_time: Duration::ZERO,
                 node_search_popup: NodeSearchPopup::new(),
                 status_message: None,
-                render_state: None,
             }),
             Err(error) => Err(NewGraphError(format!(
                 "Error creating program. {:?}",
@@ -282,35 +270,6 @@ impl Program {
 
                     //self.needs_to_save = true;
                 }
-                GraphChangedMessage::RenderProgress { frame, total } => {
-                    match self.render_state.as_mut() {
-                        Some(rs) => {
-                            rs.frame = frame;
-                            rs.total = total;
-                        }
-                        None => {
-                            self.render_state = Some(RenderProgressUiState {
-                                frame,
-                                total,
-                                started_at: std::time::Instant::now(),
-                            });
-                        }
-                    }
-                }
-                GraphChangedMessage::RenderFinished { path, elapsed } => {
-                    self.render_state = None;
-                    self.status_message = Some((
-                        format!("Rendered to {} in {:.2}s", path.display(), elapsed.as_secs_f32()),
-                        std::time::Instant::now(),
-                    ));
-                }
-                GraphChangedMessage::RenderFailed { message } => {
-                    self.render_state = None;
-                    self.status_message = Some((
-                        format!("Render failed: {}", message),
-                        std::time::Instant::now(),
-                    ));
-                }
             }
         }
 
@@ -365,7 +324,7 @@ impl Program {
                         if let Some(output) = node.outputs.get_mut(output_index) {
                             output.value = value.clone();
                             if output_index == 0 {
-                                // Image & Video outputs with `thumbnail: None`
+                                // Image outputs with `thumbnail: None`
                                 // are the "deferred to the async service"
                                 // cases. Leave the existing thumbnail in
                                 // place so the node preview doesn't flash
@@ -373,7 +332,7 @@ impl Program {
                                 // ThumbnailReady.
                                 let is_deferred = matches!(
                                     (&value, &thumbnail),
-                                    (Value::Image { .. }, None) | (Value::Video(_), None)
+                                    (Value::Image { .. }, None)
                                 );
                                 if !is_deferred {
                                     node.thumbnail = build_graph_node_thumbnail(
@@ -406,14 +365,9 @@ impl Program {
                             // longer matches the id this thumbnail was built
                             // for, the engine has already produced a newer
                             // value and dropping here avoids flashing an
-                            // outdated preview. Image uses its change_id;
-                            // Video uses the path string (matches how
-                            // ThumbnailService::request_video encodes it).
+                            // outdated preview.
                             let is_current = match &output.value {
                                 Value::Image { change_id: cid, .. } => *cid == change_id,
-                                Value::Video(v) => {
-                                    v.path.to_string_lossy() == change_id
-                                }
                                 _ => false,
                             };
                             if !is_current {
@@ -593,8 +547,6 @@ impl Program {
                                 ui,
                                 node,
                                 &self.tx_change_node,
-                                &self.tx_change_graph,
-                                &mut self.render_state,
                                 theme,
                             );
                         show_graph_settings = false;
@@ -1258,26 +1210,6 @@ fn build_graph_node_thumbnail(
                     width: data.width(),
                     height: data.height(),
                     channels: data.channels(),
-                })
-            }
-            // Video thumbnails come from the async service (first-frame
-            // decode) — same rasterised Image shape as a regular image
-            // output. Use the source clip's dimensions so the node
-            // preview's aspect ratio matches its content.
-            Value::Video(video_ref) => {
-                let pixels = thumbnail.as_flat_samples();
-                let size = [thumbnail.width() as usize, thumbnail.height() as usize];
-                let color_image =
-                    ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-                Some(GraphNodeThumbnail::Image {
-                    texture_handle: ctx.load_texture(
-                        node_id.to_owned(),
-                        color_image,
-                        Default::default(),
-                    ),
-                    width: video_ref.meta.width.max(1),
-                    height: video_ref.meta.height.max(1),
-                    channels: 4,
                 })
             }
             _ => None,

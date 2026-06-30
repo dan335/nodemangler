@@ -317,14 +317,6 @@ impl Node {
                                     );
                                     None
                                 }
-                                Value::Video(video) if thumbnail_service.is_some() => {
-                                    thumbnail_service.unwrap().request_video(
-                                        self.id.clone(),
-                                        index,
-                                        video.path.clone(),
-                                    );
-                                    None
-                                }
                                 _ => response.value.create_thumbnail(),
                             };
 
@@ -512,14 +504,6 @@ impl Node {
                                         output_index,
                                         change_id.clone(),
                                         std::sync::Arc::clone(data),
-                                    );
-                                    None
-                                }
-                                Value::Video(video) if thumbnail_service.is_some() => {
-                                    thumbnail_service.unwrap().request_video(
-                                        self.id.clone(),
-                                        output_index,
-                                        video.path.clone(),
                                     );
                                     None
                                 }

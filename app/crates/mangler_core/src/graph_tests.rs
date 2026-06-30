@@ -1161,7 +1161,7 @@ async fn test_subgraph_propagates_value_end_to_end() {
     let _ = fs::remove_file(&tmp_path);
 }
 
-// A detached() snapshot (the basis for video renders) must still execute its
+// A detached() snapshot must still execute its
 // subgraph nodes. NodeType::clone drops the loaded child graph + channel to
 // None, so without rehydration the snapshot silently skips the subgraph and
 // emits a stale/default output. This test drives an exposed input, snapshots

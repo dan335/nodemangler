@@ -276,8 +276,7 @@ impl FloatImage {
     }
 
     /// Consume the image and return its raw pixel buffer. Used by callers
-    /// that want to reclaim the `Vec<f32>` allocation (e.g. the video decoder
-    /// cache reuses these across successive frames of a clip).
+    /// that want to reclaim the `Vec<f32>` allocation.
     #[inline]
     pub fn into_data(self) -> Vec<f32> {
         self.data
