@@ -13,22 +13,10 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use super::pixel_hash;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
-
-/// Hash two coordinates and a seed into a pseudo-random value in [0, 1].
-///
-/// Uses wrapping multiply and XOR-shift mixing for fast, uniform distribution.
-#[inline(always)]
-fn pixel_hash(x: u32, y: u32, seed: u32) -> f32 {
-    let mut h = x.wrapping_mul(1597334677)
-        ^ y.wrapping_mul(2943785939)
-        ^ seed.wrapping_mul(1013904223);
-    h = h.wrapping_mul(h ^ (h >> 16));
-    h = h.wrapping_mul(h ^ (h >> 16));
-    (h & 0x00FFFFFF) as f32 / 0x01000000 as f32
-}
 
 /// Operation that generates a seamlessly tiling grayscale image of white noise.
 #[derive(Debug, Clone, Serialize, Deserialize)]

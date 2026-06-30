@@ -11,6 +11,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::Value;
+use super::common::{hsl_to_rgb, rgb_to_hsl};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -92,65 +93,13 @@ impl OpImageAdjustmentHueRotate {
             // Alpha (if present) is unchanged
         }
 
-        Ok(OperationResponse { 
+        Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse {value: Value::Image { data:Arc::new(result), change_id:get_id() }},
             ],
         })
     }
-}
-
-/// Converts an RGB color (each in 0..1) to HSL (hue in 0..360, s/l in 0..1).
-fn rgb_to_hsl(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
-    let max = r.max(g).max(b);
-    let min = r.min(g).min(b);
-    let l = (max + min) / 2.0;
-
-    if (max - min).abs() < 1e-7 {
-        // Achromatic
-        return (0.0, 0.0, l);
-    }
-
-    let d = max - min;
-    let s = if l > 0.5 { d / (2.0 - max - min) } else { d / (max + min) };
-
-    let h = if (max - r).abs() < 1e-7 {
-        ((g - b) / d) + if g < b { 6.0 } else { 0.0 }
-    } else if (max - g).abs() < 1e-7 {
-        ((b - r) / d) + 2.0
-    } else {
-        ((r - g) / d) + 4.0
-    };
-
-    (h * 60.0, s, l)
-}
-
-/// Converts an HSL color (hue in 0..360, s/l in 0..1) back to RGB (each in 0..1).
-fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
-    if s.abs() < 1e-7 {
-        return (l, l, l);
-    }
-
-    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
-    let p = 2.0 * l - q;
-    let h_norm = h / 360.0;
-
-    let r = hue_to_rgb(p, q, h_norm + 1.0 / 3.0);
-    let g = hue_to_rgb(p, q, h_norm);
-    let b = hue_to_rgb(p, q, h_norm - 1.0 / 3.0);
-
-    (r, g, b)
-}
-
-/// Helper for HSL->RGB conversion: maps a hue sector to an RGB component.
-fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
-    if t < 0.0 { t += 1.0; }
-    if t > 1.0 { t -= 1.0; }
-    if t < 1.0 / 6.0 { return p + (q - p) * 6.0 * t; }
-    if t < 1.0 / 2.0 { return q; }
-    if t < 2.0 / 3.0 { return p + (q - p) * (2.0 / 3.0 - t) * 6.0; }
-    p
 }
 
 #[cfg(test)]

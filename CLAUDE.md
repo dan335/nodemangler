@@ -38,7 +38,7 @@ cargo run -p mangler_cli  # Run the CLI tool
 - Images are `FloatImage` (1–4 channel `f32`, `Arc`-shared); `Value::Image { data, change_id }` carries a change id used by cache invalidation and stale-thumbnail rejection.
 - `Value::Video(VideoRef)` is a lightweight handle (path + `VideoMeta`) produced by the `video from file` node; extract-frame ops consume it and share the process-global `VideoDecoderCache`.
 - Color is stored as sRGBA floats with conversions to 9 color spaces: sRGB, Linear RGB, HSL, HSV, Lab, LCH, CMYK, XYZ, YUV
-- BlendMode has 17 modes: Normal, Lerp, Multiply, Screen, Overlay, SoftLight, HardLight, ColorDodge, ColorBurn, Darken, Lighten, Difference, Exclusion, LinearBurn, LinearDodge, Divide, Subtract
+- BlendMode has 17 modes: Over, Lerp, Multiply, Screen, Overlay, SoftLight, HardLight, ColorDodge, ColorBurn, Darken, Lighten, Difference, Exclusion, LinearBurn, LinearDodge, Divide, Subtract
 - **Video container/codec are separate enums** with a static compatibility matrix (see `VideoContainer::supported_codecs`). Containers: Mp4, Mov, Mkv, WebM, Avi. Codecs: H264, H265, Vp8, Vp9, Av1, Mpeg4, ProRes.
 - Subgraph support: nodes can contain entire graphs for composition
 - Graphs serialize to JSON via `GraphSaveData`
@@ -85,28 +85,58 @@ Video ops live behind the `video` cargo feature on `mangler_core`. `mangler_gui`
 
 ## Operation Categories
 
-- `operations/numbers/` — inputs, arithmetic, interpolation, algebra, trigonometry, random, cast, logarithmic, bitwise
-- `operations/colors/` — inputs, outputs, blend, analysis (sample_image), cast
-- `operations/images/inputs/` — file, url, clipboard, color, gradient
-- `operations/images/outputs/` — file, clipboard
-- `operations/images/combine/` — blit, blend
-- `operations/images/transform/` — crop, resize, flip, rotate, warp, directional_warp, safe_transform, make_tile, mirror
-- `operations/images/adjustments/` — contrast, grayscale, invert, brighten, hue_rotate, posterize, levels, auto_levels, curves, gradient_map, histogram_scan, histogram_range, distance
-- `operations/images/blur/` — blur, directional_blur, radial_blur, slope_blur, non_uniform_blur
-- `operations/images/filter/` — edge_detect, emboss, sharpen, unsharpen
-- `operations/images/channels/` — split, merge, shuffle
-- `operations/images/shapes/` — rectangle, ellipse, polygon, star, line
-- `operations/images/patterns/` — brick, hexagonal, weave, tile_sampler
-- `operations/images/pbr/` — normal_from_height, ao_from_height, curvature, height_blend
-- `operations/images/noise/` — 14 noise generators
-- `operations/logic/inputs/` — bool
-- `operations/logic/comparison/` — equal, not_equal, less_than, less_equal, greater_than, greater_equal
-- `operations/logic/boolean/` — and, or, not, xor, nand, nor
-- `operations/logic/flow/` — select (mux: picks between two values based on a bool condition)
-- `operations/text/` — inputs (text), manipulation (append, length, to_uppercase, to_lowercase, to_string)
-- `operations/videos/inputs/` — file (`video from file` — loads a clip and emits a `Video` handle + metadata sockets)
-- `operations/videos/transform/` — extract_frame_by_index, extract_frame_by_time (consume a `Video` handle, produce an `Image`)
-- `operations/videos/outputs/` — file (`video to file` — encode the graph into a video file via the Render button)
+### numbers/
+- `inputs/` — decimal, integer, e, pi, tau
+- `arithmetic/` — add, subtract, multiply, divide, modulus, negate, min, max, average, clamp, floor, ceil, round, trunc, frac, sign, reciprocal, increment, decrement
+- `algebra/` — abs, sqrt, cbrt, nth_root, pow, factorial, gcd, lcm
+- `trigonometry/` — sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh
+- `interpolation/` — lerp, map_range, smoothstep, step
+- `logarithmic/` — exp, ln, log, log2, log10
+- `bitwise/` — bit_and, bit_or, bit_xor, bit_not, bit_shift_left, bit_shift_right
+- `random/` — random_decimal, random_integer
+- `cast/` — to_decimal, to_integer
+
+### logic/
+- `inputs/` — bool
+- `comparison/` — equal, not_equal, less_than, less_equal, greater_than, greater_equal
+- `boolean/` — and, or, not, xor, nand, nor
+- `flow/` — select (mux: picks between two values based on a bool condition)
+
+### text/
+- `inputs/` — text
+- `manipulation/` — append, length, to_uppercase, to_lowercase, to_string
+- `text_from_clipboard` — paste text from the clipboard
+
+### colors/
+- `inputs/` — srgb, rgb_linear, hsl, hsv, lab, lch, cmyk, xyz, yuv (construct a color from each of the 9 color spaces)
+- `outputs/` — to_srgb, to_rgb_linear, to_hsl, to_hsv, to_lab, to_lch, to_cmyk, to_xyz, to_yuv (decompose a color into a space's components)
+- `generation/` — from_hex, to_hex, random_color
+- `manipulation/` — adjust_hsv, clamp, grayscale, invert, set_alpha
+- `relationship/` — complementary, analogous, triadic, tetradic, monochromatic, double_split_complementary
+- `analysis/` — luminance, contrast_ratio, distance, color_temperature, dominant_hue, harmony_score, mix_ratio
+- `blend/` — blend_mode
+- `cast/` — to_color
+- `sample_image/` — most_common_colors
+
+### images/
+- `inputs/` — file, url, clipboard, color, gradient, text
+- `outputs/` — file, clipboard
+- `transform/` — crop, resize, resize_exact, resize_fill, flip_horizontal, flip_vertical, rotate_90, rotate_180, rotate_270, rotate_around_center, warp, directional_warp, safe_transform, make_tile, mirror, seam_carve, polar_coordinates, swirl, spherize, perspective
+- `adjustments/` — brighten, contrast, levels, auto_levels, curves, grayscale, invert, posterize, saturation, hue_rotate, threshold, vignette, white_balance, color_balance, selective_color, dither, gradient_map, gradient_dynamic, color_match, distance, histogram_scan, histogram_range, histogram_select (shared `smoothstep`/HSL helpers live in `adjustments/common.rs`)
+- `blur/` — blur, directional_blur, radial_blur, slope_blur, non_uniform_blur
+- `filter/` — edge_detect, canny, emboss, sharpen, unsharpen, highpass, luminance_highpass, dog (difference of gaussians), median, bilateral, guided, non_local_means, anisotropic_diffusion, kuwahara, anisotropic_kuwahara, snn, oil_paint, toon, cross_hatch, halftone, ascii, convolution (custom 3x3 kernel), dilate, erode, open, close, morphological_gradient, top_hat, black_hat, floyd_steinberg, ordered_dither (morphology ops share `separable_morphology` from `erode.rs`)
+- `fx/` — drop_shadow, inner_glow, outer_glow
+- `combine/` — blit, blend, compare
+- `channels/` — split, merge, shuffle
+- `shapes/` — rectangle, ellipse, circle, polygon, star, line, cone, pyramid, paraboloid
+- `patterns/` — brick, hexagonal, weave, tile_sampler, splatter, flood_fill, flood_fill_mapper
+- `pbr/` — normal_from_height, normal_invert, normal_blend, normal_combine, ao_from_height, curvature, bevel, height_blend
+- `noise/` — 28 generators: perlin, value, fbm, billow, ridged_multifractal, hybrid_multifractal, basic_multifractal, open_simplex, super_simplex, voronoise, voronoi_crack, worley_distance, worley_value, gabor, anisotropic, gaussian (white noise), blue_noise, curl (flow map, 3-channel), wave, clouds, plasma, crystal, dirt, cylinders, checkerboard, erosion, reaction_diffusion, domain_warp_fbm (`voronoi_common.rs` is a shared helper, not a node; `pixel_hash`/`periodic_value_2d`/`build_perm_tables` in `noise/mod.rs` are shared)
+
+### videos/ (behind the `video` feature)
+- `inputs/` — file, url (`video from file` / `video from url` — load a clip and emit a `Video` handle + metadata sockets; `url` downloads to a hashed local cache file under the temp dir first, since frames are decoded lazily by path)
+- `transform/` — extract_frame_by_index, extract_frame_by_time (consume a `Video` handle, produce an `Image`); trim, speed, reverse, loop_video (produce a `Video` handle)
+- `outputs/` — file (`video to file` — encode the graph into a video file via the Render button)
 
 ## Known Issues
 
