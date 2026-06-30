@@ -3,9 +3,11 @@
 A node-based tool for image, video and color manipulation.  Comparable to
 Substance Designer, Blender's compositor, or TouchDesigner.  Written in Rust.
 
-I wrote the framework for this project back in 2023 but lost interest.  Picked it up again in 2026 with the help of Claude.
+![NodeMangler screenshot](screenshot.jpg)
 
-Includes a desktop GUI and headless CLI.  Create graphs in the GUI, save them as JSON, then run them from the CLI or vice versa.  CLI is intended to be easy for LLMs to use.
+I wrote the framework for this project back in 2023 intending for it to be a replacement for Substance Designer but lost interest.  Picked it up again in 2026 with the help of Claude.
+
+Includes a desktop GUI and headless CLI.  Create graphs in the GUI, save them as JSON, then run them from the CLI or vice versa.  CLI is intended to be easy for LLMs to create and edit graphs.
 
 ## Features
 
