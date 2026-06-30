@@ -121,16 +121,16 @@ Video ops live behind the `video` cargo feature on `mangler_core`. `mangler_gui`
 ### images/
 - `inputs/` — file, url, clipboard, color, gradient, text
 - `outputs/` — file, clipboard
-- `transform/` — crop, resize, resize_exact, resize_fill, flip_horizontal, flip_vertical, rotate_90, rotate_180, rotate_270, rotate_around_center, warp, directional_warp, safe_transform, make_tile, mirror, seam_carve, polar_coordinates, swirl, spherize, perspective
-- `adjustments/` — brighten, contrast, levels, auto_levels, curves, grayscale, invert, posterize, saturation, hue_rotate, threshold, vignette, white_balance, color_balance, selective_color, dither, gradient_map, gradient_dynamic, color_match, distance, histogram_scan, histogram_range, histogram_select (shared `smoothstep`/HSL helpers live in `adjustments/common.rs`)
+- `transform/` — crop, resize, resize_exact, resize_fill, flip_horizontal, flip_vertical, rotate_90, rotate_180, rotate_270, rotate_around_center, warp, directional_warp, safe_transform, make_tile, mirror, seam_carve, polar_coordinates, swirl, kaleidoscope, spherize, perspective
+- `adjustments/` — brighten, contrast, levels, auto_levels, curves, grayscale, invert, posterize, saturation, hue_rotate, hsl, threshold, vignette, white_balance, color_balance, selective_color, color_to_mask, replace_color, frequency_split, dither, gradient_map, gradient_dynamic, color_match, distance, histogram_scan, histogram_range, histogram_select (shared `smoothstep`/HSL helpers live in `adjustments/common.rs`)
 - `blur/` — blur, directional_blur, radial_blur, slope_blur, non_uniform_blur
-- `filter/` — edge_detect, canny, emboss, sharpen, unsharpen, highpass, luminance_highpass, dog (difference of gaussians), median, bilateral, guided, non_local_means, anisotropic_diffusion, kuwahara, anisotropic_kuwahara, snn, oil_paint, toon, cross_hatch, halftone, ascii, convolution (custom 3x3 kernel), dilate, erode, open, close, morphological_gradient, top_hat, black_hat, floyd_steinberg, ordered_dither (morphology ops share `separable_morphology` from `erode.rs`)
+- `filter/` — edge_detect, canny, emboss, sharpen, unsharpen, highpass, luminance_highpass, dog (difference of gaussians), median, bilateral, guided, non_local_means, anisotropic_diffusion, kuwahara, anisotropic_kuwahara, snn, oil_paint, toon, cross_hatch, halftone, ascii, convolution (custom 3x3 kernel), dilate, erode, open, close, morphological_gradient, top_hat, black_hat, outline, pixelate, vector_morphology, floyd_steinberg, ordered_dither (morphology ops share `separable_morphology` from `erode.rs`)
 - `fx/` — drop_shadow, inner_glow, outer_glow
 - `combine/` — blit, blend, compare
-- `channels/` — split, merge, shuffle
+- `channels/` — split, merge, shuffle, select, mixer
 - `shapes/` — rectangle, ellipse, circle, polygon, star, line, cone, pyramid, paraboloid
-- `patterns/` — brick, hexagonal, weave, tile_sampler, splatter, flood_fill, flood_fill_mapper
-- `pbr/` — normal_from_height, normal_invert, normal_blend, normal_combine, ao_from_height, curvature, bevel, height_blend
+- `patterns/` — brick, hexagonal, weave, tile_sampler, tile_generator, splatter, flood_fill, flood_fill_mapper
+- `pbr/` — normal_from_height, normal_to_height, normal_invert, normal_blend, normal_combine, ao_from_height, curvature, bevel, height_blend
 - `noise/` — 28 generators: perlin, value, fbm, billow, ridged_multifractal, hybrid_multifractal, basic_multifractal, open_simplex, super_simplex, voronoise, voronoi_crack, worley_distance, worley_value, gabor, anisotropic, gaussian (white noise), blue_noise, curl (flow map, 3-channel), wave, clouds, plasma, crystal, dirt, cylinders, checkerboard, erosion, reaction_diffusion, domain_warp_fbm (`voronoi_common.rs` is a shared helper, not a node; `pixel_hash`/`periodic_value_2d`/`build_perm_tables` in `noise/mod.rs` are shared)
 
 ### videos/ (behind the `video` feature)

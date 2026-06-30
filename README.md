@@ -81,15 +81,15 @@ cargo test
 - **Input:** File, URL, Clipboard, Solid Color, Gradient, Text
 - **Output:** File, Clipboard
 - **Combine:** Blit, Blend (17 blend modes), Compare
-- **Transform:** Crop, Resize, Resize Exact, Resize Fill, Flip H/V, Rotate 90/180/270, Rotate Around Center, Warp, Directional Warp, Safe Transform, Make Tile, Mirror, Seam Carve, Polar Coordinates, Swirl, Spherize, Perspective
-- **Adjustments:** Contrast, Grayscale, Invert, Brighten, Saturation, Hue Rotate, Threshold, Vignette, White Balance, Color Balance, Selective Color, Levels, Auto Levels, Curves, Gradient Map, Gradient Dynamic, Color Match, Posterize, Dither, Histogram Scan, Histogram Range, Histogram Select
+- **Transform:** Crop, Resize, Resize Exact, Resize Fill, Flip H/V, Rotate 90/180/270, Rotate Around Center, Warp, Directional Warp, Safe Transform, Make Tile, Mirror, Seam Carve, Polar Coordinates, Swirl, Kaleidoscope, Spherize, Perspective
+- **Adjustments:** Contrast, Grayscale, Invert, Brighten, Saturation, Hue Rotate, HSL, Threshold, Vignette, White Balance, Color Balance, Selective Color, Color to Mask, Replace Color, Frequency Split, Levels, Auto Levels, Curves, Gradient Map, Gradient Dynamic, Color Match, Posterize, Dither, Histogram Scan, Histogram Range, Histogram Select
 - **Blur:** Gaussian Blur, Directional Blur, Radial Blur, Slope Blur, Non-Uniform Blur
-- **Filter:** Edge Detect, Canny, Difference of Gaussians, Emboss, Sharpen, Unsharpen, Highpass, Luminance Highpass, Kuwahara, Anisotropic Kuwahara, Anisotropic Diffusion, Bilateral, Non-Local Means, Symmetric Nearest Neighbor, Toon, Oil Paint, Halftone, Ordered Dither, Floyd–Steinberg, Cross Hatch, ASCII, Median, Guided, Erode, Dilate, Open, Close, Morphological Gradient, Top Hat, Black Hat, Convolution (custom 3×3 kernel), Distance Field
+- **Filter:** Edge Detect, Canny, Difference of Gaussians, Emboss, Sharpen, Unsharpen, Highpass, Luminance Highpass, Kuwahara, Anisotropic Kuwahara, Anisotropic Diffusion, Bilateral, Non-Local Means, Symmetric Nearest Neighbor, Toon, Oil Paint, Halftone, Ordered Dither, Floyd–Steinberg, Cross Hatch, ASCII, Median, Guided, Erode, Dilate, Open, Close, Morphological Gradient, Top Hat, Black Hat, Outline, Pixelate, Vector Morphology, Convolution (custom 3×3 kernel), Distance Field
 - **FX:** Drop Shadow, Outer Glow, Inner Glow
-- **Channels:** Split, Merge, Shuffle
+- **Channels:** Split, Merge, Shuffle, Select, Mixer
 - **Shapes:** Rectangle, Ellipse, Circle, Polygon, Star, Line, Cone, Pyramid, Paraboloid
-- **Patterns:** Brick, Hexagonal, Weave, Tile Sampler, Splatter, Flood Fill, Flood Fill Mapper
-- **PBR:** Normal from Height, AO from Height, Curvature, Height Blend, Normal Combine, Normal Blend, Normal Invert, Bevel
+- **Patterns:** Brick, Hexagonal, Weave, Tile Sampler, Tile Generator, Splatter, Flood Fill, Flood Fill Mapper
+- **PBR:** Normal from Height, Normal to Height, AO from Height, Curvature, Height Blend, Normal Combine, Normal Blend, Normal Invert, Bevel
 - **Noise:** OpenSimplex, SuperSimplex, Perlin, Worley Distance, Worley Value, Billow, Cylinders, Domain Warp FBM, FBM, Heterogeneous Multifractal, Hybrid Multifractal, Ridged Multifractal, Value, Voronoi Crack, Voronoise, Reaction Diffusion, Erosion, Gabor, White Noise, Crystal, Clouds, Plasma, Anisotropic, Dirt, Wave, Blue Noise, Curl Noise, Checkerboard
 - **Cast:** To Image
 
