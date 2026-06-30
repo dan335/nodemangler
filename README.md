@@ -25,7 +25,7 @@ See each crate's README for details:
 
 ## Requirements
 
-- **Rust nightly** toolchain (configured in `app/rust-toolchain.toml`)
+- **Rust stable** toolchain (pinned in `app/rust-toolchain.toml`)
 
 ## Build & Run
 

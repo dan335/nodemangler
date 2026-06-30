@@ -25,7 +25,7 @@ cargo run -p mangler_cli  # Run the CLI tool
 
 ## Key Conventions
 
-- **Nightly Rust** toolchain (see `app/rust-toolchain.toml`)
+- **Stable Rust** toolchain (see `app/rust-toolchain.toml`)
 - **Async-first**: tokio multi-threaded runtime; graph execution is async on a separate tokio task
 - **Message-driven UI**: the GUI and engine communicate through four mpsc channel message types:
   - `ChangeGraphMessage` — UI → engine: add/remove nodes and connections, set save path/name, start renders
