@@ -482,6 +482,7 @@ operations! {
     OpImageNoiseWave(crate::operations::images::noise::wave::OpImageNoiseWave),
     OpImageNoiseBlue(crate::operations::images::noise::blue_noise::OpImageNoiseBlue),
     OpImageNoiseCurl(crate::operations::images::noise::curl::OpImageNoiseCurl),
+    OpImageNoiseCheckerboard(crate::operations::images::noise::checkerboard::OpImageNoiseCheckerboard),
 
     // shapes
     OpImageShapeRectangle(crate::operations::images::shapes::rectangle::OpImageShapeRectangle),
@@ -492,6 +493,7 @@ operations! {
     OpImageShapeParaboloid(crate::operations::images::shapes::paraboloid::OpImageShapeParaboloid),
     OpImageShapePyramid(crate::operations::images::shapes::pyramid::OpImageShapePyramid),
     OpImageShapeCone(crate::operations::images::shapes::cone::OpImageShapeCone),
+    OpImageShapesCircle(crate::operations::images::shapes::circle::OpImageShapesCircle),
 
     // patterns
     OpImagePatternBrick(crate::operations::images::patterns::brick::OpImagePatternBrick),
@@ -879,6 +881,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageShapeParaboloid },
                 OperationListItem::Operation { operation: Operation::OpImageShapePyramid },
                 OperationListItem::Operation { operation: Operation::OpImageShapeCone },
+                OperationListItem::Operation { operation: Operation::OpImageShapesCircle },
             ]},
             OperationListItem::Category { name: "patterns".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImagePatternBrick },
@@ -917,6 +920,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageNoiseWave },
                 OperationListItem::Operation { operation: Operation::OpImageNoiseBlue },
                 OperationListItem::Operation { operation: Operation::OpImageNoiseCurl },
+                OperationListItem::Operation { operation: Operation::OpImageNoiseCheckerboard },
             ]},
             OperationListItem::Category { name: "cast".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageCastToImage },

@@ -22,6 +22,7 @@ The repository is organized as a monorepo:
 See each crate's README for details:
 - [mangler_core README](app/crates/mangler_core/README.md) — the engine and operation library
 - [mangler_gui README](app/crates/mangler_gui/README.md) — the desktop application
+- [mangler_cli README](app/crates/mangler_cli/README.md) — the headless command-line interface
 
 ## Requirements
 
@@ -86,10 +87,10 @@ cargo test
 - **Filter:** Edge Detect, Canny, Difference of Gaussians, Emboss, Sharpen, Unsharpen, Highpass, Luminance Highpass, Kuwahara, Anisotropic Kuwahara, Anisotropic Diffusion, Bilateral, Non-Local Means, Symmetric Nearest Neighbor, Toon, Oil Paint, Halftone, Ordered Dither, Floyd–Steinberg, Cross Hatch, ASCII, Median, Guided, Erode, Dilate, Open, Close, Morphological Gradient, Top Hat, Black Hat, Convolution (custom 3×3 kernel), Distance Field
 - **FX:** Drop Shadow, Outer Glow, Inner Glow
 - **Channels:** Split, Merge, Shuffle
-- **Shapes:** Rectangle, Ellipse, Polygon, Star, Line, Cone, Pyramid, Paraboloid
+- **Shapes:** Rectangle, Ellipse, Circle, Polygon, Star, Line, Cone, Pyramid, Paraboloid
 - **Patterns:** Brick, Hexagonal, Weave, Tile Sampler, Splatter, Flood Fill, Flood Fill Mapper
 - **PBR:** Normal from Height, AO from Height, Curvature, Height Blend, Normal Combine, Normal Blend, Normal Invert, Bevel
-- **Noise:** OpenSimplex, SuperSimplex, Perlin, Worley Distance, Worley Value, Billow, Cylinders, Domain Warp FBM, FBM, Heterogeneous Multifractal, Hybrid Multifractal, Ridged Multifractal, Value, Voronoi Crack, Voronoise, Reaction Diffusion, Erosion, Gabor, White Noise, Crystal, Clouds, Plasma, Anisotropic, Dirt, Wave, Blue Noise, Curl Noise
+- **Noise:** OpenSimplex, SuperSimplex, Perlin, Worley Distance, Worley Value, Billow, Cylinders, Domain Warp FBM, FBM, Heterogeneous Multifractal, Hybrid Multifractal, Ridged Multifractal, Value, Voronoi Crack, Voronoise, Reaction Diffusion, Erosion, Gabor, White Noise, Crystal, Clouds, Plasma, Anisotropic, Dirt, Wave, Blue Noise, Curl Noise, Checkerboard
 - **Cast:** To Image
 
 ### Logic

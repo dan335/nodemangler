@@ -5,6 +5,7 @@
 //! and supports rotation where applicable. Available shapes include rectangle,
 //! ellipse, polygon, star, and line.
 
+pub mod circle;
 pub mod cone;
 pub mod ellipse;
 pub mod line;
