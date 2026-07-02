@@ -63,7 +63,7 @@ impl OpImageAdjustmentDilate {
         let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
 
-        let radius = radius.max(1) as i32;
+        let radius = radius.max(1);
 
         // Reuse the separable pass from erode.rs with max as the reducer
         let out = separable_morphology(&data, radius, |a, b| a.max(b));

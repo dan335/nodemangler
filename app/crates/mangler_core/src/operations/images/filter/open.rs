@@ -56,7 +56,7 @@ impl OpImageAdjustmentOpen {
         let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
 
-        let radius = radius.max(1) as i32;
+        let radius = radius.max(1);
         let eroded = separable_morphology(&data, radius, |a, b| a.min(b));
         let opened = separable_morphology(&eroded, radius, |a, b| a.max(b));
 

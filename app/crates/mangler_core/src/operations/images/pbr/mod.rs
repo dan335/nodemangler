@@ -19,7 +19,7 @@ pub mod normal_to_height;
 /// which maps to a flat-up normal so grayscale inputs don't produce garbage.
 #[inline]
 pub(crate) fn unpack_normal(px: &[f32]) -> [f32; 3] {
-    let r = *px.get(0).unwrap_or(&0.5);
+    let r = *px.first().unwrap_or(&0.5);
     let g = *px.get(1).unwrap_or(&0.5);
     let b = *px.get(2).unwrap_or(&1.0);
     [r * 2.0 - 1.0, g * 2.0 - 1.0, b * 2.0 - 1.0]

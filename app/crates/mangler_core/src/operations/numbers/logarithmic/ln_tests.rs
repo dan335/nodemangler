@@ -46,22 +46,22 @@ async fn test_ln_zero_errors() {
 
 #[tokio::test]
 async fn test_ln_2() {
-    // ln(2) ≈ 0.6931
+    // ln(2) == std::f32::consts::LN_2
     let mut inputs = vec![Input::new("input".to_string(), Value::Decimal(2.0), None, None)];
     let result = OpNumberMathLn::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::Decimal(v) => assert!((*v - 0.6931).abs() < 1e-3),
+        Value::Decimal(v) => assert!((*v - std::f32::consts::LN_2).abs() < 1e-3),
         other => panic!("Expected Decimal, got {:?}", other),
     }
 }
 
 #[tokio::test]
 async fn test_ln_10() {
-    // ln(10) ≈ 2.302585
+    // ln(10) == std::f32::consts::LN_10
     let mut inputs = vec![Input::new("input".to_string(), Value::Decimal(10.0), None, None)];
     let result = OpNumberMathLn::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::Decimal(v) => assert!((*v - 2.302585).abs() < 1e-4),
+        Value::Decimal(v) => assert!((*v - std::f32::consts::LN_10).abs() < 1e-4),
         other => panic!("Expected Decimal, got {:?}", other),
     }
 }

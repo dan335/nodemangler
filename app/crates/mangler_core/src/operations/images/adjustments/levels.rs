@@ -102,14 +102,13 @@ impl OpImageAdjustmentLevels {
         let color_ch = if ch == 2 || ch == 4 { ch - 1 } else { ch };
 
         for pixel in result.pixels_mut() {
-            for c in 0..color_ch {
-                let val = pixel[c];
+            for val in pixel.iter_mut().take(color_ch) {
                 // Remap from [in_low, in_high] to [0, 1]
-                let remapped = ((val - in_low) / in_range).clamp(0.0, 1.0);
+                let remapped = ((*val - in_low) / in_range).clamp(0.0, 1.0);
                 // Apply gamma correction
                 let corrected = remapped.powf(inv_gamma);
                 // Remap to [out_low, out_high]
-                pixel[c] = out_low + corrected * (out_high - out_low);
+                *val = out_low + corrected * (out_high - out_low);
             }
             // alpha unchanged
         }

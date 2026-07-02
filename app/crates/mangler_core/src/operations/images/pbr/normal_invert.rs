@@ -70,9 +70,7 @@ impl OpImagePbrNormalInvert {
             for x in 0..w {
                 let src = data.get_pixel(x, y);
                 let mut px = [0.0f32; 4];
-                for c in 0..ch_usize {
-                    px[c] = src[c];
-                }
+                px[..ch_usize].copy_from_slice(&src[..ch_usize]);
                 if invert_x && ch_usize >= 1 { px[0] = 1.0 - px[0]; }
                 if invert_y && ch_usize >= 2 { px[1] = 1.0 - px[1]; }
                 output.put_pixel(x, y, &px[..ch_usize]);

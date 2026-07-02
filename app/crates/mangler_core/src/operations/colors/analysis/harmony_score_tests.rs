@@ -64,7 +64,7 @@ async fn test_score_clamped_0_to_1() {
         let mut inputs = pair_inputs(ca, cb);
         let result = OpColorAnalysisHarmonyScore::run(&mut inputs).await.unwrap();
         let Value::Decimal(score) = result.responses[0].value else { panic!("Expected Decimal") };
-        assert!(score >= 0.0 && score <= 1.0, "Score out of range: {}", score);
+        assert!((0.0..=1.0).contains(&score), "Score out of range: {}", score);
     }
 }
 

@@ -46,7 +46,6 @@ fn test_new_operation_node() {
     assert_eq!(node.id, "test-node");
     assert_eq!(node.settings.name, "not");
     assert!(node.is_dirty);
-    assert!(!node.is_busy);
     assert!(!node.is_error);
     assert!(node.error_message.is_none());
     assert!(node.cached_input_hash.is_none());

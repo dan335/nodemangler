@@ -61,11 +61,7 @@ impl OpColorGenerationFromHex {
         let Value::Text(hex_str) = hex_converted.unwrap() else { unreachable!() };
 
         // Strip leading '#' if present
-        let hex_clean = if hex_str.starts_with('#') {
-            &hex_str[1..]
-        } else {
-            &hex_str
-        };
+        let hex_clean = hex_str.strip_prefix('#').unwrap_or(&hex_str);
 
         // Parse 6-char (#RRGGBB) or 8-char (#RRGGBBAA) hex strings
         let color = match hex_clean.len() {

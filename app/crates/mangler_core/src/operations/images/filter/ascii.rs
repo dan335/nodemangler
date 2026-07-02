@@ -159,13 +159,11 @@ impl OpImageAdjustmentAscii {
                         // When invert is true, ink becomes bright and paper stays dark.
                         let v = if invert {
                             if on { 1.0 } else { 0.0 }
-                        } else {
-                            if on { 0.0 } else { 1.0 }
-                        };
+                        } else if on { 0.0 } else { 1.0 };
 
                         let src = data.get_pixel(xx, yy);
                         let mut pixel = [0.0f32; 4];
-                        for c in 0..ch.min(3) { pixel[c] = v; }
+                        for val in pixel.iter_mut().take(ch.min(3)) { *val = v; }
                         if ch == 2 || ch == 4 { pixel[ch - 1] = src[ch - 1]; }
                         out.put_pixel(xx, yy, &pixel[..ch]);
                     }

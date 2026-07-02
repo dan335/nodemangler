@@ -68,7 +68,7 @@ impl OpImageAdjustmentVectorMorphology {
         let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
 
         let mode = mode.clamp(0, 1);
-        let radius = radius.max(1) as i32;
+        let radius = radius.max(1);
         let (w, h) = data.dimensions();
         let ch = data.channels() as usize;
         let iw = w as i32;
@@ -112,9 +112,7 @@ impl OpImageAdjustmentVectorMorphology {
                 // Copy the winner's pixel verbatim so vector length is
                 // preserved exactly (no reconstruction or normalisation).
                 let src = data.get_pixel(best_x, best_y);
-                for c in 0..ch {
-                    buf[c] = src[c];
-                }
+                buf[..ch].copy_from_slice(&src[..ch]);
                 output.put_pixel(x as u32, y as u32, &buf[..ch]);
             }
         }

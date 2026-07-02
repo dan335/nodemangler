@@ -82,8 +82,8 @@ impl OpImageAdjustmentNonLocalMeans {
         let Value::Integer(patch_r) = patch_converted.unwrap() else { unreachable!() };
         let Value::Decimal(h) = h_converted.unwrap() else { unreachable!() };
 
-        let search_r = search_r.max(1) as i32;
-        let patch_r = patch_r.max(0) as i32;
+        let search_r = search_r.max(1);
+        let patch_r = patch_r.max(0);
         // Guard against division by zero in the exponent
         let h2 = (h * h).max(1e-8);
 
@@ -139,8 +139,8 @@ impl OpImageAdjustmentNonLocalMeans {
                 }
 
                 // Normalize by total weight (guaranteed > 0: weight at q = p is 1)
-                for c in 0..ch {
-                    row.push(acc[c] / weight_sum);
+                for val in acc.iter().take(ch) {
+                    row.push(val / weight_sum);
                 }
             }
             row

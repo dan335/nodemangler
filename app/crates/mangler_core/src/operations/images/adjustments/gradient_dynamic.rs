@@ -91,7 +91,7 @@ impl OpImageAdjustmentGradientDynamic {
         let fx_scale = if field_w > 0 { field_w as f32 / width.max(1) as f32 } else { 0.0 };
         let fy_scale = if field_h > 0 { field_h as f32 / height.max(1) as f32 } else { 0.0 };
 
-        let angle_rad = (angle as f32).to_radians();
+        let angle_rad = angle.to_radians();
         let cos_a = angle_rad.cos();
         let sin_a = angle_rad.sin();
 

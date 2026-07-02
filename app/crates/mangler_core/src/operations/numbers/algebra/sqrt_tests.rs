@@ -66,11 +66,11 @@ async fn test_sqrt_integer_input() {
 
 #[tokio::test]
 async fn test_sqrt_non_perfect_square() {
-    // sqrt(2) ≈ 1.41421
+    // sqrt(2) == std::f32::consts::SQRT_2
     let mut inputs = vec![Input::new("a".to_string(), Value::Decimal(2.0), None, None)];
     let result = OpNumberMathSqrt::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::Decimal(v) => assert!((*v - 1.41421).abs() < 1e-4),
+        Value::Decimal(v) => assert!((*v - std::f32::consts::SQRT_2).abs() < 1e-4),
         other => panic!("Expected Decimal, got {:?}", other),
     }
 }

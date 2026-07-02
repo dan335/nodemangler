@@ -64,7 +64,7 @@ async fn test_opimagenoiseworleyvalue_all_distance_functions() {
             Input::new("seed".to_string(), Value::Integer(1), None, None),
             Input::new("width".to_string(), Value::Integer(8), None, None),
             Input::new("height".to_string(), Value::Integer(8), None, None),
-            Input::new("distance_function".to_string(), Value::NoiseWorleyDistanceFunction(df.clone()), None, None),
+            Input::new("distance_function".to_string(), Value::NoiseWorleyDistanceFunction(*df), None, None),
             Input::new("frequency".to_string(), Value::Decimal(5.0), None, None),
         ];
         let result = OpImageNoiseWorleyValue::run(&mut inputs).await;

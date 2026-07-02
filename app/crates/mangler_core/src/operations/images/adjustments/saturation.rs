@@ -73,8 +73,8 @@ impl OpImageAdjustmentSaturation {
         let mut result = (*data).clone();
         for pixel in result.pixels_mut() {
             let luma = 0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2];
-            for c in 0..3 {
-                pixel[c] = luma + (pixel[c] - luma) * amount;
+            for val in pixel.iter_mut().take(3) {
+                *val = luma + (*val - luma) * amount;
             }
         }
 

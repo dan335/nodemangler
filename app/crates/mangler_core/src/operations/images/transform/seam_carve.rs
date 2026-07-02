@@ -240,7 +240,7 @@ fn compute_energy(img: &FloatImage) -> Vec<f32> {
         .par_chunks_mut(w)
         .enumerate()
         .for_each(|(y, row_energy)| {
-            for x in 0..w {
+            for (x, energy_x) in row_energy.iter_mut().enumerate().take(w) {
                 let base = (y * w + x) * ch;
                 let mut e = 0.0f32;
 
@@ -258,7 +258,7 @@ fn compute_energy(img: &FloatImage) -> Vec<f32> {
                     e += (raw[base + c] - raw[neighbor_v + c]).abs();
                 }
 
-                row_energy[x] = e;
+                *energy_x = e;
             }
         });
 
@@ -343,8 +343,7 @@ fn remove_seam(img: &FloatImage, seam: &[usize]) -> FloatImage {
     let raw = img.as_raw();
     let mut new_data = vec![0.0f32; new_w * h * ch];
 
-    for y in 0..h {
-        let seam_x = seam[y];
+    for (y, &seam_x) in seam.iter().enumerate().take(h) {
         let src_row = y * w * ch;
         let dst_row = y * new_w * ch;
 

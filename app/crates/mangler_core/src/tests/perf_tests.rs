@@ -5,7 +5,7 @@
 //! changed inputs. Run with `cargo test -- --nocapture` to see timing output.
 
 #[cfg(test)]
-mod perf_tests {
+mod graph_perf {
     use std::sync::Arc;
     use std::time::Instant;
     use tokio::sync::mpsc;

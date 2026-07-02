@@ -25,7 +25,7 @@ async fn test_not_equal_false() {
 
 #[tokio::test]
 async fn test_not_equal_decimals() {
-    let mut inputs = make_inputs(Value::Decimal(3.14), Value::Decimal(2.71));
+    let mut inputs = make_inputs(Value::Decimal(3.25), Value::Decimal(2.71));
     let result = OpLogicCompareNotEqual::run(&mut inputs).await.unwrap();
     assert!(matches!(result.responses[0].value, Value::Bool(true)));
 }

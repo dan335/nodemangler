@@ -143,7 +143,7 @@ impl OpImageAdjustmentCanny {
         if max_mag > 1e-4 {
             for m in &mut mag { *m /= max_mag; }
         } else {
-            for m in &mut mag { *m = 0.0; }
+            mag.fill(0.0);
         }
 
         // --- stage 3: non-maximum suppression ---
@@ -208,7 +208,7 @@ impl OpImageAdjustmentCanny {
                 let v = if mark[idx] == 2 { 1.0 } else { 0.0 };
                 let src = data.get_pixel(x, y);
                 let mut pixel = [0.0f32; 4];
-                for c in 0..ch.min(3) { pixel[c] = v; }
+                for val in pixel.iter_mut().take(ch.min(3)) { *val = v; }
                 if ch == 2 || ch == 4 { pixel[ch - 1] = src[ch - 1]; }
                 out.put_pixel(x, y, &pixel[..ch]);
             }
@@ -230,7 +230,7 @@ fn quantize_angle(gx: f32, gy: f32) -> u8 {
     let mut a = gy.atan2(gx);
     if a < 0.0 { a += std::f32::consts::PI; }
     let deg = a.to_degrees();
-    if deg < 22.5 || deg >= 157.5 { 0 }
+    if !(22.5..157.5).contains(&deg) { 0 }
     else if deg < 67.5 { 1 }
     else if deg < 112.5 { 2 }
     else { 3 }

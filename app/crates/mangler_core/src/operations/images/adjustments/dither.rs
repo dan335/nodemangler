@@ -93,10 +93,10 @@ impl OpImageAdjustmentDither {
                 };
                 let threshold = (base_threshold - 0.5) * strength / steps;
                 let px = result.get_pixel_mut(x, y);
-                for c in 0..colour_ch {
-                    let v = (px[c] + threshold).clamp(0.0, 1.0);
+                for val in px.iter_mut().take(colour_ch) {
+                    let v = (*val + threshold).clamp(0.0, 1.0);
                     // Round-to-nearest of v scaled by steps, then back to [0,1].
-                    px[c] = ((v * steps + 0.5).floor() / steps).clamp(0.0, 1.0);
+                    *val = ((v * steps + 0.5).floor() / steps).clamp(0.0, 1.0);
                 }
             }
         }

@@ -71,7 +71,7 @@ impl OpImageAdjustmentSnn {
         let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
 
-        let radius = radius.max(1) as i32;
+        let radius = radius.max(1);
 
         let (width, height) = data.dimensions();
         let ch = data.channels() as usize;
@@ -128,8 +128,8 @@ impl OpImageAdjustmentSnn {
                 }
 
                 let inv_n = 1.0 / count as f32;
-                for c in 0..ch {
-                    row_pixels.push(sum[c] * inv_n);
+                for val in sum.iter().take(ch) {
+                    row_pixels.push(val * inv_n);
                 }
             }
             row_pixels

@@ -34,7 +34,7 @@ async fn three_channels_and_dimensions() {
 #[tokio::test]
 async fn values_in_unit_range() {
     let img = run(5, 64, 64, 8).await;
-    assert!(img.pixels().all(|p| p.iter().all(|&c| c >= 0.0 && c <= 1.0)));
+    assert!(img.pixels().all(|p| p.iter().all(|&c| (0.0..=1.0).contains(&c))));
 }
 
 #[tokio::test]

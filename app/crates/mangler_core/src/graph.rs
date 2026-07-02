@@ -22,7 +22,7 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
 };
-use tokio::sync::mpsc::{Sender, self};
+use tokio::sync::mpsc::Sender;
 use async_recursion::async_recursion;
 use crate::NodeChangedMessage::SubgraphLoaded;
 
@@ -44,8 +44,6 @@ pub struct Graph {
     pub tx_graph_changed: Option<Sender<GraphChangedMessage>>,
     /// All nodes in the graph, keyed by node ID.
     pub nodes: HashMap<String, Node>,
-    /// Whether the graph has pending changes that require execution.
-    pub is_dirty: bool,
     /// File path for saving this graph, if set.
     pub save_path: Option<PathBuf>,
     /// Whether this graph is embedded inside a subgraph node (affects save behavior).
@@ -71,7 +69,6 @@ impl Graph {
             ThumbnailService::try_spawn(tx_node_changed.clone()).map(std::sync::Arc::new);
         Ok(Graph {
             nodes: HashMap::new(),
-            is_dirty: false,
             tx_node_changed: Some(tx_node_changed),
             tx_graph_changed: Some(tx_graph_changed),
             save_path: None,
@@ -100,7 +97,6 @@ impl Graph {
                         .and_then(|tx| ThumbnailService::try_spawn(tx.clone()))
                         .map(std::sync::Arc::new);
                     let mut graph = Graph {
-                        is_dirty: false,
                         tx_node_changed,
                         save_path: Some(save_path),
                         nodes: json.nodes,
@@ -144,9 +140,9 @@ impl Graph {
                     }
 
                     // Auto-reload any subgraph nodes that have a saved path.
-                    // Subgraph.graph/rx_node_changed are #[serde(skip)] so they
-                    // come back as None; this rebuilds each child graph and
-                    // repopulates the exposed inputs/outputs.
+                    // Subgraph.graph is #[serde(skip)] so it comes back as
+                    // None; this rebuilds each child graph and repopulates
+                    // the exposed inputs/outputs.
                     graph.rehydrate_subgraphs();
 
                     Ok(graph)
@@ -217,7 +213,6 @@ impl Graph {
             }
         }
 
-        self.is_dirty = true;
         self.nodes.insert(node_id.clone(), node);
 
 
@@ -292,14 +287,31 @@ impl Graph {
         {
             let mut is_valid = false;
 
-            // check if valid connection
+            // check if valid connection (bounds-checked: out-of-range socket
+            // indices are simply an invalid connection, not a panic)
             if let Some(from_output) = self.nodes.get(&output_node_id) {
                 if let Some(to_input) = self.nodes.get(&input_node_id) {
-                    if from_output.outputs.len() >= output_connection_index && to_input.inputs.len() >= input_connection_index
-                        && from_output.outputs[output_connection_index].is_valid_connection(&to_input.inputs[input_connection_index]) {
+                    if let (Some(output), Some(input)) = (
+                        from_output.outputs.get(output_connection_index),
+                        to_input.inputs.get(input_connection_index),
+                    ) {
+                        if output.is_valid_connection(input) {
                             is_valid = true;
                         }
+                    }
                 }
+            }
+
+            // Reject connections that would close a cycle (including direct
+            // self-connections). Adding the edge output_node -> input_node
+            // creates a cycle exactly when the destination can already reach
+            // the source by following output connections downstream.
+            if is_valid && self.can_reach(&input_node_id, &output_node_id) {
+                println!(
+                    "Rejected connection {output_node_id}[{output_connection_index}] -> \
+                     {input_node_id}[{input_connection_index}]: it would create a cycle"
+                );
+                is_valid = false;
             }
 
             if is_valid {
@@ -393,9 +405,6 @@ impl Graph {
                         }
                     }
                 }
-
-                // mark graph as dirty
-                self.is_dirty = true;
 
                 // send message to ui
                 if let Some(tx) = &self.tx_graph_changed {
@@ -532,12 +541,10 @@ impl Graph {
                 // If this input is linked to a subgraph's internal input, forward
                 // the value so the child graph sees the change on its next run.
                 if let Some(link) = &input.link {
-                    if let NodeType::Subgraph { path: _, graph: possible_subgraph, rx_node_changed: _, last_mtime: _ } = &mut node.node_type {
-                        if let Some(subgraph) = possible_subgraph {
-                            if let Some(subgraph_node) = subgraph.nodes.get_mut(&link.node_id) {
-                                if let Some(i) = subgraph_node.inputs.iter_mut().position(|i| i.id == link.input_id) {
-                                    subgraph_node.set_input_value(i, value.clone());
-                                }
+                    if let NodeType::Subgraph { path: _, graph: Some(subgraph), last_mtime: _ } = &mut node.node_type {
+                        if let Some(subgraph_node) = subgraph.nodes.get_mut(&link.node_id) {
+                            if let Some(i) = subgraph_node.inputs.iter_mut().position(|i| i.id == link.input_id) {
+                                subgraph_node.set_input_value(i, value.clone());
                             }
                         }
                     }
@@ -556,8 +563,12 @@ impl Graph {
         let Some(node) = self.nodes.get_mut(&node_id) else { return; };
         if !matches!(node.node_type, NodeType::Subgraph { .. }) { return; }
 
-        let (tx_node_changed, rx_node_changed) = mpsc::channel::<NodeChangedMessage>(32);
-        let subgraph = match Graph::load(path.clone(), Some(tx_node_changed), None, true) {
+        // The child graph runs without a NodeChangedMessage channel: exposed
+        // output values are read directly from the child's node storage after
+        // each run (see Node::run's subgraph branch). A bounded channel here
+        // used to overflow and silently drop OutputChanged messages for
+        // larger child graphs, leaving exposed outputs stale.
+        let subgraph = match Graph::load(path.clone(), None, None, true) {
             Ok(g) => g,
             Err(error) => {
                 println!("Error loading subgraph. {:#?}", error);
@@ -629,7 +640,6 @@ impl Graph {
         node.node_type = NodeType::Subgraph {
             path: path.clone(),
             graph: Some(subgraph),
-            rx_node_changed: Some(rx_node_changed),
             last_mtime: loaded_mtime,
         };
         node.is_dirty = true;
@@ -639,9 +649,11 @@ impl Graph {
         // short-circuit every subsequent run even though outputs are stale.
         node.cached_input_hash = None;
 
+        let new_input_count = node.inputs.len();
+
         if let Some(tx) = &self.tx_node_changed {
             let message = SubgraphLoaded {
-                node_id,
+                node_id: node_id.clone(),
                 settings: node.settings.clone(),
                 inputs: node.inputs.clone(),
                 outputs: node.outputs.clone(),
@@ -651,13 +663,36 @@ impl Graph {
                 println!("Error sending SubgraphLoaded: {:?}", err);
             }
         }
+
+        // The rebuild above may have removed input slots (the reloaded child
+        // can expose fewer inputs than before). Prune any upstream
+        // output.connection entry across the graph that still targets this
+        // node at a now out-of-range input index — otherwise the next
+        // propagation pass would index past the rebuilt inputs.
+        for other_node in self.nodes.values_mut() {
+            for output in other_node.outputs.iter_mut() {
+                if let Some(connections) = output.connection.as_mut() {
+                    connections.retain(|(target_node_id, target_input_index)| {
+                        let stale = *target_node_id == node_id
+                            && *target_input_index >= new_input_count;
+                        if stale {
+                            println!(
+                                "Pruning stale connection to {node_id}: input index \
+                                 {target_input_index} out of range after subgraph reload"
+                            );
+                        }
+                        !stale
+                    });
+                }
+            }
+        }
     }
 
     /// Re-load the child graph for every subgraph node that has a saved path.
     ///
-    /// A subgraph node's `graph`/`rx_node_changed` are `#[serde(skip)]` *and*
-    /// are dropped to `None` by `NodeType::clone` (neither `Graph` nor the
-    /// channel is cloneable). So after a `load` from disk **or** after
+    /// A subgraph node's `graph` is `#[serde(skip)]` *and* is dropped to
+    /// `None` by `NodeType::clone` (`Graph` is not cloneable). So after a
+    /// `load` from disk **or** after
     /// [`detached`](Self::detached) clones the graph, those nodes come back as
     /// hollow shells that would silently skip execution at run time. Routing
     /// each one back through [`set_subgraph_path`](Self::set_subgraph_path)
@@ -741,7 +776,6 @@ impl Graph {
             tx_node_changed: None,
             tx_graph_changed: None,
             nodes,
-            is_dirty: true,
             save_path: None,
             is_subgraph: self.is_subgraph,
             // No UI channel -> no thumbnail worker. Node::run falls back
@@ -765,17 +799,27 @@ impl Graph {
         let mut dirty_nodes: HashSet<String> = HashSet::new();
         let mut checked_nodes: HashSet<String> = HashSet::new();
         let mut nodes_to_check: VecDeque<String> = VecDeque::new();
+        // Nodes that must run this tick even if their input hash is unchanged.
+        // `Value::Trigger` hashes as a constant (see `Value::fingerprint`), so
+        // the input-hash skip below cannot tell a fresh trigger firing apart
+        // from "inputs unchanged". Trigger firings are tracked here instead:
+        // seeded from dirty nodes holding a Trigger input value, then
+        // propagated downstream along Trigger-valued connections as nodes run.
+        let mut forced_nodes: HashSet<String> = HashSet::new();
 
         // find all dirty nodes
-        // return early if node is busy
         for (node_id, node) in self.nodes.iter_mut() {
-            if node.is_busy {
-                return;
-            }
-
             if node.is_dirty {
                 nodes_to_check.push_back(node_id.clone());
                 node.is_dirty = false;
+
+                // A dirty node holding a Trigger input value was fired (e.g.
+                // via `Node::set_input_value` when a subgraph forwards an
+                // exposed trigger input). Its input hash won't change, so
+                // force it to run.
+                if node.inputs.iter().any(|input| matches!(input.value, Value::Trigger)) {
+                    forced_nodes.insert(node_id.clone());
+                }
             }
         }
 
@@ -821,9 +865,11 @@ impl Graph {
                 continue;
             };
 
-            // Skip if inputs unchanged since last run
+            // Skip if inputs unchanged since last run, unless a trigger
+            // firing forced this node (Trigger values hash as a constant, so
+            // an unchanged hash cannot rule out a fresh firing).
             let skip = if let Some(node) = self.nodes.get(&node_id) {
-                node.cached_input_hash == Some(input_hash)
+                !forced_nodes.contains(&node_id) && node.cached_input_hash == Some(input_hash)
             } else {
                 false
             };
@@ -846,7 +892,16 @@ impl Graph {
                 }
                 for (connected_node_id, input_index, value) in output_data.into_iter() {
                     if let Some(connected_node) = self.nodes.get_mut(&connected_node_id) {
-                        connected_node.inputs[input_index].value = value;
+                        // Defensive: connection indices can go stale (e.g. a
+                        // reloaded subgraph exposing fewer inputs). Skip
+                        // rather than panic.
+                        if let Some(input) = connected_node.inputs.get_mut(input_index) {
+                            input.value = value;
+                        } else {
+                            println!(
+                                "Skipping propagation to {connected_node_id}: input index {input_index} out of range"
+                            );
+                        }
                     }
                 }
                 continue;
@@ -910,9 +965,25 @@ impl Graph {
                     }
                 }
 
+                // A propagated Trigger is a firing: its constant hash cannot
+                // mark the downstream node dirty, so force it explicitly.
+                for (connected_node_id, _input_index, value) in output_data.iter() {
+                    if matches!(value, Value::Trigger) {
+                        forced_nodes.insert(connected_node_id.clone());
+                    }
+                }
+
                 // Propagate passthrough values to downstream nodes.
                 for (connected_node_id, input_index, value) in output_data.into_iter() {
                     if let Some(connected_node) = self.nodes.get_mut(&connected_node_id) {
+                        // Defensive: skip stale out-of-range connection indices
+                        // instead of panicking (see skip-branch note above).
+                        if connected_node.inputs.get(input_index).is_none() {
+                            println!(
+                                "Skipping propagation to {connected_node_id}: input index {input_index} out of range"
+                            );
+                            continue;
+                        }
                         if let Some(tx) = &self.tx_node_changed {
                             let _ = tx.try_send(NodeChangedMessage::InputChanged {
                                 node_id: connected_node_id.clone(),
@@ -950,8 +1021,26 @@ impl Graph {
                 }
             }
 
+            // A node that ran and emits a Trigger output has re-fired it: the
+            // constant Trigger hash cannot mark the downstream node dirty, so
+            // force it explicitly. (Skipped nodes above do not force — their
+            // trigger did not fire this tick.)
+            for (connected_node_id, _input_index, value) in output_data.iter() {
+                if matches!(value, Value::Trigger) {
+                    forced_nodes.insert(connected_node_id.clone());
+                }
+            }
+
             for (connected_node_id, input_index, value) in output_data.into_iter() {
                 if let Some(connected_node) = self.nodes.get_mut(&connected_node_id) {
+                    // Defensive: skip stale out-of-range connection indices
+                    // instead of panicking (see skip-branch note above).
+                    if connected_node.inputs.get(input_index).is_none() {
+                        println!(
+                            "Skipping propagation to {connected_node_id}: input index {input_index} out of range"
+                        );
+                        continue;
+                    }
                     if let Some(tx) = &self.tx_node_changed {
                         let message = NodeChangedMessage::InputChanged {
                             node_id: connected_node_id.clone(),
@@ -998,7 +1087,13 @@ impl Graph {
 
             match serde_json::to_string(&data) {
                 Ok(data_string) => {
-                    let _result = fs::write(save_path, data_string);
+                    if let Err(error) = fs::write(save_path, data_string) {
+                        // TODO: a graph-level error variant on NodeChangedMessage would be the proper channel to surface this in the UI.
+                        eprintln!(
+                            "Error writing graph save file {:?}: {}",
+                            save_path, error
+                        );
+                    }
                 }
                 Err(error) => {
                     println!("Error saving file.  {:?}", error);
@@ -1007,6 +1102,38 @@ impl Graph {
         }
     }
 
+
+    /// Returns `true` if `to` is reachable from `from` by following output
+    /// connections downstream (BFS). `from == to` counts as reachable, which
+    /// makes this directly usable for cycle detection: adding an edge
+    /// `src -> dst` would close a cycle iff `can_reach(dst, src)`.
+    fn can_reach(&self, from: &str, to: &str) -> bool {
+        let mut visited: HashSet<String> = HashSet::new();
+        let mut queue: VecDeque<String> = VecDeque::new();
+        queue.push_back(from.to_string());
+
+        while let Some(node_id) = queue.pop_front() {
+            if node_id == to {
+                return true;
+            }
+            if !visited.insert(node_id.clone()) {
+                continue;
+            }
+            if let Some(node) = self.nodes.get(&node_id) {
+                for output in node.outputs.iter() {
+                    if let Some(connections) = &output.connection {
+                        for (next_node_id, _input_index) in connections.iter() {
+                            if !visited.contains(next_node_id) {
+                                queue.push_back(next_node_id.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        false
+    }
 
     /// Perform a depth-first topological sort on the dirty nodes, returning them
     /// in dependency order (upstream nodes first) so that each node runs after

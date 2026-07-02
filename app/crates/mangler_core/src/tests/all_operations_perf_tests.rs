@@ -132,10 +132,8 @@ mod all_operations_perf {
 
         // Print table
         println!();
-        println!(
-            " {:<4}| {:<40}| {}",
-            "#", "Operation", "Time"
-        );
+        // Header matches the ` {:<4}| {:<40}| {}` row format below.
+        println!(" #   | Operation                               | Time");
         println!("{}", "-".repeat(62));
 
         for (i, (name, time)) in ok_results.iter().enumerate() {

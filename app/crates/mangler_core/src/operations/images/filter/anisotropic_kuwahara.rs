@@ -104,7 +104,7 @@ impl OpImageAdjustmentAnisotropicKuwahara {
         let Value::Decimal(sharpness) = sharpness_converted.unwrap() else { unreachable!() };
         let Value::Decimal(alpha) = alpha_converted.unwrap() else { unreachable!() };
 
-        let radius = radius.max(2) as i32;
+        let radius = radius.max(2);
         let q = sharpness.max(1.0);
         let alpha = alpha.max(0.1);
 
@@ -209,7 +209,7 @@ impl OpImageAdjustmentAnisotropicKuwahara {
         let sigma = radius as f32 * 0.5;
         let two_sigma_sq = 2.0 * sigma * sigma;
         let mut sector_weights: Vec<Vec<f32>> = vec![vec![0.0f32; kernel_n]; SECTORS];
-        for s in 0..SECTORS {
+        for (s, weights) in sector_weights.iter_mut().enumerate().take(SECTORS) {
             let center_angle = (s as f32 + 0.5) * (std::f32::consts::TAU / SECTORS as f32);
             for dy in -radius..=radius {
                 for dx in -radius..=radius {
@@ -219,7 +219,7 @@ impl OpImageAdjustmentAnisotropicKuwahara {
                     if dx == 0 && dy == 0 {
                         // center pixel contributes a small uniform weight to every
                         // sector so it's never starved of samples
-                        sector_weights[s][off] = radial / SECTORS as f32;
+                        weights[off] = radial / SECTORS as f32;
                         continue;
                     }
                     let theta = (dy as f32).atan2(dx as f32);
@@ -241,7 +241,7 @@ impl OpImageAdjustmentAnisotropicKuwahara {
                     } else {
                         0.0
                     };
-                    sector_weights[s][off] = radial * wedge;
+                    weights[off] = radial * wedge;
                 }
             }
         }
@@ -263,9 +263,9 @@ impl OpImageAdjustmentAnisotropicKuwahara {
             let mut sample = vec![0.0f32; ch];
             // per-sector accumulators
             let mut sums = vec![0.0f64; SECTORS * ch];
-            let mut sum_lum = vec![0.0f64; SECTORS];
-            let mut sumsq_lum = vec![0.0f64; SECTORS];
-            let mut wsum = vec![0.0f64; SECTORS];
+            let mut sum_lum = [0.0f64; SECTORS];
+            let mut sumsq_lum = [0.0f64; SECTORS];
+            let mut wsum = [0.0f64; SECTORS];
 
             for x in 0..w as i32 {
                 let i = y as usize * w + x as usize;
@@ -341,8 +341,8 @@ impl OpImageAdjustmentAnisotropicKuwahara {
                     denom += blend_w;
                 }
                 let inv_d = if denom > 0.0 { 1.0 / denom } else { 0.0 };
-                for c in 0..ch {
-                    row_pixels.push((numer[c] * inv_d).clamp(0.0, 1.0) as f32);
+                for val in numer.iter().take(ch) {
+                    row_pixels.push((val * inv_d).clamp(0.0, 1.0) as f32);
                 }
             }
             row_pixels

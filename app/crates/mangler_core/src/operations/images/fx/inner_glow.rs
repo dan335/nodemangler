@@ -71,7 +71,7 @@ impl OpImageFxInnerGlow {
         let (width, height) = data.dimensions();
         let mask_field = to_mask_field(&data);
 
-        let radius = radius.max(1) as i32;
+        let radius = radius.max(1);
         let eroded = separable_morphology(&mask_field, radius, |a, b| a.min(b));
         let mut ring = FloatImage::new(width, height, 1);
         for y in 0..height {

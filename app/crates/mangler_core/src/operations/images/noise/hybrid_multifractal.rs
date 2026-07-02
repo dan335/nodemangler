@@ -55,7 +55,7 @@ fn periodic_hybrid_multi(u: f64, v: f64, octaves: usize, frequency: f64, lacunar
     freq *= lacunarity;
 
     // Remaining octaves
-    for i in 1..octaves {
+    for hasher in hashers.iter().take(octaves).skip(1) {
         // Prevent divergence
         weight = weight.max(1.0);
 
@@ -63,7 +63,7 @@ fn periodic_hybrid_multi(u: f64, v: f64, octaves: usize, frequency: f64, lacunar
         let px = u * period as f64;
         let py = v * period as f64;
 
-        let mut signal = periodic_perlin_2d(px, py, period, period, &hashers[i]);
+        let mut signal = periodic_perlin_2d(px, py, period, period, hasher);
         signal *= attenuation;
         attenuation *= persistence;
         // Add weighted by previous octave's value
@@ -150,8 +150,12 @@ impl OpImageNoiseHybridMultifractalNoise {
         seed = seed.max(1);
         let freq = frequency.max(1) as f64;
 
-        // Build per-octave permutation tables for periodic tiling
-        let oct = octaves as usize;
+        // Build per-octave permutation tables for periodic tiling.
+        // Clamp to [1, 32] (matches the octaves slider's declared range in
+        // create_inputs()) so a connected value bypassing the UI slider clamp
+        // (e.g. -1, which would otherwise wrap to usize::MAX on cast) can't
+        // make build_perm_tables allocate an astronomical number of tables.
+        let oct = octaves.clamp(1, 32) as usize;
         let perm_tables = build_perm_tables(seed as u32, oct);
         let perm_ref = &perm_tables;
 

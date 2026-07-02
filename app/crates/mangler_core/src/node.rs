@@ -48,10 +48,6 @@ pub struct Node {
     pub position: Vec2,
     /// Whether this node is an operation or a subgraph.
     pub node_type: NodeType,
-    /// Whether the node is currently executing.
-    /// Skipped during serialization — transient execution state.
-    #[serde(skip)]
-    pub is_busy: bool,
     /// Whether the last execution resulted in an error.
     /// Skipped during serialization — transient execution state.
     #[serde(skip)]
@@ -72,6 +68,15 @@ pub struct Node {
     /// primary label on the node; the operation name becomes a secondary label.
     #[serde(default)]
     pub custom_name: Option<String>,
+}
+
+/// Send a [`NodeChangedMessage`] to the UI without blocking, logging the actual
+/// message kind (`kind`) if the channel is full or closed. `try_send` semantics:
+/// the message is dropped on failure.
+fn try_send_node_changed(tx: &Sender<NodeChangedMessage>, kind: &str, message: NodeChangedMessage) {
+    if let Err(err) = tx.try_send(message) {
+        println!("Error sending NodeChangedMessage::{}: {:?}", kind, err);
+    }
 }
 
 /// Nodes are compared by identity (ID) only, ignoring all other fields.
@@ -98,7 +103,6 @@ impl Node {
                 is_dirty: true,
                 position,
                 node_type: NodeType::Operation { operation },
-                is_busy: false,
                 is_error: false,
                 error_message: None,
                 cached_input_hash: None,
@@ -120,10 +124,8 @@ impl Node {
                 node_type: NodeType::Subgraph {
                     path: PathBuf::new(),
                     graph: None,
-                    rx_node_changed: None,
                     last_mtime: None,
                 },
-                is_busy: false,
                 is_error: false,
                 error_message: None,
                 cached_input_hash: None,
@@ -219,16 +221,7 @@ impl Node {
 
                 if let Some(tx) = tx_node_changed.clone() {
                     let message = NodeChangedMessage::Busy { node_id: self.id.clone(), is_busy: true };
-
-                    match tx.try_send(message) {
-                        Ok(_) => {}
-                        Err(err) => {
-                            println!(
-                                "Error sending NodeChangedMessage::OutputChanged: {:?}",
-                                err
-                            );
-                        }
-                    }
+                    try_send_node_changed(&tx, "Busy", message);
                 }
 
                 // clear node error
@@ -241,13 +234,7 @@ impl Node {
                             is_error: false,
                             message: None,
                         };
-    
-                        match tx.try_send(message) {
-                            Ok(_) => {}
-                            Err(err) => {
-                                println!("Error sending NodeChangedMessage::InputChanged: {:?}", err);
-                            }
-                        }
+                        try_send_node_changed(tx, "Error", message);
                     }
                 }
 
@@ -264,13 +251,7 @@ impl Node {
                                 is_error: false,
                                 message: None,
                             };
-        
-                            match tx.try_send(message) {
-                                Ok(_) => {}
-                                Err(err) => {
-                                    println!("Error sending NodeChangedMessage::InputChanged: {:?}", err);
-                                }
-                            }
+                            try_send_node_changed(tx, "InputErrorChanged", message);
                         }
                     }
                 }
@@ -285,59 +266,44 @@ impl Node {
                                 node_id: self.id.clone(),
                                 time: operation_response.time,
                             };
-
-                            match tx.try_send(message) {
-                                Ok(_) => {}
-                                Err(err) => {
-                                    println!(
-                                        "Error sending NodeChangedMessage::OutputChanged: {:?}",
-                                        err
-                                    );
-                                }
-                            }
+                            try_send_node_changed(&tx, "InfoChanged", message);
                         }
 
                         // TODO: change response to a Result?
                         for (index, response) in operation_response.responses.into_iter().enumerate() {
-                            // Image thumbnails are slow (resize + to_rgba8 of a
-                            // full-resolution FloatImage). When the async
-                            // service is available, enqueue instead of
-                            // computing inline; the UI receives a follow-up
-                            // ThumbnailReady once ready. Scalar/enum
-                            // thumbnails stay inline because they're trivial.
-                            let thumbnail = match &response.value {
-                                Value::Image { data, change_id }
-                                    if thumbnail_service.is_some() =>
-                                {
-                                    thumbnail_service.unwrap().request(
-                                        self.id.clone(),
-                                        index,
-                                        change_id.clone(),
-                                        std::sync::Arc::clone(data),
-                                    );
-                                    None
-                                }
-                                _ => response.value.create_thumbnail(),
-                            };
-
                             // send messages to ui that outputs changed
                             if let Some(tx) = tx_node_changed.clone() {
+                                // Image thumbnails are slow (resize + to_rgba8 of a
+                                // full-resolution FloatImage). When the async
+                                // service is available, enqueue instead of
+                                // computing inline; the UI receives a follow-up
+                                // ThumbnailReady once ready. Scalar/enum
+                                // thumbnails stay inline because they're trivial.
+                                // No UI channel (nodes inside subgraphs, detached
+                                // render graphs) → skip thumbnails entirely;
+                                // nothing would consume them.
+                                let thumbnail = match &response.value {
+                                    Value::Image { data, change_id }
+                                        if thumbnail_service.is_some() =>
+                                    {
+                                        thumbnail_service.unwrap().request(
+                                            self.id.clone(),
+                                            index,
+                                            change_id.clone(),
+                                            std::sync::Arc::clone(data),
+                                        );
+                                        None
+                                    }
+                                    _ => response.value.create_thumbnail(),
+                                };
+
                                 let message = NodeChangedMessage::OutputChanged {
                                     node_id: self.id.clone(),
                                     output_index: index,
                                     value: response.value.clone(),
                                     thumbnail,
                                 };
-
-                                match tx.try_send(message) {
-                                    Ok(_) => {}
-                                    Err(err) => {
-                                        println!(
-                                            "Error sending NodeChangedMessage::OutputChanged: {:?}",
-                                            err
-                                        );
-                                    }
-                                }
+                                try_send_node_changed(&tx, "OutputChanged", message);
                             }
 
                             // set output's value
@@ -372,16 +338,7 @@ impl Node {
                                         is_error: true,
                                         message: Some(error_message.clone()),
                                     };
-    
-                                    match tx.try_send(message) {
-                                        Ok(_) => {}
-                                        Err(err) => {
-                                            println!(
-                                                "Error sending NodeChangedMessage::OutputChanged: {:?}",
-                                                err
-                                            );
-                                        }
-                                    }
+                                    try_send_node_changed(&tx, "InputErrorChanged", message);
                                 }
                             } else {
                                 panic!("Invalid input index: {}", input_index);
@@ -399,32 +356,14 @@ impl Node {
                                 is_error: true,
                                 message: node_error_message,
                             };
-
-                            match tx.try_send(message) {
-                                Ok(_) => {}
-                                Err(err) => {
-                                    println!(
-                                        "Error sending NodeChangedMessage::OutputChanged: {:?}",
-                                        err
-                                    );
-                                }
-                            }
+                            try_send_node_changed(&tx, "Error", message);
                         }
                     },
                 }
 
                 if let Some(tx) = tx_node_changed.clone() {
                     let message = NodeChangedMessage::Busy { node_id: self.id.clone(), is_busy: false };
-
-                    match tx.try_send(message) {
-                        Ok(_) => {}
-                        Err(err) => {
-                            println!(
-                                "Error sending NodeChangedMessage::OutputChanged: {:?}",
-                                err
-                            );
-                        }
-                    }
+                    try_send_node_changed(&tx, "Busy", message);
                 }
             }
 
@@ -432,7 +371,6 @@ impl Node {
             NodeType::Subgraph {
                 path: _,
                 graph: subgraph_option,
-                rx_node_changed,
                 last_mtime: _,
             } => {
                 if let Some(subgraph) = subgraph_option {
@@ -458,36 +396,28 @@ impl Node {
                     // run subgraph
                     subgraph.run().await;
 
-                    // receive messages about which nodes changed in subgraph
-                    // if one changed that is exposed then pass it's output to this node's output
-                    if let Some(rx) = rx_node_changed {
-                        // receive messages
-                        while let Ok(node_changed_message) = rx.try_recv() {
-                            match node_changed_message {
-                                NodeChangedMessage::OutputChanged {
-                                    node_id: subgraph_node_id,
-                                    output_index: subgraph_output_index,
-                                    value: subgraph_value,
-                                    thumbnail: _subgraph_thumbnail,
-                                } => {
-                                    // find output that is linked to subgraph output that changed
-                                    for output in
-                                        self.outputs.iter_mut()
-                                    {
-                                        if let Some(link) = &mut output.link {
-                                            if link.node_id == subgraph_node_id
-                                                && link.output_index == subgraph_output_index
-                                            {
-                                                // set output value to subgraph's new value
-                                                output.value = subgraph_value.clone();
-                                            }
-                                        }
-                                    }
-
-                                    //self.time = Some(subgraph_time);
+                    // Copy exposed outputs back by reading the linked values
+                    // directly from the child graph's node storage. Each
+                    // exposed output carries an OutputLink identifying the
+                    // child node id + output index it mirrors.
+                    //
+                    // Results used to round-trip through a bounded mpsc
+                    // channel drained here with try_recv; once the child
+                    // graph emitted more messages than the channel capacity,
+                    // OutputChanged messages were silently dropped and the
+                    // exposed outputs went stale. Direct reads are lossless.
+                    // Value::clone is cheap (images are Arc-shared) and the
+                    // change_id travels inside Value::Image, so cache
+                    // invalidation and stale-thumbnail rejection semantics
+                    // are unchanged.
+                    for output in self.outputs.iter_mut() {
+                        if let Some(link) = &output.link {
+                            if let Some(subgraph_node) = subgraph.nodes.get(&link.node_id) {
+                                if let Some(subgraph_output) =
+                                    subgraph_node.outputs.get(link.output_index)
+                                {
+                                    output.value = subgraph_output.value.clone();
                                 }
-                                // don't care about other messages
-                                _ => {}
                             }
                         }
                     }
@@ -516,16 +446,7 @@ impl Node {
                                 value: output.value.clone(),
                                 thumbnail,
                             };
-
-                            match tx.try_send(message) {
-                                Ok(_) => {}
-                                Err(err) => {
-                                    println!(
-                                        "Error sending NodeChangedMessage::OutputChanged: {:?}",
-                                        err
-                                    );
-                                }
-                            }
+                            try_send_node_changed(&tx, "OutputChanged", message);
                         }
                     }
                 }

@@ -41,7 +41,7 @@ fn periodic_anisotropic_fbm(
 
     let scale_factor = 1.0 / (1..=octaves).fold(0.0, |acc, i| acc + persistence.powi(i as i32));
 
-    for i in 0..octaves {
+    for hasher in hashers.iter().take(octaves) {
         let period = freq.round().max(1.0) as isize;
         // Stretch period along the perpendicular axis to keep tiling correct
         let period_stretch = (freq * stretch).round().max(1.0) as isize;
@@ -55,7 +55,7 @@ fn periodic_anisotropic_fbm(
         let rv = -su * sin_a + sv * cos_a;
 
         // Use stretched periods for each axis to maintain tiling
-        let mut signal = periodic_perlin_2d(ru, rv, period, period_stretch, &hashers[i]);
+        let mut signal = periodic_perlin_2d(ru, rv, period, period_stretch, hasher);
         signal *= attenuation;
         attenuation *= persistence;
         result += signal;

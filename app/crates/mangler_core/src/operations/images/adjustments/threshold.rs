@@ -81,8 +81,8 @@ impl OpImageAdjustmentThreshold {
             } else {
                 smoothstep(threshold - smoothness, threshold + smoothness, luma)
             };
-            for c in 0..color_ch {
-                pixel[c] = v;
+            for val in pixel.iter_mut().take(color_ch) {
+                *val = v;
             }
         }
 

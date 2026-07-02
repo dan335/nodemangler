@@ -70,8 +70,8 @@ impl OpImageNoiseCheckerboard {
         for x in 0..width {
             for y in 0..height {
                 let size = width.max(height) as f64;
-                let coords_x = (x as f64) / (size as f64);
-                let coords_y = (y as f64) / (size as f64);
+                let coords_x = (x as f64) / size;
+                let coords_y = (y as f64) / size;
                 let noise = perlin.get([coords_x, coords_y]) as f32 * 0.5 + 0.5;
                 let non_linear = linear_to_nonlinear_srgb(noise);
                 float_image.put_pixel(x as u32, y as u32, &[non_linear]);

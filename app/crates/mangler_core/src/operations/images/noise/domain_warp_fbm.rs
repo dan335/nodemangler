@@ -182,8 +182,7 @@ impl OpImageNoiseDomainWarpFbm {
                 let mut warp_x = 0.0;
                 let mut warp_y = 0.0;
 
-                for i in 0..warp_iterations {
-                    let (ox1, oy1, ox2, oy2) = offsets[i];
+                for &(ox1, oy1, ox2, oy2) in offsets.iter().take(warp_iterations) {
 
                     let warp_coords = Self::torus_coords(u + warp_x, v + warp_y);
                     warp_x = Self::sample_fbm(fbm_ref, [

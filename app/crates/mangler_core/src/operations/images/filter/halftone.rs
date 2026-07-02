@@ -131,7 +131,7 @@ impl OpImageAdjustmentHalftone {
                 // Write the binary value to color channels; preserve alpha
                 let src = data.get_pixel(x, y);
                 let mut pixel = [0.0f32; 4];
-                for c in 0..ch.min(3) { pixel[c] = v; }
+                for val in pixel.iter_mut().take(ch.min(3)) { *val = v; }
                 if ch == 2 || ch == 4 { pixel[ch - 1] = src[ch - 1]; }
                 out.put_pixel(x, y, &pixel[..ch]);
             }

@@ -51,7 +51,7 @@ async fn test_kelvin_clamped_range() {
         let mut inputs = single_input(color);
         let result = OpColorAnalysisColorTemperature::run(&mut inputs).await.unwrap();
         let Value::Decimal(k) = result.responses[0].value else { panic!("Expected Decimal") };
-        assert!(k >= 1000.0 && k <= 20000.0, "Kelvin out of range: {}", k);
+        assert!((1000.0..=20000.0).contains(&k), "Kelvin out of range: {}", k);
     }
 }
 

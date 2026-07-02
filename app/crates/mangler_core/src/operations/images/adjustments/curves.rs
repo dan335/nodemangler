@@ -75,11 +75,10 @@ impl OpImageAdjustmentCurves {
         let color_ch = if ch == 2 || ch == 4 { ch - 1 } else { ch };
 
         for pixel in result.pixels_mut() {
-            for c in 0..color_ch {
-                let val = pixel[c];
+            for val in pixel.iter_mut().take(color_ch) {
                 // Scale deviation from midpoint by the contrast factor
-                let adjusted = midpoint + (val - midpoint) * (1.0 + contrast);
-                pixel[c] = adjusted.clamp(0.0, 1.0);
+                let adjusted = midpoint + (*val - midpoint) * (1.0 + contrast);
+                *val = adjusted.clamp(0.0, 1.0);
             }
             // alpha unchanged
         }

@@ -188,7 +188,6 @@ impl OpImageInputText {
         let img_width   = img_width.max(1) as u32;
         let img_height  = img_height.max(1) as u32;
         let font_size   = font_size.max(1.0);
-        let letter_sp   = letter_sp;
         let line_sp     = line_sp.max(0.0);
         let wrap_px     = wrap_width.max(0) as f32;
 

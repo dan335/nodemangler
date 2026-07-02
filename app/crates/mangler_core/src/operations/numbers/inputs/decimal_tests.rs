@@ -4,10 +4,10 @@ use crate::value::Value;
 
 #[tokio::test]
 async fn test_decimal_input_passthrough() {
-    let mut inputs = vec![Input::new("input".to_string(), Value::Decimal(3.14), None, None)];
+    let mut inputs = vec![Input::new("input".to_string(), Value::Decimal(3.25), None, None)];
     let result = OpNumberInputDecimal::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::Decimal(v) => assert!((*v - 3.14).abs() < 0.01),
+        Value::Decimal(v) => assert!((*v - 3.25).abs() < 0.01),
         other => panic!("Expected Decimal, got {:?}", other),
     }
 }

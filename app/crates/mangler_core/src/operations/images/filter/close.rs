@@ -55,7 +55,7 @@ impl OpImageAdjustmentClose {
         let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
 
-        let radius = radius.max(1) as i32;
+        let radius = radius.max(1);
         let dilated = separable_morphology(&data, radius, |a, b| a.max(b));
         let closed = separable_morphology(&dilated, radius, |a, b| a.min(b));
 

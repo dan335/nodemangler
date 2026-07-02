@@ -36,7 +36,7 @@ cargo run -p mangler_cli  # Run the CLI tool
 - Operations are generated via the `operations!` macro in `app/crates/mangler_core/src/operations/mod.rs`
 - **Value types** (see `value.rs`): Bool, Integer, Decimal, Text, Color, Image, Path, FilterType, ImageType, ColorFormat, Trigger, NoiseWorleyDistanceFunction, ColorSpace, BlendMode, TextHAlign, TextVAlign
 - Images are `FloatImage` (1–4 channel `f32`, `Arc`-shared); `Value::Image { data, change_id }` carries a change id used by cache invalidation and stale-thumbnail rejection.
-- Color is stored as sRGBA floats with conversions to 9 color spaces: sRGB, Linear RGB, HSL, HSV, Lab, LCH, CMYK, XYZ, YUV
+- Color is stored as sRGBA floats with conversions to 14 color spaces: sRGB, Linear RGB, HSL, HSV, HWB, Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YCbCr, YUV
 - BlendMode has 17 modes: Over, Lerp, Multiply, Screen, Overlay, SoftLight, HardLight, ColorDodge, ColorBurn, Darken, Lighten, Difference, Exclusion, LinearBurn, LinearDodge, Divide, Subtract
 - Subgraph support: nodes can contain entire graphs for composition
 - Graphs serialize to JSON via `GraphSaveData`
@@ -99,8 +99,8 @@ cargo run -p mangler_cli  # Run the CLI tool
 - (`text/text_from_clipboard.rs` exists but is an unimplemented stub — not a registered node)
 
 ### colors/
-- `inputs/` — srgb, rgb_linear, hsl, hsv, lab, lch, cmyk, xyz, yuv (construct a color from each of the 9 color spaces)
-- `outputs/` — to_srgb, to_rgb_linear, to_hsl, to_hsv, to_lab, to_lch, to_cmyk, to_xyz, to_yuv (decompose a color into a space's components)
+- `inputs/` — srgb, rgb_linear, hsl, hsv, hwb, lab, lch, oklab, oklch, cmyk, xyz, xyy, ycbcr, yuv (construct a color from each of the 14 color spaces)
+- `outputs/` — to_srgb, to_rgb_linear, to_hsl, to_hsv, to_hwb, to_lab, to_lch, to_oklab, to_oklch, to_cmyk, to_xyz, to_xyy, to_ycbcr, to_yuv (decompose a color into a space's components)
 - `generation/` — from_hex, to_hex, random_color
 - `manipulation/` — adjust_hsv, clamp, grayscale, invert, set_alpha
 - `relationship/` — complementary, analogous, triadic, tetradic, monochromatic, double_split_complementary

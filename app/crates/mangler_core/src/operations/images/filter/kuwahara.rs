@@ -73,7 +73,7 @@ impl OpImageAdjustmentKuwahara {
         let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
 
         // clamp radius to at least 1 — a radius of 0 would make each quadrant a single pixel and the filter would be a no-op
-        let radius = radius.max(1) as i32;
+        let radius = radius.max(1);
 
         let (width, height) = data.dimensions();
         let ch = data.channels() as usize;

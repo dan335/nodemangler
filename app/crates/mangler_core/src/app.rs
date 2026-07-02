@@ -43,7 +43,11 @@ impl App {
                 let id = graph.id.clone();
                 let name = graph.name.clone();
                 let save_path = graph.save_path.clone();
+                // Auto-save debounce state. `needs_to_save` flips true on any
+                // mutation this tick; `last_save` is when we last wrote to disk.
                 let mut needs_to_save = false;
+                let mut last_save = Instant::now();
+                const AUTO_SAVE_INTERVAL: Duration = Duration::from_secs(1);
 
                 // Main engine loop: drain messages, execute graph, auto-save
                 let thread_handle = tokio::spawn(async move {
@@ -181,9 +185,18 @@ impl App {
                         // Execute any dirty nodes in the graph
                         graph.run().await;
 
-                        // Auto-save after any mutation
-                        if needs_to_save {
+                        // Auto-save policy: debounced to at most one write per
+                        // AUTO_SAVE_INTERVAL. When a mutation is pending and the
+                        // interval has elapsed since the last write, save and
+                        // clear the flag. The flag stays set across ticks until
+                        // the save happens, so a burst of edits coalesces into
+                        // one write and a continuous stream of messages can
+                        // never postpone the pending save for more than one
+                        // interval — the final save is never lost.
+                        if needs_to_save && last_save.elapsed() >= AUTO_SAVE_INTERVAL {
                             graph.save_to_file();
+                            last_save = Instant::now();
+                            needs_to_save = false;
                         }
 
                         // Sleep until next tick, minimum 2 ms to avoid busy-spinning
@@ -214,3 +227,7 @@ impl App {
 /// Error returned when graph creation or loading fails during `App::new`.
 #[derive(Debug)]
 pub struct NewAppError(pub String);
+
+#[cfg(test)]
+#[path = "app_tests.rs"]
+mod tests;

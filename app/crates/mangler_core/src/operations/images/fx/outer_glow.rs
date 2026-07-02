@@ -70,7 +70,7 @@ impl OpImageFxOuterGlow {
         let (width, height) = data.dimensions();
         let mask_field = to_mask_field(&data);
 
-        let radius = radius.max(1) as i32;
+        let radius = radius.max(1);
         let dilated = separable_morphology(&mask_field, radius, |a, b| a.max(b));
 
         // Ring = dilated - original (clamped to non-negative).

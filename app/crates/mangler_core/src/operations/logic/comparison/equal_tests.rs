@@ -25,14 +25,14 @@ async fn test_equal_integers_false() {
 
 #[tokio::test]
 async fn test_equal_decimals_true() {
-    let mut inputs = make_inputs(Value::Decimal(3.14), Value::Decimal(3.14));
+    let mut inputs = make_inputs(Value::Decimal(3.25), Value::Decimal(3.25));
     let result = OpLogicCompareEqual::run(&mut inputs).await.unwrap();
     assert!(matches!(result.responses[0].value, Value::Bool(true)));
 }
 
 #[tokio::test]
 async fn test_equal_decimals_false() {
-    let mut inputs = make_inputs(Value::Decimal(3.14), Value::Decimal(2.71));
+    let mut inputs = make_inputs(Value::Decimal(3.25), Value::Decimal(2.71));
     let result = OpLogicCompareEqual::run(&mut inputs).await.unwrap();
     assert!(matches!(result.responses[0].value, Value::Bool(false)));
 }

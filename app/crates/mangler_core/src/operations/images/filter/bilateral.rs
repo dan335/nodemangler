@@ -84,7 +84,7 @@ impl OpImageAdjustmentBilateral {
         let Value::Decimal(range_sigma) = range_converted.unwrap() else { unreachable!() };
 
         // clamp controls to valid ranges to avoid division-by-zero and negative widths
-        let radius = radius.max(1) as i32;
+        let radius = radius.max(1);
         let spatial_sigma = spatial_sigma.max(1e-4);
         let range_sigma = range_sigma.max(1e-4);
 
@@ -152,8 +152,8 @@ impl OpImageAdjustmentBilateral {
 
                 // normalize — weight_sum is guaranteed > 0 because the center pixel contributes w=1
                 let inv_w = 1.0 / weight_sum;
-                for c in 0..ch {
-                    row_pixels.push(sum[c] * inv_w);
+                for val in sum.iter().take(ch) {
+                    row_pixels.push(val * inv_w);
                 }
             }
             row_pixels

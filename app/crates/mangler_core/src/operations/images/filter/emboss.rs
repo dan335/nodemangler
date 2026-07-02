@@ -79,7 +79,7 @@ impl OpImageAdjustmentEmboss {
                 let fy = y as f32;
 
                 let pixel = output.get_pixel_mut(x, y);
-                for c in 0..color_ch {
+                for (c, val) in pixel.iter_mut().enumerate().take(color_ch) {
                     // Sample forward pixel
                     let fpx = (fx + dx).round().clamp(0.0, (width - 1) as f32) as u32;
                     let fpy = (fy + dy).round().clamp(0.0, (height - 1) as f32) as u32;
@@ -88,7 +88,7 @@ impl OpImageAdjustmentEmboss {
                     let bpx = (fx - dx).round().clamp(0.0, (width - 1) as f32) as u32;
                     let bpy = (fy - dy).round().clamp(0.0, (height - 1) as f32) as u32;
                     let backward = data.get_pixel(bpx, bpy)[c];
-                    pixel[c] = (0.5 + intensity * (forward - backward)).clamp(0.0, 1.0);
+                    *val = (0.5 + intensity * (forward - backward)).clamp(0.0, 1.0);
                 }
                 // alpha unchanged
             }

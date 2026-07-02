@@ -53,7 +53,7 @@ async fn test_blend_mode_all_color_spaces() {
         ColorSpace::Cmyk,
     ];
     for cs in &spaces {
-        let mut inputs = blend_inputs(BlendMode::Over, cs.clone(), 1.0);
+        let mut inputs = blend_inputs(BlendMode::Over, *cs, 1.0);
         let result = OpColorBlendMode::run(&mut inputs).await;
         assert!(result.is_ok(), "blend_mode Normal in {:?} failed: {:?}", cs, result.err());
     }

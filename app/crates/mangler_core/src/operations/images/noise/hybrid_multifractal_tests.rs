@@ -54,3 +54,27 @@ async fn test_opimagenoisehybridmultifractalnoise_correct_dimensions() {
         other => panic!("Expected Image, got {:?}", other),
     }
 }
+
+// Regression test: a connected Integer of -1 bypasses the UI slider clamp
+// (clamp_to_range only applies to values typed directly in the UI). Without
+// clamping before the `as usize` cast, -1 wraps to usize::MAX and
+// build_perm_tables tries to allocate ~1.8e19 permutation tables, hanging or
+// OOMing the engine. This must complete quickly and return an Ok image.
+#[tokio::test]
+async fn test_opimagenoisehybridmultifractalnoise_negative_octaves_does_not_hang() {
+    let mut inputs = vec![
+        Input::new("seed".to_string(), Value::Integer(1), None, None),
+        Input::new("width".to_string(), Value::Integer(8), None, None),
+        Input::new("height".to_string(), Value::Integer(8), None, None),
+        Input::new("octaves".to_string(), Value::Integer(-1), None, None),
+        Input::new("frequency".to_string(), Value::Integer(5), None, None),
+        Input::new("lacunarity".to_string(), Value::Decimal(2.0), None, None),
+        Input::new("persistence".to_string(), Value::Decimal(0.5), None, None),
+    ];
+    let result = OpImageNoiseHybridMultifractalNoise::run(&mut inputs).await;
+    assert!(result.is_ok(), "run failed: {:?}", result.err());
+    match &result.unwrap().responses[0].value {
+        Value::Image { .. } => {}
+        other => panic!("Expected Image, got {:?}", other),
+    }
+}

@@ -89,13 +89,12 @@ impl OpImageAdjustmentHistogramRange {
         let target_range = range_max - range_min;
 
         for pixel in result.pixels_mut() {
-            for c in 0..color_ch {
+            for val in pixel.iter_mut().take(color_ch) {
                 if actual_range <= 0.0 {
-                    pixel[c] = range_min;
+                    *val = range_min;
                 } else {
-                    let val = pixel[c];
-                    let new_val = range_min + (val - actual_min) / actual_range * target_range;
-                    pixel[c] = new_val.clamp(0.0, 1.0);
+                    let new_val = range_min + (*val - actual_min) / actual_range * target_range;
+                    *val = new_val.clamp(0.0, 1.0);
                 }
             }
             // alpha unchanged

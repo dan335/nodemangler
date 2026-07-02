@@ -136,8 +136,8 @@ impl OpImageAdjustmentNonUniformBlur {
 
                 // Average across all samples
                 let count = samples as f64;
-                for c in 0..ch {
-                    row_pixels.push((sums[c] / count) as f32);
+                for val in sums.iter().take(ch) {
+                    row_pixels.push((val / count) as f32);
                 }
             }
             row_pixels

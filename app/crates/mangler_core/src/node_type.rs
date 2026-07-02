@@ -4,8 +4,7 @@
 use std::path::PathBuf;
 use std::time::SystemTime;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc::{Receiver};
-use crate::{operations::Operation, graph::Graph, NodeChangedMessage};
+use crate::{operations::Operation, graph::Graph};
 
 /// The execution variant of a node.
 ///
@@ -24,11 +23,11 @@ pub enum NodeType {
         /// Path to the `.mangle.json` file containing the subgraph definition.
         path: PathBuf,
         /// The loaded child graph instance (not serialized).
+        ///
+        /// Exposed outputs are read directly from this graph's node storage
+        /// after each run — no message channel sits between parent and child.
         #[serde(skip)]
         graph: Option<Graph>,
-        /// Channel receiver for node-changed messages from the child graph (not serialized).
-        #[serde(skip)]
-        rx_node_changed: Option<Receiver<NodeChangedMessage>>,
         /// Modified-time of `path` at the moment the child was last loaded.
         /// Used by `Graph::check_subgraphs_for_changes` to detect external edits
         /// (e.g. the child being saved from another tab) and trigger a reload.
@@ -38,20 +37,19 @@ pub enum NodeType {
     }
 }
 
-/// Manual `Clone` implementation because `Graph` and `Receiver` are not cloneable.
-/// Cloning a subgraph node produces a shell without the loaded graph or channel.
+/// Manual `Clone` implementation because `Graph` is not cloneable.
+/// Cloning a subgraph node produces a shell without the loaded graph.
 impl Clone for NodeType {
     fn clone(&self) -> Self {
         match self {
             NodeType::Operation { operation } => {
                 NodeType::Operation { operation: operation.clone() }
             },
-            // Only clone the path; the graph, channel, and mtime must be re-derived
-            NodeType::Subgraph { path, graph: _, rx_node_changed: _, last_mtime: _ } => {
+            // Only clone the path; the graph and mtime must be re-derived
+            NodeType::Subgraph { path, graph: _, last_mtime: _ } => {
                 NodeType::Subgraph {
                     path: path.clone(),
                     graph: None,
-                    rx_node_changed: None,
                     last_mtime: None,
                 }
             }

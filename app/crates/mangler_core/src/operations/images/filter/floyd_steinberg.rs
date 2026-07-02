@@ -109,7 +109,7 @@ impl OpImageAdjustmentFloydSteinberg {
                         buf[nidx] += err * (7.0 / 16.0);
                     }
                     if y + 1 < h {
-                        if x - 1 >= 0 {
+                        if x > 0 {
                             let nidx = ((y + 1) as usize * wu + (x - 1) as usize) * ch + c;
                             buf[nidx] += err * (3.0 / 16.0);
                         }

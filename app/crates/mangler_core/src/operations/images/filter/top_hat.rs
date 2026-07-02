@@ -60,7 +60,7 @@ impl OpImageAdjustmentTopHat {
 
         let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
-        let radius = radius.max(1) as i32;
+        let radius = radius.max(1);
 
         let (w, h) = data.dimensions();
         // Opening = erode then dilate.

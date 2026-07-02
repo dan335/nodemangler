@@ -64,7 +64,7 @@ async fn test_frac_from_integer() {
 
 #[tokio::test]
 async fn test_frac_large_number() {
-    let mut inputs = vec![Input::new("input".to_string(), Value::Decimal(1234567.89), None, None)];
+    let mut inputs = vec![Input::new("input".to_string(), Value::Decimal(1_234_567.9), None, None)];
     let result = OpNumberMathFrac::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
         // Due to f32 precision, check the frac is between 0 and 1

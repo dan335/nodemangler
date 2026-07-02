@@ -7,7 +7,7 @@ async fn test_bool_input_true() {
     let mut inputs = vec![Input::new("input".to_string(), Value::Bool(true), None, None)];
     let result = OpLogicInputBool::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::Bool(v) => assert_eq!(*v, true),
+        Value::Bool(v) => assert!(*v),
         other => panic!("Expected Bool(true), got {:?}", other),
     }
 }
@@ -17,7 +17,7 @@ async fn test_bool_input_false() {
     let mut inputs = vec![Input::new("input".to_string(), Value::Bool(false), None, None)];
     let result = OpLogicInputBool::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::Bool(v) => assert_eq!(*v, false),
+        Value::Bool(v) => assert!(!*v),
         other => panic!("Expected Bool(false), got {:?}", other),
     }
 }
@@ -27,7 +27,7 @@ async fn test_bool_input_from_integer_nonzero() {
     let mut inputs = vec![Input::new("input".to_string(), Value::Integer(1), None, None)];
     let result = OpLogicInputBool::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::Bool(v) => assert_eq!(*v, true),
+        Value::Bool(v) => assert!(*v),
         other => panic!("Expected Bool(true), got {:?}", other),
     }
 }
@@ -37,7 +37,7 @@ async fn test_bool_input_from_integer_zero() {
     let mut inputs = vec![Input::new("input".to_string(), Value::Integer(0), None, None)];
     let result = OpLogicInputBool::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::Bool(v) => assert_eq!(*v, false),
+        Value::Bool(v) => assert!(!*v),
         other => panic!("Expected Bool(false), got {:?}", other),
     }
 }

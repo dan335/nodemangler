@@ -72,7 +72,7 @@ impl OpImageAdjustmentOutline {
         let Value::Integer(position) = position_converted.unwrap() else { unreachable!() };
         let Value::Color(color) = color_converted.unwrap() else { unreachable!() };
 
-        let thickness = thickness.max(1) as i32;
+        let thickness = thickness.max(1);
         let position = position.clamp(0, 2);
 
         let (w, h) = data.dimensions();

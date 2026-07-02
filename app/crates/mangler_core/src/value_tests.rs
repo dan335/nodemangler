@@ -47,7 +47,7 @@ fn test_value_type_integer() {
 
 #[test]
 fn test_value_type_decimal() {
-    assert_eq!(Value::Decimal(3.14).value_type(), ValueType::Decimal);
+    assert_eq!(Value::Decimal(3.25).value_type(), ValueType::Decimal);
 }
 
 #[test]
@@ -74,6 +74,23 @@ fn test_value_type_path() {
 #[test]
 fn test_value_type_trigger() {
     assert_eq!(Value::Trigger.value_type(), ValueType::Trigger);
+}
+
+// try_convert_to: Trigger conversions
+#[test]
+fn test_trigger_to_trigger_identity() {
+    let result = Value::Trigger.try_convert_to(ValueType::Trigger);
+    assert!(result.is_ok());
+    match result.unwrap() {
+        Value::Trigger => {}
+        other => panic!("Expected Trigger, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_trigger_to_decimal_fails() {
+    let result = Value::Trigger.try_convert_to(ValueType::Decimal);
+    assert!(result.is_err());
 }
 
 // try_convert_to: Bool conversions
@@ -212,7 +229,7 @@ fn test_integer_to_color_succeeds() {
 // try_convert_to: Decimal conversions
 #[test]
 fn test_decimal_to_bool_nonzero() {
-    let result = Value::Decimal(3.14)
+    let result = Value::Decimal(3.25)
         .try_convert_to(ValueType::Bool)
         .unwrap();
     assert_value!(result, Bool(true));
@@ -226,7 +243,7 @@ fn test_decimal_to_bool_zero() {
 
 #[test]
 fn test_decimal_to_integer() {
-    let result = Value::Decimal(3.14)
+    let result = Value::Decimal(3.25)
         .try_convert_to(ValueType::Integer)
         .unwrap();
     assert_value!(result, Integer(3));
@@ -234,7 +251,7 @@ fn test_decimal_to_integer() {
 
 #[test]
 fn test_decimal_to_text() {
-    let result = Value::Decimal(3.14)
+    let result = Value::Decimal(3.25)
         .try_convert_to(ValueType::Text)
         .unwrap();
     match result {
@@ -245,10 +262,10 @@ fn test_decimal_to_text() {
 
 #[test]
 fn test_decimal_to_decimal_identity() {
-    let result = Value::Decimal(3.14)
+    let result = Value::Decimal(3.25)
         .try_convert_to(ValueType::Decimal)
         .unwrap();
-    assert_value!(result, Decimal(3.14));
+    assert_value!(result, Decimal(3.25));
 }
 
 // try_convert_to: Text conversions
@@ -290,10 +307,10 @@ fn test_text_to_integer_invalid() {
 
 #[test]
 fn test_text_to_decimal() {
-    let result = Value::Text("3.14".to_string())
+    let result = Value::Text("3.25".to_string())
         .try_convert_to(ValueType::Decimal)
         .unwrap();
-    assert_value!(result, Decimal(3.14));
+    assert_value!(result, Decimal(3.25));
 }
 
 #[test]
@@ -368,8 +385,8 @@ fn test_decimal_to_bool_small_negative() {
 
 #[test]
 fn test_decimal_to_bool_negative() {
-    // -3.14 is truthy
-    let result = Value::Decimal(-3.14).try_convert_to(ValueType::Bool).unwrap();
+    // -3.25 is truthy
+    let result = Value::Decimal(-3.25).try_convert_to(ValueType::Bool).unwrap();
     assert_value!(result, Bool(true));
 }
 
@@ -528,8 +545,8 @@ fn test_text_to_integer_negative() {
 
 #[test]
 fn test_text_to_decimal_negative() {
-    let result = Value::Text("-3.14".to_string()).try_convert_to(ValueType::Decimal).unwrap();
-    assert_value!(result, Decimal(-3.14));
+    let result = Value::Text("-3.25".to_string()).try_convert_to(ValueType::Decimal).unwrap();
+    assert_value!(result, Decimal(-3.25));
 }
 
 #[test]
@@ -1090,6 +1107,54 @@ fn test_fingerprint_text() {
     assert_ne!(
         Value::Text("hello".to_string()).fingerprint(),
         Value::Text("world".to_string()).fingerprint()
+    );
+}
+
+#[test]
+fn test_fingerprint_enum_variants() {
+    // Enum-valued variants hash the inner enum's discriminant: equal variants
+    // must hash equal, different variants must hash differently.
+    use crate::color::blend::BlendMode;
+    use crate::color::color_spaces::ColorSpace;
+
+    assert_eq!(
+        Value::BlendMode(BlendMode::Multiply).fingerprint(),
+        Value::BlendMode(BlendMode::Multiply).fingerprint()
+    );
+    assert_ne!(
+        Value::BlendMode(BlendMode::Multiply).fingerprint(),
+        Value::BlendMode(BlendMode::Screen).fingerprint()
+    );
+
+    assert_eq!(
+        Value::ColorSpace(ColorSpace::Hsl).fingerprint(),
+        Value::ColorSpace(ColorSpace::Hsl).fingerprint()
+    );
+    assert_ne!(
+        Value::ColorSpace(ColorSpace::Hsl).fingerprint(),
+        Value::ColorSpace(ColorSpace::Hsv).fingerprint()
+    );
+
+    assert_eq!(
+        Value::ImageType(image::ImageFormat::Png).fingerprint(),
+        Value::ImageType(image::ImageFormat::Png).fingerprint()
+    );
+    assert_ne!(
+        Value::ImageType(image::ImageFormat::Png).fingerprint(),
+        Value::ImageType(image::ImageFormat::Jpeg).fingerprint()
+    );
+
+    assert_ne!(
+        Value::TextHAlign(TextHAlign::Left).fingerprint(),
+        Value::TextHAlign(TextHAlign::Right).fingerprint()
+    );
+    assert_ne!(
+        Value::TextVAlign(TextVAlign::Top).fingerprint(),
+        Value::TextVAlign(TextVAlign::Bottom).fingerprint()
+    );
+    assert_ne!(
+        Value::NoiseWorleyDistanceFunction(NoiseWorleyDistanceFunction::Euclidean).fingerprint(),
+        Value::NoiseWorleyDistanceFunction(NoiseWorleyDistanceFunction::Manhattan).fingerprint()
     );
 }
 

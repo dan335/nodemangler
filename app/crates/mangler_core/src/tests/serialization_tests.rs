@@ -5,7 +5,7 @@
 //! data loss or corruption.
 
 #[cfg(test)]
-mod serialization_tests {
+mod roundtrip {
     use std::collections::HashMap;
 
     use crate::{
@@ -108,11 +108,11 @@ mod serialization_tests {
 
     #[test]
     fn test_value_decimal_serialization() {
-        let val = Value::Decimal(3.14);
+        let val = Value::Decimal(3.25);
         let json = serde_json::to_string(&val).unwrap();
         let loaded: Value = serde_json::from_str(&json).unwrap();
         match loaded {
-            Value::Decimal(v) => assert!((v - 3.14).abs() < 1e-6),
+            Value::Decimal(v) => assert!((v - 3.25).abs() < 1e-6),
             other => panic!("Expected Decimal, got {:?}", other),
         }
     }

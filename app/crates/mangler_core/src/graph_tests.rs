@@ -15,7 +15,6 @@ fn create_test_graph() -> Graph {
 async fn test_graph_new() {
     let graph = create_test_graph();
     assert!(graph.nodes.is_empty());
-    assert!(!graph.is_dirty);
     assert!(!graph.is_subgraph);
 }
 
@@ -31,7 +30,6 @@ async fn test_add_node() {
         .await;
 
     assert!(graph.nodes.contains_key(&node_id));
-    assert!(graph.is_dirty);
 
     let node = graph.nodes.get(&node_id).unwrap();
     assert_eq!(node.inputs.len(), 2); // a, b
@@ -1161,8 +1159,125 @@ async fn test_subgraph_propagates_value_end_to_end() {
     let _ = fs::remove_file(&tmp_path);
 }
 
+// Regression test: exposed outputs of a *many-node* subgraph must not be
+// dropped. Results used to round-trip through a bounded (32-slot) mpsc
+// channel drained with try_recv after the child ran; every child node emits
+// several messages per run (busy on/off, info, output-changed), so a child
+// graph with ~10 nodes overflowed the channel and the tail OutputChanged
+// messages — including the exposed output, which runs last in a chain — were
+// silently dropped, leaving the parent's exposed output stale. Outputs are
+// now read directly from the child graph's node storage, which is lossless.
+//
+// Child graph: decimal input -> 9 chained increments (10 nodes total). The
+// decimal's input is exposed, the last increment's output is exposed, so the
+// expected exposed output is input + 9. Runs twice to verify repeated runs
+// stay correct.
+#[tokio::test]
+async fn test_subgraph_many_nodes_exposed_output_not_dropped() {
+    use std::fs;
+    use crate::GraphSaveData;
+
+    // Build the child graph: one decimal input node feeding a chain of
+    // nine increment nodes.
+    let (child_tx_nc, _child_rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
+    let (child_tx_gc, _child_rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut child = Graph::new(get_id(), child_tx_nc, child_tx_gc, true).unwrap();
+
+    let decimal_id = child
+        .add_node(
+            get_id(),
+            AddNodeType::Operation(Operation::OpNumberInputDecimal),
+            glam::Vec2::ZERO,
+            true,
+            None,
+        )
+        .await;
+
+    let mut previous_id = decimal_id.clone();
+    let mut last_increment_id = String::new();
+    for _ in 0..9 {
+        let increment_id = child
+            .add_node(
+                get_id(),
+                AddNodeType::Operation(Operation::OpNumberMathIncrement),
+                glam::Vec2::ZERO,
+                true,
+                None,
+            )
+            .await;
+        child
+            .add_connection(increment_id.clone(), 0, previous_id.clone(), 0)
+            .await;
+        previous_id = increment_id.clone();
+        last_increment_id = increment_id;
+    }
+
+    // Expose the decimal's input and the final increment's output.
+    child.nodes.get_mut(&decimal_id).unwrap().inputs[0].is_exposed = true;
+    child
+        .nodes
+        .get_mut(&last_increment_id)
+        .unwrap()
+        .outputs[0]
+        .is_exposed = true;
+
+    // Persist the child graph to a unique tempfile.
+    let tmp_path = std::env::temp_dir()
+        .join(format!("mangler_subgraph_overflow_test_{}.mangle.json", get_id()));
+    let save_data = GraphSaveData {
+        id: child.id.clone(),
+        name: child.name.clone(),
+        nodes: child.nodes.clone(),
+    };
+    fs::write(&tmp_path, serde_json::to_string(&save_data).unwrap())
+        .expect("failed to write child graph tempfile");
+
+    // Build the parent and attach the child.
+    let mut parent = create_test_graph();
+    let subgraph_node_id = parent
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None)
+        .await;
+    parent.set_subgraph_path(subgraph_node_id.clone(), tmp_path.clone());
+
+    {
+        let parent_node = parent.nodes.get(&subgraph_node_id).unwrap();
+        assert_eq!(parent_node.inputs.len(), 1, "one exposed input expected");
+        assert_eq!(parent_node.outputs.len(), 1, "one exposed output expected");
+    }
+
+    // First run: 1.0 through nine increments must come back as 10.0.
+    parent.set_input(subgraph_node_id.clone(), 0, Value::Decimal(1.0));
+    parent.run().await;
+
+    let parent_node = parent.nodes.get(&subgraph_node_id).unwrap();
+    match &parent_node.outputs[0].value {
+        Value::Decimal(v) => assert!(
+            (*v - 10.0).abs() < 1e-6,
+            "expected 10.0 from 10-node subgraph, got {} (exposed output dropped?)",
+            v
+        ),
+        other => panic!("expected Decimal output from subgraph, got {:?}", other),
+    }
+
+    // Second run with a new input: repeated runs must stay correct.
+    parent.set_input(subgraph_node_id.clone(), 0, Value::Decimal(100.0));
+    parent.run().await;
+
+    let parent_node = parent.nodes.get(&subgraph_node_id).unwrap();
+    match &parent_node.outputs[0].value {
+        Value::Decimal(v) => assert!(
+            (*v - 109.0).abs() < 1e-6,
+            "expected 109.0 on second run, got {}",
+            v
+        ),
+        other => panic!("expected Decimal output from subgraph, got {:?}", other),
+    }
+
+    let _ = fs::remove_file(&tmp_path);
+}
+
 // A detached() snapshot must still execute its
-// subgraph nodes. NodeType::clone drops the loaded child graph + channel to
+// subgraph nodes. NodeType::clone drops the loaded child graph to
 // None, so without rehydration the snapshot silently skips the subgraph and
 // emits a stale/default output. This test drives an exposed input, snapshots
 // the parent WITHOUT running it live, then runs only the snapshot and asserts
@@ -1846,5 +1961,460 @@ async fn test_image_output_defers_thumbnail() {
     assert!(
         thumbnail_ready_seen,
         "async service did not deliver ThumbnailReady within 2s"
+    );
+}
+
+// ── add_connection bounds checks ──────────────────────────────────────────
+// Regression: validation used `len() >= index`, which passed when
+// index == len and then panicked on direct indexing.
+
+#[tokio::test]
+async fn test_add_connection_output_index_equal_to_len_no_panic() {
+    let mut graph = create_test_graph();
+    let decimal_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .await;
+    let add_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .await;
+
+    // decimal node has exactly 1 output — index 1 == len, the old off-by-one.
+    graph.add_connection(add_id.clone(), 0, decimal_id.clone(), 1).await;
+
+    // No connection should have been made, and no panic.
+    assert!(graph.nodes.get(&add_id).unwrap().inputs[0].connection.is_none());
+}
+
+#[tokio::test]
+async fn test_add_connection_input_index_equal_to_len_no_panic() {
+    let mut graph = create_test_graph();
+    let decimal_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .await;
+    let add_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .await;
+
+    // add node has exactly 2 inputs — index 2 == len, the old off-by-one.
+    graph.add_connection(add_id.clone(), 2, decimal_id.clone(), 0).await;
+
+    let decimal_node = graph.nodes.get(&decimal_id).unwrap();
+    let conns = decimal_node.outputs[0].connection.as_ref();
+    assert!(conns.is_none() || conns.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_add_connection_way_out_of_range_indices_no_panic() {
+    let mut graph = create_test_graph();
+    let decimal_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .await;
+    let add_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .await;
+
+    graph.add_connection(add_id.clone(), 99, decimal_id.clone(), 99).await;
+
+    assert!(graph.nodes.get(&add_id).unwrap().inputs[0].connection.is_none());
+    assert!(graph.nodes.get(&add_id).unwrap().inputs[1].connection.is_none());
+}
+
+// ── add_connection cycle rejection ────────────────────────────────────────
+
+#[tokio::test]
+async fn test_add_connection_rejects_self_connection() {
+    let mut graph = create_test_graph();
+    let add_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .await;
+
+    // A -> A: type-compatible (Decimal -> Decimal) but must be refused.
+    graph.add_connection(add_id.clone(), 0, add_id.clone(), 0).await;
+
+    let node = graph.nodes.get(&add_id).unwrap();
+    assert!(node.inputs[0].connection.is_none(), "self-connection must be refused");
+    let conns = node.outputs[0].connection.as_ref();
+    assert!(conns.is_none() || conns.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_add_connection_rejects_two_node_cycle() {
+    let mut graph = create_test_graph();
+    let a_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .await;
+    let b_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None)
+        .await;
+
+    // A -> B is fine.
+    graph.add_connection(b_id.clone(), 0, a_id.clone(), 0).await;
+    assert!(graph.nodes.get(&b_id).unwrap().inputs[0].connection.is_some());
+
+    // B -> A would close the cycle A -> B -> A: refused.
+    graph.add_connection(a_id.clone(), 0, b_id.clone(), 0).await;
+    assert!(
+        graph.nodes.get(&a_id).unwrap().inputs[0].connection.is_none(),
+        "cycle-closing connection must be refused"
+    );
+
+    // The original A -> B connection must be untouched.
+    let (conn_id, _) = graph.nodes.get(&b_id).unwrap().inputs[0].connection.as_ref().unwrap();
+    assert_eq!(conn_id, &a_id);
+}
+
+#[tokio::test]
+async fn test_add_connection_rejects_three_node_cycle() {
+    let mut graph = create_test_graph();
+    let a_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .await;
+    let b_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None)
+        .await;
+    let c_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(400.0, 0.0), true, None)
+        .await;
+
+    // A -> B -> C
+    graph.add_connection(b_id.clone(), 0, a_id.clone(), 0).await;
+    graph.add_connection(c_id.clone(), 0, b_id.clone(), 0).await;
+
+    // C -> A would close a 3-node cycle: refused.
+    graph.add_connection(a_id.clone(), 0, c_id.clone(), 0).await;
+    assert!(
+        graph.nodes.get(&a_id).unwrap().inputs[0].connection.is_none(),
+        "3-node cycle-closing connection must be refused"
+    );
+}
+
+#[tokio::test]
+async fn test_add_connection_allows_diamond() {
+    // A feeds B and C; both feed D. Reconvergence is NOT a cycle and must
+    // still be allowed by the cycle check.
+    let mut graph = create_test_graph();
+    let a_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .await;
+    let b_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, -100.0), true, None)
+        .await;
+    let c_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 100.0), true, None)
+        .await;
+    let d_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(400.0, 0.0), true, None)
+        .await;
+
+    graph.add_connection(b_id.clone(), 0, a_id.clone(), 0).await;
+    graph.add_connection(c_id.clone(), 0, a_id.clone(), 0).await;
+    graph.add_connection(d_id.clone(), 0, b_id.clone(), 0).await;
+    graph.add_connection(d_id.clone(), 1, c_id.clone(), 0).await;
+
+    let d_node = graph.nodes.get(&d_id).unwrap();
+    assert!(d_node.inputs[0].connection.is_some(), "diamond edge B->D must be allowed");
+    assert!(d_node.inputs[1].connection.is_some(), "diamond edge C->D must be allowed");
+
+    // Sanity: the diamond computes. a=5 -> b=5+1=6, c=5+2=7, d=6+7=13.
+    graph.set_input(a_id.clone(), 0, Value::Decimal(5.0));
+    graph.set_input(b_id.clone(), 1, Value::Decimal(1.0));
+    graph.set_input(c_id.clone(), 1, Value::Decimal(2.0));
+    graph.run().await;
+    match &graph.nodes.get(&d_id).unwrap().outputs[0].value {
+        Value::Decimal(v) => assert!((*v - 13.0).abs() < 1e-6, "expected 13.0, got {}", v),
+        other => panic!("Expected Decimal, got {:?}", other),
+    }
+}
+
+// ── stale out-of-range connection indices during run() ────────────────────
+// Regression: propagation used `connected_node.inputs[input_index]` on
+// indices stored in output.connection, panicking when the target's inputs
+// had shrunk (e.g. a reloaded subgraph exposing fewer inputs).
+
+#[tokio::test]
+async fn test_run_with_stale_out_of_range_connection_does_not_panic() {
+    let mut graph = create_test_graph();
+    let source_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .await;
+    let consumer_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None)
+        .await;
+
+    graph.add_connection(consumer_id.clone(), 1, source_id.clone(), 0).await;
+
+    // Simulate a stale persisted connection: shrink the consumer's inputs so
+    // index 1 no longer exists while the source's output still lists it.
+    // Disable the consumer so its (now malformed) operation never executes —
+    // we are exercising the propagation sites, not the op.
+    {
+        let consumer = graph.nodes.get_mut(&consumer_id).unwrap();
+        consumer.inputs.truncate(1);
+        consumer.is_enabled = false;
+    }
+
+    // Normal run path: source executes and propagates — must skip, not panic.
+    graph.set_input(source_id.clone(), 0, Value::Decimal(7.0));
+    graph.run().await;
+
+    // Skip-branch path: re-run the source with unchanged inputs so the cached
+    // input hash matches and the "still propagate existing outputs" branch
+    // runs — must also skip, not panic.
+    graph.nodes.get_mut(&source_id).unwrap().is_dirty = true;
+    graph.run().await;
+
+    // The remaining in-range input is untouched by the stale connection.
+    assert_eq!(graph.nodes.get(&consumer_id).unwrap().inputs.len(), 1);
+}
+
+#[tokio::test]
+async fn test_run_disabled_passthrough_with_stale_connection_does_not_panic() {
+    let mut graph = create_test_graph();
+    let source_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .await;
+    let consumer_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None)
+        .await;
+
+    graph.add_connection(consumer_id.clone(), 1, source_id.clone(), 0).await;
+
+    // Disable the SOURCE so its passthrough branch does the propagation, and
+    // shrink the consumer so the stale index 1 is out of range.
+    {
+        let consumer = graph.nodes.get_mut(&consumer_id).unwrap();
+        consumer.inputs.truncate(1);
+        consumer.is_enabled = false;
+    }
+    {
+        let source = graph.nodes.get_mut(&source_id).unwrap();
+        source.is_enabled = false;
+    }
+
+    graph.set_input(source_id.clone(), 0, Value::Decimal(3.0));
+    graph.run().await; // must not panic (disabled-passthrough propagation site)
+}
+
+// ── set_subgraph_path prunes stale upstream connections ───────────────────
+
+/// Helper: write a child graph file containing one add node with the first
+/// `exposed_inputs` inputs exposed and the output exposed. Returns the path.
+#[cfg(test)]
+async fn write_child_with_exposed_inputs(exposed_inputs: usize, label: &str) -> std::path::PathBuf {
+    use std::fs;
+    use crate::GraphSaveData;
+
+    let (tx_nc, _rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
+    let (tx_gc, _rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut child = Graph::new(get_id(), tx_nc, tx_gc, true).unwrap();
+    let node_id = child
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .await;
+    {
+        let n = child.nodes.get_mut(&node_id).unwrap();
+        for i in 0..exposed_inputs {
+            n.inputs[i].is_exposed = true;
+        }
+        n.outputs[0].is_exposed = true;
+    }
+
+    let path = std::env::temp_dir()
+        .join(format!("mangler_prune_child_{}_{}.mangle.json", label, get_id()));
+    let save = GraphSaveData {
+        id: child.id.clone(),
+        name: child.name.clone(),
+        nodes: child.nodes.clone(),
+    };
+    fs::write(&path, serde_json::to_string(&save).unwrap()).unwrap();
+    path
+}
+
+#[tokio::test]
+async fn test_subgraph_reload_prunes_out_of_range_upstream_connections() {
+    use std::fs;
+
+    // Child v1 exposes two inputs; child v2 exposes only one.
+    let two_input_path = write_child_with_exposed_inputs(2, "two").await;
+    let one_input_path = write_child_with_exposed_inputs(1, "one").await;
+
+    let mut parent = create_test_graph();
+    let subgraph_id = parent
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::new(200.0, 0.0), true, None)
+        .await;
+    parent.set_subgraph_path(subgraph_id.clone(), two_input_path.clone());
+    assert_eq!(parent.nodes.get(&subgraph_id).unwrap().inputs.len(), 2);
+
+    // Feed both exposed inputs from one decimal source.
+    let source_id = parent
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .await;
+    parent.add_connection(subgraph_id.clone(), 0, source_id.clone(), 0).await;
+    parent.add_connection(subgraph_id.clone(), 1, source_id.clone(), 0).await;
+    {
+        let conns = parent.nodes.get(&source_id).unwrap().outputs[0].connection.as_ref().unwrap();
+        assert!(conns.contains(&(subgraph_id.clone(), 0)));
+        assert!(conns.contains(&(subgraph_id.clone(), 1)));
+    }
+
+    // Reload the subgraph node from a child exposing only ONE input.
+    parent.set_subgraph_path(subgraph_id.clone(), one_input_path.clone());
+    assert_eq!(parent.nodes.get(&subgraph_id).unwrap().inputs.len(), 1);
+
+    // The upstream entry for the vanished input index 1 must be pruned; the
+    // in-range entry for index 0 must survive.
+    {
+        let conns = parent.nodes.get(&source_id).unwrap().outputs[0].connection.as_ref().unwrap();
+        assert!(
+            !conns.contains(&(subgraph_id.clone(), 1)),
+            "stale connection to removed input index 1 must be pruned"
+        );
+        assert!(
+            conns.contains(&(subgraph_id.clone(), 0)),
+            "in-range connection to input index 0 must be kept"
+        );
+    }
+
+    // The engine must survive subsequent runs (this used to panic).
+    parent.set_input(source_id.clone(), 0, Value::Decimal(4.0));
+    parent.run().await;
+    parent.nodes.get_mut(&source_id).unwrap().is_dirty = true;
+    parent.run().await;
+
+    let _ = fs::remove_file(&two_input_path);
+    let _ = fs::remove_file(&one_input_path);
+}
+
+// ── save_to_file error handling ───────────────────────────────────────────
+
+#[tokio::test]
+async fn test_save_to_file_write_failure_does_not_panic() {
+    let mut graph = create_test_graph();
+    graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .await;
+
+    // Point the save path into a directory that does not exist: fs::write
+    // fails. Must log (stderr) and return, not panic or corrupt state.
+    graph.set_save_path(std::path::PathBuf::from(
+        "/nonexistent_mangler_dir_for_test/graph.mangle.json",
+    ));
+    graph.save_to_file();
+
+    assert_eq!(graph.nodes.len(), 1);
+}
+
+// ── trigger firing vs input-hash cache ────────────────────────────────────
+//
+// Value::Trigger hashes as a constant (see Value::fingerprint), so the
+// input-hash skip in Graph::run cannot tell a fresh firing apart from
+// "inputs unchanged". Graph::run compensates with its forced_nodes set.
+// Node::run records `time` on every execution, so resetting `time` to None
+// before a run gives a deterministic ran/skipped marker per node.
+
+/// Build random_decimal -> add -> add and return (graph, ids).
+async fn create_trigger_chain() -> (Graph, String, String, String) {
+    let mut graph = create_test_graph();
+    let random_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberRandomDecimal), glam::Vec2::ZERO, true, None)
+        .await;
+    let add1_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None)
+        .await;
+    let add2_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(400.0, 0.0), true, None)
+        .await;
+
+    graph.add_connection(add1_id.clone(), 0, random_id.clone(), 0).await;
+    graph.add_connection(add2_id.clone(), 0, add1_id.clone(), 0).await;
+
+    (graph, random_id, add1_id, add2_id)
+}
+
+fn clear_ran_markers(graph: &mut Graph, ids: &[&String]) {
+    for id in ids {
+        graph.nodes.get_mut(*id).unwrap().time = None;
+    }
+}
+
+#[tokio::test]
+async fn test_trigger_fire_reruns_two_hop_downstream_chain() {
+    let (mut graph, random_id, add1_id, add2_id) = create_trigger_chain().await;
+
+    // Initial run settles the chain and populates the input-hash cache.
+    graph.run().await;
+
+    clear_ran_markers(&mut graph, &[&random_id, &add1_id, &add2_id]);
+
+    // Fire the trigger the way connection propagation / subgraph input
+    // forwarding does: Node::set_input_value marks the node dirty but does
+    // NOT clear cached_input_hash, and the Trigger value hashes identically
+    // to the previous firing.
+    graph
+        .nodes
+        .get_mut(&random_id)
+        .unwrap()
+        .set_input_value(0, Value::Trigger);
+    graph.run().await;
+
+    assert!(
+        graph.nodes.get(&random_id).unwrap().time.is_some(),
+        "trigger-fired node must re-run despite its constant input hash"
+    );
+    assert!(
+        graph.nodes.get(&add1_id).unwrap().time.is_some(),
+        "1-hop downstream node must re-run after a trigger firing"
+    );
+    assert!(
+        graph.nodes.get(&add2_id).unwrap().time.is_some(),
+        "2-hop downstream node must re-run after a trigger firing"
+    );
+
+    // Exactly once per firing: a follow-up tick with no new firing must not
+    // re-run anything.
+    clear_ran_markers(&mut graph, &[&random_id, &add1_id, &add2_id]);
+    graph.run().await;
+
+    assert!(graph.nodes.get(&random_id).unwrap().time.is_none());
+    assert!(graph.nodes.get(&add1_id).unwrap().time.is_none());
+    assert!(graph.nodes.get(&add2_id).unwrap().time.is_none());
+}
+
+#[tokio::test]
+async fn test_no_trigger_fire_downstream_nodes_stay_cached() {
+    let (mut graph, random_id, add1_id, add2_id) = create_trigger_chain().await;
+
+    // Second input of add1 driven by a decimal node so we can dirty part of
+    // the graph without firing the trigger.
+    let dec_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::new(0.0, 200.0), true, None)
+        .await;
+    graph.add_connection(add1_id.clone(), 1, dec_id.clone(), 0).await;
+
+    graph.set_input(dec_id.clone(), 0, Value::Decimal(5.0));
+    graph.run().await;
+
+    clear_ran_markers(&mut graph, &[&random_id, &add1_id, &add2_id, &dec_id]);
+
+    // Re-set the same value: the decimal node re-runs (set_input clears its
+    // hash cache) but produces an identical output, and no trigger fired —
+    // so the nodes downstream of the trigger must all be skipped (cached).
+    graph.set_input(dec_id.clone(), 0, Value::Decimal(5.0));
+    graph.run().await;
+
+    assert!(
+        graph.nodes.get(&dec_id).unwrap().time.is_some(),
+        "explicitly edited node runs (its hash cache was invalidated)"
+    );
+    assert!(
+        graph.nodes.get(&random_id).unwrap().time.is_none(),
+        "trigger node must not re-run when the trigger did not fire"
+    );
+    assert!(
+        graph.nodes.get(&add1_id).unwrap().time.is_none(),
+        "downstream node must stay cached when nothing changed and no trigger fired"
+    );
+    assert!(
+        graph.nodes.get(&add2_id).unwrap().time.is_none(),
+        "2-hop downstream node must stay cached when nothing changed and no trigger fired"
     );
 }

@@ -70,7 +70,7 @@ async fn test_ratio_clamped_to_0_1() {
     let result = OpColorAnalysisMixRatio::run(&mut inputs).await.unwrap();
 
     let Value::Decimal(ratio) = result.responses[0].value else { panic!("Expected Decimal") };
-    assert!(ratio >= 0.0 && ratio <= 1.0, "Ratio out of range: {}", ratio);
+    assert!((0.0..=1.0).contains(&ratio), "Ratio out of range: {}", ratio);
 }
 
 #[tokio::test]

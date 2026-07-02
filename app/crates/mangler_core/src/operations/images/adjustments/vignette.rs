@@ -85,8 +85,8 @@ impl OpImageAdjustmentVignette {
             let dist = (dx * dx + dy * dy).sqrt() / std::f32::consts::SQRT_2;
             let t = smoothstep(radius, end, dist);
             let mul = 1.0 - amount * t;
-            for c in 0..color_ch {
-                pixel[c] *= mul;
+            for val in pixel.iter_mut().take(color_ch) {
+                *val *= mul;
             }
         }
 

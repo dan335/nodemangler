@@ -70,8 +70,8 @@ impl OpImageAdjustmentBrighten {
         let color_ch = if ch == 2 || ch == 4 { ch - 1 } else { ch };
 
         for pixel in result.pixels_mut() {
-            for c in 0..color_ch {
-                pixel[c] += amount;
+            for val in pixel.iter_mut().take(color_ch) {
+                *val += amount;
             }
         }
 

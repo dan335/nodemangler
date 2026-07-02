@@ -33,13 +33,13 @@ fn periodic_cloud_fbm(u: f64, v: f64, octaves: usize, frequency: f64, lacunarity
     // Scale factor: 1 / sum(persistence^i for i in 1..=octaves)
     let scale_factor = 1.0 / (1..=octaves).fold(0.0, |acc, i| acc + persistence.powi(i as i32));
 
-    for i in 0..octaves {
+    for hasher in hashers.iter().take(octaves) {
         // Round frequency to integer period for tiling
         let period = freq.round().max(1.0) as isize;
         let px = u * period as f64;
         let py = v * period as f64;
 
-        let mut signal = periodic_value_2d(px, py, period, period, &hashers[i]);
+        let mut signal = periodic_value_2d(px, py, period, period, hasher);
         signal *= attenuation;
         attenuation *= persistence;
         result += signal;

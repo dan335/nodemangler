@@ -71,11 +71,10 @@ impl OpImageAdjustmentPosterize {
         let color_ch = if ch == 2 || ch == 4 { ch - 1 } else { ch };
 
         for pixel in result.pixels_mut() {
-            for c in 0..color_ch {
-                let val = pixel[c];
+            for val in pixel.iter_mut().take(color_ch) {
                 // Round to nearest quantization step
-                let quantized = (val * steps + 0.5).floor() / steps;
-                pixel[c] = quantized.clamp(0.0, 1.0);
+                let quantized = (*val * steps + 0.5).floor() / steps;
+                *val = quantized.clamp(0.0, 1.0);
             }
             // alpha unchanged
         }

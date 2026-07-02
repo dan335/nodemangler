@@ -72,7 +72,7 @@ impl OpImageAdjustmentPixelate {
             while x0 < w {
                 let x1 = (x0 + cell).min(w);
                 // Accumulate across the block.
-                for c in 0..ch { sum[c] = 0.0; }
+                for val in sum.iter_mut().take(ch) { *val = 0.0; }
                 let count = ((x1 - x0) * (y1 - y0)) as f32;
                 for yy in y0..y1 {
                     for xx in x0..x1 {
@@ -80,7 +80,7 @@ impl OpImageAdjustmentPixelate {
                         for c in 0..ch { sum[c] += p[c]; }
                     }
                 }
-                for c in 0..ch { sum[c] /= count; }
+                for val in sum.iter_mut().take(ch) { *val /= count; }
                 // Write the block mean into every pixel of the block.
                 for yy in y0..y1 {
                     for xx in x0..x1 {

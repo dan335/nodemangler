@@ -74,7 +74,7 @@ impl OpImageAdjustmentOilPaint {
         let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
         let Value::Integer(levels) = levels_converted.unwrap() else { unreachable!() };
 
-        let radius = radius.max(1) as i32;
+        let radius = radius.max(1);
         let levels = levels.max(2) as usize;
 
         let (width, height) = data.dimensions();
@@ -126,8 +126,8 @@ impl OpImageAdjustmentOilPaint {
                 // Emit averaged color from the winning bin; alpha copied from center
                 let center = data_ref.get_pixel(x.clamp(0, w - 1) as u32, y.clamp(0, h - 1) as u32);
                 let n = counts[best].max(1) as f32;
-                for c in 0..color_ch {
-                    row.push(sums[best][c] / n);
+                for val in sums[best].iter().take(color_ch) {
+                    row.push(val / n);
                 }
                 if ch == 2 || ch == 4 {
                     row.push(center[ch - 1]);

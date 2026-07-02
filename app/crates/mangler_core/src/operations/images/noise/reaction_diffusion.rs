@@ -131,7 +131,7 @@ impl OpImageNoiseReactionDiffusion {
 
         // Seed initial B spots using deterministic hash
         // Place several small square patches of B=1 at pseudo-random locations
-        let num_spots = (w * h / 400).max(3).min(50);
+        let num_spots = (w * h / 400).clamp(3, 50);
         for i in 0..num_spots {
             let hx = Self::hash(i as u32, 0, seed as u32);
             let hy = Self::hash(i as u32, 1, seed as u32);

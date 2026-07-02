@@ -81,9 +81,9 @@ impl OpImageChannelMixer {
         // Convert the image, then each of the 12 coefficients in order.
         let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
         let mut coeffs = [0.0f32; 12];
-        for i in 0..12 {
+        for (i, coeff) in coeffs.iter_mut().enumerate() {
             if let Some(Value::Decimal(v)) = convert_input(inputs, i + 1, ValueType::Decimal, &mut input_errors) {
-                coeffs[i] = v;
+                *coeff = v;
             }
         }
 

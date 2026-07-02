@@ -82,20 +82,6 @@ pub enum Value {
     TextVAlign(TextVAlign),
 }
 
-/// Modes for file/folder picker dialogs.
-pub enum PathType {
-    /// Pick a single file.
-    PickFile,
-    /// Pick multiple files.
-    PickFiles,
-    /// Pick a single folder.
-    PickFolder,
-    /// Pick multiple folders.
-    PickFolders,
-    /// Save to a file path.
-    SaveFile,
-}
-
 impl Default for Value {
     fn default() -> Self {
         Value::Bool(false)
@@ -143,8 +129,12 @@ impl Value {
         }
     }
 
-    /// Zero-allocation fingerprint for cache comparison.
-    /// Returns a u64 hash that changes when the value changes.
+    /// Allocation-free fingerprint for cache comparison.
+    /// Returns a u64 hash that changes when the value changes. Hashes are
+    /// runtime-only cache keys (never persisted), so the exact values may
+    /// change between builds. Enum-valued variants hash the inner enum's
+    /// `mem::discriminant` — all of those enums are fieldless, so the
+    /// discriminant fully identifies the value without allocating.
     pub fn fingerprint(&self) -> u64 {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
@@ -165,13 +155,16 @@ impl Value {
             Value::Path(p) => p.hash(&mut h),
             Value::FilterType(f) => (*f as u8).hash(&mut h),
             Value::ColorFormat(cf) => (*cf as u8).hash(&mut h),
-            Value::ImageType(it) => format!("{:?}", it).hash(&mut h),
-            Value::Trigger => 0u8.hash(&mut h), // always same — triggers re-run via is_dirty
-            Value::NoiseWorleyDistanceFunction(w) => format!("{:?}", w).hash(&mut h),
-            Value::ColorSpace(cs) => format!("{:?}", cs).hash(&mut h),
-            Value::BlendMode(bm) => format!("{:?}", bm).hash(&mut h),
-            Value::TextHAlign(v) => format!("{:?}", v).hash(&mut h),
-            Value::TextVAlign(v) => format!("{:?}", v).hash(&mut h),
+            Value::ImageType(it) => std::mem::discriminant(it).hash(&mut h),
+            // Always the same: a Trigger carries no data, so its hash cannot
+            // encode freshness. Graph::run compensates with its forced_nodes
+            // set — trigger firings bypass the input-hash skip there.
+            Value::Trigger => 0u8.hash(&mut h),
+            Value::NoiseWorleyDistanceFunction(w) => std::mem::discriminant(w).hash(&mut h),
+            Value::ColorSpace(cs) => std::mem::discriminant(cs).hash(&mut h),
+            Value::BlendMode(bm) => std::mem::discriminant(bm).hash(&mut h),
+            Value::TextHAlign(v) => std::mem::discriminant(v).hash(&mut h),
+            Value::TextVAlign(v) => std::mem::discriminant(v).hash(&mut h),
         }
         h.finish()
     }
@@ -321,7 +314,12 @@ impl Value {
                     message: "Unable to convert image type to bool.".to_string(),
                 }),
             },
-            Value::Trigger => todo!(),
+            Value::Trigger => match other {
+                ValueType::Trigger => Ok(Value::Trigger),
+                _ => Err(ConversionError {
+                    message: "Unable to convert trigger to this type.".to_string(),
+                }),
+            },
             Value::Image { data, change_id } => match other {
                 ValueType::Image => Ok(Value::Image {
                     data: data.clone(),
@@ -354,7 +352,7 @@ impl Value {
             },
             Value::NoiseWorleyDistanceFunction(a) => match other {
                 ValueType::NoiseWorleyDistanceFunction => {
-                    Ok(Value::NoiseWorleyDistanceFunction(a.clone()))
+                    Ok(Value::NoiseWorleyDistanceFunction(*a))
                 }
                 _ => Err(ConversionError {
                     message: "Unable to convert.".to_string(),
@@ -847,10 +845,6 @@ impl TextVAlign {
         [TextVAlign::Top, TextVAlign::Middle, TextVAlign::Bottom]
     }
 }
-
-/// A UI button state wrapper (pressed or not).
-#[derive(Debug, Clone)]
-pub struct UiButton(pub bool);
 
 /// Custom serializer for `FilterType` since it doesn't implement `Serialize`.
 fn serialize_filter_type<S>(value: &FilterType, serializer: S) -> Result<S::Ok, S::Error>
