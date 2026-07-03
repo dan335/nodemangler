@@ -10,8 +10,9 @@
 //!     `w(p, q) = exp( -||P(p) - P(q)||² / h² )`
 //! where `P(p)` is a small patch around p and `h` controls filter strength.
 //!
-//! Cost is O(W² · P²) per pixel where W is the search-window size and P is
-//! the patch size, so both are capped tightly in the UI.
+//! Patch SSDs are evaluated with a per-offset integral image of squared
+//! differences, so cost is O(W²) per pixel independent of patch size. The
+//! search radius is still capped in the UI.
 
 use crate::float_image::FloatImage;
 use crate::get_id;
@@ -35,7 +36,7 @@ impl OpImageAdjustmentNonLocalMeans {
         NodeSettings {
             name: "non local means".to_string(),
             description: "Non-Local Means denoising — weights neighbors by patch similarity rather than spatial distance.".to_string(),
-            help: "Buades, Coll and Morel 2005. For each pixel p and every candidate q in a search window, weights q by `exp(-||patch(p) - patch(q)||^2 / h^2)` where patches are small windows around each pixel. The output is the weighted average over q, so repeating textures reinforce each other while noise averages to zero.\n\nSuperior to bilateral/guided at preserving fine repeating detail. Cost is O(W^2 * P^2) per pixel with W = search radius and P = patch radius, so both are capped tightly. Rows run in parallel; smaller `strength` keeps detail, larger strength smooths harder.".to_string(),
+            help: "Buades, Coll and Morel 2005. For each pixel p and every candidate q in a search window, weights q by `exp(-||patch(p) - patch(q)||^2 / h^2)` where patches are small windows around each pixel. The output is the weighted average over q, so repeating textures reinforce each other while noise averages to zero.\n\nSuperior to bilateral/guided at preserving fine repeating detail. Patch SSDs are computed with per-offset integral images, so cost is O(W^2) per pixel with W = search radius, independent of patch size. Rows run in parallel; smaller `strength` keeps detail, larger strength smooths harder.".to_string(),
         }
     }
 
@@ -96,55 +97,103 @@ impl OpImageAdjustmentNonLocalMeans {
         // Normalize sum-of-squared-differences by patch area so `h` behaves
         // consistently across different patch sizes
         let patch_area = ((2 * patch_r + 1) * (2 * patch_r + 1)) as f32;
+        let inv_norm = 1.0 / (patch_area * color_ch as f32);
 
         let data_ref = &data;
-        let pixels: Vec<f32> = (0..h_i).into_par_iter().flat_map_iter(move |y| {
-            let mut row = Vec::with_capacity(w as usize * ch);
-            for x in 0..w {
-                let mut weight_sum = 0.0f32;
-                let mut acc = [0.0f32; 4];
+        let n_pix = width as usize * height as usize;
+        let p = patch_r as usize;
 
-                // Iterate over the search window around (x, y)
-                for dy in -search_r..=search_r {
-                    for dx in -search_r..=search_r {
-                        let qx = x + dx;
-                        let qy = y + dy;
-                        if qx < 0 || qy < 0 || qx >= w || qy >= h_i { continue; }
+        // Weighted-average accumulators, filled one search offset at a time.
+        let mut acc = vec![0.0f32; n_pix * ch];
+        let mut weight_sum = vec![0.0f32; n_pix];
 
-                        // Compute patch SSD between (x,y) and (qx,qy)
-                        let mut ssd = 0.0f32;
-                        for py in -patch_r..=patch_r {
-                            for px in -patch_r..=patch_r {
-                                let sx = (x + px).clamp(0, w - 1) as u32;
-                                let sy = (y + py).clamp(0, h_i - 1) as u32;
-                                let tx = (qx + px).clamp(0, w - 1) as u32;
-                                let ty = (qy + py).clamp(0, h_i - 1) as u32;
-                                let sp = data_ref.get_pixel(sx, sy);
-                                let tp = data_ref.get_pixel(tx, ty);
-                                for c in 0..color_ch {
-                                    let d = sp[c] - tp[c];
-                                    ssd += d * d;
-                                }
-                            }
+        // Integral image of squared differences between the image and its
+        // (dx, dy)-shifted copy, built over an extended domain that covers
+        // every clamped patch sample: u in [-patch_r, w-1+patch_r] (and the
+        // same for v). With it, each pixel's patch SSD becomes an O(1) box
+        // lookup, making the filter O(search²) per pixel independent of
+        // patch size.
+        let ew = w as usize + 2 * p;
+        let eh = h_i as usize + 2 * p;
+        let stride = ew + 1;
+        let mut integral = vec![0.0f64; stride * (eh + 1)]; // row 0 / col 0 stay zero
+
+        for dy in -search_r..=search_r {
+            for dx in -search_r..=search_r {
+                // 1) Row pass (parallel): per-row prefix sums of the squared
+                //    color difference, with both samples clamped exactly like
+                //    the direct implementation did.
+                integral[stride..].par_chunks_mut(stride).enumerate().for_each(|(ev, out_row)| {
+                    let v = ev as i32 - patch_r;
+                    let sy = v.clamp(0, h_i - 1) as u32;
+                    let ty = (v + dy).clamp(0, h_i - 1) as u32;
+                    let mut run = 0.0f64;
+                    out_row[0] = 0.0;
+                    for (eu, out) in out_row.iter_mut().skip(1).enumerate() {
+                        let u = eu as i32 - patch_r;
+                        let sx = u.clamp(0, w - 1) as u32;
+                        let tx = (u + dx).clamp(0, w - 1) as u32;
+                        let sp = data_ref.get_pixel(sx, sy);
+                        let tp = data_ref.get_pixel(tx, ty);
+                        let mut d2 = 0.0f32;
+                        for c in 0..color_ch {
+                            let d = sp[c] - tp[c];
+                            d2 += d * d;
                         }
-                        ssd /= patch_area * color_ch as f32;
-
-                        let weight = (-ssd / h2).exp();
-                        let qp = data_ref.get_pixel(qx as u32, qy as u32);
-                        for c in 0..ch {
-                            acc[c] += weight * qp[c];
-                        }
-                        weight_sum += weight;
+                        run += d2 as f64;
+                        *out = run;
+                    }
+                });
+                // 2) Column pass: accumulate rows top-to-bottom to finish the
+                //    integral image (cheap vectorized adds).
+                for ev in 1..=eh {
+                    let (prev, cur) = integral.split_at_mut(ev * stride);
+                    let prev_row = &prev[(ev - 1) * stride..];
+                    for (c_val, p_val) in cur[..stride].iter_mut().zip(prev_row.iter()) {
+                        *c_val += *p_val;
                     }
                 }
-
-                // Normalize by total weight (guaranteed > 0: weight at q = p is 1)
-                for val in acc.iter().take(ch) {
-                    row.push(val / weight_sum);
-                }
+                // 3) Accumulate this offset's weighted contribution (parallel
+                //    over rows). Candidates outside the image are skipped,
+                //    matching the previous search-window bounds check.
+                let integral_ref = &integral;
+                acc.par_chunks_mut(w as usize * ch)
+                    .zip(weight_sum.par_chunks_mut(w as usize))
+                    .enumerate()
+                    .for_each(|(y, (acc_row, wsum_row))| {
+                        let y = y as i32;
+                        let qy = y + dy;
+                        if qy < 0 || qy >= h_i { return; }
+                        // Patch rows for pixel y span extended rows [y, y + 2p]
+                        let y0 = y as usize;
+                        let y1 = y as usize + 2 * p + 1;
+                        for x in 0..w {
+                            let qx = x + dx;
+                            if qx < 0 || qx >= w { continue; }
+                            let x0 = x as usize;
+                            let x1 = x as usize + 2 * p + 1;
+                            let ssd = (integral_ref[y1 * stride + x1] - integral_ref[y0 * stride + x1]
+                                - integral_ref[y1 * stride + x0] + integral_ref[y0 * stride + x0])
+                                .max(0.0) as f32 * inv_norm;
+                            let weight = (-ssd / h2).exp();
+                            let qp = data_ref.get_pixel(qx as u32, qy as u32);
+                            let base = x as usize * ch;
+                            for c in 0..ch {
+                                acc_row[base + c] += weight * qp[c];
+                            }
+                            wsum_row[x as usize] += weight;
+                        }
+                    });
             }
-            row
-        }).collect();
+        }
+
+        // Normalize by total weight (guaranteed > 0: weight at q = p is 1)
+        let mut pixels = acc;
+        pixels.par_chunks_mut(ch).zip(weight_sum.par_iter()).for_each(|(px, &ws)| {
+            for val in px.iter_mut() {
+                *val /= ws;
+            }
+        });
 
         let out = FloatImage::from_raw(width, height, data.channels(), pixels).unwrap();
 

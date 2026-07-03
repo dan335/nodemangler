@@ -13,6 +13,7 @@ use crate::operations::{OperationResponse, OperationError, OutputResponse, defau
 use crate::output::Output;
 use crate::value::Value;
 use crate::float_image::FloatImage;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::f32::consts::PI;
 use std::sync::Arc;
@@ -70,10 +71,12 @@ impl OpImageTransformPolarCoordinates {
         let max_r = 0.5 * (w.min(h) as f32).max(1.0);
 
         let mut out = FloatImage::new(w, h, data.channels());
-        let mut sp = vec![0.0f32; ch];
+        let src = &*data;
+        let row_len = (w as usize * ch).max(1);
 
-        for y in 0..h {
-            for x in 0..w {
+        out.as_raw_mut().par_chunks_mut(row_len).enumerate().for_each(|(y, row)| {
+            let mut sp = vec![0.0f32; ch];
+            for x in 0..w as usize {
                 let (sx, sy) = if to_polar {
                     // Output is the polar disk; map its angle/radius back to a
                     // source column/row.
@@ -91,10 +94,10 @@ impl OpImageTransformPolarCoordinates {
                     let r = (y as f32 + 0.5) / h as f32 * max_r;
                     (cx + r * angle.cos(), cy + r * angle.sin())
                 };
-                data.bilinear_sample(sx, sy, &mut sp);
-                out.put_pixel(x, y, &sp);
+                src.bilinear_sample(sx, sy, &mut sp);
+                row[x * ch..(x + 1) * ch].copy_from_slice(&sp);
             }
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

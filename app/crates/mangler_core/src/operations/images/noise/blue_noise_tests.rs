@@ -44,6 +44,54 @@ async fn deterministic_for_same_seed() {
     assert_eq!(a.as_raw(), b.as_raw());
 }
 
+/// Naive reference: full window re-sum per pixel with rem_euclid wrapping
+/// (the implementation the sliding window replaced).
+fn box_blur_wrap_naive(src: &[f32], w: usize, h: usize, r: i32) -> Vec<f32> {
+    let mut tmp = vec![0.0f32; w * h];
+    let count = (2 * r + 1) as f32;
+    for y in 0..h {
+        for x in 0..w {
+            let mut sum = 0.0;
+            for dx in -r..=r {
+                let xx = (x as i32 + dx).rem_euclid(w as i32) as usize;
+                sum += src[y * w + xx];
+            }
+            tmp[y * w + x] = sum / count;
+        }
+    }
+    let mut out = vec![0.0f32; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let mut sum = 0.0;
+            for dy in -r..=r {
+                let yy = (y as i32 + dy).rem_euclid(h as i32) as usize;
+                sum += tmp[yy * w + x];
+            }
+            out[y * w + x] = sum / count;
+        }
+    }
+    out
+}
+
+#[test]
+fn sliding_window_blur_matches_naive() {
+    let w = 17;
+    let h = 13;
+    let src: Vec<f32> = (0..h)
+        .flat_map(|y| (0..w).map(move |x| pixel_hash(x as u32, y as u32, 99)))
+        .collect();
+    for r in [1, 3, 7, 20] {
+        let fast = box_blur_wrap(&src, w, h, r);
+        let naive = box_blur_wrap_naive(&src, w, h, r);
+        let max_diff = fast
+            .iter()
+            .zip(&naive)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0f32, f32::max);
+        assert!(max_diff < 1e-4, "r={r}: max abs diff {max_diff}");
+    }
+}
+
 #[tokio::test]
 async fn has_spatial_variation() {
     let img = run(3, 64, 64, 3).await;

@@ -23,6 +23,18 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Precomputed per-cell impulse: jittered position offset within its cell,
+/// signed weight, and orientation (as cos/sin) of the Gabor kernel it drops.
+/// These depend only on the cell — never the pixel — so they are derived once
+/// before the pixel loop instead of being re-hashed per pixel.
+struct CellImpulse {
+    jx: f64,
+    jy: f64,
+    weight: f64,
+    cos_a: f64,
+    sin_a: f64,
+}
+
 /// Operation that generates a Gabor noise image.
 ///
 /// Places oriented Gabor kernels (sinusoidal waves with Gaussian envelopes) at
@@ -89,15 +101,14 @@ impl OpImageNoiseGabor {
 
     /// Evaluates a single Gabor kernel at a given displacement from the kernel center.
     ///
-    /// The kernel is a cosine wave oriented at `angle` radians, modulated by a
-    /// Gaussian envelope with standard deviation `sigma`. The `freq` parameter
-    /// controls the spatial frequency of the cosine wave.
-    fn gabor_kernel(dx: f64, dy: f64, freq: f64, angle: f64, sigma: f64) -> f64 {
+    /// The kernel is a cosine wave oriented along the (`cos_a`, `sin_a`)
+    /// direction, modulated by a Gaussian envelope with standard deviation
+    /// `sigma`. The `freq` parameter controls the spatial frequency of the
+    /// cosine wave. The orientation is passed pre-resolved to cos/sin so the
+    /// trig is paid once per impulse, not once per pixel.
+    fn gabor_kernel(dx: f64, dy: f64, freq: f64, cos_a: f64, sin_a: f64, sigma: f64) -> f64 {
         // Rotate displacement into kernel's local coordinate frame
-        let cos_a = angle.cos();
-        let sin_a = angle.sin();
         let rx = dx * cos_a + dy * sin_a;
-        let _ry = -dx * sin_a + dy * cos_a;
 
         // Gaussian envelope
         let gaussian = (-0.5 * (dx * dx + dy * dy) / (sigma * sigma)).exp();
@@ -159,6 +170,39 @@ impl OpImageNoiseGabor {
         let h = height as usize;
         let seed_u32 = seed as u32;
 
+        // Precompute every cell's impulse parameters once: position jitter,
+        // weight, and orientation are functions of the cell alone, so hashing
+        // and trig need not be repeated for every pixel.
+        let ipc = impulses_per_cell as usize;
+        let cells = grid_size as usize;
+        let mut impulses: Vec<CellImpulse> = Vec::with_capacity(cells * cells * ipc);
+        for cy in 0..grid_size {
+            for cx in 0..grid_size {
+                for imp in 0..impulses_per_cell {
+                    // Per-kernel orientation
+                    let angle = if random_orientation {
+                        Self::hash(cx, cy, imp, seed_u32, 3) * std::f64::consts::TAU
+                    } else {
+                        orientation_rad
+                    };
+                    impulses.push(CellImpulse {
+                        jx: Self::hash(cx, cy, imp, seed_u32, 0),
+                        jy: Self::hash(cx, cy, imp, seed_u32, 1),
+                        // Kernel weight (random sign for more interesting patterns)
+                        weight: Self::hash(cx, cy, imp, seed_u32, 2) * 2.0 - 1.0,
+                        cos_a: angle.cos(),
+                        sin_a: angle.sin(),
+                    });
+                }
+            }
+        }
+        let impulses_ref = &impulses;
+
+        // Search radius in cells (based on truncation distance)
+        let search = (truncation * density / density).ceil() as i32 + 1;
+        let trunc_sq = truncation * truncation;
+        let carrier_freq = kernel_freq * density;
+
         // For each pixel, find nearby grid cells and sum kernel contributions (parallelized)
         let buffer: Vec<f64> = (0..h).into_par_iter().flat_map_iter(move |py| {
             (0..w).map(move |px| {
@@ -169,44 +213,31 @@ impl OpImageNoiseGabor {
                 let cell_x = gx.floor() as i32;
                 let cell_y = gy.floor() as i32;
 
-                // Search radius in cells (based on truncation distance)
-                let search = (truncation * density / density).ceil() as i32 + 1;
-
                 let mut sum = 0.0;
 
                 for dy in -search..=search {
                     for dx in -search..=search {
-                        let mut cx = cell_x + dx;
-                        let mut cy = cell_y + dy;
+                        let cx = (cell_x + dx).rem_euclid(grid_size);
+                        let cy = (cell_y + dy).rem_euclid(grid_size);
+                        let base = (cy as usize * cells + cx as usize) * ipc;
 
-                        cx = cx.rem_euclid(grid_size);
-                        cy = cy.rem_euclid(grid_size);
+                        for imp in 0..ipc {
+                            let impulse = &impulses_ref[base + imp];
 
-                        for imp in 0..impulses_per_cell {
                             // Kernel position within cell (jittered)
-                            let kx = (cell_x + dx) as f64 + Self::hash(cx, cy, imp, seed_u32, 0);
-                            let ky = (cell_y + dy) as f64 + Self::hash(cx, cy, imp, seed_u32, 1);
+                            let kx = (cell_x + dx) as f64 + impulse.jx;
+                            let ky = (cell_y + dy) as f64 + impulse.jy;
 
                             let disp_x = (gx - kx) / density;
                             let disp_y = (gy - ky) / density;
                             let dist_sq = disp_x * disp_x + disp_y * disp_y;
 
                             // Skip kernels outside truncation radius
-                            if dist_sq > truncation * truncation {
+                            if dist_sq > trunc_sq {
                                 continue;
                             }
 
-                            // Kernel weight (random sign for more interesting patterns)
-                            let weight = Self::hash(cx, cy, imp, seed_u32, 2) * 2.0 - 1.0;
-
-                            // Per-kernel orientation
-                            let angle = if random_orientation {
-                                Self::hash(cx, cy, imp, seed_u32, 3) * std::f64::consts::TAU
-                            } else {
-                                orientation_rad
-                            };
-
-                            sum += weight * Self::gabor_kernel(disp_x, disp_y, kernel_freq * density, angle, sigma);
+                            sum += impulse.weight * Self::gabor_kernel(disp_x, disp_y, carrier_freq, impulse.cos_a, impulse.sin_a, sigma);
                         }
                     }
                 }

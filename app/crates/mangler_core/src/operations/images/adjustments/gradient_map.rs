@@ -12,6 +12,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -90,11 +91,11 @@ impl OpImageAdjustmentGradientMap {
         let (br, bg, bb, ba) = color_b.to_srgb_float();
         let (cr, cg, cb, ca) = color_c.to_srgb_float();
 
-        let mut output = FloatImage::new(width, height, 4);
+        let img = &*data;
 
-        for y in 0..height {
-            for x in 0..width {
-                let px = data.get_pixel(x, y);
+        let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |y| {
+            (0..width).flat_map(move |x| {
+                let px = img.get_pixel(x, y);
                 // Compute luminance from available channels
                 let (r, g, b) = if ch >= 3 {
                     (px[0], px[1], px[2])
@@ -120,9 +121,11 @@ impl OpImageAdjustmentGradientMap {
                     (ar + (br - ar) * lum, ag + (bg - ag) * lum, ab + (bb - ab) * lum, aa + (ba - aa) * lum)
                 };
 
-                output.put_pixel(x, y, &[out_r, out_g, out_b, original_a]);
-            }
-        }
+                [out_r, out_g, out_b, original_a]
+            })
+        }).collect();
+
+        let output = FloatImage::from_raw(width, height, 4, pixels).unwrap();
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

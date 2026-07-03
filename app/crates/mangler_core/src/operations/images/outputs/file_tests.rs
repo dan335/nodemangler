@@ -32,6 +32,56 @@ fn make_file_inputs_with_format(
     ]
 }
 
+/// Reference conversion: the historical two-step path (`FloatImage::to_dynamic`
+/// followed by the `image` crate's whole-buffer conversions). The optimized
+/// single-pass `convert_from_float` must stay byte-identical to this.
+fn reference_convert(data: &FloatImage, format: &ColorFormat) -> DynamicImage {
+    let img = data.to_dynamic();
+    match format {
+        ColorFormat::Rgba32F => DynamicImage::ImageRgba32F(img.to_rgba32f()),
+        ColorFormat::Rgb32F => DynamicImage::ImageRgb32F(img.to_rgb32f()),
+        ColorFormat::Rgba16 => DynamicImage::ImageRgba16(img.to_rgba16()),
+        ColorFormat::Rgb16 => DynamicImage::ImageRgb16(img.to_rgb16()),
+        ColorFormat::GrayA16 => DynamicImage::ImageLumaA16(img.to_luma_alpha16()),
+        ColorFormat::Gray16 => DynamicImage::ImageLuma16(img.to_luma16()),
+        ColorFormat::Rgba8 => DynamicImage::ImageRgba8(img.to_rgba8()),
+        ColorFormat::Rgb8 => DynamicImage::ImageRgb8(img.to_rgb8()),
+        ColorFormat::GrayA8 => DynamicImage::ImageLumaA8(img.to_luma_alpha8()),
+        ColorFormat::Gray8 => DynamicImage::ImageLuma8(img.to_luma8()),
+    }
+}
+
+#[test]
+fn test_convert_from_float_matches_reference() {
+    let formats = [
+        ColorFormat::Gray8, ColorFormat::Gray16, ColorFormat::GrayA8, ColorFormat::GrayA16,
+        ColorFormat::Rgb8, ColorFormat::Rgb16, ColorFormat::Rgb32F,
+        ColorFormat::Rgba8, ColorFormat::Rgba16, ColorFormat::Rgba32F,
+    ];
+    for ch in 1..=4u32 {
+        // Deterministic pseudo-random pixels including edge/out-of-range values.
+        let mut img = FloatImage::new(7, 5, ch);
+        let mut state = 0x1234_5678u32;
+        for (i, v) in img.as_raw_mut().iter_mut().enumerate() {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            *v = match i % 7 {
+                0 => 0.0,
+                1 => 1.0,
+                2 => -0.25,
+                3 => 1.5,
+                4 => 0.4999,
+                _ => (state >> 8) as f32 / 16_777_216.0,
+            };
+        }
+        for format in &formats {
+            let got = OpImageOutputFile::convert_from_float(&img, format);
+            let want = reference_convert(&img, format);
+            assert_eq!(got.color(), want.color(), "layout mismatch for {:?} from {}ch", format, ch);
+            assert_eq!(got.as_bytes(), want.as_bytes(), "bytes mismatch for {:?} from {}ch", format, ch);
+        }
+    }
+}
+
 /// Helper to create a temp dir, run the operation, and assert success.
 /// Returns the output file path.
 fn assert_save_ok(result: Result<OperationResponse, OperationError>, path: &std::path::Path) {

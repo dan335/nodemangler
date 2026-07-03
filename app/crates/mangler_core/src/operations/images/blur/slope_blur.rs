@@ -129,7 +129,9 @@ impl OpImageAdjustmentSlopeBlur {
                     (0.0, 0.0)
                 };
 
-                let mut sums = vec![0.0f64; ch];
+                // channels are always <= 4, so a stack array avoids a
+                // per-pixel heap allocation
+                let mut sums = [0.0f64; 4];
 
                 // Sample along the gradient direction, centered on this pixel
                 for i in 0..samples {

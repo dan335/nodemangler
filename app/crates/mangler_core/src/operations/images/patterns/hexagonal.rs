@@ -12,6 +12,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -85,13 +86,11 @@ impl OpImagePatternHexagonal {
         let sqrt3 = 3.0_f64.sqrt();
 
         // 1-channel grayscale mask
-        let mut image = FloatImage::new(width as u32, height as u32, 1);
-
-        for py in 0..height {
-            for px in 0..width {
-                // normalize pixel coordinates and scale into hex space
+        let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |py| {
+            // normalize pixel coordinates and scale into hex space
+            let y = (py as f64 / size) * scale;
+            (0..width).map(move |px| {
                 let x = (px as f64 / size) * scale;
-                let y = (py as f64 / size) * scale;
 
                 // convert to axial hex coordinates
                 // hex size = 1.0, flat-top hexagons
@@ -131,10 +130,11 @@ impl OpImagePatternHexagonal {
                 let in_gap = edge_proximity > (1.0 - gap_size);
 
                 // 1.0 for tile, 0.0 for gap
-                let val: f32 = if in_gap { 0.0 } else { 1.0 };
-                image.put_pixel(px as u32, py as u32, &[val]);
-            }
-        }
+                if in_gap { 0.0f32 } else { 1.0f32 }
+            })
+        }).collect();
+
+        let image = FloatImage::from_raw(width as u32, height as u32, 1, pixels).unwrap();
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

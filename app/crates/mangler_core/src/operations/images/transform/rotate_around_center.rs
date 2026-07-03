@@ -1,7 +1,7 @@
 //! Arbitrary-angle rotation around the image center.
 //!
-//! Delegates to `imageproc` for bicubic interpolation, converting to/from
-//! [`FloatImage`] at the boundary.
+//! Inverse-transforms each output pixel and bilinear-samples the source
+//! [`FloatImage`] directly in f32, so no 8-bit quantization occurs.
 
 use crate::color::Color;
 use crate::get_id;
@@ -12,13 +12,14 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
 /// Rotates an image by an arbitrary angle (in degrees) around its center point.
 ///
-/// Uses bicubic interpolation for smooth results. Areas outside the original
+/// Uses bilinear interpolation for smooth results. Areas outside the original
 /// image bounds are filled with the specified background color.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageTransformRotateAroundCenter {}
@@ -29,7 +30,7 @@ impl OpImageTransformRotateAroundCenter {
         NodeSettings {
             name: "rotate".to_string(),
             description: "Rotates an image by any angle around its center point.".to_string(),
-            help: "Rotates the image by an arbitrary angle in degrees around its center, using imageproc's bicubic interpolation for smooth edges. Output dimensions match the input, so corners of the rotated image are clipped and any newly uncovered pixels are filled with the background color (RGBA, so a fully transparent color leaves holes).\n\nBecause the source is converted to RGBA8 for imageproc and back to FloatImage, the output is always 4-channel and some precision is lost on floating-point source images. For axis-aligned quarter turns, use rotate 90 / 180 / 270 instead to avoid the resample blur.".to_string(),
+            help: "Rotates the image by an arbitrary angle in degrees around its center, inverse-transforming each output pixel and sampling the source with bilinear interpolation directly in floating point (no 8-bit quantization). Output dimensions match the input, so corners of the rotated image are clipped and any newly uncovered pixels are filled with the background color (RGBA, so a fully transparent color leaves holes).\n\nThe output is always 4-channel RGBA; lower-channel sources are expanded the usual way (grayscale replicated to RGB, alpha preserved or set to 1). For axis-aligned quarter turns, use rotate 90 / 180 / 270 instead to avoid the resample blur.".to_string(),
         }
     }
 
@@ -49,14 +50,12 @@ impl OpImageTransformRotateAroundCenter {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id()}, None)
-                .with_description("Image rotated around its center using bicubic interpolation."),
+                .with_description("Image rotated around its center using bilinear interpolation."),
         ]
     }
 
-    /// Executes the rotation using `imageproc` bicubic interpolation.
-    ///
-    /// Converts the FloatImage to an RGBA8 buffer for imageproc, then converts the
-    /// result back to a FloatImage via DynamicImage.
+    /// Executes the rotation by inverse-mapping each output pixel back into the
+    /// source and bilinear-sampling the f32 data directly.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -74,24 +73,47 @@ impl OpImageTransformRotateAroundCenter {
         let Value::Decimal(degrees) = degrees_converted.unwrap() else { unreachable!() };
         let Value::Color(bg_color) = bg_color_converted.unwrap() else { unreachable!() };
 
-        // Convert FloatImage to RGBA8 for the imageproc API
-        let rgba8 = data.to_rgba8();
+        let (w, h) = data.dimensions();
+        let ch = data.channels() as usize;
+        // Background in sRGB floats (RGBA), matching the previous RGBA fill.
+        let (bg_r, bg_g, bg_b, bg_a) = bg_color.to_srgb_float();
+        let bg = [bg_r, bg_g, bg_b, bg_a];
 
-        // Convert the background color to sRGB u8 for the imageproc API
-        let color = bg_color.to_srgb_u8();
+        // Precompute the inverse rotation once. Sampling at cx + dx*c + dy*s,
+        // cy - dx*s + dy*c undoes a rotation by `degrees` about the center.
+        let (s, c) = degrees.to_radians().sin_cos();
+        let cx = (w as f32 - 1.0) / 2.0;
+        let cy = (h as f32 - 1.0) / 2.0;
+        let wm1 = (w.max(1) - 1) as f32;
+        let hm1 = (h.max(1) - 1) as f32;
+        let src = &*data;
 
-        // Perform the rotation using imageproc's bicubic interpolation
-        let adjusted = imageproc::geometric_transformations::rotate_about_center(
-            &rgba8,
-            degrees.to_radians(),
-            imageproc::geometric_transformations::Interpolation::Bicubic,
-            image::Rgba([color.0, color.1, color.2, color.3]),
-        );
+        // Output is always 4-channel RGBA (as with the previous imageproc
+        // path); lower channel counts expand like `to_rgba8` but in f32.
+        let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(move |y| {
+            let dy = y as f32 - cy;
+            (0..w).flat_map(move |x| {
+                let dx = x as f32 - cx;
+                let sx = cx + dx * c + dy * s;
+                let sy = cy - dx * s + dy * c;
+                if sx >= 0.0 && sx <= wm1 && sy >= 0.0 && sy <= hm1 {
+                    let mut sp = [0.0f32; 4];
+                    src.bilinear_sample(sx, sy, &mut sp);
+                    match ch {
+                        1 => [sp[0], sp[0], sp[0], 1.0],
+                        2 => [sp[0], sp[0], sp[0], sp[1]],
+                        3 => [sp[0], sp[1], sp[2], 1.0],
+                        _ => sp,
+                    }
+                } else {
+                    bg
+                }
+            })
+        }).collect();
 
-        // Convert the rotated RGBA8 result back to FloatImage
-        let output = FloatImage::from_dynamic(&image::DynamicImage::ImageRgba8(adjusted));
+        let output = FloatImage::from_raw(w, h, 4, pixels).unwrap();
 
-        Ok(OperationResponse { 
+        Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse {value: Value::Image { data: Arc::new(output), change_id:get_id() }},

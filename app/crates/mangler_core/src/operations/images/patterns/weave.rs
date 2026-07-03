@@ -12,6 +12,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -84,36 +85,34 @@ impl OpImagePatternWeave {
         let cell_width = width as f64 / count as f64;
         let cell_height = height as f64 / count as f64;
 
-        // 1-channel grayscale mask
-        let mut image = FloatImage::new(width as u32, height as u32, 1);
-
         // brightness values matching the original u8 values (200/255, 128/255)
         let horizontal_brightness: f32 = 200.0 / 255.0;
         let vertical_brightness: f32 = 128.0 / 255.0;
 
-        for py in 0..height {
-            for px in 0..width {
-                let col = (px as f64 / cell_width).floor() as i32;
-                let row = (py as f64 / cell_height).floor() as i32;
+        // 1-channel grayscale mask
+        let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |py| {
+            let row = (py as f64 / cell_height).floor() as i32;
+            let y_in_cell = (py as f64 % cell_height) / cell_height;
 
+            (0..width).map(move |px| {
+                let col = (px as f64 / cell_width).floor() as i32;
                 let x_in_cell = (px as f64 % cell_width) / cell_width;
-                let y_in_cell = (py as f64 % cell_height) / cell_height;
 
                 // check if pixel is in the gap area
                 let in_gap = x_in_cell < gap_size || x_in_cell > (1.0 - gap_size)
                     || y_in_cell < gap_size || y_in_cell > (1.0 - gap_size);
 
-                let val: f32 = if in_gap {
+                if in_gap {
                     0.0
                 } else {
                     // checkerboard pattern: alternating horizontal and vertical strands
                     let is_horizontal = (col + row) % 2 == 0;
                     if is_horizontal { horizontal_brightness } else { vertical_brightness }
-                };
+                }
+            })
+        }).collect();
 
-                image.put_pixel(px as u32, py as u32, &[val]);
-            }
-        }
+        let image = FloatImage::from_raw(width as u32, height as u32, 1, pixels).unwrap();
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

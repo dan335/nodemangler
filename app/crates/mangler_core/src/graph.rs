@@ -1079,10 +1079,20 @@ impl Graph {
         }
 
         if let Some(save_path) = &self.save_path {
-            let data = GraphSaveData {
-                nodes: self.nodes.clone(),
-                id: self.id.clone(),
-                name: self.name.clone(),
+            // Borrowing mirror of `GraphSaveData` (same field names, so the
+            // JSON is identical): serializing through it avoids deep-cloning
+            // every node once per auto-save tick.
+            #[derive(serde::Serialize)]
+            struct GraphSaveRef<'a> {
+                id: &'a str,
+                name: &'a str,
+                nodes: &'a HashMap<String, Node>,
+            }
+
+            let data = GraphSaveRef {
+                id: &self.id,
+                name: &self.name,
+                nodes: &self.nodes,
             };
 
             match serde_json::to_string(&data) {

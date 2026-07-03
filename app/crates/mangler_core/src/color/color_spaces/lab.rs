@@ -12,6 +12,24 @@ use glam::f32::Vec3;
 /// coordinates (x=0.3457, y=0.3585).
 const D50: [f32; 3] = [0.3457 / 0.3585, 1.0, (1.0 - 0.3457 - 0.3585) / 0.3585];
 
+/// Bradford chromatic adaptation matrix from D65 to D50 illuminant.
+/// Coefficients are written column-major (each row below is one matrix column),
+/// pre-transposed from the usual row-major listing.
+static D65_TO_D50_MATRIX: Mat3 = Mat3::from_cols_array(&[
+    1.047_929_8, 0.029_627_815, -0.009_243_058,
+    0.022_946_794, 0.990_434_47, 0.015_055_145,
+    -0.050_192_23, -0.017_073_825, 0.751_874_27,
+]);
+
+/// Bradford chromatic adaptation matrix from D50 to D65 illuminant.
+/// Coefficients are written column-major (each row below is one matrix column),
+/// pre-transposed from the usual row-major listing.
+static D50_TO_D65_MATRIX: Mat3 = Mat3::from_cols_array(&[
+    0.955_473_4, -0.028_369_706, 0.012_314_002,
+    -0.023_098_538, 1.009_995_5, -0.020_507_697,
+    0.063_259_31, 0.021_041_399, 1.330_365_9,
+]);
+
 impl Color {
     /// Creates an sRGB [`Color`] from CIE L*a*b* components.
     ///
@@ -39,12 +57,10 @@ impl Color {
 fn xyz_to_lab(xyz: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
     const E: f32 = 216.0 / 24389.0; // 6^3/29^3
     const K: f32 = 24389.0 / 27.0; // 29^3/3^3
-    let xyz_v: Vec<f32> = [xyz.0, xyz.1, xyz.2]
-        .iter()
-        .zip(D50.iter())
-        .map(|(v1, v2)| v1 / v2)
-        .map(|v| if v > E { v.cbrt() } else { (K * v + 16.0) / 116.0 })
-        .collect();
+    let mut xyz_v = [xyz.0 / D50[0], xyz.1 / D50[1], xyz.2 / D50[2]];
+    for v in &mut xyz_v {
+        *v = if *v > E { v.cbrt() } else { (K * *v + 16.0) / 116.0 };
+    }
 
     (116.0 * xyz_v[1] - 16.0, 500.0 * (xyz_v[0] - xyz_v[1]), 200.0 * (xyz_v[1] - xyz_v[2]), xyz.3)
 }
@@ -62,11 +78,7 @@ fn lab_to_xyz(lab: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
     let y = if lab.0 > K * E { ((lab.0 + 16.0) / 116.0).powi(3) } else { lab.0 / K };
     let z = if f2.powi(3) > E { f2.powi(3) } else { (116.0 * f2 - 16.0) / K };
 
-    let r: Vec<f32> = [x, y, z]
-        .iter()
-        .zip(D50.iter())
-        .map(|(v1, v2)| v1 * v2)
-        .collect();
+    let r = [x * D50[0], y * D50[1], z * D50[2]];
 
     (r[0], r[1], r[2], lab.3)
 }
@@ -74,27 +86,13 @@ fn lab_to_xyz(lab: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
 
 /// Chromatic adaptation from D65 to D50 illuminant using a Bradford matrix.
 fn d65_to_d50(xyz: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
-    let v = Vec3::new(xyz.0, xyz.1, xyz.2);
-    // Written row-major; from_cols_array reads column-major, so transpose.
-    let m: Mat3 = Mat3::from_cols_array(&[
-        1.047_929_8, 0.022_946_794, -0.050_192_23,
-        0.029_627_815, 0.990_434_47, -0.017_073_825,
-        -0.009_243_058, 0.015_055_145, 0.751_874_27,
-    ]).transpose();
-    let r = m * v;
+    let r = D65_TO_D50_MATRIX * Vec3::new(xyz.0, xyz.1, xyz.2);
     (r[0], r[1], r[2], xyz.3)
 }
 
 /// Chromatic adaptation from D50 to D65 illuminant using a Bradford matrix.
 fn d50_to_d65(xyz: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
-    let v = Vec3::new(xyz.0, xyz.1, xyz.2);
-    // Written row-major; from_cols_array reads column-major, so transpose.
-    let m: Mat3 = Mat3::from_cols_array(&[
-        0.955_473_4, -0.023_098_538, 0.063_259_31,
-        -0.028_369_706, 1.009_995_5, 0.021_041_399,
-        0.012_314_002, -0.020_507_697, 1.330_365_9,
-    ]).transpose();
-    let r = m * v;
+    let r = D50_TO_D65_MATRIX * Vec3::new(xyz.0, xyz.1, xyz.2);
     (r[0], r[1], r[2], xyz.3)
 }
 

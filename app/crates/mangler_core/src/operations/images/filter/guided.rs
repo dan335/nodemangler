@@ -23,6 +23,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -96,13 +97,9 @@ impl OpImageAdjustmentGuided {
         // Pull each channel into a flat f32 buffer for easy SIMD-friendly per-pixel math.
         // channels[c] is the c-th plane of the source image.
         let mut channels: Vec<Vec<f32>> = vec![vec![0.0; n]; ch];
-        for y in 0..h {
-            for x in 0..w {
-                let pixel = data.get_pixel(x as u32, y as u32);
-                let idx = y * w + x;
-                for c in 0..ch {
-                    channels[c][idx] = pixel[c];
-                }
+        for (idx, pixel) in data.as_raw().chunks_exact(ch).enumerate() {
+            for c in 0..ch {
+                channels[c][idx] = pixel[c];
             }
         }
 
@@ -182,7 +179,9 @@ impl OpImageAdjustmentGuided {
 ///
 /// Uses 1D prefix sums per row then per column, giving O(1) work per pixel
 /// regardless of radius. This is what makes the guided filter cheap at
-/// arbitrary radii.
+/// arbitrary radii. Rows (and columns) are independent, so both passes are
+/// rayon-parallel; the per-row/per-column arithmetic is unchanged, so results
+/// are bit-identical to the serial version.
 fn box_blur_2d(input: &[f32], width: usize, height: usize, radius: usize) -> Vec<f32> {
     if width == 0 || height == 0 {
         return Vec::new();
@@ -191,10 +190,9 @@ fn box_blur_2d(input: &[f32], width: usize, height: usize, radius: usize) -> Vec
     // horizontal pass: for each row, build a prefix sum then read out
     // the mean over [x-r, x+r] (clamped to row bounds) at each x.
     let mut h_pass = vec![0.0f32; input.len()];
-    let mut prefix = vec![0.0f64; width + 1];
-    for y in 0..height {
+    h_pass.par_chunks_mut(width).enumerate().for_each(|(y, out_row)| {
         let row_start = y * width;
-        prefix[0] = 0.0;
+        let mut prefix = vec![0.0f64; width + 1];
         for x in 0..width {
             prefix[x + 1] = prefix[x] + input[row_start + x] as f64;
         }
@@ -202,25 +200,31 @@ fn box_blur_2d(input: &[f32], width: usize, height: usize, radius: usize) -> Vec
             let lo = x.saturating_sub(radius);
             let hi = (x + radius + 1).min(width);
             let cnt = (hi - lo) as f64;
-            h_pass[row_start + x] = ((prefix[hi] - prefix[lo]) / cnt) as f32;
+            out_row[x] = ((prefix[hi] - prefix[lo]) / cnt) as f32;
         }
-    }
+    });
 
-    // vertical pass: same idea over columns
-    let mut out = vec![0.0f32; input.len()];
-    let mut col_prefix = vec![0.0f64; height + 1];
-    for x in 0..width {
-        col_prefix[0] = 0.0;
+    // vertical pass: same idea over columns, computed in parallel into a
+    // column-major buffer then gathered back to row-major.
+    let columns: Vec<f32> = (0..width).into_par_iter().flat_map_iter(|x| {
+        let mut col_prefix = vec![0.0f64; height + 1];
         for y in 0..height {
             col_prefix[y + 1] = col_prefix[y] + h_pass[y * width + x] as f64;
         }
-        for y in 0..height {
+        (0..height).map(move |y| {
             let lo = y.saturating_sub(radius);
             let hi = (y + radius + 1).min(height);
             let cnt = (hi - lo) as f64;
-            out[y * width + x] = ((col_prefix[hi] - col_prefix[lo]) / cnt) as f32;
+            ((col_prefix[hi] - col_prefix[lo]) / cnt) as f32
+        })
+    }).collect();
+
+    let mut out = vec![0.0f32; input.len()];
+    out.par_chunks_mut(width).enumerate().for_each(|(y, out_row)| {
+        for x in 0..width {
+            out_row[x] = columns[x * height + y];
         }
-    }
+    });
 
     out
 }

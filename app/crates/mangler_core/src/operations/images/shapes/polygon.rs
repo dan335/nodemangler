@@ -11,6 +11,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -122,13 +123,11 @@ impl OpImageShapePolygon {
         let pixel_size = 1.5 / (width.max(height) as f64 * 0.5);
 
         // 1-channel grayscale mask
-        let mut image = FloatImage::new(width as u32, height as u32, 1);
-
-        for y in 0..height {
-            for x in 0..width {
-                // normalize to [-1, 1]
+        let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |y| {
+            // normalize to [-1, 1]
+            let ny = (y as f64 / (height as f64 - 1.0).max(1.0)) * 2.0 - 1.0;
+            (0..width).map(move |x| {
                 let nx = (x as f64 / (width as f64 - 1.0).max(1.0)) * 2.0 - 1.0;
-                let ny = (y as f64 / (height as f64 - 1.0).max(1.0)) * 2.0 - 1.0;
 
                 // apply rotation
                 let px = nx * cos_a + ny * sin_a;
@@ -138,9 +137,11 @@ impl OpImageShapePolygon {
 
                 // smoothstep for anti-aliased edge, result in [0.0, 1.0]
                 let alpha = 1.0 - smoothstep(-pixel_size, pixel_size, dist);
-                image.put_pixel(x as u32, y as u32, &[alpha as f32]);
-            }
-        }
+                alpha as f32
+            })
+        }).collect();
+
+        let image = FloatImage::from_raw(width as u32, height as u32, 1, pixels).unwrap();
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

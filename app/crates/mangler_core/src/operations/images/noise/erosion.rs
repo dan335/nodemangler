@@ -137,35 +137,46 @@ impl OpImageNoiseErosion {
             })
         }).collect();
 
-        // 4-connected neighbor offsets
-        let neighbors: [(i32, i32); 8] = [
-            (-1, -1), (0, -1), (1, -1),
-            (-1,  0),          (1,  0),
-            (-1,  1), (0,  1), (1,  1),
-        ];
+        // Pre-compute neighbor index lookup tables with wrapping for seamless tiling.
+        let xm_table: Vec<usize> = (0..w).map(|x| (x + w - 1) % w).collect();
+        let xp_table: Vec<usize> = (0..w).map(|x| (x + 1) % w).collect();
+        let ym_table: Vec<usize> = (0..h).map(|y| (y + h - 1) % h).collect();
+        let yp_table: Vec<usize> = (0..h).map(|y| (y + 1) % h).collect();
+
+        // Reused snapshot buffer: read from the previous state while writing
+        // to the live grid. This prevents order-dependent artifacts within a
+        // single iteration. Note the transfers write to arbitrary neighbors
+        // of the live grid, so the scan itself is sequential by design.
+        let mut snapshot = vec![0.0f64; w * h];
 
         // Apply thermal erosion
         for _ in 0..iterations {
-            // Use a copy to read from while writing to the live grid.
-            // This prevents order-dependent artifacts within a single iteration.
-            let snapshot = heightmap.clone();
+            snapshot.copy_from_slice(&heightmap);
 
             for y in 0..h {
+                let row_ym = ym_table[y] * w;
+                let row_y = y * w;
+                let row_yp = yp_table[y] * w;
+
                 for x in 0..w {
-                    let idx = y * w + x;
+                    let idx = row_y + x;
                     let current_h = snapshot[idx];
+                    let xm = xm_table[x];
+                    let xp = xp_table[x];
+
+                    // 8-connected neighbor indices, same order as the original
+                    // offset list so tie-breaking is unchanged.
+                    let neighbor_indices = [
+                        row_ym + xm, row_ym + x, row_ym + xp,
+                        row_y + xm,               row_y + xp,
+                        row_yp + xm, row_yp + x, row_yp + xp,
+                    ];
 
                     // Find the neighbor with the maximum height difference below current cell
                     let mut max_diff = 0.0f64;
                     let mut max_idx = idx;
 
-                    for &(dx, dy) in &neighbors {
-                        let (nx, ny) = (
-                            (x as i32 + dx).rem_euclid(w as i32) as usize,
-                            (y as i32 + dy).rem_euclid(h as i32) as usize,
-                        );
-
-                        let neighbor_idx = ny * w + nx;
+                    for &neighbor_idx in &neighbor_indices {
                         let diff = current_h - snapshot[neighbor_idx];
                         if diff > max_diff {
                             max_diff = diff;

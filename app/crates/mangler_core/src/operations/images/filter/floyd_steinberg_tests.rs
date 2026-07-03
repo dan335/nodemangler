@@ -52,8 +52,8 @@ async fn test_floyd_binary_output() {
     match &result.responses[0].value {
         Value::Image { data, .. } => {
             for pixel in data.pixels() {
-                for c in 0..pixel.len() {
-                    assert!(pixel[c] == 0.0 || pixel[c] == 1.0, "non-binary: {}", pixel[c]);
+                for &val in pixel {
+                    assert!(val == 0.0 || val == 1.0, "non-binary: {}", val);
                 }
             }
         }
@@ -91,8 +91,8 @@ async fn test_floyd_black_stays_black() {
     match &result.responses[0].value {
         Value::Image { data, .. } => {
             for pixel in data.pixels() {
-                for c in 0..pixel.len() {
-                    assert_eq!(pixel[c], 0.0, "black should stay black");
+                for &val in pixel {
+                    assert_eq!(val, 0.0, "black should stay black");
                 }
             }
         }
@@ -108,8 +108,8 @@ async fn test_floyd_white_stays_white() {
     match &result.responses[0].value {
         Value::Image { data, .. } => {
             for pixel in data.pixels() {
-                for c in 0..pixel.len() {
-                    assert_eq!(pixel[c], 1.0, "white should stay white");
+                for &val in pixel {
+                    assert_eq!(val, 1.0, "white should stay white");
                 }
             }
         }

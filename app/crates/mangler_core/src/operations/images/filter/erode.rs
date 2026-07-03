@@ -84,52 +84,109 @@ impl OpImageAdjustmentErode {
 ///
 /// `op` is a commutative, associative reducer — `f32::min` for erosion,
 /// `f32::max` for dilation. Alpha is processed alongside color channels.
+///
+/// Each 1D pass uses the van Herk–Gil-Werman running min/max algorithm:
+/// block-aligned forward and backward scans let every window result be formed
+/// from two lookups, so the cost per pixel is O(1) regardless of radius. Edge
+/// handling is replicate-clamp, identical to a naive clamped window scan, and
+/// results are exact (min/max folds are order-independent).
 pub(crate) fn separable_morphology<F>(data: &FloatImage, radius: i32, op: F) -> FloatImage
 where
     F: Fn(f32, f32) -> f32 + Sync + Send + Copy,
 {
     let (width, height) = data.dimensions();
     let ch = data.channels() as usize;
-    let w = width as i32;
-    let h = height as i32;
+    let w = width as usize;
+    let h = height as usize;
+    let r = radius.max(0) as usize;
 
-    // Horizontal pass → tmp
+    if w == 0 || h == 0 {
+        return FloatImage::from_raw(width, height, data.channels(), Vec::new()).unwrap();
+    }
+
+    let raw = data.as_raw();
+
+    // Horizontal pass → tmp (row-major, same layout as the source)
     let tmp: Vec<f32> = (0..h).into_par_iter().flat_map_iter(|y| {
-        let mut row = Vec::with_capacity(w as usize * ch);
-        for x in 0..w {
-            for c in 0..ch {
-                let mut acc = data.get_pixel(x.clamp(0, w - 1) as u32, y as u32)[c];
-                for dx in -radius..=radius {
-                    let px = (x + dx).clamp(0, w - 1) as u32;
-                    acc = op(acc, data.get_pixel(px, y as u32)[c]);
-                }
-                row.push(acc);
+        let m = w + 2 * r;
+        let mut line = vec![0.0f32; m];
+        let mut fwd = vec![0.0f32; m];
+        let mut bwd = vec![0.0f32; m];
+        let mut dst = vec![0.0f32; w];
+        let mut out_row = vec![0.0f32; w * ch];
+        let row = &raw[y * w * ch..(y + 1) * w * ch];
+        for c in 0..ch {
+            for (i, v) in line.iter_mut().enumerate() {
+                let x = (i as i64 - r as i64).clamp(0, w as i64 - 1) as usize;
+                *v = row[x * ch + c];
+            }
+            van_herk_line(&line, &mut fwd, &mut bwd, &mut dst, r, op);
+            for x in 0..w {
+                out_row[x * ch + c] = dst[x];
             }
         }
-        row
+        out_row
     }).collect();
 
-    // Vertical pass reads from tmp, writes to output
-    let wu = width as usize;
+    // Vertical pass reads columns from tmp; the per-column results are
+    // gathered back into row-major order afterwards.
     let tmp_ref = &tmp;
-    let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(move |y| {
-        let mut row = Vec::with_capacity(w as usize * ch);
-        for x in 0..w {
-            for c in 0..ch {
-                let center_idx = (y as usize * wu + x as usize) * ch + c;
-                let mut acc = tmp_ref[center_idx];
-                for dy in -radius..=radius {
-                    let py = (y + dy).clamp(0, h - 1) as usize;
-                    let idx = (py * wu + x as usize) * ch + c;
-                    acc = op(acc, tmp_ref[idx]);
-                }
-                row.push(acc);
+    let cols: Vec<Vec<f32>> = (0..w).into_par_iter().map(|x| {
+        let m = h + 2 * r;
+        let mut line = vec![0.0f32; m];
+        let mut fwd = vec![0.0f32; m];
+        let mut bwd = vec![0.0f32; m];
+        let mut dst = vec![0.0f32; h];
+        let mut col = vec![0.0f32; h * ch];
+        for c in 0..ch {
+            for (i, v) in line.iter_mut().enumerate() {
+                let y = (i as i64 - r as i64).clamp(0, h as i64 - 1) as usize;
+                *v = tmp_ref[(y * w + x) * ch + c];
+            }
+            van_herk_line(&line, &mut fwd, &mut bwd, &mut dst, r, op);
+            for y in 0..h {
+                col[y * ch + c] = dst[y];
             }
         }
-        row
+        col
+    }).collect();
+
+    let cols_ref = &cols;
+    let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(move |y| {
+        (0..w).flat_map(move |x| {
+            let base = y * ch;
+            cols_ref[x][base..base + ch].iter().copied()
+        })
     }).collect();
 
     FloatImage::from_raw(width, height, data.channels(), pixels).unwrap()
+}
+
+/// One van Herk–Gil-Werman pass over a replicate-padded line.
+///
+/// `line` holds `dst.len() + 2 * radius` samples: the source values with
+/// `radius` edge-replicated samples prepended and appended. `fwd`/`bwd` are
+/// scratch buffers of the same length as `line`. For every output index `x`
+/// the result is the exact `op`-fold of `line[x..=x + 2 * radius]`, i.e. the
+/// clamped window centred on source index `x`.
+fn van_herk_line<F>(line: &[f32], fwd: &mut [f32], bwd: &mut [f32], dst: &mut [f32], radius: usize, op: F)
+where
+    F: Fn(f32, f32) -> f32 + Copy,
+{
+    let m = line.len();
+    let k = 2 * radius + 1;
+    // Forward scan restarts at every block boundary; backward scan restarts at
+    // every block end. Any window of width k then spans at most two blocks and
+    // is covered by one bwd value (its head) and one fwd value (its tail).
+    for i in 0..m {
+        fwd[i] = if i % k == 0 { line[i] } else { op(fwd[i - 1], line[i]) };
+    }
+    for i in (0..m).rev() {
+        bwd[i] = if i % k == k - 1 || i == m - 1 { line[i] } else { op(bwd[i + 1], line[i]) };
+    }
+    for (x, d) in dst.iter_mut().enumerate() {
+        *d = op(bwd[x], fwd[x + k - 1]);
+    }
 }
 
 #[cfg(test)]

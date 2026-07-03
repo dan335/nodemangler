@@ -10,6 +10,7 @@ use crate::operations::{OperationResponse, OperationError, OutputResponse, defau
 use crate::output::Output;
 use crate::value::Value;
 use crate::float_image::FloatImage;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -81,18 +82,23 @@ impl OpImageTransformDirectionalWarp {
         let dir_x = angle_rad.cos();
         let dir_y = angle_rad.sin();
 
-        // Temporary buffers for bilinear sampling
         let map_ch = map_data.channels() as usize;
         let src_ch = src_data.channels() as usize;
-        let mut mp = vec![0.0f32; map_ch];
-        let mut sp = vec![0.0f32; src_ch];
+        let src = &*src_data;
+        let map = &*map_data;
+        let map_w = map.width() as f32;
+        let map_h = map.height() as f32;
+        let row_len = (w as usize * src_ch).max(1);
 
-        for y in 0..h {
-            for x in 0..w {
+        output.as_raw_mut().par_chunks_mut(row_len).enumerate().for_each(|(y, row)| {
+            // Temporary buffers for bilinear sampling
+            let mut mp = vec![0.0f32; map_ch];
+            let mut sp = vec![0.0f32; src_ch];
+            let my = y as f32 * map_h / h as f32;
+            for x in 0..w as usize {
                 // Sample intensity map (resize-aware), mapping output coords to map coords
-                let mx = x as f32 * map_data.width() as f32 / w as f32;
-                let my = y as f32 * map_data.height() as f32 / h as f32;
-                map_data.bilinear_sample(mx, my, &mut mp);
+                let mx = x as f32 * map_w / w as f32;
+                map.bilinear_sample(mx, my, &mut mp);
 
                 // Compute luminance using BT.601 coefficients, centered to -0.5..0.5.
                 // For single-channel maps, use the value directly.
@@ -107,10 +113,10 @@ impl OpImageTransformDirectionalWarp {
                 let sy = y as f32 + dir_y * displacement;
 
                 // Sample source image at displaced coordinates
-                src_data.bilinear_sample(sx, sy, &mut sp);
-                output.put_pixel(x, y, &sp);
+                src.bilinear_sample(sx, sy, &mut sp);
+                row[x * src_ch..(x + 1) * src_ch].copy_from_slice(&sp);
             }
-        }
+        });
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

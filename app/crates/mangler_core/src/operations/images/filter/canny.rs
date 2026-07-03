@@ -13,6 +13,7 @@
 
 use crate::float_image::FloatImage;
 use crate::get_id;
+use crate::operations::images::blur::blur::gaussian_blur_planar;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
@@ -234,48 +235,6 @@ fn quantize_angle(gx: f32, gy: f32) -> u8 {
     else if deg < 67.5 { 1 }
     else if deg < 112.5 { 2 }
     else { 3 }
-}
-
-/// Separable Gaussian blur on a single-channel planar buffer (truncated at 3σ).
-fn gaussian_blur_planar(src: &[f32], width: u32, height: u32, sigma: f32) -> Vec<f32> {
-    let sigma = sigma.max(1e-6);
-    let radius = (3.0 * sigma).ceil() as i32;
-    let mut kernel = vec![0.0f32; (2 * radius + 1) as usize];
-    let two_sigma_sq = 2.0 * sigma * sigma;
-    let mut sum = 0.0f32;
-    for i in -radius..=radius {
-        let w = (-((i * i) as f32) / two_sigma_sq).exp();
-        kernel[(i + radius) as usize] = w;
-        sum += w;
-    }
-    for w in &mut kernel { *w /= sum; }
-
-    let w = width as i32;
-    let h = height as i32;
-    let mut tmp = vec![0.0f32; src.len()];
-    for y in 0..h {
-        let row = (y * w) as usize;
-        for x in 0..w {
-            let mut acc = 0.0f32;
-            for k in -radius..=radius {
-                let sx = (x + k).clamp(0, w - 1) as usize;
-                acc += src[row + sx] * kernel[(k + radius) as usize];
-            }
-            tmp[row + x as usize] = acc;
-        }
-    }
-    let mut out = vec![0.0f32; src.len()];
-    for y in 0..h {
-        for x in 0..w {
-            let mut acc = 0.0f32;
-            for k in -radius..=radius {
-                let sy = (y + k).clamp(0, h - 1) as usize;
-                acc += tmp[sy * w as usize + x as usize] * kernel[(k + radius) as usize];
-            }
-            out[(y * w + x) as usize] = acc;
-        }
-    }
-    out
 }
 
 #[cfg(test)]

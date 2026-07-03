@@ -28,6 +28,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -121,13 +122,9 @@ impl OpImageAdjustmentToon {
 
         // Extract per-channel planes for easy box-blur math.
         let mut planes: Vec<Vec<f32>> = vec![vec![0.0; n]; ch];
-        for y in 0..h {
-            for x in 0..w {
-                let pixel = data.get_pixel(x as u32, y as u32);
-                let idx = y * w + x;
-                for c in 0..ch {
-                    planes[c][idx] = pixel[c];
-                }
+        for (idx, pixel) in data.as_raw().chunks_exact(ch).enumerate() {
+            for c in 0..ch {
+                planes[c][idx] = pixel[c];
             }
         }
 
@@ -154,25 +151,40 @@ impl OpImageAdjustmentToon {
         let mut quantized: Vec<Vec<f32>> = vec![vec![0.0; n]; ch];
         let mut v_quantized = vec![0.0f32; n];
         if color_ch >= 3 {
-            for i in 0..n {
-                // build a Color from the smoothed sRGB pixel; alpha is irrelevant here
-                let c = Color::from_srgb_float(smoothed[0][i], smoothed[1][i], smoothed[2][i], 1.0);
-                let (hue, sat, val, _) = c.to_hsv();
-                let v_q = ((val * steps + 0.5).floor() / steps).clamp(0.0, 1.0);
-                v_quantized[i] = v_q;
-                let back = Color::from_hsv(hue, sat, v_q, 1.0);
-                let (r, g, b, _) = back.to_srgb_float();
-                quantized[0][i] = r.clamp(0.0, 1.0);
-                quantized[1][i] = g.clamp(0.0, 1.0);
-                quantized[2][i] = b.clamp(0.0, 1.0);
-            }
+            let [q_r, q_g, q_b, ..] = &mut quantized[..] else { unreachable!() };
+            q_r.par_chunks_mut(w)
+                .zip(q_g.par_chunks_mut(w))
+                .zip(q_b.par_chunks_mut(w))
+                .zip(v_quantized.par_chunks_mut(w))
+                .enumerate()
+                .for_each(|(y, (((row_r, row_g), row_b), row_v))| {
+                    for x in 0..w {
+                        let i = y * w + x;
+                        // build a Color from the smoothed sRGB pixel; alpha is irrelevant here
+                        let c = Color::from_srgb_float(smoothed[0][i], smoothed[1][i], smoothed[2][i], 1.0);
+                        let (hue, sat, val, _) = c.to_hsv();
+                        let v_q = ((val * steps + 0.5).floor() / steps).clamp(0.0, 1.0);
+                        row_v[x] = v_q;
+                        let back = Color::from_hsv(hue, sat, v_q, 1.0);
+                        let (r, g, b, _) = back.to_srgb_float();
+                        row_r[x] = r.clamp(0.0, 1.0);
+                        row_g[x] = g.clamp(0.0, 1.0);
+                        row_b[x] = b.clamp(0.0, 1.0);
+                    }
+                });
         } else {
-            for i in 0..n {
-                let v = smoothed[0][i];
-                let v_q = ((v * steps + 0.5).floor() / steps).clamp(0.0, 1.0);
-                v_quantized[i] = v_q;
-                quantized[0][i] = v_q;
-            }
+            let smoothed0 = &smoothed[0];
+            quantized[0].par_chunks_mut(w)
+                .zip(v_quantized.par_chunks_mut(w))
+                .enumerate()
+                .for_each(|(y, (row_q, row_v))| {
+                    for x in 0..w {
+                        let v = smoothed0[y * w + x];
+                        let v_q = ((v * steps + 0.5).floor() / steps).clamp(0.0, 1.0);
+                        row_v[x] = v_q;
+                        row_q[x] = v_q;
+                    }
+                });
         }
         // alpha passes through unchanged from the source
         if has_alpha {
@@ -185,19 +197,18 @@ impl OpImageAdjustmentToon {
         // pipeline that's genuinely piecewise-constant, and any change in it is
         // a real cel-band boundary. No threshold needed.
         let mut binary_edges = vec![0.0f32; n];
-        for y in 0..h {
+        binary_edges.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
             for x in 0..w {
-                let i = y * w + x;
-                let center = v_quantized[i];
+                let center = v_quantized[y * w + x];
                 let left   = if x > 0     { v_quantized[y * w + x - 1] } else { center };
                 let right  = if x + 1 < w { v_quantized[y * w + x + 1] } else { center };
                 let up     = if y > 0     { v_quantized[(y - 1) * w + x] } else { center };
                 let down   = if y + 1 < h { v_quantized[(y + 1) * w + x] } else { center };
                 if left != center || right != center || up != center || down != center {
-                    binary_edges[i] = 1.0;
+                    row[x] = 1.0;
                 }
             }
-        }
+        });
 
         // Thicken / soften the edge mask. A box blur of a binary mask gives a
         // linear falloff over the kernel; combined with a smoothstep this turns
@@ -211,7 +222,7 @@ impl OpImageAdjustmentToon {
             // remap so the inner core of the edge stays at 1 but the soft tail
             // falls off via smoothstep — gives a clean visible outline rather
             // than a uniformly faint band the width of the blur kernel
-            blurred.into_iter().map(|v| {
+            blurred.into_par_iter().map(|v| {
                 let t = (v * 4.0).clamp(0.0, 1.0);
                 t * t * (3.0 - 2.0 * t)
             }).collect::<Vec<f32>>()
@@ -219,20 +230,23 @@ impl OpImageAdjustmentToon {
 
         // ---- Composite: quantized color, then edge color blended on top ----
         let mut pixels = vec![0.0f32; n * ch];
-        for i in 0..n {
-            let blend = (edge_mask[i] * edge_strength).clamp(0.0, 1.0);
-            if color_ch >= 3 {
-                pixels[i * ch    ] = quantized[0][i] * (1.0 - blend) + edge_r * blend;
-                pixels[i * ch + 1] = quantized[1][i] * (1.0 - blend) + edge_g * blend;
-                pixels[i * ch + 2] = quantized[2][i] * (1.0 - blend) + edge_b * blend;
-            } else {
-                let edge_lum = 0.2126 * edge_r + 0.7152 * edge_g + 0.0722 * edge_b;
-                pixels[i * ch] = quantized[0][i] * (1.0 - blend) + edge_lum * blend;
+        pixels.par_chunks_mut(w * ch).enumerate().for_each(|(y, out_row)| {
+            for x in 0..w {
+                let i = y * w + x;
+                let blend = (edge_mask[i] * edge_strength).clamp(0.0, 1.0);
+                if color_ch >= 3 {
+                    out_row[x * ch    ] = quantized[0][i] * (1.0 - blend) + edge_r * blend;
+                    out_row[x * ch + 1] = quantized[1][i] * (1.0 - blend) + edge_g * blend;
+                    out_row[x * ch + 2] = quantized[2][i] * (1.0 - blend) + edge_b * blend;
+                } else {
+                    let edge_lum = 0.2126 * edge_r + 0.7152 * edge_g + 0.0722 * edge_b;
+                    out_row[x * ch] = quantized[0][i] * (1.0 - blend) + edge_lum * blend;
+                }
+                if has_alpha {
+                    out_row[x * ch + ch - 1] = quantized[ch - 1][i];
+                }
             }
-            if has_alpha {
-                pixels[i * ch + ch - 1] = quantized[ch - 1][i];
-            }
-        }
+        });
 
         let output = FloatImage::from_raw(width, height, data.channels(), pixels).unwrap();
 
@@ -255,12 +269,12 @@ fn box_blur_2d(input: &[f32], width: usize, height: usize, radius: usize) -> Vec
         return Vec::new();
     }
 
-    // horizontal pass: prefix-sum each row, then read out box mean at every x
+    // horizontal pass: prefix-sum each row, then read out box mean at every x.
+    // Rows are independent, so this is rayon-parallel over rows.
     let mut h_pass = vec![0.0f32; input.len()];
-    let mut prefix = vec![0.0f64; width + 1];
-    for y in 0..height {
+    h_pass.par_chunks_mut(width).enumerate().for_each(|(y, out_row)| {
         let row_start = y * width;
-        prefix[0] = 0.0;
+        let mut prefix = vec![0.0f64; width + 1];
         for x in 0..width {
             prefix[x + 1] = prefix[x] + input[row_start + x] as f64;
         }
@@ -268,25 +282,31 @@ fn box_blur_2d(input: &[f32], width: usize, height: usize, radius: usize) -> Vec
             let lo = x.saturating_sub(radius);
             let hi = (x + radius + 1).min(width);
             let cnt = (hi - lo) as f64;
-            h_pass[row_start + x] = ((prefix[hi] - prefix[lo]) / cnt) as f32;
+            out_row[x] = ((prefix[hi] - prefix[lo]) / cnt) as f32;
         }
-    }
+    });
 
-    // vertical pass: same idea over columns
-    let mut out = vec![0.0f32; input.len()];
-    let mut col_prefix = vec![0.0f64; height + 1];
-    for x in 0..width {
-        col_prefix[0] = 0.0;
+    // vertical pass: same idea over columns, computed in parallel into a
+    // column-major buffer then gathered back to row-major.
+    let columns: Vec<f32> = (0..width).into_par_iter().flat_map_iter(|x| {
+        let mut col_prefix = vec![0.0f64; height + 1];
         for y in 0..height {
             col_prefix[y + 1] = col_prefix[y] + h_pass[y * width + x] as f64;
         }
-        for y in 0..height {
+        (0..height).map(move |y| {
             let lo = y.saturating_sub(radius);
             let hi = (y + radius + 1).min(height);
             let cnt = (hi - lo) as f64;
-            out[y * width + x] = ((col_prefix[hi] - col_prefix[lo]) / cnt) as f32;
+            ((col_prefix[hi] - col_prefix[lo]) / cnt) as f32
+        })
+    }).collect();
+
+    let mut out = vec![0.0f32; input.len()];
+    out.par_chunks_mut(width).enumerate().for_each(|(y, out_row)| {
+        for x in 0..width {
+            out_row[x] = columns[x * height + y];
         }
-    }
+    });
 
     out
 }

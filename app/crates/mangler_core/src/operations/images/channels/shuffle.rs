@@ -11,9 +11,13 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
+
+/// Minimum pixel count before the remap is parallelized over rows.
+const PARALLEL_PIXELS: usize = 1 << 16;
 
 /// Operation that remaps image channels using selectable source indices.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,25 +78,38 @@ impl OpImageChannelShuffle {
 
         let (width, height) = data.dimensions();
         let ch = data.channels() as usize;
-        let mut output = FloatImage::new(width, height, 4);
+        let w = width as usize;
+        let src = data.as_raw();
+        let mut out_data = vec![0.0f32; w * height as usize * 4];
 
-        // Helper: get a virtual 4-channel RGBA from any channel count
-        let get_rgba = |px: &[f32]| -> [f32; 4] {
+        // Remap one source row into one output row, with the channel-count
+        // dispatch hoisted out of the per-pixel loop.
+        let process_row = |(dst_row, src_row): (&mut [f32], &[f32])| {
+            let write = |dst: &mut [f32], c: [f32; 4]| {
+                dst[0] = c[red_idx];
+                dst[1] = c[green_idx];
+                dst[2] = c[blue_idx];
+                dst[3] = c[alpha_idx];
+            };
+            let pairs = dst_row.chunks_exact_mut(4).zip(src_row.chunks_exact(ch));
+            // Promote each pixel to a virtual RGBA, then pick the source indices.
             match ch {
-                1 => [px[0], px[0], px[0], 1.0],
-                2 => [px[0], px[0], px[0], px[1]],
-                3 => [px[0], px[1], px[2], 1.0],
-                _ => [px[0], px[1], px[2], px[3]],
+                1 => pairs.for_each(|(d, px)| write(d, [px[0], px[0], px[0], 1.0])),
+                2 => pairs.for_each(|(d, px)| write(d, [px[0], px[0], px[0], px[1]])),
+                3 => pairs.for_each(|(d, px)| write(d, [px[0], px[1], px[2], 1.0])),
+                _ => pairs.for_each(|(d, px)| write(d, [px[0], px[1], px[2], px[3]])),
             }
         };
 
-        for y in 0..height {
-            for x in 0..width {
-                let px = data.get_pixel(x, y);
-                let channels = get_rgba(px);
-                output.put_pixel(x, y, &[channels[red_idx], channels[green_idx], channels[blue_idx], channels[alpha_idx]]);
+        if w > 0 {
+            if w * height as usize >= PARALLEL_PIXELS {
+                out_data.par_chunks_exact_mut(w * 4).zip(src.par_chunks_exact(w * ch)).for_each(process_row);
+            } else {
+                out_data.chunks_exact_mut(w * 4).zip(src.chunks_exact(w * ch)).for_each(process_row);
             }
         }
+
+        let output = FloatImage::from_raw(width, height, 4, out_data).unwrap();
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

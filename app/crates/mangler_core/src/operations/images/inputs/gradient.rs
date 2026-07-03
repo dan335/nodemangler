@@ -94,9 +94,6 @@ impl OpImageInputGradient {
         width = width.max(1);
         height = height.max(1);
 
-        // Create a 4-channel FloatImage to hold the gradient output
-        let mut float_img = FloatImage::new(width as u32, height as u32, 4);
-
         // Use Lerp blend mode for smooth linear interpolation between colors
         let blend_mode = crate::color::blend::BlendMode::Lerp;
 
@@ -118,15 +115,26 @@ impl OpImageInputGradient {
             ColorSpace::Xyy       => Color::blend_xyy,
         };
 
-        // Blend per-row in the selected color space, storing sRGB floats directly
-        for y in 0..height {
+        // Blend per-row in the selected color space, storing sRGB floats directly.
+        // Each row is a constant pixel, so it is built once and replicated with
+        // slice copies rather than per-pixel writes.
+        let w = width as usize;
+        let mut data = vec![0.0f32; w * height as usize * 4];
+        for (y, row) in data.chunks_exact_mut(w * 4).enumerate() {
             let blended = blend_fn(a, b, &blend_mode, y as f32 / height as f32);
             let srgb = blended.to_srgb_float();
             let pixel = [srgb.0, srgb.1, srgb.2, srgb.3];
-            for x in 0..width {
-                float_img.put_pixel(x as u32, y as u32, &pixel);
+            row[..4].copy_from_slice(&pixel);
+            // Double the filled prefix until the whole row is covered.
+            let mut filled = 4;
+            while filled < row.len() {
+                let (done, rest) = row.split_at_mut(filled);
+                let n = done.len().min(rest.len());
+                rest[..n].copy_from_slice(&done[..n]);
+                filled += n;
             }
         }
+        let float_img = FloatImage::from_raw(width as u32, height as u32, 4, data).unwrap();
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

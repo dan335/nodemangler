@@ -68,6 +68,27 @@ impl OpImageAdjustmentLevels {
         (0.5_f32).ln() / midtone.ln()
     }
 
+    /// Number of entries in the gamma lookup table.
+    const LUT_SIZE: usize = 1024;
+
+    /// Builds a lookup table for `t.powf(inv_gamma)` over `t` in [0, 1].
+    fn build_gamma_lut(inv_gamma: f32) -> Vec<f32> {
+        (0..Self::LUT_SIZE)
+            .map(|i| (i as f32 / (Self::LUT_SIZE - 1) as f32).powf(inv_gamma))
+            .collect()
+    }
+
+    /// Evaluates the gamma LUT at `t` (must already be clamped to [0, 1])
+    /// with linear interpolation between entries.
+    #[inline]
+    fn lut_eval(lut: &[f32], t: f32) -> f32 {
+        let pos = t * (Self::LUT_SIZE - 1) as f32;
+        let idx = pos as usize;
+        let idx1 = (idx + 1).min(Self::LUT_SIZE - 1);
+        let frac = pos - idx as f32;
+        lut[idx] + (lut[idx1] - lut[idx]) * frac
+    }
+
     /// Executes the levels adjustment directly on FloatImage data.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
@@ -100,17 +121,35 @@ impl OpImageAdjustmentLevels {
         let inv_gamma = 1.0 / gamma;
         let ch = result.channels() as usize;
         let color_ch = if ch == 2 || ch == 4 { ch - 1 } else { ch };
+        let out_range = out_high - out_low;
 
-        for pixel in result.pixels_mut() {
-            for val in pixel.iter_mut().take(color_ch) {
-                // Remap from [in_low, in_high] to [0, 1]
-                let remapped = ((*val - in_low) / in_range).clamp(0.0, 1.0);
-                // Apply gamma correction
-                let corrected = remapped.powf(inv_gamma);
-                // Remap to [out_low, out_high]
-                *val = out_low + corrected * (out_high - out_low);
+        if gamma == 1.0 {
+            // Neutral midtone (in_mid == 0.5): the gamma curve is the
+            // identity, so skip the powf path entirely.
+            for pixel in result.pixels_mut() {
+                for val in pixel.iter_mut().take(color_ch) {
+                    // Remap from [in_low, in_high] to [0, 1]
+                    let remapped = ((*val - in_low) / in_range).clamp(0.0, 1.0);
+                    // Remap to [out_low, out_high]
+                    *val = out_low + remapped * out_range;
+                }
+                // alpha unchanged
             }
-            // alpha unchanged
+        } else {
+            // Build the gamma curve once and interpolate per pixel instead
+            // of paying for powf on every channel.
+            let lut = Self::build_gamma_lut(inv_gamma);
+            for pixel in result.pixels_mut() {
+                for val in pixel.iter_mut().take(color_ch) {
+                    // Remap from [in_low, in_high] to [0, 1]
+                    let remapped = ((*val - in_low) / in_range).clamp(0.0, 1.0);
+                    // Apply gamma correction via the LUT
+                    let corrected = Self::lut_eval(&lut, remapped);
+                    // Remap to [out_low, out_high]
+                    *val = out_low + corrected * out_range;
+                }
+                // alpha unchanged
+            }
         }
 
         Ok(OperationResponse { 

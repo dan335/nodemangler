@@ -11,6 +11,7 @@ use crate::operations::{OperationResponse, OperationError, OutputResponse, defau
 use crate::output::Output;
 use crate::value::Value;
 use crate::float_image::FloatImage;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -75,12 +76,14 @@ impl OpImageTransformSwirl {
         let ang = angle_deg.to_radians();
 
         let mut out = FloatImage::new(w, h, data.channels());
-        let mut sp = vec![0.0f32; ch];
+        let src = &*data;
+        let row_len = (w as usize * ch).max(1);
 
-        for y in 0..h {
-            for x in 0..w {
+        out.as_raw_mut().par_chunks_mut(row_len).enumerate().for_each(|(y, row)| {
+            let mut sp = vec![0.0f32; ch];
+            let dy = y as f32 - cy;
+            for x in 0..w as usize {
                 let dx = x as f32 - cx;
-                let dy = y as f32 - cy;
                 let dist = (dx * dx + dy * dy).sqrt();
                 // Quadratic falloff: full at the centre, zero at the radius.
                 let t = (1.0 - dist / eff).clamp(0.0, 1.0);
@@ -89,10 +92,10 @@ impl OpImageTransformSwirl {
                 // Inverse rotation by -rot to find the source position.
                 let src_dx = dx * c + dy * s;
                 let src_dy = -dx * s + dy * c;
-                data.bilinear_sample(cx + src_dx, cy + src_dy, &mut sp);
-                out.put_pixel(x, y, &sp);
+                src.bilinear_sample(cx + src_dx, cy + src_dy, &mut sp);
+                row[x * ch..(x + 1) * ch].copy_from_slice(&sp);
             }
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

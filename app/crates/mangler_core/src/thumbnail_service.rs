@@ -161,6 +161,15 @@ async fn worker_loop(
     latest_seq: Arc<DashMap<ThumbnailKey, u64>>,
     tx_node_changed: Sender<NodeChangedMessage>,
 ) {
+    // Requests for different keys are independent, so computes run
+    // concurrently up to a bounded number of blocking-pool slots. Awaiting
+    // each compute inline would serialize thumbnails — loading a graph with
+    // N image outputs then costs N sequential resizes.
+    let max_concurrent = std::thread::available_parallelism()
+        .map(|n| (n.get() / 2).max(2))
+        .unwrap_or(2);
+    let slots = Arc::new(tokio::sync::Semaphore::new(max_concurrent));
+
     while let Some(req) = rx_request.recv().await {
         // Stale check #1 — before compute. Weeds out requests superseded
         // while queued.
@@ -169,45 +178,56 @@ async fn worker_loop(
             continue;
         }
 
-        let key = req.key.clone();
-        let change_id = req.change_id.clone();
-        let seq = req.seq;
-
-        let float_image = req.image;
-
-        // CPU-bound resize lives on the blocking pool so the worker task
-        // itself stays free to drain the next request.
-        let compute = tokio::task::spawn_blocking(move || {
-            Thumbnail::Image(
-                float_image
-                    .resize_fit(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1])
-                    .to_rgba8(),
-            )
-        });
-
-        let thumbnail = match compute.await {
-            Ok(thumb) => thumb,
-            Err(err) => {
-                eprintln!(
-                    "thumbnail_service: compute task failed for {:?}: {}",
-                    key, err
-                );
-                continue;
-            }
+        // Acquire a slot before spawning so a request storm cannot flood the
+        // blocking pool. Semaphore is never closed, so acquire cannot fail.
+        let Ok(permit) = Arc::clone(&slots).acquire_owned().await else {
+            break;
         };
 
-        // Stale check #2 — after compute, before send. Covers the window
-        // where new requests arrived during the spawn_blocking / decode.
-        let current_seq = latest_seq.get(&key).map(|s| *s);
-        if current_seq != Some(seq) {
-            continue;
-        }
+        let latest_seq = Arc::clone(&latest_seq);
+        let tx_node_changed = tx_node_changed.clone();
 
-        let _ = tx_node_changed.try_send(NodeChangedMessage::ThumbnailReady {
-            node_id: key.node_id,
-            output_index: key.output_index,
-            change_id,
-            thumbnail,
+        tokio::spawn(async move {
+            let _permit = permit;
+            let key = req.key.clone();
+            let change_id = req.change_id.clone();
+            let seq = req.seq;
+            let float_image = req.image;
+
+            // CPU-bound resize lives on the blocking pool so async workers
+            // stay free.
+            let compute = tokio::task::spawn_blocking(move || {
+                Thumbnail::Image(
+                    float_image
+                        .resize_fit(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1])
+                        .to_rgba8(),
+                )
+            });
+
+            let thumbnail = match compute.await {
+                Ok(thumb) => thumb,
+                Err(err) => {
+                    eprintln!(
+                        "thumbnail_service: compute task failed for {:?}: {}",
+                        key, err
+                    );
+                    return;
+                }
+            };
+
+            // Stale check #2 — after compute, before send. Covers the window
+            // where new requests arrived during the spawn_blocking / decode.
+            let current_seq = latest_seq.get(&key).map(|s| *s);
+            if current_seq != Some(seq) {
+                return;
+            }
+
+            let _ = tx_node_changed.try_send(NodeChangedMessage::ThumbnailReady {
+                node_id: key.node_id,
+                output_index: key.output_index,
+                change_id,
+                thumbnail,
+            });
         });
     }
 }

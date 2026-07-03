@@ -12,6 +12,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -26,6 +27,20 @@ fn lcg_float(seed: u64) -> (f64, u64) {
     let next = lcg(seed);
     let val = (next >> 33) as f64 / (1u64 << 31) as f64;
     (val, next)
+}
+
+/// Precomputed placement of a single pattern instance.
+struct Stamp {
+    center_x: f64,
+    center_y: f64,
+    cos_a: f64,
+    sin_a: f64,
+    draw_w: f64,
+    draw_h: f64,
+    start_x: i32,
+    end_x: i32,
+    start_y: i32,
+    end_y: i32,
 }
 
 /// Operation that scatters instances of an input pattern across a grid.
@@ -134,14 +149,10 @@ impl OpImagePatternTileSampler {
         let cell_w = width as f64 / count_x as f64;
         let cell_h = height as f64 / count_y as f64;
 
-        // output matches the input pattern's channel count
-        let mut image = FloatImage::new(width as u32, height as u32, pat_channels);
-
-        // temporary buffer for per-pixel max compositing
-        let mut pixel_buf = vec![0.0f32; pat_channels as usize];
-
-        // for each cell, stamp the pattern
+        // Precompute every stamp's placement serially so the RNG draw order is
+        // identical to the original per-cell loop.
         let mut rng_state = lcg(seed as u64);
+        let mut stamps: Vec<Stamp> = Vec::with_capacity((count_x * count_y) as usize);
 
         for cy in 0..count_y {
             for cx in 0..count_x {
@@ -194,42 +205,62 @@ impl OpImagePatternTileSampler {
                     max_y = max_y.max(ry);
                 }
 
-                let start_x = (min_x.floor() as i32).max(0);
-                let end_x = (max_x.ceil() as i32).min(width);
-                let start_y = (min_y.floor() as i32).max(0);
-                let end_y = (max_y.ceil() as i32).min(height);
+                stamps.push(Stamp {
+                    center_x,
+                    center_y,
+                    cos_a,
+                    sin_a,
+                    draw_w,
+                    draw_h,
+                    start_x: (min_x.floor() as i32).max(0),
+                    end_x: (max_x.ceil() as i32).min(width),
+                    start_y: (min_y.floor() as i32).max(0),
+                    end_y: (max_y.ceil() as i32).min(height),
+                });
+            }
+        }
 
-                for py in start_y..end_y {
-                    for px in start_x..end_x {
-                        // inverse transform: output pixel -> pattern pixel
-                        let dx = px as f64 - center_x;
-                        let dy = py as f64 - center_y;
+        // Rows are independent, so stamp them in parallel. Each pixel applies
+        // the max composite in the same stamp order as the serial version.
+        let ch = pat_channels as usize;
+        let pattern_ref = &pattern;
+        let stamps_ref = &stamps;
 
-                        // inverse rotation
-                        let lx = cos_a * dx + sin_a * dy;
-                        let ly = -sin_a * dx + cos_a * dy;
+        let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |py| {
+            let mut row = vec![0.0f32; width as usize * ch];
+            for stamp in stamps_ref {
+                if py < stamp.start_y || py >= stamp.end_y { continue; }
+                for px in stamp.start_x..stamp.end_x {
+                    // inverse transform: output pixel -> pattern pixel
+                    let dx = px as f64 - stamp.center_x;
+                    let dy = py as f64 - stamp.center_y;
 
-                        // map to pattern coordinates [0, pat_w) x [0, pat_h)
-                        let u = (lx / draw_w + 0.5) * pat_w;
-                        let v = (ly / draw_h + 0.5) * pat_h;
+                    // inverse rotation
+                    let lx = stamp.cos_a * dx + stamp.sin_a * dy;
+                    let ly = -stamp.sin_a * dx + stamp.cos_a * dy;
 
-                        if u < 0.0 || u >= pat_w || v < 0.0 || v >= pat_h {
-                            continue;
-                        }
+                    // map to pattern coordinates [0, pat_w) x [0, pat_h)
+                    let u = (lx / stamp.draw_w + 0.5) * pat_w;
+                    let v = (ly / stamp.draw_h + 0.5) * pat_h;
 
-                        let src = pattern.get_pixel(u as u32, v as u32);
-                        let dst = image.get_pixel(px as u32, py as u32);
+                    if u < 0.0 || u >= pat_w || v < 0.0 || v >= pat_h {
+                        continue;
+                    }
 
-                        // Max composite: take the brightest channel from source or destination
-                        for c in 0..pat_channels as usize {
-                            pixel_buf[c] = dst[c].max(src[c]);
-                        }
+                    let src = pattern_ref.get_pixel(u as u32, v as u32);
+                    let base = px as usize * ch;
 
-                        image.put_pixel(px as u32, py as u32, &pixel_buf);
+                    // Max composite: take the brightest channel from source or destination
+                    for c in 0..ch {
+                        row[base + c] = row[base + c].max(src[c]);
                     }
                 }
             }
-        }
+            row
+        }).collect();
+
+        // output matches the input pattern's channel count
+        let image = FloatImage::from_raw(width as u32, height as u32, pat_channels, pixels).unwrap();
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

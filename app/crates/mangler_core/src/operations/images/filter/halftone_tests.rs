@@ -40,8 +40,8 @@ async fn test_halftone_output_is_binary() {
     match &result.responses[0].value {
         Value::Image { data, .. } => {
             for pixel in data.pixels() {
-                for c in 0..pixel.len().min(3) {
-                    assert!(pixel[c] == 0.0 || pixel[c] == 1.0, "non-binary output: {}", pixel[c]);
+                for &val in pixel.iter().take(pixel.len().min(3)) {
+                    assert!(val == 0.0 || val == 1.0, "non-binary output: {}", val);
                 }
             }
         }
@@ -58,8 +58,8 @@ async fn test_halftone_white_image_all_white() {
     match &result.responses[0].value {
         Value::Image { data, .. } => {
             for pixel in data.pixels() {
-                for c in 0..pixel.len().min(3) {
-                    assert_eq!(pixel[c], 1.0, "white input should stay white");
+                for &val in pixel.iter().take(pixel.len().min(3)) {
+                    assert_eq!(val, 1.0, "white input should stay white");
                 }
             }
         }

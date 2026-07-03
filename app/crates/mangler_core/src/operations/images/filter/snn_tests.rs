@@ -128,8 +128,8 @@ async fn test_snn_output_range() {
     match &result.responses[0].value {
         Value::Image { data, .. } => {
             for pixel in data.pixels() {
-                for c in 0..pixel.len() {
-                    assert!(pixel[c] >= 0.0 && pixel[c] <= 1.0, "out of range: {}", pixel[c]);
+                for &val in pixel {
+                    assert!(val >= 0.0 && val <= 1.0, "out of range: {}", val);
                 }
             }
         }

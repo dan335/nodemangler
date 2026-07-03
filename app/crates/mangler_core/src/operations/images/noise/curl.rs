@@ -12,6 +12,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -81,11 +82,10 @@ impl OpImageNoiseCurl {
         // Finite-difference step in lattice units (a fraction of a cell).
         let eps = 1e-2_f64;
 
-        let mut img = FloatImage::new(w, h, 3);
-        for y in 0..h {
-            for x in 0..w {
+        let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(move |y| {
+            let v = y as f64 / h as f64 * period as f64;
+            (0..w).flat_map(move |x| {
                 let u = x as f64 / w as f64 * period as f64;
-                let v = y as f64 / h as f64 * period as f64;
                 // Curl of the scalar potential φ: (∂φ/∂y, -∂φ/∂x).
                 let dphidx = (periodic_value_2d(u + eps, v, period, period, perm)
                     - periodic_value_2d(u - eps, v, period, period, perm))
@@ -97,13 +97,15 @@ impl OpImageNoiseCurl {
                 let vy = -dphidx as f32;
                 let mag = (vx * vx + vy * vy).sqrt();
                 let (dx, dy) = if mag > 1e-6 { (vx / mag, vy / mag) } else { (0.0, 0.0) };
-                img.put_pixel(x, y, &[
+                [
                     0.5 + 0.5 * dx,
                     0.5 + 0.5 * dy,
                     mag.min(1.0),
-                ]);
-            }
-        }
+                ]
+            })
+        }).collect();
+
+        let img = FloatImage::from_raw(w, h, 3, pixels).unwrap();
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

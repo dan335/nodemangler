@@ -9,6 +9,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -73,11 +74,10 @@ impl OpImageShapePyramid {
         let cos_a = angle.cos();
         let sin_a = angle.sin();
 
-        let mut img = FloatImage::new(width as u32, height as u32, 1);
-        for y in 0..height {
-            for x in 0..width {
+        let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |y| {
+            let ny = (y as f64 / (height as f64 - 1.0).max(1.0)) * 2.0 - 1.0;
+            (0..width).map(move |x| {
                 let nx = (x as f64 / (width as f64 - 1.0).max(1.0)) * 2.0 - 1.0;
-                let ny = (y as f64 / (height as f64 - 1.0).max(1.0)) * 2.0 - 1.0;
                 let rx = nx * cos_a + ny * sin_a;
                 let ry = -nx * sin_a + ny * cos_a;
                 let d = rx.abs().max(ry.abs()) / size;
@@ -87,9 +87,11 @@ impl OpImageShapePyramid {
                     let s = steps as f64;
                     h = (h * s).ceil() / s;
                 }
-                img.put_pixel(x as u32, y as u32, &[h as f32]);
-            }
-        }
+                h as f32
+            })
+        }).collect();
+
+        let img = FloatImage::from_raw(width as u32, height as u32, 1, pixels).unwrap();
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

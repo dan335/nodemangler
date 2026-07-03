@@ -9,6 +9,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -67,11 +68,10 @@ impl OpImageShapeCone {
         let size = (size as f64).max(0.001);
         let truncate = (truncate as f64).clamp(0.0, 0.99);
 
-        let mut img = FloatImage::new(width as u32, height as u32, 1);
-        for y in 0..height {
-            for x in 0..width {
+        let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |y| {
+            let ny = (y as f64 / (height as f64 - 1.0).max(1.0)) * 2.0 - 1.0;
+            (0..width).map(move |x| {
                 let nx = (x as f64 / (width as f64 - 1.0).max(1.0)) * 2.0 - 1.0;
-                let ny = (y as f64 / (height as f64 - 1.0).max(1.0)) * 2.0 - 1.0;
                 let d = (nx * nx + ny * ny).sqrt() / size;
                 let h = if d >= 1.0 {
                     0.0
@@ -81,9 +81,11 @@ impl OpImageShapeCone {
                     let raw = (1.0 - d).min(1.0 - truncate);
                     if truncate >= 1.0 { 0.0 } else { raw / (1.0 - truncate) }
                 };
-                img.put_pixel(x as u32, y as u32, &[h as f32]);
-            }
-        }
+                h as f32
+            })
+        }).collect();
+
+        let img = FloatImage::from_raw(width as u32, height as u32, 1, pixels).unwrap();
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

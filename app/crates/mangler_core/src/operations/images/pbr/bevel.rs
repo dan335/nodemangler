@@ -5,10 +5,10 @@
 //! `distance` pixels away from the mask boundary. `smoothing` rounds the
 //! ramp; `corner_type` picks between an angular or round falloff profile.
 //!
-//! Implementation: threshold the mask into inside/outside, then for each
-//! inside pixel find the nearest boundary pixel within `distance`, normalise
-//! to `[0, 1]`, apply a curve. Output is either the height itself or a
-//! Sobel-derived normal map over that height.
+//! Implementation: threshold the mask into inside/outside, then compute an
+//! exact Euclidean distance transform to the nearest outside pixel, cap it at
+//! `distance`, normalise to `[0, 1]`, apply a curve. Output is either the
+//! height itself or a Sobel-derived normal map over that height.
 
 use crate::float_image::FloatImage;
 use crate::get_id;
@@ -21,6 +21,66 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
+
+/// One-dimensional squared-distance transform (Felzenszwalb & Huttenlocher's
+/// lower-envelope-of-parabolas method). Reads sample costs from `f` and
+/// writes the transformed squared distances into `d`. O(n).
+fn dt1d(f: &[f64], d: &mut [f64]) {
+    let n = f.len();
+    if n == 0 {
+        return;
+    }
+    let mut v = vec![0usize; n]; // parabola apex positions
+    let mut z = vec![0.0f64; n + 1]; // boundaries between parabolas
+    let mut k = 0usize;
+    z[0] = f64::NEG_INFINITY;
+    z[1] = f64::INFINITY;
+    for q in 1..n {
+        loop {
+            let p = v[k];
+            let s = ((f[q] + (q * q) as f64) - (f[p] + (p * p) as f64)) / (2.0 * (q - p) as f64);
+            if s <= z[k] {
+                k -= 1;
+            } else {
+                k += 1;
+                v[k] = q;
+                z[k] = s;
+                z[k + 1] = f64::INFINITY;
+                break;
+            }
+        }
+    }
+    k = 0;
+    for q in 0..n {
+        while z[k + 1] < q as f64 {
+            k += 1;
+        }
+        let dq = q as f64 - v[k] as f64;
+        d[q] = dq * dq + f[v[k]];
+    }
+}
+
+/// Exact squared Euclidean distance from every pixel to the nearest outside
+/// (`false`) pixel, via two separable 1D passes (columns, then rows). Pixels
+/// with no outside pixel anywhere in the image keep a huge sentinel value,
+/// which the caller caps at the bevel distance.
+fn distance_field_squared(inside: &[bool], w: usize, h: usize) -> Vec<f64> {
+    const INF: f64 = 1e20;
+    // Pass 1: per-column 1D transform, stored transposed (column-major).
+    let mut cols = vec![0.0f64; w * h];
+    cols.par_chunks_mut(h).enumerate().for_each(|(x, col)| {
+        let f: Vec<f64> = (0..h).map(|y| if inside[y * w + x] { INF } else { 0.0 }).collect();
+        dt1d(&f, col);
+    });
+    // Pass 2: per-row 1D transform over the column results.
+    let mut out = vec![0.0f64; w * h];
+    let cols_ref = &cols;
+    out.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+        let f: Vec<f64> = (0..w).map(|x| cols_ref[x * h + y]).collect();
+        dt1d(&f, row);
+    });
+    out
+}
 
 /// Bevel operation — converts a mask into a beveled height or normal map.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,31 +163,21 @@ impl OpImagePbrBevel {
             })
         }).collect();
 
+        // Exact distance-to-nearest-outside for every pixel, O(N) regardless
+        // of bevel distance. Capping the squared distance at `distance²`
+        // matches the windowed brute-force search this replaces.
+        let dist2 = distance_field_squared(&inside, w, h);
+
         // Per-pixel bevel height: 0 outside, ramps up to 1 toward shape interior.
         let inside_ref = &inside;
-        let dist_i = distance.ceil() as i32;
+        let dist2_ref = &dist2;
         let heights: Vec<f32> = (0..h).into_par_iter().flat_map_iter(move |y| {
             (0..w).map(move |x| {
                 let idx = y * w + x;
                 if !inside_ref[idx] {
                     return 0.0f32;
                 }
-                // Find distance to nearest outside pixel within the search window.
-                let mut min_d2 = distance * distance;
-                let y_start = (y as i32 - dist_i).max(0) as usize;
-                let y_end = ((y as i32 + dist_i) as usize).min(h - 1);
-                let x_start = (x as i32 - dist_i).max(0) as usize;
-                let x_end = ((x as i32 + dist_i) as usize).min(w - 1);
-                for sy in y_start..=y_end {
-                    for sx in x_start..=x_end {
-                        if !inside_ref[sy * w + sx] {
-                            let dx = sx as f32 - x as f32;
-                            let dy = sy as f32 - y as f32;
-                            let d2 = dx * dx + dy * dy;
-                            if d2 < min_d2 { min_d2 = d2; }
-                        }
-                    }
-                }
+                let min_d2 = (dist2_ref[idx] as f32).min(distance * distance);
                 let d = min_d2.sqrt();
                 let t = (d / distance).clamp(0.0, 1.0);
                 // Corner profile.
@@ -152,18 +202,18 @@ impl OpImagePbrBevel {
             });
         }
 
-        // Normal mode — Sobel across the height image, packed to RGBA.
-        let sample = |x: i32, y: i32| -> f32 {
+        // Normal mode — Sobel across the height image, packed to RGBA (parallelized).
+        let height_ref = &height_img;
+        let sample = move |x: i32, y: i32| -> f32 {
             let cx = x.clamp(0, width as i32 - 1) as u32;
             let cy = y.clamp(0, height as i32 - 1) as u32;
-            height_img.get_pixel(cx, cy)[0]
+            height_ref.get_pixel(cx, cy)[0]
         };
-        let mut normal = FloatImage::new(width, height, 4);
         // Intensity lines the normal up with the chosen bevel distance:
         // larger bevels produce gentler normals.
         let intensity = (4.0 / distance.max(1.0)).max(0.1);
-        for y in 0..height as i32 {
-            for x in 0..width as i32 {
+        let normal_pixels: Vec<f32> = (0..height as i32).into_par_iter().flat_map_iter(move |y| {
+            (0..width as i32).flat_map(move |x| {
                 let tl = sample(x - 1, y - 1);
                 let top = sample(x, y - 1);
                 let tr = sample(x + 1, y - 1);
@@ -178,14 +228,15 @@ impl OpImagePbrBevel {
                 let ny = -dy;
                 let nz = 1.0f32;
                 let len = (nx * nx + ny * ny + nz * nz).sqrt();
-                normal.put_pixel(x as u32, y as u32, &[
+                [
                     (nx / len) * 0.5 + 0.5,
                     (ny / len) * 0.5 + 0.5,
                     (nz / len) * 0.5 + 0.5,
                     1.0,
-                ]);
-            }
-        }
+                ]
+            })
+        }).collect();
+        let normal = FloatImage::from_raw(width, height, 4, normal_pixels).unwrap();
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

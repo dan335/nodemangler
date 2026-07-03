@@ -82,8 +82,8 @@ async fn test_kuwahara_output_range() {
     match &result.responses[0].value {
         Value::Image { data, .. } => {
             for pixel in data.pixels() {
-                for c in 0..pixel.len() {
-                    assert!(pixel[c] >= 0.0 && pixel[c] <= 1.0, "pixel out of range: {}", pixel[c]);
+                for &val in pixel {
+                    assert!(val >= 0.0 && val <= 1.0, "pixel out of range: {}", val);
                 }
             }
         }
@@ -151,4 +151,116 @@ async fn test_kuwahara_radius_zero_is_clamped() {
     ];
     let result = OpImageAdjustmentKuwahara::run(&mut inputs).await;
     assert!(result.is_ok(), "radius=0 failed: {:?}", result.err());
+}
+
+/// Deterministic pseudo-random value in [0, 1] from pixel coordinates.
+fn hash01(x: u32, y: u32, c: u32) -> f32 {
+    let mut v = x.wrapping_mul(0x9E37_79B1)
+        ^ y.wrapping_mul(0x85EB_CA77)
+        ^ c.wrapping_mul(0xC2B2_AE3D);
+    v ^= v >> 15;
+    v = v.wrapping_mul(0x2C1B_3C6D);
+    v ^= v >> 12;
+    (v & 0xFFFF) as f32 / 65535.0
+}
+
+fn hashed_image(w: u32, h: u32, ch: u32) -> Arc<FloatImage> {
+    let mut img = FloatImage::new(w, h, ch);
+    for y in 0..h {
+        for x in 0..w {
+            let mut px = [0.0f32; 4];
+            for c in 0..ch {
+                px[c as usize] = hash01(x, y, c);
+            }
+            img.put_pixel(x, y, &px[..ch as usize]);
+        }
+    }
+    Arc::new(img)
+}
+
+/// Straightforward per-pixel quadrant-scan Kuwahara used as ground truth
+/// for the summed-area-table implementation.
+fn kuwahara_reference(img: &FloatImage, radius: i32) -> Vec<f32> {
+    let (width, height) = img.dimensions();
+    let ch = img.channels() as usize;
+    let has_alpha = ch == 2 || ch == 4;
+    let color_ch = if has_alpha { ch - 1 } else { ch };
+    let w = width as i32;
+    let h = height as i32;
+    let mut out = Vec::with_capacity(width as usize * height as usize * ch);
+    for y in 0..h {
+        for x in 0..w {
+            let quadrants: [(i32, i32, i32, i32); 4] = [
+                (x - radius, y - radius, x, y),
+                (x, y - radius, x + radius, y),
+                (x - radius, y, x, y + radius),
+                (x, y, x + radius, y + radius),
+            ];
+            let mut best_variance = f32::INFINITY;
+            let mut best_mean = vec![0.0f32; ch];
+            for (x0, y0, x1, y1) in quadrants.iter() {
+                let cx0 = (*x0).clamp(0, w - 1);
+                let cy0 = (*y0).clamp(0, h - 1);
+                let cx1 = (*x1).clamp(0, w - 1);
+                let cy1 = (*y1).clamp(0, h - 1);
+                let mut sum = vec![0.0f64; ch];
+                let mut lum_sum: f64 = 0.0;
+                let mut lum_sum_sq: f64 = 0.0;
+                let mut count: u32 = 0;
+                for py in cy0..=cy1 {
+                    for px in cx0..=cx1 {
+                        let pixel = img.get_pixel(px as u32, py as u32);
+                        for c in 0..ch {
+                            sum[c] += pixel[c] as f64;
+                        }
+                        let lum = if color_ch >= 3 {
+                            0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2]
+                        } else {
+                            pixel[0]
+                        } as f64;
+                        lum_sum += lum;
+                        lum_sum_sq += lum * lum;
+                        count += 1;
+                    }
+                }
+                let inv_n = 1.0 / count as f64;
+                let mean_lum = lum_sum * inv_n;
+                let variance = (lum_sum_sq * inv_n - mean_lum * mean_lum).max(0.0) as f32;
+                if variance < best_variance {
+                    best_variance = variance;
+                    for c in 0..ch {
+                        best_mean[c] = (sum[c] * inv_n) as f32;
+                    }
+                }
+            }
+            out.extend_from_slice(&best_mean);
+        }
+    }
+    out
+}
+
+#[tokio::test]
+async fn test_kuwahara_matches_bruteforce_reference() {
+    let img = hashed_image(24, 17, 4);
+    // radius 9 also exercises heavy quadrant clamping on a 24x17 image
+    for radius in [3i32, 9i32] {
+        let mut inputs = vec![
+            Input::new("image".to_string(), Value::Image { data: img.clone(), change_id: get_id() }, None, None),
+            Input::new("radius".to_string(), Value::Integer(radius), None, None),
+        ];
+        let result = OpImageAdjustmentKuwahara::run(&mut inputs).await.unwrap();
+        let expected = kuwahara_reference(&img, radius);
+        match &result.responses[0].value {
+            Value::Image { data, .. } => {
+                let got = data.as_raw();
+                assert_eq!(got.len(), expected.len());
+                let mut max_diff = 0.0f32;
+                for (g, e) in got.iter().zip(expected.iter()) {
+                    max_diff = max_diff.max((g - e).abs());
+                }
+                assert!(max_diff < 1e-4, "radius {}: max abs diff {} exceeds tolerance", radius, max_diff);
+            }
+            other => panic!("Expected Image, got {:?}", other),
+        }
+    }
 }

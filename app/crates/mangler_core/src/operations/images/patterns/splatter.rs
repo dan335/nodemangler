@@ -12,6 +12,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -25,6 +26,20 @@ fn lcg_float(seed: u64) -> (f64, u64) {
     let next = lcg(seed);
     let val = (next >> 33) as f64 / (1u64 << 31) as f64;
     (val, next)
+}
+
+/// Precomputed placement of a single stamp.
+struct Stamp {
+    center_x: f64,
+    center_y: f64,
+    cos_a: f64,
+    sin_a: f64,
+    draw: f64,
+    tint: [f64; 3],
+    sx: i32,
+    ex: i32,
+    sy: i32,
+    ey: i32,
 }
 
 /// Free-placement pattern splatter.
@@ -108,9 +123,10 @@ impl OpImagePatternSplatter {
         let pat_w = pattern.width() as f64;
         let pat_h = pattern.height() as f64;
 
-        let mut image = FloatImage::new(width as u32, height as u32, pat_channels);
-        let mut pixel_buf = vec![0.0f32; pat_channels as usize];
+        // Precompute every stamp's placement serially so the RNG draw order is
+        // identical to the original per-stamp loop.
         let mut rng_state = lcg(seed as u64 ^ 0xDEADBEEF);
+        let mut stamps: Vec<Stamp> = Vec::with_capacity(count as usize);
 
         for _ in 0..count {
             let (rx, s) = lcg_float(rng_state);
@@ -149,34 +165,55 @@ impl OpImagePatternSplatter {
                 if wy < min_y { min_y = wy; }
                 if wy > max_y { max_y = wy; }
             }
-            let sx = (min_x.floor() as i32).max(0);
-            let ex = (max_x.ceil() as i32).min(width);
-            let sy = (min_y.floor() as i32).max(0);
-            let ey = (max_y.ceil() as i32).min(height);
 
-            for py in sy..ey {
-                for px in sx..ex {
+            stamps.push(Stamp {
+                center_x,
+                center_y,
+                cos_a,
+                sin_a,
+                draw,
+                tint,
+                sx: (min_x.floor() as i32).max(0),
+                ex: (max_x.ceil() as i32).min(width),
+                sy: (min_y.floor() as i32).max(0),
+                ey: (max_y.ceil() as i32).min(height),
+            });
+        }
+
+        // Rows are independent, so stamp them in parallel. Each pixel applies
+        // the max composite in the same stamp order as the serial version.
+        let ch = pat_channels as usize;
+        let pattern_ref = &pattern;
+        let stamps_ref = &stamps;
+
+        let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |py| {
+            let mut row = vec![0.0f32; width as usize * ch];
+            for stamp in stamps_ref {
+                if py < stamp.sy || py >= stamp.ey { continue; }
+                for px in stamp.sx..stamp.ex {
                     // Inverse transform: output px → local coords → pattern UV.
-                    let dx = px as f64 - center_x;
-                    let dy = py as f64 - center_y;
-                    let lx = cos_a * dx + sin_a * dy;
-                    let ly = -sin_a * dx + cos_a * dy;
-                    let u = (lx / draw + 0.5) * pat_w;
-                    let v = (ly / draw + 0.5) * pat_h;
+                    let dx = px as f64 - stamp.center_x;
+                    let dy = py as f64 - stamp.center_y;
+                    let lx = stamp.cos_a * dx + stamp.sin_a * dy;
+                    let ly = -stamp.sin_a * dx + stamp.cos_a * dy;
+                    let u = (lx / stamp.draw + 0.5) * pat_w;
+                    let v = (ly / stamp.draw + 0.5) * pat_h;
                     if u < 0.0 || u >= pat_w || v < 0.0 || v >= pat_h {
                         continue;
                     }
-                    let src = pattern.get_pixel(u as u32, v as u32);
-                    let dst = image.get_pixel(px as u32, py as u32);
+                    let src = pattern_ref.get_pixel(u as u32, v as u32);
+                    let base = px as usize * ch;
                     // Max composite with per-channel tint applied first.
-                    for c in 0..pat_channels as usize {
-                        let t = if c < 3 { tint[c] as f32 } else { 1.0 };
-                        pixel_buf[c] = dst[c].max(src[c] * t);
+                    for c in 0..ch {
+                        let t = if c < 3 { stamp.tint[c] as f32 } else { 1.0 };
+                        row[base + c] = row[base + c].max(src[c] * t);
                     }
-                    image.put_pixel(px as u32, py as u32, &pixel_buf);
                 }
             }
-        }
+            row
+        }).collect();
+
+        let image = FloatImage::from_raw(width as u32, height as u32, pat_channels, pixels).unwrap();
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

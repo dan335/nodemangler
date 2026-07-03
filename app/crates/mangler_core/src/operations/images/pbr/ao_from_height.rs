@@ -77,18 +77,40 @@ impl OpImagePbrAoFromHeight {
         let two_pi = std::f32::consts::TAU;
         let heights_ref = &heights;
 
+        // The sample ring is identical for every pixel: precompute each
+        // sample's offset and its interior distance (from the rounded offset)
+        // once instead of re-deriving cos/sin/sqrt per pixel.
+        let ring: Vec<(f32, f32, f32)> = (0..samples).map(|i| {
+            let angle = i as f32 * two_pi / samples as f32;
+            let ddx = angle.cos() * radius as f32;
+            let ddy = angle.sin() * radius as f32;
+            let rdx = ddx.round();
+            let rdy = ddy.round();
+            let dist = (rdx * rdx + rdy * rdy).sqrt().max(1.0);
+            (ddx, ddy, dist)
+        }).collect();
+        let ring_ref = &ring;
+        let wm1 = (width - 1) as f32;
+        let hm1 = (height - 1) as f32;
+
         let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |y| {
             (0..width).flat_map(move |x| {
                 let h = heights_ref[y * width + x];
                 let mut occlusion = 0.0f32;
-                for i in 0..samples {
-                    let angle = i as f32 * two_pi / samples as f32;
-                    let ddx = angle.cos() * radius as f32;
-                    let ddy = angle.sin() * radius as f32;
-                    let sx = (x as f32 + ddx).round().clamp(0.0, (width - 1) as f32) as usize;
-                    let sy = (y as f32 + ddy).round().clamp(0.0, (height - 1) as f32) as usize;
+                for &(ddx, ddy, ring_dist) in ring_ref {
+                    let sxf = (x as f32 + ddx).round();
+                    let syf = (y as f32 + ddy).round();
+                    let (sx, sy, dist) = if sxf >= 0.0 && sxf <= wm1 && syf >= 0.0 && syf <= hm1 {
+                        (sxf as usize, syf as usize, ring_dist)
+                    } else {
+                        // Clamped at the border: the effective offset shrank,
+                        // so the precomputed ring distance no longer applies.
+                        let sx = sxf.clamp(0.0, wm1) as usize;
+                        let sy = syf.clamp(0.0, hm1) as usize;
+                        let dist = ((sx as f32 - x as f32).powi(2) + (sy as f32 - y as f32).powi(2)).sqrt().max(1.0);
+                        (sx, sy, dist)
+                    };
                     let nh = heights_ref[sy * width + sx];
-                    let dist = ((sx as f32 - x as f32).powi(2) + (sy as f32 - y as f32).powi(2)).sqrt().max(1.0);
                     occlusion += (nh - h).max(0.0) / dist;
                 }
                 occlusion /= samples as f32;

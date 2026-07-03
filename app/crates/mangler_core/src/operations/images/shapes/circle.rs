@@ -13,6 +13,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -99,20 +100,20 @@ impl OpImageShapesCircle {
         let aa = 1.5;
 
         // 1-channel grayscale mask
-        let mut image = FloatImage::new(width as u32, height as u32, 1);
-
-        for y in 0..height {
-            for x in 0..width {
-                // Sample at the pixel center.
+        let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |y| {
+            // Sample at the pixel center.
+            let dy = (y as f64 + 0.5) - center_px_y;
+            (0..width).map(move |x| {
                 let dx = (x as f64 + 0.5) - center_px_x;
-                let dy = (y as f64 + 0.5) - center_px_y;
                 // Signed distance to the circle edge (negative inside).
                 let dist = (dx * dx + dy * dy).sqrt() - radius_px;
                 // smoothstep for anti-aliased edge, result in [0.0, 1.0]
                 let alpha = 1.0 - smoothstep(-aa, aa, dist);
-                image.put_pixel(x as u32, y as u32, &[alpha as f32]);
-            }
-        }
+                alpha as f32
+            })
+        }).collect();
+
+        let image = FloatImage::from_raw(width as u32, height as u32, 1, pixels).unwrap();
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

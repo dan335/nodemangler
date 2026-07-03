@@ -14,6 +14,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::f32::consts::TAU;
@@ -84,13 +85,15 @@ impl OpImageTransformKaleidoscope {
         let offset_rad = angle_deg.to_radians();
 
         let mut output = FloatImage::new(w, h, ch as u32);
-        let mut sample_buf = [0.0f32; 4];
+        let src = &*data;
+        let row_len = (w as usize * ch).max(1);
 
-        for y in 0..h {
-            for x in 0..w {
+        output.as_raw_mut().par_chunks_mut(row_len).enumerate().for_each(|(y, row)| {
+            let mut sample_buf = [0.0f32; 4];
+            let dy = y as f32 - cpy;
+            for x in 0..w as usize {
                 // Polar coordinates of the output pixel relative to the centre.
                 let dx = x as f32 - cpx;
-                let dy = y as f32 - cpy;
                 let r = (dx * dx + dy * dy).sqrt();
                 let mut theta = dy.atan2(dx);
 
@@ -105,10 +108,10 @@ impl OpImageTransformKaleidoscope {
                 // output populated if the fold reaches beyond the source.
                 let sx = cpx + r * theta.cos();
                 let sy = cpy + r * theta.sin();
-                data.bilinear_sample(sx, sy, &mut sample_buf);
-                output.put_pixel(x, y, &sample_buf[..ch]);
+                src.bilinear_sample(sx, sy, &mut sample_buf);
+                row[x * ch..(x + 1) * ch].copy_from_slice(&sample_buf[..ch]);
             }
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

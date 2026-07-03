@@ -95,7 +95,9 @@ impl OpImageAdjustmentRadialBlur {
                 let base_angle = ddy.atan2(ddx);
                 let dist = (ddx * ddx + ddy * ddy).sqrt();
 
-                let mut sums = vec![0.0f64; ch];
+                // channels are always <= 4, so a stack array avoids a
+                // per-pixel heap allocation
+                let mut sums = [0.0f64; 4];
 
                 // Sample at angular offsets along the arc
                 for i in 0..samples {

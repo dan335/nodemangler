@@ -21,6 +21,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -99,27 +100,34 @@ impl OpImageAdjustmentAnisotropicDiffusion {
         let mut buf: Vec<f32> = data.as_raw().to_vec();
         let mut next = buf.clone();
 
+        // Each Jacobi iteration reads only from `buf` and writes only to
+        // `next`, so the per-iteration pass is row-parallel; the iteration
+        // loop itself must stay sequential.
+        let wu = width as usize;
+        let row_len = wu * ch;
         for _ in 0..iterations {
-            for y in 0..h {
+            let buf_ref = &buf;
+            next.par_chunks_mut(row_len).enumerate().for_each(|(y, next_row)| {
+                let y = y as i32;
                 for x in 0..w {
-                    let idx = (y as usize * width as usize + x as usize) * ch;
+                    let idx = (y as usize * wu + x as usize) * ch;
                     // Neighbor indices with edge clamping
                     let xn = (x - 1).max(0) as usize;
                     let xp = (x + 1).min(w - 1) as usize;
                     let yn = (y - 1).max(0) as usize;
                     let yp = (y + 1).min(h - 1) as usize;
-                    let wu = width as usize;
                     let idx_n = (yn * wu + x as usize) * ch;
                     let idx_s = (yp * wu + x as usize) * ch;
                     let idx_e = (y as usize * wu + xp) * ch;
                     let idx_we = (y as usize * wu + xn) * ch;
+                    let out_idx = x as usize * ch;
 
                     for c in 0..color_ch {
-                        let v = buf[idx + c];
-                        let dn = buf[idx_n + c] - v;
-                        let ds = buf[idx_s + c] - v;
-                        let de = buf[idx_e + c] - v;
-                        let dw = buf[idx_we + c] - v;
+                        let v = buf_ref[idx + c];
+                        let dn = buf_ref[idx_n + c] - v;
+                        let ds = buf_ref[idx_s + c] - v;
+                        let de = buf_ref[idx_e + c] - v;
+                        let dw = buf_ref[idx_we + c] - v;
 
                         // Perona–Malik "quadratic" edge-stopping function
                         let cn = 1.0 / (1.0 + dn * dn * inv_k2);
@@ -127,14 +135,14 @@ impl OpImageAdjustmentAnisotropicDiffusion {
                         let ce = 1.0 / (1.0 + de * de * inv_k2);
                         let cw = 1.0 / (1.0 + dw * dw * inv_k2);
 
-                        next[idx + c] = v + lambda * (cn * dn + cs * ds + ce * de + cw * dw);
+                        next_row[out_idx + c] = v + lambda * (cn * dn + cs * ds + ce * de + cw * dw);
                     }
                     // Copy alpha unchanged (not diffused)
                     if ch == 2 || ch == 4 {
-                        next[idx + ch - 1] = buf[idx + ch - 1];
+                        next_row[out_idx + ch - 1] = buf_ref[idx + ch - 1];
                     }
                 }
-            }
+            });
             std::mem::swap(&mut buf, &mut next);
         }
 

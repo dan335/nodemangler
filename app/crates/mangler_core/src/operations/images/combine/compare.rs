@@ -12,9 +12,19 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
+
+/// Minimum pixel count before the comparison is parallelized over rows.
+const PARALLEL_PIXELS: usize = 1 << 16;
+
+/// Reads RGB from an interleaved pixel, broadcasting grayscale sources.
+#[inline]
+fn rgb_of(px: &[f32], ch: usize) -> (f32, f32, f32) {
+    if ch >= 3 { (px[0], px[1], px[2]) } else { (px[0], px[0], px[0]) }
+}
 
 /// Operation that compares two images and outputs a greyscale difference map.
 ///
@@ -74,30 +84,32 @@ impl OpImageCombineCompare {
         let Value::Decimal(gain) = gain_converted.unwrap() else { unreachable!() };
 
         let (w, h) = img_a.dimensions();
-        // Output is single-channel greyscale.
-        let mut output = FloatImage::new(w, h, 1);
-
-        // Helper: extract RGB from any channel count, defaulting missing channels.
-        let get_rgb = |img: &FloatImage, x: u32, y: u32| -> (f32, f32, f32) {
-            let px = img.get_pixel(x, y);
-            let ch = img.channels() as usize;
-            match ch {
-                1 => (px[0], px[0], px[0]),
-                2 => (px[0], px[0], px[0]),
-                3 => (px[0], px[1], px[2]),
-                _ => (px[0], px[1], px[2]),
-            }
-        };
-
         let (bw, bh) = img_b.dimensions();
+        let a_ch = img_a.channels() as usize;
+        let b_ch = img_b.channels() as usize;
+        let a_raw = img_a.as_raw();
+        let b_raw = img_b.as_raw();
+        let wu = w as usize;
+        let bwu = bw as usize;
 
-        for y in 0..h {
-            for x in 0..w {
-                let (ar, ag, ab) = get_rgb(&img_a, x, y);
+        // Output is single-channel greyscale.
+        let mut out_data = vec![0.0f32; wu * h as usize];
+
+        // Compare one row of A against the matching row of B (if any); the
+        // per-image bounds checks and channel dispatch are hoisted per row.
+        let process_row = |(y, dst_row): (usize, &mut [f32])| {
+            let a_row = &a_raw[y * wu * a_ch..(y + 1) * wu * a_ch];
+            // Columns of this row covered by image B (empty when the row is
+            // below image B's height).
+            let b_row = if (y as u32) < bh { &b_raw[y * bwu * b_ch..(y + 1) * bwu * b_ch] } else { &[][..] };
+            let in_w = if b_row.is_empty() { 0 } else { wu.min(bwu) };
+
+            for (x, dst) in dst_row.iter_mut().enumerate() {
+                let (ar, ag, ab) = rgb_of(&a_row[x * a_ch..], a_ch);
 
                 // If pixel is outside image B, treat as black (maximise difference).
-                let diff = if x < bw && y < bh {
-                    let (br, bg, bb) = get_rgb(&img_b, x, y);
+                let diff = if x < in_w {
+                    let (br, bg, bb) = rgb_of(&b_row[x * b_ch..], b_ch);
                     // Mean absolute difference across RGB.
                     ((ar - br).abs() + (ag - bg).abs() + (ab - bb).abs()) / 3.0
                 } else {
@@ -106,10 +118,19 @@ impl OpImageCombineCompare {
                 };
 
                 // Apply gain and clamp to [0, 1].
-                let value = (diff * gain).clamp(0.0, 1.0);
-                output.put_pixel(x, y, &[value]);
+                *dst = (diff * gain).clamp(0.0, 1.0);
+            }
+        };
+
+        if wu > 0 {
+            if wu * h as usize >= PARALLEL_PIXELS {
+                out_data.par_chunks_exact_mut(wu).enumerate().for_each(process_row);
+            } else {
+                out_data.chunks_exact_mut(wu).enumerate().for_each(process_row);
             }
         }
+
+        let output = FloatImage::from_raw(w, h, 1, out_data).unwrap();
 
         Ok(OperationResponse {
             

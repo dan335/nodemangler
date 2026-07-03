@@ -18,6 +18,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -71,51 +72,78 @@ impl OpImageAdjustmentVectorMorphology {
         let radius = radius.max(1);
         let (w, h) = data.dimensions();
         let ch = data.channels() as usize;
-        let iw = w as i32;
-        let ih = h as i32;
+        let wu = w as usize;
+        let hu = h as usize;
+        let r = radius as usize;
 
-        // Convenience — tilt squared for the neighbour at (x, y) in the
-        // unpacked [-1, 1] representation. Grayscale (ch < 2) has no Y to
-        // contribute, so we use only R as tilt X.
-        let tilt_sq = |x: u32, y: u32| -> f32 {
-            let px = data.get_pixel(x, y);
-            let nx = if ch >= 1 { px[0] * 2.0 - 1.0 } else { 0.0 };
-            let ny = if ch >= 2 { px[1] * 2.0 - 1.0 } else { 0.0 };
-            nx * nx + ny * ny
-        };
+        // Precompute the tilt² plane once — one f32 per pixel — instead of
+        // re-deriving it for every neighbour of every pixel. Grayscale
+        // (ch < 2) has no Y to contribute, so only R acts as tilt X.
+        let data_ref = &data;
+        let tilt: Vec<f32> = (0..hu).into_par_iter().flat_map_iter(|y| {
+            (0..wu).map(move |x| {
+                let px = data_ref.get_pixel(x as u32, y as u32);
+                let nx = if ch >= 1 { px[0] * 2.0 - 1.0 } else { 0.0 };
+                let ny = if ch >= 2 { px[1] * 2.0 - 1.0 } else { 0.0 };
+                nx * nx + ny * ny
+            })
+        }).collect();
 
-        let mut output = FloatImage::new(w, h, ch as u32);
-        let mut buf = [0.0f32; 4];
+        // The square-window argmin/argmax is separable: a horizontal running
+        // pass finds each row-window's winner, then a vertical pass reduces
+        // those per-column. The winning SCORE is exact (pure comparisons);
+        // ties keep the earliest candidate (smallest y, then smallest x),
+        // which may differ from the naive scan order but is deterministic
+        // and value-equal.
+        let better = move |cand: f32, best: f32| if mode == 0 { cand < best } else { cand > best };
 
-        for y in 0..ih {
-            for x in 0..iw {
-                // Start the comparison from the center pixel itself so the
-                // loop always converges on a valid winner even for radius 0.
-                let mut best_x = x as u32;
-                let mut best_y = y as u32;
-                let mut best_score = tilt_sq(best_x, best_y);
-
-                for dy in -radius..=radius {
-                    let sy = (y + dy).clamp(0, ih - 1) as u32;
-                    for dx in -radius..=radius {
-                        let sx = (x + dx).clamp(0, iw - 1) as u32;
-                        let s = tilt_sq(sx, sy);
-                        let better = if mode == 0 { s < best_score } else { s > best_score };
-                        if better {
-                            best_score = s;
-                            best_x = sx;
-                            best_y = sy;
-                        }
-                    }
-                }
-
-                // Copy the winner's pixel verbatim so vector length is
-                // preserved exactly (no reconstruction or normalisation).
-                let src = data.get_pixel(best_x, best_y);
-                buf[..ch].copy_from_slice(&src[..ch]);
-                output.put_pixel(x as u32, y as u32, &buf[..ch]);
+        // Horizontal pass: per pixel, (winning tilt², source x) over [x-r, x+r].
+        let tilt_ref = &tilt;
+        let hwin: Vec<(f32, u32)> = (0..hu).into_par_iter().flat_map_iter(|y| {
+            let m = wu + 2 * r;
+            let mut line = vec![(0.0f32, 0u32); m];
+            let mut fwd = vec![(0.0f32, 0u32); m];
+            let mut bwd = vec![(0.0f32, 0u32); m];
+            let mut dst = vec![(0.0f32, 0u32); wu];
+            for (i, v) in line.iter_mut().enumerate() {
+                let x = (i as i64 - r as i64).clamp(0, wu as i64 - 1) as usize;
+                *v = (tilt_ref[y * wu + x], x as u32);
             }
-        }
+            van_herk_argext(&line, &mut fwd, &mut bwd, &mut dst, r, better);
+            dst
+        }).collect();
+
+        // Vertical pass: reduce the stored per-column row-winners over
+        // [y-r, y+r], recovering full (source x, source y) coordinates.
+        let hwin_ref = &hwin;
+        let winners: Vec<Vec<(u32, u32)>> = (0..wu).into_par_iter().map(|x| {
+            let m = hu + 2 * r;
+            let mut line = vec![(0.0f32, 0u32); m];
+            let mut fwd = vec![(0.0f32, 0u32); m];
+            let mut bwd = vec![(0.0f32, 0u32); m];
+            let mut dst = vec![(0.0f32, 0u32); hu];
+            for (i, v) in line.iter_mut().enumerate() {
+                let y = (i as i64 - r as i64).clamp(0, hu as i64 - 1) as usize;
+                *v = (hwin_ref[y * wu + x].0, y as u32);
+            }
+            van_herk_argext(&line, &mut fwd, &mut bwd, &mut dst, r, better);
+            dst.iter().map(|&(_, by)| {
+                let bx = hwin_ref[by as usize * wu + x].1;
+                (bx, by)
+            }).collect()
+        }).collect();
+
+        // Copy each winner's pixel verbatim so vector length is preserved
+        // exactly (no reconstruction or normalisation).
+        let winners_ref = &winners;
+        let pixels: Vec<f32> = (0..hu).into_par_iter().flat_map_iter(move |y| {
+            (0..wu).flat_map(move |x| {
+                let (bx, by) = winners_ref[x][y];
+                data_ref.get_pixel(bx, by)[..ch].iter().copied()
+            })
+        }).collect();
+
+        let output = FloatImage::from_raw(w, h, data.channels(), pixels).unwrap();
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
@@ -123,6 +151,44 @@ impl OpImageAdjustmentVectorMorphology {
                 OutputResponse { value: Value::Image { data: Arc::new(output), change_id: get_id() } },
             ],
         })
+    }
+}
+
+/// One van Herk–Gil-Werman argmin/argmax pass over a replicate-padded line of
+/// (score, source-index) pairs.
+///
+/// `line` holds `dst.len() + 2 * radius` samples: the source pairs with
+/// `radius` edge-replicated samples prepended and appended. `fwd`/`bwd` are
+/// scratch buffers of the same length as `line`. For every output index `x`
+/// the result carries the extremal score over `line[x..=x + 2 * radius]`
+/// (exact — only comparisons are performed) and one source index achieving
+/// it; on ties the earliest index in the window wins.
+fn van_herk_argext<F>(
+    line: &[(f32, u32)],
+    fwd: &mut [(f32, u32)],
+    bwd: &mut [(f32, u32)],
+    dst: &mut [(f32, u32)],
+    radius: usize,
+    better: F,
+) where
+    F: Fn(f32, f32) -> bool + Copy,
+{
+    // Keeps `a` unless `b` scores strictly better, so the earlier candidate
+    // survives ties in every scan below.
+    let sel = |a: (f32, u32), b: (f32, u32)| if better(b.0, a.0) { b } else { a };
+    let m = line.len();
+    let k = 2 * radius + 1;
+    // Forward scan restarts at every block boundary; backward scan restarts
+    // at every block end. Any window of width k then spans at most two blocks
+    // and is covered by one bwd value (its head) and one fwd value (its tail).
+    for i in 0..m {
+        fwd[i] = if i % k == 0 { line[i] } else { sel(fwd[i - 1], line[i]) };
+    }
+    for i in (0..m).rev() {
+        bwd[i] = if i % k == k - 1 || i == m - 1 { line[i] } else { sel(line[i], bwd[i + 1]) };
+    }
+    for (x, d) in dst.iter_mut().enumerate() {
+        *d = sel(bwd[x], fwd[x + k - 1]);
     }
 }
 

@@ -14,6 +14,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -113,6 +114,31 @@ pub(crate) fn gaussian_blur_image(data: &FloatImage, sigma: f32) -> FloatImage {
     FloatImage::from_raw(width, height, data.channels(), buf).unwrap()
 }
 
+/// Apply a Gaussian blur to a single-channel planar `f32` buffer using the
+/// same 3-pass box approximation as [`gaussian_blur_image`].
+///
+/// Shared helper for operations that blur planar luminance buffers (DoG,
+/// Canny). O(1) per pixel regardless of sigma; edges are clamped (extend).
+/// For `sigma <= 0`, returns a copy of the input.
+pub(crate) fn gaussian_blur_planar(src: &[f32], width: u32, height: u32, sigma: f32) -> Vec<f32> {
+    let sigma = sigma.max(0.0);
+    if sigma < f32::EPSILON || src.is_empty() {
+        return src.to_vec();
+    }
+
+    let boxes = box_sizes_for_gaussian(sigma, 3);
+
+    let mut buf: Vec<f32> = src.to_vec();
+    let mut tmp = vec![0.0f32; src.len()];
+
+    for radius in &boxes {
+        box_blur_h(&buf, &mut tmp, width, height, 1, *radius);
+        box_blur_v(&tmp, &mut buf, width, height, 1, *radius);
+    }
+
+    buf
+}
+
 /// Compute box radii for an n-pass box blur that approximates a Gaussian with the given sigma.
 /// Based on the W3C SVG specification algorithm.
 fn box_sizes_for_gaussian(sigma: f32, n: usize) -> Vec<u32> {
@@ -137,52 +163,66 @@ fn box_sizes_for_gaussian(sigma: f32, n: usize) -> Vec<u32> {
 
 /// Horizontal box blur pass using a running sum. Clamps at edges.
 /// Works with dynamic channel count via the `channels` parameter.
-fn box_blur_h(src: &[f32], dst: &mut [f32], width: u32, height: u32, channels: usize, radius: u32) {
+///
+/// Rows are independent, so the pass is parallelized over rows; the
+/// per-row arithmetic is identical to the serial version, so results are
+/// bit-identical.
+fn box_blur_h(src: &[f32], dst: &mut [f32], width: u32, _height: u32, channels: usize, radius: u32) {
     let r = radius as i32;
     let diam = (2 * r + 1) as f32;
     let w = width as i32;
+    let row_len = width as usize * channels;
 
-    for y in 0..height as usize {
-        let row = y * width as usize;
+    dst.par_chunks_mut(row_len).enumerate().for_each(|(y, dst_row)| {
+        let src_row = &src[y * row_len..(y + 1) * row_len];
 
         // Initialize running sum by accumulating the first (2r+1) pixels (clamped)
         let mut sum = vec![0.0f32; channels];
         for ix in -r..=r {
             let x = ix.clamp(0, w - 1) as usize;
-            let idx = (row + x) * channels;
+            let idx = x * channels;
             for c in 0..channels {
-                sum[c] += src[idx + c];
+                sum[c] += src_row[idx + c];
             }
         }
 
         // Slide the window across the row
         for x in 0..w {
-            let dst_idx = (row + x as usize) * channels;
+            let dst_idx = x as usize * channels;
             for c in 0..channels {
-                dst[dst_idx + c] = sum[c] / diam;
+                dst_row[dst_idx + c] = sum[c] / diam;
             }
 
             // Add the new right pixel and remove the old left pixel
             let right = (x + r + 1).min(w - 1) as usize;
             let left = (x - r).max(0) as usize;
-            let add_idx = (row + right) * channels;
-            let rem_idx = (row + left) * channels;
+            let add_idx = right * channels;
+            let rem_idx = left * channels;
             for c in 0..channels {
-                sum[c] += src[add_idx + c] - src[rem_idx + c];
+                sum[c] += src_row[add_idx + c] - src_row[rem_idx + c];
             }
         }
-    }
+    });
 }
 
 /// Vertical box blur pass using a running sum. Clamps at edges.
 /// Works with dynamic channel count via the `channels` parameter.
+///
+/// Columns are independent, so they are computed in parallel into a
+/// column-major buffer, then scattered back to row-major in a parallel
+/// per-row gather. The per-column arithmetic is identical to the serial
+/// version, so results are bit-identical.
 fn box_blur_v(src: &[f32], dst: &mut [f32], width: u32, height: u32, channels: usize, radius: u32) {
     let r = radius as i32;
     let diam = (2 * r + 1) as f32;
     let w = width as usize;
     let h = height as i32;
+    let hu = height as usize;
 
-    for x in 0..width as usize {
+    // columns[x * hu + y] holds the blurred pixel at (x, y)
+    let columns: Vec<f32> = (0..w).into_par_iter().flat_map_iter(|x| {
+        let mut col = vec![0.0f32; hu * channels];
+
         // Initialize running sum by accumulating the first (2r+1) pixels (clamped)
         let mut sum = vec![0.0f32; channels];
         for iy in -r..=r {
@@ -195,9 +235,9 @@ fn box_blur_v(src: &[f32], dst: &mut [f32], width: u32, height: u32, channels: u
 
         // Slide the window down the column
         for y in 0..h {
-            let dst_idx = (y as usize * w + x) * channels;
+            let out_idx = y as usize * channels;
             for c in 0..channels {
-                dst[dst_idx + c] = sum[c] / diam;
+                col[out_idx + c] = sum[c] / diam;
             }
 
             // Add the new bottom pixel and remove the old top pixel
@@ -209,7 +249,18 @@ fn box_blur_v(src: &[f32], dst: &mut [f32], width: u32, height: u32, channels: u
                 sum[c] += src[add_idx + c] - src[rem_idx + c];
             }
         }
-    }
+
+        col.into_iter()
+    }).collect();
+
+    // Gather the column-major buffer back into row-major dst
+    dst.par_chunks_mut(w * channels).enumerate().for_each(|(y, dst_row)| {
+        for x in 0..w {
+            let src_idx = (x * hu + y) * channels;
+            dst_row[x * channels..(x + 1) * channels]
+                .copy_from_slice(&columns[src_idx..src_idx + channels]);
+        }
+    });
 }
 
 #[cfg(test)]

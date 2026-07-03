@@ -10,9 +10,11 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::blur::blur::gaussian_blur_image;
+use crate::operations::images::fx::outer_glow::{tint_field, to_mask_field, PARALLEL_PIXELS};
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -75,53 +77,47 @@ impl OpImageFxDropShadow {
         let Value::Decimal(opacity) = opacity_converted.unwrap() else { unreachable!() };
 
         let (width, height) = data.dimensions();
-        let ch = data.channels() as usize;
 
         // Pull the mask's alpha (or luminance for single/triple-channel) into a scalar field.
-        let mut mask_field = FloatImage::new(width, height, 1);
-        for y in 0..height {
-            for x in 0..width {
-                let p = data.get_pixel(x, y);
-                let m = match ch {
-                    1 => p[0],
-                    2 => p[0] * p[1],
-                    3 => 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2],
-                    _ => (0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]) * p[3],
-                };
-                mask_field.put_pixel(x, y, &[m]);
-            }
-        }
+        let mask_field = to_mask_field(&data);
 
-        // Offset the mask field. We do a separate offset + blur pass rather
-        // than folding them together so the caller can use zero blur for a
-        // crisp offset shadow.
+        // Offset the mask field with per-row slice copies (zero-fill outside
+        // the image). We do a separate offset + blur pass rather than folding
+        // them together so the caller can use zero blur for a crisp offset
+        // shadow.
         let ox = off_x.round() as i32;
         let oy = off_y.round() as i32;
-        let mut offset_field = FloatImage::new(width, height, 1);
-        for y in 0..height as i32 {
-            for x in 0..width as i32 {
-                let sx = x - ox;
-                let sy = y - oy;
-                let v = if sx < 0 || sy < 0 || sx >= width as i32 || sy >= height as i32 {
-                    0.0
-                } else {
-                    mask_field.get_pixel(sx as u32, sy as u32)[0]
-                };
-                offset_field.put_pixel(x as u32, y as u32, &[v]);
+        let w = width as usize;
+        let mask_raw = mask_field.as_raw();
+        let mut offset_data = vec![0.0f32; mask_raw.len()];
+
+        // Destination columns whose source column sx = x - ox is in bounds.
+        let x_start = ox.clamp(0, width as i32) as usize;
+        let x_end = (width as i32 + ox).clamp(0, width as i32) as usize;
+
+        let copy_row = |(y, dst_row): (usize, &mut [f32])| {
+            let sy = y as i32 - oy;
+            if sy >= 0 && sy < height as i32 && x_start < x_end {
+                let src_row = &mask_raw[sy as usize * w..(sy as usize + 1) * w];
+                let sx_start = (x_start as i32 - ox) as usize;
+                let sx_end = (x_end as i32 - ox) as usize;
+                dst_row[x_start..x_end].copy_from_slice(&src_row[sx_start..sx_end]);
+            }
+        };
+        if w > 0 {
+            if mask_raw.len() >= PARALLEL_PIXELS {
+                offset_data.par_chunks_exact_mut(w).enumerate().for_each(copy_row);
+            } else {
+                offset_data.chunks_exact_mut(w).enumerate().for_each(copy_row);
             }
         }
+        let offset_field = FloatImage::from_raw(width, height, 1, offset_data).unwrap();
 
         let blurred = gaussian_blur_image(&offset_field, blur.max(0.0));
 
         let (cr, cg, cb, ca) = color.to_srgb_float();
-        let mut output = FloatImage::new(width, height, 4);
         let opacity = opacity.clamp(0.0, 1.0);
-        for y in 0..height {
-            for x in 0..width {
-                let a = blurred.get_pixel(x, y)[0] * ca * opacity;
-                output.put_pixel(x, y, &[cr, cg, cb, a.clamp(0.0, 1.0)]);
-            }
-        }
+        let output = tint_field(&blurred, [cr, cg, cb], ca, opacity);
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

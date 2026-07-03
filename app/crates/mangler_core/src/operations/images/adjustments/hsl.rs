@@ -13,6 +13,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -70,11 +71,13 @@ impl OpImageAdjustmentHsl {
         let (w, h) = data.dimensions();
         let ch = data.channels() as usize;
         let mut output = FloatImage::new(w, h, ch as u32);
+        let img = &*data;
+        let row_len = (w as usize * ch).max(1);
 
-        let mut buf = [0.0f32; 4];
-        for y in 0..h {
-            for x in 0..w {
-                let src = data.get_pixel(x, y);
+        output.as_raw_mut().par_chunks_mut(row_len).enumerate().for_each(|(y, row)| {
+            let mut buf = [0.0f32; 4];
+            for x in 0..w as usize {
+                let src = img.get_pixel(x as u32, y as u32);
                 if ch >= 3 {
                     // Go through HSL: adjust, clamp, come back.
                     let c = Color { r: src[0], g: src[1], b: src[2], a: 1.0 };
@@ -92,9 +95,9 @@ impl OpImageAdjustmentHsl {
                     buf[0] = (src[0] + light_shift).clamp(0.0, 1.0);
                     if ch == 2 { buf[1] = src[1]; }
                 }
-                output.put_pixel(x, y, &buf[..ch]);
+                row[x * ch..(x + 1) * ch].copy_from_slice(&buf[..ch]);
             }
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

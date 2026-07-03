@@ -74,5 +74,5 @@ async fn test_opimagepbrheightblend_output_range() {
         Input::new("blend amount".to_string(), Value::Decimal(0.5), None, None), Input::new("contrast".to_string(), Value::Decimal(0.5), None, None),
     ];
     let result = OpImagePbrHeightBlend::run(&mut inputs).await.unwrap();
-    match &result.responses[0].value { Value::Image { data, .. } => { for px in data.pixels() { for c in 0..3 { assert!(px[c] >= 0.0 && px[c] <= 1.0); } } } other => panic!("{:?}", other) }
+    match &result.responses[0].value { Value::Image { data, .. } => { for px in data.pixels() { for &val in px.iter().take(3) { assert!(val >= 0.0 && val <= 1.0); } } } other => panic!("{:?}", other) }
 }

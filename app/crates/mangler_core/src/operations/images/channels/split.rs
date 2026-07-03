@@ -11,9 +11,23 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
+
+/// Minimum pixel count before extraction is parallelized; below this the
+/// rayon dispatch overhead outweighs the trivial per-pixel work.
+const PARALLEL_PIXELS: usize = 1 << 16;
+
+/// Extracts one scalar per pixel from an interleaved raw buffer.
+fn extract_channel<F: Fn(&[f32]) -> f32 + Sync>(src: &[f32], ch: usize, f: F) -> Vec<f32> {
+    if src.len() / ch >= PARALLEL_PIXELS {
+        src.par_chunks_exact(ch).map(&f).collect()
+    } else {
+        src.chunks_exact(ch).map(f).collect()
+    }
+}
 
 /// Operation that splits an image into its individual R, G, B, and A channels.
 /// Each output is a 1-channel FloatImage.
@@ -59,27 +73,24 @@ impl OpImageChannelSplit {
 
         let (width, height) = data.dimensions();
         let ch = data.channels() as usize;
+        let src = data.as_raw();
+        let n = (width as usize) * (height as usize);
 
-        let mut red_buf = FloatImage::new(width, height, 1);
-        let mut green_buf = FloatImage::new(width, height, 1);
-        let mut blue_buf = FloatImage::new(width, height, 1);
-        let mut alpha_buf = FloatImage::new(width, height, 1);
+        // Extract each channel with the dispatch hoisted out of the pixel loop;
+        // missing channels are constant-filled (0 for colour, 1 for alpha).
+        let red = extract_channel(src, ch, |px| px[0]);
+        let green = if ch >= 2 { extract_channel(src, ch, |px| px[1]) } else { vec![0.0; n] };
+        let blue = if ch >= 3 { extract_channel(src, ch, |px| px[2]) } else { vec![0.0; n] };
+        let alpha = match ch {
+            2 => extract_channel(src, ch, |px| px[1]),
+            4 => extract_channel(src, ch, |px| px[3]),
+            _ => vec![1.0; n],
+        };
 
-        // Extract each channel, defaulting missing channels
-        for y in 0..height {
-            for x in 0..width {
-                let px = data.get_pixel(x, y);
-                let r = px[0];
-                let g = if ch >= 2 { px[1] } else { 0.0 };
-                let b = if ch >= 3 { px[2] } else { 0.0 };
-                let a = if ch == 2 { px[1] } else if ch == 4 { px[3] } else { 1.0 };
-
-                red_buf.put_pixel(x, y, &[r]);
-                green_buf.put_pixel(x, y, &[g]);
-                blue_buf.put_pixel(x, y, &[b]);
-                alpha_buf.put_pixel(x, y, &[a]);
-            }
-        }
+        let red_buf = FloatImage::from_raw(width, height, 1, red).unwrap();
+        let green_buf = FloatImage::from_raw(width, height, 1, green).unwrap();
+        let blue_buf = FloatImage::from_raw(width, height, 1, blue).unwrap();
+        let alpha_buf = FloatImage::from_raw(width, height, 1, alpha).unwrap();
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

@@ -12,6 +12,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -94,16 +95,14 @@ impl OpImagePatternBrick {
         let cell_height = height as f64 / rows as f64;
 
         // 1-channel grayscale mask
-        let mut image = FloatImage::new(width as u32, height as u32, 1);
-
-        for y in 0..height {
+        let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |y| {
             let row = (y as f64 / cell_height).floor() as i32;
             let y_in_cell = (y as f64 % cell_height) / cell_height;
 
             // Stagger odd rows by the offset fraction of cell width
             let row_offset = if row % 2 != 0 { offset * cell_width } else { 0.0 };
 
-            for x in 0..width {
+            (0..width).map(move |x| {
                 let shifted_x = (x as f64 + row_offset) % width as f64;
                 let x_in_cell = (shifted_x % cell_width) / cell_width;
 
@@ -112,10 +111,11 @@ impl OpImagePatternBrick {
                     || y_in_cell < gap_size || y_in_cell > (1.0 - gap_size);
 
                 // 1.0 for brick, 0.0 for mortar gap
-                let val: f32 = if in_gap { 0.0 } else { 1.0 };
-                image.put_pixel(x as u32, y as u32, &[val]);
-            }
-        }
+                if in_gap { 0.0f32 } else { 1.0f32 }
+            })
+        }).collect();
+
+        let image = FloatImage::from_raw(width as u32, height as u32, 1, pixels).unwrap();
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

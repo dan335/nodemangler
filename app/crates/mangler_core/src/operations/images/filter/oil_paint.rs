@@ -88,31 +88,57 @@ impl OpImageAdjustmentOilPaint {
         let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(move |y| {
             let mut row = Vec::with_capacity(w as usize * ch);
 
-            // Reused per-pixel scratch buffers: histogram counts and color sums per bin
+            // Sliding histogram over the window: stepping x by one only swaps
+            // one (clamped) column in and one out — O(r) per pixel instead of
+            // re-binning the whole (2r+1)² window. Sums are f64 so repeated
+            // add/subtract cannot drift.
             let mut counts = vec![0u32; levels];
-            let mut sums = vec![[0.0f32; 4]; levels];
+            let mut sums = vec![[0.0f64; 4]; levels];
+
+            // Map luminance to bin index in [0, levels-1]
+            let bin_of = |p: &[f32]| -> usize {
+                let lum = if color_ch >= 3 {
+                    0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]
+                } else {
+                    p[0]
+                };
+                ((lum.clamp(0.0, 1.0) * (levels as f32 - 1.0)).round() as usize).min(levels - 1)
+            };
 
             for x in 0..w {
-                // Reset scratch state for this pixel
-                for c in counts.iter_mut() { *c = 0; }
-                for s in sums.iter_mut() { *s = [0.0; 4]; }
-
-                // Sample the neighborhood and bin by luminance
-                for dy in -radius..=radius {
+                if x == 0 {
+                    // Build the initial histogram over all window columns
                     for dx in -radius..=radius {
-                        let px = (x + dx).clamp(0, w - 1) as u32;
+                        let px = dx.clamp(0, w - 1) as u32;
+                        for dy in -radius..=radius {
+                            let py = (y + dy).clamp(0, h - 1) as u32;
+                            let p = data_ref.get_pixel(px, py);
+                            let bin = bin_of(p);
+                            counts[bin] += 1;
+                            for c in 0..color_ch {
+                                sums[bin][c] += p[c] as f64;
+                            }
+                        }
+                    }
+                } else {
+                    // Slide: subtract the departing column, add the entering one.
+                    // Clamped columns shift consistently, so the window multiset
+                    // changes by exactly these two columns.
+                    let out_col = (x - 1 - radius).clamp(0, w - 1) as u32;
+                    let in_col = (x + radius).clamp(0, w - 1) as u32;
+                    for dy in -radius..=radius {
                         let py = (y + dy).clamp(0, h - 1) as u32;
-                        let p = data_ref.get_pixel(px, py);
-                        let lum = if color_ch >= 3 {
-                            0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]
-                        } else {
-                            p[0]
-                        };
-                        // Map luminance to bin index in [0, levels-1]
-                        let bin = ((lum.clamp(0.0, 1.0) * (levels as f32 - 1.0)).round() as usize).min(levels - 1);
-                        counts[bin] += 1;
+                        let p_out = data_ref.get_pixel(out_col, py);
+                        let b_out = bin_of(p_out);
+                        counts[b_out] -= 1;
                         for c in 0..color_ch {
-                            sums[bin][c] += p[c];
+                            sums[b_out][c] -= p_out[c] as f64;
+                        }
+                        let p_in = data_ref.get_pixel(in_col, py);
+                        let b_in = bin_of(p_in);
+                        counts[b_in] += 1;
+                        for c in 0..color_ch {
+                            sums[b_in][c] += p_in[c] as f64;
                         }
                     }
                 }
@@ -125,9 +151,9 @@ impl OpImageAdjustmentOilPaint {
 
                 // Emit averaged color from the winning bin; alpha copied from center
                 let center = data_ref.get_pixel(x.clamp(0, w - 1) as u32, y.clamp(0, h - 1) as u32);
-                let n = counts[best].max(1) as f32;
+                let n = counts[best].max(1) as f64;
                 for val in sums[best].iter().take(color_ch) {
-                    row.push(val / n);
+                    row.push((val / n) as f32);
                 }
                 if ch == 2 || ch == 4 {
                     row.push(center[ch - 1]);

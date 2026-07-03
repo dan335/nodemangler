@@ -17,9 +17,13 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
+
+/// Minimum pixel count before the mix is parallelized over rows.
+const PARALLEL_PIXELS: usize = 1 << 16;
 
 /// Per-output-channel linear combinations of the input R/G/B channels plus bias.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,41 +97,51 @@ impl OpImageChannelMixer {
 
         let (w, h) = data.dimensions();
         let ch = data.channels() as usize;
+        let wu = w as usize;
+        let src_data = data.as_raw();
 
         // If the input is grayscale we mix only via the red row and emit a 1-
         // or 2-channel result matching the input shape.
-        let mut output = FloatImage::new(w, h, ch as u32);
+        let mut out_data = vec![0.0f32; src_data.len()];
 
-        let mut buf = [0.0f32; 4];
-        for y in 0..h {
-            for x in 0..w {
-                let src = data.get_pixel(x, y);
-                let (sr, sg, sb) = if ch >= 3 {
-                    (src[0], src[1], src[2])
-                } else {
-                    // Treat 1/2 channel sources as grayscale (R=G=B=ch0).
-                    (src[0], src[0], src[0])
-                };
+        // Mix one row; the channel-count dispatch is hoisted out of the pixel loop.
+        let process_row = |(dst_row, src_row): (&mut [f32], &[f32])| {
+            let pairs = dst_row.chunks_exact_mut(ch).zip(src_row.chunks_exact(ch));
+            if ch >= 3 {
+                pairs.for_each(|(dst, src)| {
+                    let (sr, sg, sb) = (src[0], src[1], src[2]);
+                    // R row = coeffs[0..3], bias = coeffs[3]. Likewise for G and B rows.
+                    let r = sr * coeffs[0] + sg * coeffs[1] + sb * coeffs[2] + coeffs[3];
+                    let g = sr * coeffs[4] + sg * coeffs[5] + sb * coeffs[6] + coeffs[7];
+                    let b = sr * coeffs[8] + sg * coeffs[9] + sb * coeffs[10] + coeffs[11];
+                    dst[0] = r.clamp(0.0, 1.0);
+                    dst[1] = g.clamp(0.0, 1.0);
+                    dst[2] = b.clamp(0.0, 1.0);
+                    if ch == 4 { dst[3] = src[3]; }
+                });
+            } else {
+                // Grayscale result: use the R row only (user can still apply a
+                // custom luminance weighting via `r from r/g/b`). Treat 1/2
+                // channel sources as grayscale (R=G=B=ch0).
+                pairs.for_each(|(dst, src)| {
+                    let (sr, sg, sb) = (src[0], src[0], src[0]);
+                    let r = sr * coeffs[0] + sg * coeffs[1] + sb * coeffs[2] + coeffs[3];
+                    dst[0] = r.clamp(0.0, 1.0);
+                    if ch == 2 { dst[1] = src[1]; }
+                });
+            }
+        };
 
-                // R row = coeffs[0..3], bias = coeffs[3]. Likewise for G and B rows.
-                let r = sr * coeffs[0] + sg * coeffs[1] + sb * coeffs[2] + coeffs[3];
-                let g = sr * coeffs[4] + sg * coeffs[5] + sb * coeffs[6] + coeffs[7];
-                let b = sr * coeffs[8] + sg * coeffs[9] + sb * coeffs[10] + coeffs[11];
-
-                if ch >= 3 {
-                    buf[0] = r.clamp(0.0, 1.0);
-                    buf[1] = g.clamp(0.0, 1.0);
-                    buf[2] = b.clamp(0.0, 1.0);
-                    if ch == 4 { buf[3] = src[3]; }
-                } else {
-                    // Grayscale result: use the R row only (user can still apply a
-                    // custom luminance weighting via `r from r/g/b`).
-                    buf[0] = r.clamp(0.0, 1.0);
-                    if ch == 2 { buf[1] = src[1]; }
-                }
-                output.put_pixel(x, y, &buf[..ch]);
+        if wu > 0 {
+            let row_len = wu * ch;
+            if wu * h as usize >= PARALLEL_PIXELS {
+                out_data.par_chunks_exact_mut(row_len).zip(src_data.par_chunks_exact(row_len)).for_each(process_row);
+            } else {
+                out_data.chunks_exact_mut(row_len).zip(src_data.chunks_exact(row_len)).for_each(process_row);
             }
         }
+
+        let output = FloatImage::from_raw(w, h, ch as u32, out_data).unwrap();
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

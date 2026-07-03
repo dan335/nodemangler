@@ -6,6 +6,7 @@
 use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::value::ValueType;
+use rayon::prelude::*;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
@@ -50,20 +51,20 @@ impl OpImagePbrCurvature {
 
         let width = data.width() as i32;
         let height = data.height() as i32;
-        let mut buffer = FloatImage::new(width as u32, height as u32, 4);
+        let img = &*data;
 
-        for y in 0..height {
-            for x in 0..width {
+        let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |y| {
+            let top_y = (y - 1).max(0) as u32;
+            let bottom_y = (y + 1).min(height - 1) as u32;
+            (0..width).flat_map(move |x| {
                 let left_x = (x - 1).max(0) as u32;
                 let right_x = (x + 1).min(width - 1) as u32;
-                let top_y = (y - 1).max(0) as u32;
-                let bottom_y = (y + 1).min(height - 1) as u32;
 
                 // Decode normal X/Y from the [0,1] encoded normal map
-                let left_nx = data.get_pixel(left_x, y as u32)[0] * 2.0 - 1.0;
-                let right_nx = data.get_pixel(right_x, y as u32)[0] * 2.0 - 1.0;
-                let top_ny = data.get_pixel(x as u32, top_y)[1] * 2.0 - 1.0;
-                let bottom_ny = data.get_pixel(x as u32, bottom_y)[1] * 2.0 - 1.0;
+                let left_nx = img.get_pixel(left_x, y as u32)[0] * 2.0 - 1.0;
+                let right_nx = img.get_pixel(right_x, y as u32)[0] * 2.0 - 1.0;
+                let top_ny = img.get_pixel(x as u32, top_y)[1] * 2.0 - 1.0;
+                let bottom_ny = img.get_pixel(x as u32, bottom_y)[1] * 2.0 - 1.0;
 
                 // Divergence of normal field
                 let dnx_dx = right_nx - left_nx;
@@ -71,9 +72,11 @@ impl OpImagePbrCurvature {
                 let curvature_raw = (dnx_dx + dny_dy) * 0.5;
 
                 let output = (0.5 + curvature_raw * intensity).clamp(0.0, 1.0);
-                buffer.put_pixel(x as u32, y as u32, &[output, output, output, 1.0]);
-            }
-        }
+                [output, output, output, 1.0]
+            })
+        }).collect();
+
+        let buffer = FloatImage::from_raw(width as u32, height as u32, 4, pixels).unwrap();
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

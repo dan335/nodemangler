@@ -88,7 +88,7 @@ impl OpImageAdjustmentSnn {
             for x in 0..w {
                 let center = data_ref.get_pixel(x as u32, y as u32);
 
-                let mut sum = vec![0.0f32; ch];
+                let mut sum = [0.0f32; 4];
                 // start by including the center pixel itself
                 for c in 0..ch {
                     sum[c] += center[c];

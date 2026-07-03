@@ -11,6 +11,7 @@ use crate::operations::{OperationResponse, OperationError, OutputResponse, defau
 use crate::output::Output;
 use crate::value::Value;
 use crate::float_image::FloatImage;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -73,19 +74,24 @@ impl OpImageTransformWarp {
         // Output preserves the source image's channel count
         let mut output = FloatImage::new(w, h, src_data.channels());
 
-        // Temporary buffers for bilinear sampling
         let disp_ch = disp_data.channels() as usize;
         let src_ch = src_data.channels() as usize;
-        let mut dp = vec![0.0f32; disp_ch];
-        let mut sp = vec![0.0f32; src_ch];
+        let src = &*src_data;
+        let disp = &*disp_data;
+        let disp_w = disp.width() as f32;
+        let disp_h = disp.height() as f32;
+        let row_len = (w as usize * src_ch).max(1);
 
-        for y in 0..h {
-            for x in 0..w {
+        output.as_raw_mut().par_chunks_mut(row_len).enumerate().for_each(|(y, row)| {
+            // Temporary buffers for bilinear sampling
+            let mut dp = vec![0.0f32; disp_ch];
+            let mut sp = vec![0.0f32; src_ch];
+            let dy = y as f32 * disp_h / h as f32;
+            for x in 0..w as usize {
                 // Sample displacement map, mapping output coords to displacement map coords
                 // to handle mismatched dimensions between source and displacement
-                let dx = x as f32 * disp_data.width() as f32 / w as f32;
-                let dy = y as f32 * disp_data.height() as f32 / h as f32;
-                disp_data.bilinear_sample(dx, dy, &mut dp);
+                let dx = x as f32 * disp_w / w as f32;
+                disp.bilinear_sample(dx, dy, &mut dp);
 
                 // Map 0.0..1.0 to -0.5..0.5, then multiply by intensity.
                 // For 1-channel displacement, use the same value for both X and Y.
@@ -96,10 +102,10 @@ impl OpImageTransformWarp {
                 let sy = y as f32 + offset_y;
 
                 // Sample source image at displaced coordinates
-                src_data.bilinear_sample(sx, sy, &mut sp);
-                output.put_pixel(x, y, &sp);
+                src.bilinear_sample(sx, sy, &mut sp);
+                row[x * src_ch..(x + 1) * src_ch].copy_from_slice(&sp);
             }
-        }
+        });
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

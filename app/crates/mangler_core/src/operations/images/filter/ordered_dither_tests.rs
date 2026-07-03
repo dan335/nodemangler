@@ -53,8 +53,8 @@ async fn test_ordered_dither_output_is_quantized() {
     match &result.responses[0].value {
         Value::Image { data, .. } => {
             for pixel in data.pixels() {
-                for c in 0..pixel.len().min(3) {
-                    assert!(pixel[c] == 0.0 || pixel[c] == 1.0, "not binary: {}", pixel[c]);
+                for &val in pixel.iter().take(pixel.len().min(3)) {
+                    assert!(val == 0.0 || val == 1.0, "not binary: {}", val);
                 }
             }
         }
@@ -78,9 +78,9 @@ async fn test_ordered_dither_four_levels() {
     match &result.responses[0].value {
         Value::Image { data, .. } => {
             for pixel in data.pixels() {
-                for c in 0..pixel.len() {
-                    let ok = allowed.iter().any(|q| (pixel[c] - q).abs() < 1e-4);
-                    assert!(ok, "value {} is not one of the 4 allowed levels", pixel[c]);
+                for &val in pixel {
+                    let ok = allowed.iter().any(|q| (val - q).abs() < 1e-4);
+                    assert!(ok, "value {} is not one of the 4 allowed levels", val);
                 }
             }
         }

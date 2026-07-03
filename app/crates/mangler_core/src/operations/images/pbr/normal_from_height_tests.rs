@@ -72,7 +72,7 @@ async fn test_opimagepbrnormalfromheight_output_range() {
     let mut inputs = vec![Input::new("image".to_string(), image_input(8, 8), None, None), Input::new("intensity".to_string(), Value::Decimal(1.0), None, None)];
     let result = OpImagePbrNormalFromHeight::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
-        Value::Image { data, .. } => { for px in data.pixels() { for c in 0..3 { assert!(px[c] >= 0.0 && px[c] <= 1.0, "out of range: {}", px[c]); } } }
+        Value::Image { data, .. } => { for px in data.pixels() { for &val in px.iter().take(3) { assert!(val >= 0.0 && val <= 1.0, "out of range: {}", val); } } }
         other => panic!("{:?}", other),
     }
 }

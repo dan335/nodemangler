@@ -98,12 +98,7 @@ impl Value {
             Value::Color(color) => {
                 let rgb = color.to_srgb_u8();
                 let color = image::Rgba([rgb.0, rgb.1, rgb.2, rgb.3]);
-                let mut img = RgbaImage::new(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]);
-                for x in 0..THUMBNAIL_SIZE[0] {
-                    for y in 0..THUMBNAIL_SIZE[1] {
-                        img.put_pixel(x, y, color);
-                    }
-                }
+                let img = RgbaImage::from_pixel(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1], color);
 
                 Some(Thumbnail::Image(img))
             }

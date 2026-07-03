@@ -19,28 +19,55 @@ use std::sync::Arc;
 use std::time::Instant;
 
 /// Separable box blur with wrap-around edges (keeps the result tileable).
+///
+/// Each axis is a running-sum sliding window — the sample entering the window
+/// is added and the sample leaving is subtracted — so cost is O(1) per pixel
+/// regardless of radius. Wraparound is handled by precomputed index tables
+/// covering coordinates `-r ..= len - 1 + r` (indexed by `coord + r`).
 fn box_blur_wrap(src: &[f32], w: usize, h: usize, r: i32) -> Vec<f32> {
-    let mut tmp = vec![0.0f32; w * h];
     let count = (2 * r + 1) as f32;
+    let r = r as usize;
+    let wrap_x: Vec<usize> = (-(r as i32)..(w + r) as i32)
+        .map(|i| i.rem_euclid(w as i32) as usize)
+        .collect();
+    let wrap_y: Vec<usize> = (-(r as i32)..(h + r) as i32)
+        .map(|i| i.rem_euclid(h as i32) as usize)
+        .collect();
+
+    // Horizontal pass.
+    let mut tmp = vec![0.0f32; w * h];
     for y in 0..h {
-        for x in 0..w {
-            let mut sum = 0.0;
-            for dx in -r..=r {
-                let xx = (x as i32 + dx).rem_euclid(w as i32) as usize;
-                sum += src[y * w + xx];
-            }
-            tmp[y * w + x] = sum / count;
+        let row = &src[y * w..(y + 1) * w];
+        let out_row = &mut tmp[y * w..(y + 1) * w];
+        let mut sum = 0.0f32;
+        for t in 0..=2 * r {
+            sum += row[wrap_x[t]];
+        }
+        out_row[0] = sum / count;
+        for x in 1..w {
+            sum += row[wrap_x[x + 2 * r]] - row[wrap_x[x - 1]];
+            out_row[x] = sum / count;
         }
     }
+
+    // Vertical pass — one running sum per column so rows stay cache-friendly.
     let mut out = vec![0.0f32; w * h];
-    for y in 0..h {
+    let mut sums = vec![0.0f32; w];
+    for t in 0..=2 * r {
+        let row = wrap_y[t] * w;
         for x in 0..w {
-            let mut sum = 0.0;
-            for dy in -r..=r {
-                let yy = (y as i32 + dy).rem_euclid(h as i32) as usize;
-                sum += tmp[yy * w + x];
-            }
-            out[y * w + x] = sum / count;
+            sums[x] += tmp[row + x];
+        }
+    }
+    for x in 0..w {
+        out[x] = sums[x] / count;
+    }
+    for y in 1..h {
+        let enter = wrap_y[y + 2 * r] * w;
+        let leave = wrap_y[y - 1] * w;
+        for x in 0..w {
+            sums[x] += tmp[enter + x] - tmp[leave + x];
+            out[y * w + x] = sums[x] / count;
         }
     }
     out

@@ -69,8 +69,8 @@ async fn test_posterize_output_range() {
     match &result.responses[0].value {
         Value::Image { data, .. } => {
             for pixel in data.pixels() {
-                for c in 0..pixel.len().min(3) {
-                    assert!(pixel[c] >= 0.0 && pixel[c] <= 1.0, "pixel out of range: {}", pixel[c]);
+                for &val in pixel.iter().take(pixel.len().min(3)) {
+                    assert!(val >= 0.0 && val <= 1.0, "pixel out of range: {}", val);
                 }
             }
         }
@@ -88,9 +88,9 @@ async fn test_posterize_two_levels() {
     match &result.responses[0].value {
         Value::Image { data, .. } => {
             for pixel in data.pixels() {
-                for c in 0..pixel.len().min(3) {
-                    assert!(pixel[c] == 0.0 || pixel[c] == 1.0,
-                        "Expected 0 or 1, got {}", pixel[c]);
+                for &val in pixel.iter().take(pixel.len().min(3)) {
+                    assert!(val == 0.0 || val == 1.0,
+                        "Expected 0 or 1, got {}", val);
                 }
             }
         }

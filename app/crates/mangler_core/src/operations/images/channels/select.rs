@@ -12,9 +12,22 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
+
+/// Minimum pixel count before extraction is parallelized.
+const PARALLEL_PIXELS: usize = 1 << 16;
+
+/// Extracts one scalar per pixel from an interleaved raw buffer.
+fn extract_channel<F: Fn(&[f32]) -> f32 + Sync>(src: &[f32], ch: usize, f: F) -> Vec<f32> {
+    if src.len() / ch >= PARALLEL_PIXELS {
+        src.par_chunks_exact(ch).map(&f).collect()
+    } else {
+        src.chunks_exact(ch).map(f).collect()
+    }
+}
 
 /// Extracts one channel of an image as a 1-channel grayscale image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,27 +73,24 @@ impl OpImageChannelSelect {
         let channel = channel.clamp(0, 4) as usize;
         let (w, h) = data.dimensions();
         let ch = data.channels() as usize;
-        let mut output = FloatImage::new(w, h, 1);
+        let src = data.as_raw();
 
-        for y in 0..h {
-            for x in 0..w {
-                let px = data.get_pixel(x, y);
-                let v = if channel == 4 {
-                    // Luminance: Rec.709 if the image has RGB, else channel 0.
-                    if ch >= 3 {
-                        0.2126 * px[0] + 0.7152 * px[1] + 0.0722 * px[2]
-                    } else {
-                        px[0]
-                    }
-                } else if channel < ch {
-                    px[channel]
-                } else {
-                    // Out-of-range channel: alpha defaults to 1, others to 0.
-                    if channel == 3 { 1.0 } else { 0.0 }
-                };
-                output.put_pixel(x, y, &[v]);
+        // Channel dispatch is hoisted out of the pixel loop.
+        let out_data = if channel == 4 {
+            // Luminance: Rec.709 if the image has RGB, else channel 0.
+            if ch >= 3 {
+                extract_channel(src, ch, |px| 0.2126 * px[0] + 0.7152 * px[1] + 0.0722 * px[2])
+            } else {
+                extract_channel(src, ch, |px| px[0])
             }
-        }
+        } else if channel < ch {
+            extract_channel(src, ch, |px| px[channel])
+        } else {
+            // Out-of-range channel: alpha defaults to 1, others to 0.
+            vec![if channel == 3 { 1.0 } else { 0.0 }; (w as usize) * (h as usize)]
+        };
+
+        let output = FloatImage::from_raw(w, h, 1, out_data).unwrap();
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

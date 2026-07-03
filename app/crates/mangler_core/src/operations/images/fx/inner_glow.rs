@@ -5,13 +5,12 @@
 //! ring that sits inside the mask boundary.
 
 use crate::color::Color;
-use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::blur::blur::gaussian_blur_image;
 use crate::operations::images::filter::erode::separable_morphology;
-use crate::operations::images::fx::outer_glow::to_mask_field;
+use crate::operations::images::fx::outer_glow::{subtract_fields, tint_field, to_mask_field};
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
@@ -73,23 +72,13 @@ impl OpImageFxInnerGlow {
 
         let radius = radius.max(1);
         let eroded = separable_morphology(&mask_field, radius, |a, b| a.min(b));
-        let mut ring = FloatImage::new(width, height, 1);
-        for y in 0..height {
-            for x in 0..width {
-                let v = (mask_field.get_pixel(x, y)[0] - eroded.get_pixel(x, y)[0]).max(0.0);
-                ring.put_pixel(x, y, &[v]);
-            }
-        }
+
+        // Ring = original - eroded (clamped to non-negative).
+        let ring = subtract_fields(&mask_field, &eroded, width, height);
         let glow = gaussian_blur_image(&ring, (radius as f32) * 0.5);
 
         let (cr, cg, cb, ca) = color.to_srgb_float();
-        let mut output = FloatImage::new(width, height, 4);
-        for y in 0..height {
-            for x in 0..width {
-                let a = (glow.get_pixel(x, y)[0] * intensity * ca).clamp(0.0, 1.0);
-                output.put_pixel(x, y, &[cr, cg, cb, a]);
-            }
-        }
+        let output = tint_field(&glow, [cr, cg, cb], intensity, ca);
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

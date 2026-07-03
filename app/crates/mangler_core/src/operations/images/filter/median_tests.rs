@@ -143,6 +143,90 @@ async fn test_median_preserves_sharp_edge() {
     }
 }
 
+/// Deterministic pseudo-random value in [0, 1] from pixel coordinates.
+fn hash01(x: u32, y: u32, c: u32) -> f32 {
+    let mut v = x.wrapping_mul(0x9E37_79B1)
+        ^ y.wrapping_mul(0x85EB_CA77)
+        ^ c.wrapping_mul(0xC2B2_AE3D);
+    v ^= v >> 15;
+    v = v.wrapping_mul(0x2C1B_3C6D);
+    v ^= v >> 12;
+    (v & 0xFFFF) as f32 / 65535.0
+}
+
+fn hashed_image(w: u32, h: u32, ch: u32) -> Arc<FloatImage> {
+    let mut img = FloatImage::new(w, h, ch);
+    for y in 0..h {
+        for x in 0..w {
+            let mut px = [0.0f32; 4];
+            for c in 0..ch {
+                px[c as usize] = hash01(x, y, c);
+            }
+            img.put_pixel(x, y, &px[..ch as usize]);
+        }
+    }
+    Arc::new(img)
+}
+
+/// Straightforward gather-and-quickselect median used as ground truth for
+/// the sliding-window implementation. Must match bit-exactly.
+fn median_reference(img: &FloatImage, radius: i32) -> Vec<f32> {
+    let (width, height) = img.dimensions();
+    let ch = img.channels() as usize;
+    let w = width as i32;
+    let h = height as i32;
+    let window = (2 * radius + 1) as usize * (2 * radius + 1) as usize;
+    let mut out = Vec::with_capacity(width as usize * height as usize * ch);
+    let mut buf: Vec<f32> = Vec::with_capacity(window);
+    for y in 0..h {
+        for x in 0..w {
+            for c in 0..ch {
+                buf.clear();
+                for dy in -radius..=radius {
+                    let py = (y + dy).clamp(0, h - 1) as u32;
+                    for dx in -radius..=radius {
+                        let px = (x + dx).clamp(0, w - 1) as u32;
+                        buf.push(img.get_pixel(px, py)[c]);
+                    }
+                }
+                let mid = buf.len() / 2;
+                let (_, pivot, _) = buf.select_nth_unstable_by(mid, |a, b| a.total_cmp(b));
+                out.push(*pivot);
+            }
+        }
+    }
+    out
+}
+
+#[tokio::test]
+async fn test_median_matches_bruteforce_reference() {
+    let img = hashed_image(24, 17, 4);
+    // radius 8 makes the 17-wide window exceed the image height, exercising
+    // heavy clamping in the sliding path
+    for radius in [1i32, 2i32, 8i32] {
+        let mut inputs = vec![
+            Input::new("image".to_string(), Value::Image { data: img.clone(), change_id: get_id() }, None, None),
+            Input::new("radius".to_string(), Value::Integer(radius), None, None),
+        ];
+        let result = OpImageAdjustmentMedian::run(&mut inputs).await.unwrap();
+        let expected = median_reference(&img, radius);
+        match &result.responses[0].value {
+            Value::Image { data, .. } => {
+                let got = data.as_raw();
+                assert_eq!(got.len(), expected.len());
+                for (i, (g, e)) in got.iter().zip(expected.iter()).enumerate() {
+                    assert!(
+                        g.to_bits() == e.to_bits(),
+                        "radius {}: value {} differs at index {}: got {}, expected {}",
+                        radius, i, i, g, e
+                    );
+                }
+            }
+            other => panic!("Expected Image, got {:?}", other),
+        }
+    }
+}
+
 #[tokio::test]
 async fn test_median_output_range() {
     let mut inputs = vec![
@@ -153,8 +237,8 @@ async fn test_median_output_range() {
     match &result.responses[0].value {
         Value::Image { data, .. } => {
             for pixel in data.pixels() {
-                for c in 0..pixel.len() {
-                    assert!(pixel[c] >= 0.0 && pixel[c] <= 1.0, "out of range: {}", pixel[c]);
+                for &val in pixel {
+                    assert!(val >= 0.0 && val <= 1.0, "out of range: {}", val);
                 }
             }
         }

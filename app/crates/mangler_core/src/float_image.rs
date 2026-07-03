@@ -192,43 +192,56 @@ impl FloatImage {
     /// - 3ch: R=r, G=g, B=b, A=255
     /// - 4ch: R=r, G=g, B=b, A=a
     pub fn to_rgba8(&self) -> RgbaImage {
-        let mut out = RgbaImage::new(self.width, self.height);
-        let ch = self.channels as usize;
-
-        for (i, pixel) in out.pixels_mut().enumerate() {
-            let offset = i * ch;
-            let src = &self.data[offset..offset + ch];
-            let rgba = match ch {
-                1 => {
-                    let v = (src[0].clamp(0.0, 1.0) * 255.0) as u8;
-                    [v, v, v, 255]
-                }
-                2 => {
-                    let v = (src[0].clamp(0.0, 1.0) * 255.0) as u8;
-                    let a = (src[1].clamp(0.0, 1.0) * 255.0) as u8;
-                    [v, v, v, a]
-                }
-                3 => {
-                    [
-                        (src[0].clamp(0.0, 1.0) * 255.0) as u8,
-                        (src[1].clamp(0.0, 1.0) * 255.0) as u8,
-                        (src[2].clamp(0.0, 1.0) * 255.0) as u8,
-                        255,
-                    ]
-                }
-                4 => {
-                    [
-                        (src[0].clamp(0.0, 1.0) * 255.0) as u8,
-                        (src[1].clamp(0.0, 1.0) * 255.0) as u8,
-                        (src[2].clamp(0.0, 1.0) * 255.0) as u8,
-                        (src[3].clamp(0.0, 1.0) * 255.0) as u8,
-                    ]
-                }
-                _ => unreachable!(),
-            };
-            *pixel = image::Rgba(rgba);
+        /// Quantizes a single f32 channel to u8, clamping to `[0, 1]`.
+        #[inline]
+        fn q(v: f32) -> u8 {
+            (v.clamp(0.0, 1.0) * 255.0) as u8
         }
-        out
+
+        // The channel-count dispatch is hoisted out of the per-pixel loop into
+        // four specialized loops. Writing into a preallocated buffer through
+        // zipped chunks keeps each iteration free of capacity checks so the
+        // quantization can vectorize.
+        let mut out: Vec<u8> = vec![0u8; (self.width * self.height * 4) as usize];
+        match self.channels {
+            1 => {
+                for (dst, src) in out.chunks_exact_mut(4).zip(self.data.iter()) {
+                    let v = q(*src);
+                    dst[0] = v;
+                    dst[1] = v;
+                    dst[2] = v;
+                    dst[3] = 255;
+                }
+            }
+            2 => {
+                for (dst, src) in out.chunks_exact_mut(4).zip(self.data.chunks_exact(2)) {
+                    let v = q(src[0]);
+                    dst[0] = v;
+                    dst[1] = v;
+                    dst[2] = v;
+                    dst[3] = q(src[1]);
+                }
+            }
+            3 => {
+                for (dst, src) in out.chunks_exact_mut(4).zip(self.data.chunks_exact(3)) {
+                    dst[0] = q(src[0]);
+                    dst[1] = q(src[1]);
+                    dst[2] = q(src[2]);
+                    dst[3] = 255;
+                }
+            }
+            4 => {
+                for (dst, src) in out.chunks_exact_mut(4).zip(self.data.chunks_exact(4)) {
+                    dst[0] = q(src[0]);
+                    dst[1] = q(src[1]);
+                    dst[2] = q(src[2]);
+                    dst[3] = q(src[3]);
+                }
+            }
+            _ => unreachable!("channels must be 1–4"),
+        }
+        RgbaImage::from_raw(self.width, self.height, out)
+            .expect("FloatImage data length mismatch")
     }
 
     /// Image width in pixels.
@@ -396,21 +409,55 @@ impl FloatImage {
         if new_w == 0 || new_h == 0 {
             return Self::new(new_w, new_h, self.channels);
         }
+        // Zero-sized sources produce all-zero output (matches bilinear_sample's
+        // zero-fill for empty images).
+        if self.width == 0 || self.height == 0 {
+            return Self::new(new_w, new_h, self.channels);
+        }
 
         let ch = self.channels as usize;
         let mut result = Self::new(new_w, new_h, self.channels);
-        let mut sample_buf = vec![0.0f32; ch];
 
         // Scale factors map output coordinates to source coordinates
         let x_scale = if new_w > 1 { (self.width as f32 - 1.0) / (new_w as f32 - 1.0) } else { 0.0 };
         let y_scale = if new_h > 1 { (self.height as f32 - 1.0) / (new_h as f32 - 1.0) } else { 0.0 };
 
-        for y in 0..new_h {
-            for x in 0..new_w {
+        // Precompute per-output-column source offsets and horizontal weights once,
+        // instead of recomputing floor/clamp for every pixel.
+        let cols: Vec<(usize, usize, f32)> = (0..new_w)
+            .map(|x| {
                 let sx = x as f32 * x_scale;
-                let sy = y as f32 * y_scale;
-                self.bilinear_sample(sx, sy, &mut sample_buf);
-                result.put_pixel(x, y, &sample_buf);
+                let x0 = (sx.floor() as i32).clamp(0, self.width as i32 - 1) as u32;
+                let x1 = (x0 + 1).min(self.width - 1);
+                (x0 as usize * ch, x1 as usize * ch, sx - sx.floor())
+            })
+            .collect();
+
+        let row_stride = self.width as usize * ch;
+        let src = &self.data;
+        let out = &mut result.data;
+        let mut di = 0;
+        for y in 0..new_h {
+            let sy = y as f32 * y_scale;
+            let y0 = (sy.floor() as i32).clamp(0, self.height as i32 - 1) as u32;
+            let y1 = (y0 + 1).min(self.height - 1);
+            let fy = sy - sy.floor();
+            let r0 = y0 as usize * row_stride;
+            let r1 = y1 as usize * row_stride;
+            for &(c0, c1, fx) in &cols {
+                let p00 = &src[r0 + c0..r0 + c0 + ch];
+                let p10 = &src[r0 + c1..r0 + c1 + ch];
+                let p01 = &src[r1 + c0..r1 + c0 + ch];
+                let p11 = &src[r1 + c1..r1 + c1 + ch];
+                // Same expression (and evaluation order) as bilinear_sample for
+                // bit-identical results.
+                for i in 0..ch {
+                    out[di + i] = p00[i] * (1.0 - fx) * (1.0 - fy)
+                        + p10[i] * fx * (1.0 - fy)
+                        + p01[i] * (1.0 - fx) * fy
+                        + p11[i] * fx * fy;
+                }
+                di += ch;
             }
         }
         result

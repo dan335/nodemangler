@@ -14,6 +14,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -109,9 +110,6 @@ impl OpImagePatternTileGenerator {
         let half_w = draw_w / 2.0;
         let half_h = draw_h / 2.0;
 
-        let mut image = FloatImage::new(width as u32, height as u32, pat_channels);
-        let mut pixel_buf = vec![0.0f32; pat_channels as usize];
-
         // Bounding box of the rotated stamp — reused per cell since every stamp
         // has the same size and rotation.
         let corners = [
@@ -131,6 +129,18 @@ impl OpImagePatternTileGenerator {
             if ry > max_oy { max_oy = ry; }
         }
 
+        // Precompute each cell's centre and clipped bounding box; scale and
+        // rotation are shared by every stamp.
+        struct Cell {
+            center_x: f64,
+            center_y: f64,
+            start_x: i32,
+            end_x: i32,
+            start_y: i32,
+            end_y: i32,
+        }
+
+        let mut cells: Vec<Cell> = Vec::with_capacity((count_x * count_y) as usize);
         for cy in 0..count_y {
             for cx in 0..count_x {
                 // Cell centre plus optional brick-style row/column offsets.
@@ -139,42 +149,57 @@ impl OpImagePatternTileGenerator {
                 if cy % 2 == 1 { center_x += row_offset * cell_w; }
                 if cx % 2 == 1 { center_y += col_offset * cell_h; }
 
-                // Iteration range: rotated stamp bounding box, clipped to canvas.
-                let start_x = ((center_x + min_ox).floor() as i32).max(0);
-                let end_x = ((center_x + max_ox).ceil() as i32).min(width);
-                let start_y = ((center_y + min_oy).floor() as i32).max(0);
-                let end_y = ((center_y + max_oy).ceil() as i32).min(height);
+                cells.push(Cell {
+                    center_x,
+                    center_y,
+                    // Iteration range: rotated stamp bounding box, clipped to canvas.
+                    start_x: ((center_x + min_ox).floor() as i32).max(0),
+                    end_x: ((center_x + max_ox).ceil() as i32).min(width),
+                    start_y: ((center_y + min_oy).floor() as i32).max(0),
+                    end_y: ((center_y + max_oy).ceil() as i32).min(height),
+                });
+            }
+        }
 
-                for py in start_y..end_y {
-                    for px in start_x..end_x {
-                        let dx = px as f64 - center_x;
-                        let dy = py as f64 - center_y;
+        // Rows are independent, so stamp them in parallel. Each pixel applies
+        // the max composite in the same cell order as the serial version.
+        let ch = pat_channels as usize;
+        let pattern_ref = &pattern;
+        let cells_ref = &cells;
 
-                        // Inverse rotation: output pixel -> pattern coords.
-                        let lx = cos_a * dx + sin_a * dy;
-                        let ly = -sin_a * dx + cos_a * dy;
+        let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |py| {
+            let mut row = vec![0.0f32; width as usize * ch];
+            for cell in cells_ref {
+                if py < cell.start_y || py >= cell.end_y { continue; }
+                for px in cell.start_x..cell.end_x {
+                    let dx = px as f64 - cell.center_x;
+                    let dy = py as f64 - cell.center_y;
 
-                        let u = (lx / draw_w + 0.5) * pat_w;
-                        let v = (ly / draw_h + 0.5) * pat_h;
+                    // Inverse rotation: output pixel -> pattern coords.
+                    let lx = cos_a * dx + sin_a * dy;
+                    let ly = -sin_a * dx + cos_a * dy;
 
-                        if u < 0.0 || u >= pat_w || v < 0.0 || v >= pat_h {
-                            continue;
-                        }
+                    let u = (lx / draw_w + 0.5) * pat_w;
+                    let v = (ly / draw_h + 0.5) * pat_h;
 
-                        let src = pattern.get_pixel(u as u32, v as u32);
-                        let dst = image.get_pixel(px as u32, py as u32);
+                    if u < 0.0 || u >= pat_w || v < 0.0 || v >= pat_h {
+                        continue;
+                    }
 
-                        // Max composite matches `tile_sampler` so users can swap
-                        // between the two nodes without their blends flipping.
-                        for c in 0..pat_channels as usize {
-                            pixel_buf[c] = dst[c].max(src[c]);
-                        }
+                    let src = pattern_ref.get_pixel(u as u32, v as u32);
+                    let base = px as usize * ch;
 
-                        image.put_pixel(px as u32, py as u32, &pixel_buf);
+                    // Max composite matches `tile_sampler` so users can swap
+                    // between the two nodes without their blends flipping.
+                    for c in 0..ch {
+                        row[base + c] = row[base + c].max(src[c]);
                     }
                 }
             }
-        }
+            row
+        }).collect();
+
+        let image = FloatImage::from_raw(width as u32, height as u32, pat_channels, pixels).unwrap();
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

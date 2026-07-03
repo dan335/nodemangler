@@ -81,6 +81,25 @@ impl OpColorSampleMostCommonColors {
 
         // Quantize each pixel's HSL values into buckets and count occurrences.
         // Higher precision values produce more buckets (finer color distinction).
+        //
+        // The common case uses a flat Vec<u32> histogram indexed by
+        // (h * s_dim + s) * l_dim + l, which avoids per-pixel hashing. Bucket
+        // indices that fall outside the flat range (out-of-gamut pixels can
+        // produce HSL components outside [0,1]) spill into a HashMap so the
+        // counts stay identical to the hashing implementation.
+        //
+        // In-range hue is [0, 360] and saturation/lightness are [0, 1], so
+        // each in-range index is at most precision.round(); +2 leaves margin.
+        let dims: Option<[usize; 3]> = {
+            let dim = |p: f32| -> Option<usize> {
+                if p.is_finite() && (0.0..=100_000.0).contains(&p) { Some(p.ceil() as usize + 2) } else { None }
+            };
+            match (dim(hue_precision), dim(saturation_precision), dim(lightness_precision)) {
+                (Some(hd), Some(sd), Some(ld)) if hd.saturating_mul(sd).saturating_mul(ld) <= (1 << 24) => Some([hd, sd, ld]),
+                _ => None,
+            }
+        };
+        let mut flat: Vec<u32> = dims.map(|[hd, sd, ld]| vec![0u32; hd * sd * ld]).unwrap_or_default();
         let mut color_counts: HashMap<[i32; 3], u32> = HashMap::new();
 
         let ch = image.channels() as usize;
@@ -97,12 +116,32 @@ impl OpColorSampleMostCommonColors {
             let h = ((hsl.0 / 360.0) * hue_precision).round() as i32;
             let s = (hsl.1 * saturation_precision).round() as i32;
             let l = (hsl.2 * lightness_precision).round() as i32;
-            *color_counts.entry([h, s, l]).or_insert(0) += 1;
+            match dims {
+                Some([hd, sd, ld])
+                    if (0..hd as i32).contains(&h)
+                        && (0..sd as i32).contains(&s)
+                        && (0..ld as i32).contains(&l) =>
+                {
+                    flat[(h as usize * sd + s as usize) * ld + l as usize] += 1;
+                }
+                _ => *color_counts.entry([h, s, l]).or_insert(0) += 1,
+            }
         }
 
-        // Sort buckets by pixel count (most frequent first)
-        let mut sorted_colors: Vec<(&[i32; 3], &u32)> = color_counts.iter().collect();
-        sorted_colors.sort_by(|a, b| b.1.cmp(a.1));
+        // Gather non-empty buckets from the flat histogram plus any spilled entries.
+        let mut sorted_colors: Vec<([i32; 3], u32)> = color_counts.iter().map(|(k, &c)| (*k, c)).collect();
+        if let Some([_, sd, ld]) = dims {
+            sorted_colors.extend(flat.iter().enumerate().filter(|(_, &c)| c > 0).map(|(i, &c)| {
+                let l = i % ld;
+                let s = (i / ld) % sd;
+                let h = i / (ld * sd);
+                ([h as i32, s as i32, l as i32], c)
+            }));
+        }
+
+        // Sort buckets by pixel count (most frequent first); ties break on the
+        // bucket key so the ordering is deterministic.
+        sorted_colors.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 
         let mut responses: Vec<OutputResponse> = Vec::new();
 

@@ -94,8 +94,8 @@ async fn test_levels_output_range() {
     match &result.responses[0].value {
         Value::Image { data, .. } => {
             for pixel in data.pixels() {
-                for c in 0..pixel.len().min(3) {
-                    assert!(pixel[c] >= 0.0 && pixel[c] <= 1.0, "pixel out of range: {}", pixel[c]);
+                for &val in pixel.iter().take(pixel.len().min(3)) {
+                    assert!(val >= 0.0 && val <= 1.0, "pixel out of range: {}", val);
                 }
             }
         }
@@ -228,6 +228,36 @@ async fn test_levels_preserves_dimensions() {
         }
         other => panic!("Expected Image, got {:?}", other),
     }
+}
+
+/// The gamma LUT (with linear interpolation) must match the direct powf
+/// computation to well within test tolerance across a full gradient.
+#[tokio::test]
+async fn test_levels_lut_matches_powf() {
+    // Gradient image spanning [0, 1], with a non-neutral midtone.
+    let w = 256u32;
+    let mut img = FloatImage::new(w, 1, 4);
+    for x in 0..w {
+        let v = x as f32 / (w - 1) as f32;
+        img.put_pixel(x, 0, &[v, v, v, 1.0]);
+    }
+    let in_mid = 0.3f32;
+    let mut inputs = make_inputs(
+        Value::Image { data: Arc::new(img), change_id: get_id() },
+        0.0, in_mid, 1.0, 0.0, 1.0,
+    );
+    let result = OpImageAdjustmentLevels::run(&mut inputs).await.unwrap();
+    let Value::Image { data, .. } = &result.responses[0].value else { panic!("Expected Image") };
+
+    let inv_gamma = 1.0 / OpImageAdjustmentLevels::midtone_to_gamma(in_mid);
+    let mut max_diff = 0.0f32;
+    for x in 0..w {
+        let remapped = (x as f32 / (w - 1) as f32).clamp(0.0, 1.0);
+        let expected = remapped.powf(inv_gamma);
+        let got = data.get_pixel(x, 0)[0];
+        max_diff = max_diff.max((got - expected).abs());
+    }
+    assert!(max_diff < 1e-3, "LUT deviates from powf by {}", max_diff);
 }
 
 /// Pixels above in_high are clamped to out_high.

@@ -94,7 +94,9 @@ impl OpImageAdjustmentDirectionalBlur {
             let mut row_pixels = Vec::with_capacity(w * ch);
 
             for x in 0..w {
-                let mut sums = vec![0.0f64; ch];
+                // channels are always <= 4, so a stack array avoids a
+                // per-pixel heap allocation
+                let mut sums = [0.0f64; 4];
 
                 // Sample along the blur direction, centered on this pixel
                 for i in 0..samples {

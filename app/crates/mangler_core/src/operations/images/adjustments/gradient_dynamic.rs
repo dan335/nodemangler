@@ -17,6 +17,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -95,12 +96,15 @@ impl OpImageAdjustmentGradientDynamic {
         let cos_a = angle_rad.cos();
         let sin_a = angle_rad.sin();
 
-        let mut output = FloatImage::new(width, height, 4);
-        let mut grad_buf = [0.0f32; 4];
-        let mut field_buf = [0.0f32; 4];
-        for y in 0..height {
-            for x in 0..width {
-                let src = data.get_pixel(x, y);
+        let img = &*data;
+        let grad_img = &*gradient;
+        let field_img = &*field;
+
+        let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |y| {
+            let mut grad_buf = [0.0f32; 4];
+            let mut field_buf = [0.0f32; 4];
+            (0..width).flat_map(move |x| {
+                let src = img.get_pixel(x, y);
                 let lum = if colour_ch >= 3 {
                     0.2126 * src[0] + 0.7152 * src[1] + 0.0722 * src[2]
                 } else {
@@ -108,7 +112,7 @@ impl OpImageAdjustmentGradientDynamic {
                 };
                 // Signed field vector (R→x, G→y).
                 let delta = if field_ch >= 2 && field_w > 0 && field_h > 0 {
-                    field.bilinear_sample(x as f32 * fx_scale, y as f32 * fy_scale, &mut field_buf[..field_ch]);
+                    field_img.bilinear_sample(x as f32 * fx_scale, y as f32 * fy_scale, &mut field_buf[..field_ch]);
                     let fx = field_buf[0] * 2.0 - 1.0;
                     let fy = field_buf[1] * 2.0 - 1.0;
                     fx * cos_a + fy * sin_a
@@ -119,7 +123,7 @@ impl OpImageAdjustmentGradientDynamic {
                 // snap back to the gradient's opposite end.
                 let t = (lum + delta * strength).clamp(0.0, 1.0);
                 let gx = t * (g_w.saturating_sub(1).max(1)) as f32;
-                gradient.bilinear_sample(gx, g_y, &mut grad_buf[..g_ch]);
+                grad_img.bilinear_sample(gx, g_y, &mut grad_buf[..g_ch]);
                 let (r, g, b, a) = match g_ch {
                     1 => (grad_buf[0], grad_buf[0], grad_buf[0], 1.0),
                     2 => (grad_buf[0], grad_buf[0], grad_buf[0], grad_buf[1]),
@@ -127,9 +131,11 @@ impl OpImageAdjustmentGradientDynamic {
                     _ => (grad_buf[0], grad_buf[1], grad_buf[2], grad_buf[3]),
                 };
                 let alpha_in = if has_alpha { src[ch - 1] } else { 1.0 };
-                output.put_pixel(x, y, &[r, g, b, a * alpha_in]);
-            }
-        }
+                [r, g, b, a * alpha_in]
+            })
+        }).collect();
+
+        let output = FloatImage::from_raw(width, height, 4, pixels).unwrap();
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

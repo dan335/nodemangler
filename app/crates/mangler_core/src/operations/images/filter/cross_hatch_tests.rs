@@ -44,8 +44,8 @@ async fn test_cross_hatch_binary_output() {
     match &result.responses[0].value {
         Value::Image { data, .. } => {
             for pixel in data.pixels() {
-                for c in 0..pixel.len().min(3) {
-                    assert!(pixel[c] == 0.0 || pixel[c] == 1.0, "non-binary: {}", pixel[c]);
+                for &val in pixel.iter().take(pixel.len().min(3)) {
+                    assert!(val == 0.0 || val == 1.0, "non-binary: {}", val);
                 }
             }
         }
@@ -62,8 +62,8 @@ async fn test_cross_hatch_white_input_has_no_ink() {
     match &result.responses[0].value {
         Value::Image { data, .. } => {
             for pixel in data.pixels() {
-                for c in 0..pixel.len() {
-                    assert_eq!(pixel[c], 1.0, "white input should have no hatching");
+                for &val in pixel {
+                    assert_eq!(val, 1.0, "white input should have no hatching");
                 }
             }
         }

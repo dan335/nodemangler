@@ -256,7 +256,28 @@ impl Node {
                     }
                 }
 
-                match operation.run(&mut self.inputs).await {
+                // Image operations are CPU-bound and can run for hundreds of
+                // ms; executing them inline would pin this runtime worker and
+                // starve every other task (thumbnail service, sibling graphs).
+                // Move the compute to the blocking pool; inputs are moved in
+                // and handed back so ops keep their `&mut [Input]` contract.
+                let operation_clone = operation.clone();
+                let mut op_inputs = std::mem::take(&mut self.inputs);
+                let run_result = match tokio::task::spawn_blocking(move || {
+                    let result = tokio::runtime::Handle::current()
+                        .block_on(operation_clone.run(&mut op_inputs));
+                    (result, op_inputs)
+                })
+                .await
+                {
+                    Ok((result, inputs)) => {
+                        self.inputs = inputs;
+                        result
+                    }
+                    Err(join_error) => std::panic::resume_unwind(join_error.into_panic()),
+                };
+
+                match run_result {
                     Ok(operation_response) => {
                         // time node took to run
                         self.time = Some(operation_response.time);
@@ -387,7 +408,19 @@ impl Node {
                                     .iter_mut()
                                     .position(|i| i.id == link.input_id)
                                 {
-                                    subgraph_node.set_input_value(i, input.value.clone());
+                                    // Only forward when the value actually
+                                    // changed: set_input_value dirties the
+                                    // child node, and an unconditional set
+                                    // forces a full child-graph traversal per
+                                    // parent run. Triggers always forward —
+                                    // their fingerprint is constant, so it
+                                    // cannot distinguish a fresh firing.
+                                    let unchanged = !matches!(input.value, Value::Trigger)
+                                        && subgraph_node.inputs[i].value.fingerprint()
+                                            == input.value.fingerprint();
+                                    if !unchanged {
+                                        subgraph_node.set_input_value(i, input.value.clone());
+                                    }
                                 }
                             }
                         }

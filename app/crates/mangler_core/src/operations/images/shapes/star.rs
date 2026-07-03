@@ -11,6 +11,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -37,33 +38,27 @@ fn dist_to_segment(px: f64, py: f64, ax: f64, ay: f64, bx: f64, by: f64) -> f64 
     ((px - cx).powi(2) + (py - cy).powi(2)).sqrt()
 }
 
-/// Returns the signed distance for a star polygon.
-/// `n` is the number of points, `outer` and `inner` are the two radii.
-fn sdf_star(px: f64, py: f64, n: i32, outer: f64, inner: f64) -> f64 {
-    let n = n as usize;
-    let total_verts = n * 2;
+/// Builds the star polygon's vertices, alternating between the outer and
+/// inner radii. `n` is the number of points.
+fn star_vertices(n: i32, outer: f64, inner: f64) -> Vec<(f64, f64)> {
+    let total_verts = n as usize * 2;
     let angle_step = std::f64::consts::TAU / total_verts as f64;
+    (0..total_verts).map(|i| {
+        let a = angle_step * i as f64 - std::f64::consts::FRAC_PI_2;
+        let r = if i % 2 == 0 { outer } else { inner };
+        (r * a.cos(), r * a.sin())
+    }).collect()
+}
 
-    // Build vertices alternating outer/inner
+/// Returns the signed distance for a star polygon given its vertex list.
+fn sdf_star(px: f64, py: f64, verts: &[(f64, f64)]) -> f64 {
     let mut min_dist = f64::MAX;
     // Use ray casting for inside/outside test + min edge distance
     let mut crossings = 0i32;
 
-    let mut prev_vx;
-    let mut prev_vy;
-    {
-        let a = angle_step * (total_verts - 1) as f64 - std::f64::consts::FRAC_PI_2;
-        let r = if (total_verts - 1).is_multiple_of(2) { outer } else { inner };
-        prev_vx = r * a.cos();
-        prev_vy = r * a.sin();
-    }
+    let (mut prev_vx, mut prev_vy) = verts[verts.len() - 1];
 
-    for i in 0..total_verts {
-        let a = angle_step * i as f64 - std::f64::consts::FRAC_PI_2;
-        let r = if i % 2 == 0 { outer } else { inner };
-        let vx = r * a.cos();
-        let vy = r * a.sin();
-
+    for &(vx, vy) in verts {
         // edge distance
         let d = dist_to_segment(px, py, prev_vx, prev_vy, vx, vy);
         if d < min_dist {
@@ -171,26 +166,30 @@ impl OpImageShapeStar {
         // anti-aliasing width in normalized coordinates
         let pixel_size = 1.5 / (width.max(height) as f64 * 0.5);
 
-        // 1-channel grayscale mask
-        let mut image = FloatImage::new(width as u32, height as u32, 1);
+        // The vertex ring is identical for every pixel, so build it once.
+        let verts = star_vertices(points, outer, inner);
+        let verts_ref = &verts;
 
-        for y in 0..height {
-            for x in 0..width {
-                // normalize to [-1, 1]
+        // 1-channel grayscale mask
+        let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |y| {
+            // normalize to [-1, 1]
+            let ny = (y as f64 / (height as f64 - 1.0).max(1.0)) * 2.0 - 1.0;
+            (0..width).map(move |x| {
                 let nx = (x as f64 / (width as f64 - 1.0).max(1.0)) * 2.0 - 1.0;
-                let ny = (y as f64 / (height as f64 - 1.0).max(1.0)) * 2.0 - 1.0;
 
                 // apply rotation
                 let px = nx * cos_a + ny * sin_a;
                 let py = -nx * sin_a + ny * cos_a;
 
-                let dist = sdf_star(px, py, points, outer, inner);
+                let dist = sdf_star(px, py, verts_ref);
 
                 // smoothstep for anti-aliased edge, result in [0.0, 1.0]
                 let alpha = 1.0 - smoothstep(-pixel_size, pixel_size, dist);
-                image.put_pixel(x as u32, y as u32, &[alpha as f32]);
-            }
-        }
+                alpha as f32
+            })
+        }).collect();
+
+        let image = FloatImage::from_raw(width as u32, height as u32, 1, pixels).unwrap();
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

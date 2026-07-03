@@ -199,30 +199,36 @@ impl OpImageAdjustmentAnisotropicKuwahara {
             (phi_i, anis_i)
         }).unzip();
 
-        // ---- Step 4: precompute sector weight LUT ----
+        // ---- Step 4: precompute sector weight LUT (offset-major) ----
         // K_i(dx, dy) = G(dx, dy) * w_i(theta(dx, dy))
         //   G is a Gaussian envelope in the canonical (pre-warp) frame
         //   w_i is a smooth angular wedge centered on sector i
-        // Stored as Vec<Vec<f32>> indexed [sector][offset_index].
+        // Only ~2-3 of the 8 sector wedges are nonzero for any offset, so the
+        // LUT stores a short list of (sector, weight) pairs per offset,
+        // indexed [offset_index]. The hot loop then walks exactly the nonzero
+        // entries contiguously instead of probing all SECTORS sector planes.
         let diameter = (2 * radius + 1) as usize;
         let kernel_n = diameter * diameter;
         let sigma = radius as f32 * 0.5;
         let two_sigma_sq = 2.0 * sigma * sigma;
-        let mut sector_weights: Vec<Vec<f32>> = vec![vec![0.0f32; kernel_n]; SECTORS];
-        for (s, weights) in sector_weights.iter_mut().enumerate().take(SECTORS) {
-            let center_angle = (s as f32 + 0.5) * (std::f32::consts::TAU / SECTORS as f32);
-            for dy in -radius..=radius {
-                for dx in -radius..=radius {
-                    let off = ((dy + radius) as usize) * diameter + (dx + radius) as usize;
-                    let dist2 = (dx * dx + dy * dy) as f32;
-                    let radial = (-dist2 / two_sigma_sq).exp();
-                    if dx == 0 && dy == 0 {
-                        // center pixel contributes a small uniform weight to every
-                        // sector so it's never starved of samples
-                        weights[off] = radial / SECTORS as f32;
-                        continue;
+        let mut sector_weights: Vec<Vec<(usize, f32)>> = Vec::with_capacity(kernel_n);
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                let mut entries: Vec<(usize, f32)> = Vec::new();
+                let dist2 = (dx * dx + dy * dy) as f32;
+                let radial = (-dist2 / two_sigma_sq).exp();
+                if dx == 0 && dy == 0 {
+                    // center pixel contributes a small uniform weight to every
+                    // sector so it's never starved of samples
+                    for s in 0..SECTORS {
+                        entries.push((s, radial / SECTORS as f32));
                     }
-                    let theta = (dy as f32).atan2(dx as f32);
+                    sector_weights.push(entries);
+                    continue;
+                }
+                let theta = (dy as f32).atan2(dx as f32);
+                for s in 0..SECTORS {
+                    let center_angle = (s as f32 + 0.5) * (std::f32::consts::TAU / SECTORS as f32);
                     // smooth wedge: cos²(N/2 * Δθ) clamped to positive lobe.
                     // adjacent sectors overlap so the total weight per offset
                     // sums to a smooth function of angle, avoiding seams.
@@ -235,14 +241,15 @@ impl OpImageAdjustmentAnisotropicKuwahara {
                     // N/2 would give non-overlapping wedges and visible
                     // rotation-dependent banding in flat regions.
                     let arg = (SECTORS as f32) * 0.25 * delta;
-                    let wedge = if arg.abs() < std::f32::consts::FRAC_PI_2 {
+                    if arg.abs() < std::f32::consts::FRAC_PI_2 {
                         let c = arg.cos();
-                        c * c
-                    } else {
-                        0.0
-                    };
-                    weights[off] = radial * wedge;
+                        let weight = radial * (c * c);
+                        if weight != 0.0 {
+                            entries.push((s, weight));
+                        }
+                    }
                 }
+                sector_weights.push(entries);
             }
         }
 
@@ -309,16 +316,17 @@ impl OpImageAdjustmentAnisotropicKuwahara {
                             sample[0]
                         };
 
-                        // accumulate this sample into every sector with its
-                        // precomputed weight
-                        for s in 0..SECTORS {
-                            let kw = kernel_ref[s][off] as f64;
-                            if kw == 0.0 { continue; }
+                        // accumulate this sample into the sectors it actually
+                        // touches — the offset-major LUT lists only nonzero
+                        // (sector, weight) pairs
+                        let sl = s_lum as f64;
+                        for &(s, kw) in kernel_ref[off].iter() {
+                            let kw = kw as f64;
                             for c in 0..ch {
                                 sums[s * ch + c] += sample[c] as f64 * kw;
                             }
-                            sum_lum[s] += s_lum as f64 * kw;
-                            sumsq_lum[s] += (s_lum as f64).powi(2) * kw;
+                            sum_lum[s] += sl * kw;
+                            sumsq_lum[s] += sl * sl * kw;
                             wsum[s] += kw;
                         }
                     }
@@ -327,7 +335,9 @@ impl OpImageAdjustmentAnisotropicKuwahara {
                 // combine sector means by 1 / (variance^q + eps) weights — the
                 // sector with the lowest luminance variance dominates.
                 let eps = 1e-8f64;
-                let mut numer = vec![0.0f64; ch];
+                // channels are always <= 4, so a stack array avoids a
+                // per-pixel heap allocation
+                let mut numer = [0.0f64; 4];
                 let mut denom = 0.0f64;
                 for s in 0..SECTORS {
                     if wsum[s] < 1e-12 { continue; }

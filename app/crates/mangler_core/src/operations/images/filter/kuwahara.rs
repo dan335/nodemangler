@@ -84,6 +84,45 @@ impl OpImageAdjustmentKuwahara {
         let w = width as i32;
         let h = height as i32;
 
+        // Precompute summed-area tables so each quadrant's mean and variance
+        // is an O(1) box lookup instead of an O((r+1)²) scan. Planes per cell:
+        // one per channel, plus luminance and luminance².
+        let n_planes = ch + 2;
+        let lum_plane = ch;
+        let lum2_plane = ch + 1;
+        let stride = (w as usize + 1) * n_planes;
+        let mut sat = vec![0.0f64; (h as usize + 1) * stride]; // row 0 / col 0 stay zero
+
+        // Row pass (parallel): per-row prefix sums of every plane.
+        sat[stride..].par_chunks_mut(stride).enumerate().for_each(|(y, out_row)| {
+            let mut run = [0.0f64; 6]; // n_planes <= 6
+            for x in 0..w as usize {
+                let pixel = data_ref.get_pixel(x as u32, y as u32);
+                for c in 0..ch {
+                    run[c] += pixel[c] as f64;
+                }
+                // luminance used for variance: Rec. 709 for RGB, or the single channel for grayscale
+                let lum = if color_ch >= 3 {
+                    0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2]
+                } else {
+                    pixel[0]
+                } as f64;
+                run[lum_plane] += lum;
+                run[lum2_plane] += lum * lum;
+                let base = (x + 1) * n_planes;
+                out_row[base..base + n_planes].copy_from_slice(&run[..n_planes]);
+            }
+        });
+        // Column pass: accumulate rows top-to-bottom (cheap vectorized adds).
+        for y in 1..=h as usize {
+            let (prev, cur) = sat.split_at_mut(y * stride);
+            let prev_row = &prev[(y - 1) * stride..];
+            for (c_val, p_val) in cur[..stride].iter_mut().zip(prev_row.iter()) {
+                *c_val += *p_val;
+            }
+        }
+        let sat_ref = &sat;
+
         // Process rows in parallel; each row returns its flat pixel buffer
         let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(move |y| {
             let mut row_pixels = Vec::with_capacity(w as usize * ch);
@@ -101,55 +140,43 @@ impl OpImageAdjustmentKuwahara {
                 ];
 
                 let mut best_variance = f32::INFINITY;
-                let mut best_mean = vec![0.0f32; ch];
+                let mut best_mean = [0.0f32; 4];
 
                 for (x0, y0, x1, y1) in quadrants.iter() {
                     // clamp the quadrant bounds into the image (inclusive)
-                    let cx0 = (*x0).clamp(0, w - 1);
-                    let cy0 = (*y0).clamp(0, h - 1);
-                    let cx1 = (*x1).clamp(0, w - 1);
-                    let cy1 = (*y1).clamp(0, h - 1);
+                    let cx0 = (*x0).clamp(0, w - 1) as usize;
+                    let cy0 = (*y0).clamp(0, h - 1) as usize;
+                    let cx1 = (*x1).clamp(0, w - 1) as usize;
+                    let cy1 = (*y1).clamp(0, h - 1) as usize;
 
-                    let mut sum = vec![0.0f64; ch];
-                    let mut lum_sum: f64 = 0.0;
-                    let mut lum_sum_sq: f64 = 0.0;
-                    let mut count: u32 = 0;
+                    let count = ((cx1 - cx0 + 1) * (cy1 - cy0 + 1)) as u32;
 
-                    for py in cy0..=cy1 {
-                        for px in cx0..=cx1 {
-                            let pixel = data_ref.get_pixel(px as u32, py as u32);
-                            // accumulate per-channel sums (including alpha if present)
-                            for c in 0..ch {
-                                sum[c] += pixel[c] as f64;
-                            }
-                            // luminance used for variance: Rec. 709 for RGB, or the single channel for grayscale
-                            let lum = if color_ch >= 3 {
-                                0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2]
-                            } else {
-                                pixel[0]
-                            } as f64;
-                            lum_sum += lum;
-                            lum_sum_sq += lum * lum;
-                            count += 1;
-                        }
+                    // O(1) inclusive box sums for every plane from the SATs
+                    let br = (cy1 + 1) * stride + (cx1 + 1) * n_planes;
+                    let tr = cy0 * stride + (cx1 + 1) * n_planes;
+                    let bl = (cy1 + 1) * stride + cx0 * n_planes;
+                    let tl = cy0 * stride + cx0 * n_planes;
+                    let mut sums = [0.0f64; 6];
+                    for (pl, sum) in sums.iter_mut().enumerate().take(n_planes) {
+                        *sum = sat_ref[br + pl] - sat_ref[tr + pl] - sat_ref[bl + pl] + sat_ref[tl + pl];
                     }
 
                     // compute mean luminance and population variance E[X^2] - E[X]^2
                     let inv_n = 1.0 / count as f64;
-                    let mean_lum = lum_sum * inv_n;
-                    let variance = (lum_sum_sq * inv_n - mean_lum * mean_lum).max(0.0) as f32;
+                    let mean_lum = sums[lum_plane] * inv_n;
+                    let variance = (sums[lum2_plane] * inv_n - mean_lum * mean_lum).max(0.0) as f32;
 
                     // keep the quadrant with the smallest luminance variance
                     if variance < best_variance {
                         best_variance = variance;
                         for c in 0..ch {
-                            best_mean[c] = (sum[c] * inv_n) as f32;
+                            best_mean[c] = (sums[c] * inv_n) as f32;
                         }
                     }
                 }
 
                 // write the winning quadrant's mean to the output
-                row_pixels.extend_from_slice(&best_mean);
+                row_pixels.extend_from_slice(&best_mean[..ch]);
             }
             row_pixels
         }).collect();

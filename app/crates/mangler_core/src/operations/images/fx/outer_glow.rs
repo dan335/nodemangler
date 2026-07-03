@@ -14,9 +14,13 @@ use crate::operations::images::filter::erode::separable_morphology;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
+
+/// Minimum pixel count before the fx passes are parallelized.
+pub(crate) const PARALLEL_PIXELS: usize = 1 << 16;
 
 /// Outer glow — bright halo around the outside of a mask.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,23 +78,11 @@ impl OpImageFxOuterGlow {
         let dilated = separable_morphology(&mask_field, radius, |a, b| a.max(b));
 
         // Ring = dilated - original (clamped to non-negative).
-        let mut ring = FloatImage::new(width, height, 1);
-        for y in 0..height {
-            for x in 0..width {
-                let v = (dilated.get_pixel(x, y)[0] - mask_field.get_pixel(x, y)[0]).max(0.0);
-                ring.put_pixel(x, y, &[v]);
-            }
-        }
+        let ring = subtract_fields(&dilated, &mask_field, width, height);
         let glow = gaussian_blur_image(&ring, (radius as f32) * 0.5);
 
         let (cr, cg, cb, ca) = color.to_srgb_float();
-        let mut output = FloatImage::new(width, height, 4);
-        for y in 0..height {
-            for x in 0..width {
-                let a = (glow.get_pixel(x, y)[0] * intensity * ca).clamp(0.0, 1.0);
-                output.put_pixel(x, y, &[cr, cg, cb, a]);
-            }
-        }
+        let output = tint_field(&glow, [cr, cg, cb], intensity, ca);
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
@@ -105,20 +97,56 @@ impl OpImageFxOuterGlow {
 pub(crate) fn to_mask_field(data: &FloatImage) -> FloatImage {
     let (w, h) = data.dimensions();
     let ch = data.channels() as usize;
-    let mut out = FloatImage::new(w, h, 1);
-    for y in 0..h {
-        for x in 0..w {
-            let p = data.get_pixel(x, y);
-            let v = match ch {
-                1 => p[0],
-                2 => p[0] * p[1],
-                3 => 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2],
-                _ => (0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]) * p[3],
-            };
-            out.put_pixel(x, y, &[v]);
+    let src = data.as_raw();
+
+    // Extract one scalar per pixel with the channel dispatch hoisted out of
+    // the pixel loop.
+    fn extract<F: Fn(&[f32]) -> f32 + Sync>(src: &[f32], ch: usize, f: F) -> Vec<f32> {
+        if src.len() / ch >= PARALLEL_PIXELS {
+            src.par_chunks_exact(ch).map(&f).collect()
+        } else {
+            src.chunks_exact(ch).map(f).collect()
         }
     }
-    out
+    let out = match ch {
+        1 => src.to_vec(),
+        2 => extract(src, ch, |p| p[0] * p[1]),
+        3 => extract(src, ch, |p| 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]),
+        _ => extract(src, ch, |p| (0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]) * p[3]),
+    };
+    FloatImage::from_raw(w, h, 1, out).unwrap()
+}
+
+/// Elementwise `(a - b).max(0.0)` over two single-channel fields.
+pub(crate) fn subtract_fields(a: &FloatImage, b: &FloatImage, width: u32, height: u32) -> FloatImage {
+    let (a_raw, b_raw) = (a.as_raw(), b.as_raw());
+    let out: Vec<f32> = if a_raw.len() >= PARALLEL_PIXELS {
+        a_raw.par_iter().zip(b_raw.par_iter()).map(|(&av, &bv)| (av - bv).max(0.0)).collect()
+    } else {
+        a_raw.iter().zip(b_raw.iter()).map(|(&av, &bv)| (av - bv).max(0.0)).collect()
+    };
+    FloatImage::from_raw(width, height, 1, out).unwrap()
+}
+
+/// Paints a single-channel field as an RGBA layer with constant colour `rgb`
+/// and alpha `(field * f1 * f2).clamp(0, 1)`.
+pub(crate) fn tint_field(field: &FloatImage, rgb: [f32; 3], f1: f32, f2: f32) -> FloatImage {
+    let (w, h) = field.dimensions();
+    let src = field.as_raw();
+    let mut out = vec![0.0f32; src.len() * 4];
+
+    let tint_px = |(dst, &m): (&mut [f32], &f32)| {
+        dst[0] = rgb[0];
+        dst[1] = rgb[1];
+        dst[2] = rgb[2];
+        dst[3] = (m * f1 * f2).clamp(0.0, 1.0);
+    };
+    if src.len() >= PARALLEL_PIXELS {
+        out.par_chunks_exact_mut(4).zip(src.par_iter()).for_each(tint_px);
+    } else {
+        out.chunks_exact_mut(4).zip(src.iter()).for_each(tint_px);
+    }
+    FloatImage::from_raw(w, h, 4, out).unwrap()
 }
 
 #[cfg(test)]

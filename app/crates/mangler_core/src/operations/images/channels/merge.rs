@@ -12,9 +12,51 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
+
+/// Minimum pixel count before the merge is parallelized over rows.
+const PARALLEL_PIXELS: usize = 1 << 16;
+
+/// Per-row view of one source image: the raw row slice (empty when the row is
+/// out of bounds), how many leading pixels are in bounds, the channel count,
+/// whether luminance reduction applies, and the out-of-bounds fill value.
+struct SourceRow<'a> {
+    row: &'a [f32],
+    in_w: usize,
+    ch: usize,
+    luma: bool,
+    fill: f32,
+}
+
+impl<'a> SourceRow<'a> {
+    /// Builds the row view for source `img` at output row `y`, clipped to the
+    /// output width `out_w`. `fill` is used for out-of-bounds pixels.
+    fn new(img: &'a FloatImage, y: u32, out_w: usize, fill: f32) -> Self {
+        if y < img.height() && img.width() > 0 {
+            let ch = img.channels() as usize;
+            let iw = img.width() as usize;
+            let start = y as usize * iw * ch;
+            Self { row: &img.as_raw()[start..start + iw * ch], in_w: iw.min(out_w), ch, luma: ch >= 3, fill }
+        } else {
+            Self { row: &[], in_w: 0, ch: 1, luma: false, fill }
+        }
+    }
+
+    /// Scalar value at column `x`: Rec. 601 luminance for RGB(A) sources,
+    /// first channel otherwise, or the fill value out of bounds.
+    #[inline]
+    fn value(&self, x: usize) -> f32 {
+        if x < self.in_w {
+            let px = &self.row[x * self.ch..];
+            if self.luma { 0.299 * px[0] + 0.587 * px[1] + 0.114 * px[2] } else { px[0] }
+        } else {
+            self.fill
+        }
+    }
+}
 
 /// Operation that merges four channel images into a single RGBA image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,30 +106,37 @@ impl OpImageChannelMerge {
         let Value::Image{data:blue_data, change_id:_} = blue_converted.unwrap() else { unreachable!() };
         let Value::Image{data:alpha_data, change_id:_} = alpha_converted.unwrap() else { unreachable!() };
 
-        // Helper: extract the first-channel or luminance value from a FloatImage pixel
-        let channel_val = |img: &FloatImage, x: u32, y: u32| -> f32 {
-            if x >= img.width() || y >= img.height() { return 0.0; }
-            let px = img.get_pixel(x, y);
-            let ch = img.channels() as usize;
-            if ch >= 3 { 0.299 * px[0] + 0.587 * px[1] + 0.114 * px[2] } else { px[0] }
-        };
-
         // Use the red channel's dimensions as the output size
         let (width, height) = red_data.dimensions();
-        let mut output = FloatImage::new(width, height, 4);
+        let w = width as usize;
+        let mut out_data = vec![0.0f32; w * height as usize * 4];
 
-        for y in 0..height {
-            for x in 0..width {
-                let r = channel_val(&red_data, x, y);
-                let g = channel_val(&green_data, x, y);
-                let b = channel_val(&blue_data, x, y);
-                // Alpha defaults to 1.0 for out-of-bounds pixels
-                let a = if x < alpha_data.width() && y < alpha_data.height() {
-                    channel_val(&alpha_data, x, y)
-                } else { 1.0 };
-                output.put_pixel(x, y, &[r, g, b, a]);
+        // Fill one output row from per-source row views; the source bounds
+        // checks and channel dispatch are hoisted to once per row.
+        let process_row = |(y, dst_row): (usize, &mut [f32])| {
+            let y = y as u32;
+            let red = SourceRow::new(&red_data, y, w, 0.0);
+            let green = SourceRow::new(&green_data, y, w, 0.0);
+            let blue = SourceRow::new(&blue_data, y, w, 0.0);
+            // Alpha defaults to 1.0 for out-of-bounds pixels
+            let alpha = SourceRow::new(&alpha_data, y, w, 1.0);
+            for (x, dst) in dst_row.chunks_exact_mut(4).enumerate() {
+                dst[0] = red.value(x);
+                dst[1] = green.value(x);
+                dst[2] = blue.value(x);
+                dst[3] = alpha.value(x);
+            }
+        };
+
+        if w > 0 {
+            if w * height as usize >= PARALLEL_PIXELS {
+                out_data.par_chunks_exact_mut(w * 4).enumerate().for_each(process_row);
+            } else {
+                out_data.chunks_exact_mut(w * 4).enumerate().for_each(process_row);
             }
         }
+
+        let output = FloatImage::from_raw(width, height, 4, out_data).unwrap();
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

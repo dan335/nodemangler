@@ -113,15 +113,30 @@ impl OpImageAdjustmentBilateral {
             }
         }
 
+        // precompute the range-weight LUT over quantized squared color distance,
+        // sampled with linear interpolation — replaces one exp() per neighbor.
+        // The domain covers weights down to exp(-13.8) ≈ 1e-6; anything past
+        // the end (color_d2 is unbounded for HDR-ish inputs) contributes a
+        // negligible weight and is treated as zero.
+        const RANGE_LUT_SIZE: usize = 2048;
+        let lut_max_d2 = range_denom * 13.815511; // -ln(1e-6)
+        let lut_scale = (RANGE_LUT_SIZE - 1) as f32 / lut_max_d2;
+        let mut range_lut = [0.0f32; RANGE_LUT_SIZE];
+        for (i, entry) in range_lut.iter_mut().enumerate() {
+            let d2 = i as f32 / lut_scale;
+            *entry = (-d2 / range_denom).exp();
+        }
+
         // Process each row in parallel
         let spatial_table_ref = &spatial_table;
+        let range_lut_ref = &range_lut;
         let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(move |y| {
             let mut row_pixels = Vec::with_capacity(w as usize * ch);
 
             for x in 0..w {
                 let center = data_ref.get_pixel(x as u32, y as u32);
 
-                let mut sum = vec![0.0f32; ch];
+                let mut sum = [0.0f32; 4];
                 let mut weight_sum: f32 = 0.0;
 
                 // sweep over the square window, clamping to image bounds
@@ -140,7 +155,15 @@ impl OpImageAdjustmentBilateral {
                             color_d2 += d * d;
                         }
                         let spatial_w = spatial_table_ref[row_idx + (dx + radius) as usize];
-                        let range_w = (-color_d2 / range_denom).exp();
+                        // range weight via LUT with linear interpolation
+                        let t = color_d2 * lut_scale;
+                        let range_w = if t >= (RANGE_LUT_SIZE - 1) as f32 {
+                            0.0
+                        } else {
+                            let i = t as usize;
+                            let frac = t - i as f32;
+                            range_lut_ref[i] + (range_lut_ref[i + 1] - range_lut_ref[i]) * frac
+                        };
                         let weight = spatial_w * range_w;
 
                         for c in 0..ch {

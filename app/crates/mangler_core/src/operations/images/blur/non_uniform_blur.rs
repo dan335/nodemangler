@@ -122,7 +122,9 @@ impl OpImageAdjustmentNonUniformBlur {
                 let luminance = map_px[0];
                 let radius = luminance * max_intensity;
 
-                let mut sums = vec![0.0f64; ch];
+                // channels are always <= 4, so a stack array avoids a
+                // per-pixel heap allocation
+                let mut sums = [0.0f64; 4];
 
                 // Sample in a disc pattern scaled by the local radius
                 for &(ox, oy) in offsets_ref {

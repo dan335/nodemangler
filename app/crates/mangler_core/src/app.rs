@@ -48,6 +48,11 @@ impl App {
                 let mut needs_to_save = false;
                 let mut last_save = Instant::now();
                 const AUTO_SAVE_INTERVAL: Duration = Duration::from_secs(1);
+                // External subgraph edits are rare (seconds-to-minutes apart);
+                // stat()-ing every subgraph file at 60 Hz is wasted blocking
+                // syscall traffic on the engine task. Poll at 500 ms instead.
+                let mut last_subgraph_check = Instant::now();
+                const SUBGRAPH_CHECK_INTERVAL: Duration = Duration::from_millis(500);
 
                 // Main engine loop: drain messages, execute graph, auto-save
                 let thread_handle = tokio::spawn(async move {
@@ -55,9 +60,12 @@ impl App {
                         let mut sleep_time = Instant::now() + Duration::from_millis(16);
 
                         // Detect cross-tab / external edits to any referenced
-                        // subgraph files and reload them before we do anything
-                        // else this tick. One stat() per subgraph node — cheap.
-                        graph.check_subgraphs_for_changes();
+                        // subgraph files and reload them. Throttled: one
+                        // stat() per subgraph node per SUBGRAPH_CHECK_INTERVAL.
+                        if last_subgraph_check.elapsed() >= SUBGRAPH_CHECK_INTERVAL {
+                            graph.check_subgraphs_for_changes();
+                            last_subgraph_check = Instant::now();
+                        }
 
                         // Process graph-level changes (add/remove nodes, connections, save path)
                         while let Ok(change_graph_message) = rx_change_graph.try_recv() {

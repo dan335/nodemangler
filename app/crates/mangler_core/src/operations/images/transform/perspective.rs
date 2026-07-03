@@ -13,6 +13,7 @@ use crate::operations::{OperationResponse, OperationError, OutputResponse, defau
 use crate::output::Output;
 use crate::value::Value;
 use crate::float_image::FloatImage;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -141,30 +142,33 @@ impl OpImageTransformPerspective {
         ];
 
         let mut out = FloatImage::new(w, h, data.channels());
-        let zero = vec![0.0f32; ch];
-        let mut sp = vec![0.0f32; ch];
+        let src = &*data;
+        let inv_ref = &inv;
+        let row_len = (w as usize * ch).max(1);
 
-        for y in 0..h {
-            for x in 0..w {
+        out.as_raw_mut().par_chunks_mut(row_len).enumerate().for_each(|(y, row)| {
+            let mut sp = vec![0.0f32; ch];
+            let py = y as f32;
+            for x in 0..w as usize {
                 let px = x as f32;
-                let py = y as f32;
-                let uw = inv[0] * px + inv[1] * py + inv[2];
-                let vw = inv[3] * px + inv[4] * py + inv[5];
-                let ww = inv[6] * px + inv[7] * py + inv[8];
+                let uw = inv_ref[0] * px + inv_ref[1] * py + inv_ref[2];
+                let vw = inv_ref[3] * px + inv_ref[4] * py + inv_ref[5];
+                let ww = inv_ref[6] * px + inv_ref[7] * py + inv_ref[8];
+                let dst = &mut row[x * ch..(x + 1) * ch];
                 if ww.abs() < 1e-9 {
-                    out.put_pixel(x, y, &zero);
+                    dst.fill(0.0);
                     continue;
                 }
                 let u = uw / ww;
                 let v = vw / ww;
                 if !(0.0..=1.0).contains(&u) || !(0.0..=1.0).contains(&v) {
-                    out.put_pixel(x, y, &zero);
+                    dst.fill(0.0);
                     continue;
                 }
-                data.bilinear_sample(u * wf, v * hf, &mut sp);
-                out.put_pixel(x, y, &sp);
+                src.bilinear_sample(u * wf, v * hf, &mut sp);
+                dst.copy_from_slice(&sp);
             }
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
