@@ -1,9 +1,9 @@
 # Mangler
 
+![NodeMangler screenshot](screenshot.jpg)
+
 A node-based tool for image and color manipulation.  Comparable to
 Substance Designer, Blender's compositor, or TouchDesigner.  Written in Rust.
-
-![NodeMangler screenshot](screenshot.jpg)
 
 I wrote the framework for this project back in 2023 intending for it to be a replacement for Substance Designer but lost interest.  Picked it up again in 2026 with the help of Claude.
 
@@ -36,7 +36,7 @@ This is a monorepo:
 
 Each crate has its own README with the full details:
 
-- [mangler_core README](app/crates/mangler_core/README.md) — engine internals and the complete operation reference
+- [mangler_core README](app/crates/mangler_core/README.md) — engine internals and operation category overview
 - [mangler_gui README](app/crates/mangler_gui/README.md) — the desktop application
 - [mangler_cli README](app/crates/mangler_cli/README.md) — the command-line interface
 
@@ -81,8 +81,9 @@ cargo test                  # run the test suite
 
 ## Operations
 
-An overview of the operation library. See the
-[mangler_core README](app/crates/mangler_core/README.md) for the full list.
+An overview of the operation library. See [Node Reference](#node-reference) below for
+every node by name, or run `cargo run -p mangler_cli -- show-ops` for full descriptions
+and I/O of each one.
 
 - **Numbers** — arithmetic, trigonometry, algebra, logarithms, interpolation, bitwise,
   random, casts, and constants (π, τ, e).
@@ -103,6 +104,61 @@ An overview of the operation library. See the
     reaction-diffusion, erosion, curl, plasma, clouds, …)
 - **Logic** — comparisons, boolean ops, and a `select` multiplexer.
 - **Text** — append, length, case conversion, to-string.
+
+## Node Reference
+
+Every node in the graph editor's Add Node menu, by category and subcategory
+(294 operation nodes, plus subgraph nodes for composing whole pipelines).
+
+### Numbers (61)
+
+- **Input:** Decimal, E, Integer, Pi, Tau
+- **Algebraic:** Absolute Value, Cube Root, Factorial, GCD, LCM, Nth Root, Power, Square Root
+- **Arithmetic:** Add, Average, Ceil, Clamp, Decrement, Divide, Floor, Fractional Part, Increment, Max, Min, Modulus, Multiply, Negate, Reciprocal, Round, Sign, Subtract, Truncate
+- **Bitwise:** Bitwise And, Bitwise Not, Bitwise Or, Bitwise Xor, Shift Left, Shift Right
+- **Cast:** To Decimal, To Integer
+- **Interpolation:** Lerp, Map Range, Smoothstep, Step
+- **Logarithmic:** Exp, Ln, Log, Log10, Log2
+- **Random:** Random Decimal, Random Integer
+- **Trigonometry:** Acos, Asin, Atan, Atan2, Cos, Cosh, Sin, Sinh, Tan, Tanh
+
+### Colors (52)
+
+- **Input:** CMYK, HSL, HSV, HWB, Lab, LCH, Oklab, Oklch, RGB, RGB Linear, xyY, XYZ, YCbCr, YUV
+- **Output:** To CMYK, To HSL, To HSV, To HWB, To Lab, To LCH, To Oklab, To Oklch, To RGB, To RGB Linear, To xyY, To XYZ, To YCbCr, To YUV
+- **Analysis:** Color Temperature, Contrast Ratio, Distance, Dominant Hue, Harmony Score, Luminance, Mix Ratio, Most Common Colors
+- **Generation:** From Hex, Random Color, To Color, To Hex
+- **Harmony:** Analogous, Complementary, Double Split Comp, Monochromatic, Tetradic, Triadic
+- **Manipulation:** Adjust HSV, Blend, Clamp, Grayscale, Invert, Set Alpha
+
+### Images (161)
+
+- **Input:** From Clipboard, From Color, From File, From Gradient, From Text, From URL
+- **Output:** To Clipboard, To File
+- **Adjustments:** Auto Levels, Brighten, Color Balance, Color Match, Color To Mask, Contrast, Curves, Dither, Frequency Split, Gradient Dynamic, Gradient Map, Grayscale, Histogram Range, Histogram Scan, Histogram Select, HSL, Hue Shift, Invert, Levels, Posterize, Replace Color, Saturation, Selective Color, Threshold, Vignette, White Balance
+- **Blur:** Blur, Directional Blur, Non-Uniform Blur, Radial Blur, Slope Blur
+- **Cast:** To Image
+- **Channels:** Channel Merge, Channel Mixer, Channel Select, Channel Shuffle, Channel Split
+- **Combine:** Blend, Compare, Composite
+- **Filter:** Anisotropic Diffusion, Anisotropic Kuwahara, ASCII, Bilateral, Black Hat, Canny, Close, Convolution, Cross Hatch, Difference Of Gaussians, Dilate, Distance Field, Edge Detect, Emboss, Erode, Floyd Steinberg, Guided Filter, Halftone, Highpass, Kuwahara, Luminance Highpass, Median, Morphological Gradient, Non Local Means, Oil Paint, Open, Ordered Dither, Outline, Pixelate, Sharpen, SNN, Toon, Top Hat, Unsharp Mask, Vector Morphology
+- **FX:** Drop Shadow, Inner Glow, Outer Glow
+- **Noise:** Anisotropic Noise, Billow Noise, Blue Noise, Checkerboard Noise, Cloud Noise, Concentric Rings, Crystal Noise, Curl Noise, Dirt Noise, Domain Warp, Erosion, FBM Noise, Gabor Noise, Hybrid Multifractal Noise, Multifractal Noise, Open Simplex Noise, Perlin Noise, Plasma Noise, Reaction Diffusion, Ridged Multifractal Noise, Super Simplex Noise, Value Noise, Voronoi Blend, Voronoi Crack Noise, Wave, White Noise, Worley Distance Noise, Worley Value Noise
+- **Patterns:** Brick, Flood Fill, Flood Fill Mapper, Hexagonal, Splatter, Tile Generator, Tile Sampler, Weave
+- **PBR:** AO From Height, Bevel, Curvature, Height Blend, Normal Blend, Normal Combine, Normal From Height, Normal Invert, Normal To Height
+- **Shapes:** Circle, Cone, Ellipse, Line, Paraboloid, Polygon, Pyramid, Rectangle, Star
+- **Transform:** Crop, Directional Warp, Flip Horizontal, Flip Vertical, Kaleidoscope, Make Tile, Mirror, Perspective, Polar Coordinates, Resize, Resize Exact, Resize Fill, Rotate, Rotate 180, Rotate 270, Rotate 90, Seam Carve, Spherize, Swirl, Tiling Transform, Warp
+
+### Logic (14)
+
+- **Input:** Boolean
+- **Boolean:** And, Nand, Nor, Not, Or, Xor
+- **Comparison:** Equal, Greater Or Equal, Greater Than, Less Or Equal, Less Than, Not Equal
+- **Flow:** Select
+
+### Text (6)
+
+- **Input:** Text
+- **Manipulation:** Append, Length, To Lowercase, To String, To Uppercase
 
 ## License
 
