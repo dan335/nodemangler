@@ -472,7 +472,6 @@ operations! {
     OpImageNoiseCaustics(crate::operations::images::noise::process::caustics::OpImageNoiseCaustics),
     OpImageNoiseVeins(crate::operations::images::noise::structural::veins::OpImageNoiseVeins),
     OpImageNoiseWarpedRings(crate::operations::images::noise::structural::warped_rings::OpImageNoiseWarpedRings),
-    OpImageNoiseCreased(crate::operations::images::noise::structural::creased::OpImageNoiseCreased),
     OpImageNoiseLightning(crate::operations::images::noise::process::lightning::OpImageNoiseLightning),
 
     // shapes
@@ -909,7 +908,6 @@ pub fn operation_list() -> Vec<OperationListItem> {
                     OperationListItem::Operation { operation: Operation::OpImageNoiseTruchet },
                     OperationListItem::Operation { operation: Operation::OpImageNoiseWarpedRings },
                     OperationListItem::Operation { operation: Operation::OpImageNoiseVeins },
-                    OperationListItem::Operation { operation: Operation::OpImageNoiseCreased },
                 ]},
                 OperationListItem::Category { name: "grunge".to_string(), operation_list_items: vec![
                     OperationListItem::Operation { operation: Operation::OpImageNoiseDirt },

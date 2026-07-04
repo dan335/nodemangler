@@ -1,9 +1,8 @@
 //! Checkerboard pattern image generator.
 //!
-//! Produces a grayscale checkerboard pattern using the noise library's
-//! `Checkerboard` function. The cell size controls the scale of the squares.
+//! Produces a grayscale checkerboard pattern. The size input sets how many
+//! squares span the image's larger dimension.
 
-use crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb;
 use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -14,7 +13,6 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
-use noise::{NoiseFn, Checkerboard};
 
 /// Operation that generates a checkerboard pattern as a grayscale image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,7 +24,7 @@ impl OpImageNoiseCheckerboard {
         NodeSettings {
             name: "checkerboard noise".to_string(),
             description: "Creates a checkerboard noise image.".to_string(),
-            help: "Not a stochastic noise at all: a deterministic alternating black/white grid produced by the noise crate's Checkerboard function. The size input is a subdivision exponent rather than a count, so each step doubles how many squares fit across the image.\n\nHandy as a UV test pattern, a mask for regular alternation, or an input to other nodes (warp, blur, blend) that turn the regular grid into something less obvious.".to_string(),
+            help: "Not a stochastic noise at all: a deterministic alternating black/white grid. The size input sets how many squares span the image's larger dimension; the top-left square is white.\n\nHandy as a UV test pattern, a mask for regular alternation, or an input to other nodes (warp, blur, blend) that turn the regular grid into something less obvious.".to_string(),
         }
     }
 
@@ -37,8 +35,8 @@ impl OpImageNoiseCheckerboard {
                 .with_description("Output image width in pixels."),
             Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue {clamp:Some((1.0,10000.0)), speed: None }), None)
                 .with_description("Output image height in pixels."),
-            Input::new("size".to_string(), Value::Integer(10), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
-                .with_description("Checkerboard subdivision exponent; larger values produce more, smaller squares."),
+            Input::new("size".to_string(), Value::Integer(10), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
+                .with_description("Number of squares across the image's larger dimension."),
         ]
     }
 
@@ -65,16 +63,15 @@ impl OpImageNoiseCheckerboard {
         // Build a single-channel FloatImage from the checkerboard pattern
         let mut float_image = FloatImage::new(width as u32, height as u32, 1);
 
-        let perlin = Checkerboard::new(size as usize);
+        // Square edge in pixels so that `size` squares span the larger dimension
+        let cell = (width.max(height) as f64 / size as f64).max(1.0);
 
-        for x in 0..width {
-            for y in 0..height {
-                let size = width.max(height) as f64;
-                let coords_x = (x as f64) / size;
-                let coords_y = (y as f64) / size;
-                let noise = perlin.get([coords_x, coords_y]) as f32 * 0.5 + 0.5;
-                let non_linear = linear_to_nonlinear_srgb(noise);
-                float_image.put_pixel(x as u32, y as u32, &[non_linear]);
+        for y in 0..height {
+            for x in 0..width {
+                let cx = (x as f64 / cell) as i64;
+                let cy = (y as f64 / cell) as i64;
+                let value = 1.0 - ((cx + cy) & 1) as f32;
+                float_image.put_pixel(x as u32, y as u32, &[value]);
             }
         }
 

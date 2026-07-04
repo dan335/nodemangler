@@ -46,3 +46,15 @@ async fn test_opimagepbrcurvature_output_range() {
     let result = OpImagePbrCurvature::run(&mut inputs).await.unwrap();
     match &result.responses[0].value { Value::Image { data, .. } => { for px in data.pixels() { assert!(px[0] >= 0.0 && px[0] <= 1.0); } } other => panic!("{:?}", other) }
 }
+
+#[tokio::test]
+async fn test_opimagepbrcurvature_single_channel_input_does_not_panic() {
+    // Regression: grayscale (1-channel) inputs used to panic indexing channel 1
+    let gray = Arc::new(FloatImage::from_pixel(8, 8, 1, &[0.7]));
+    let mut inputs = vec![
+        Input::new("image".to_string(), Value::Image { data: gray, change_id: get_id() }, None, None),
+        Input::new("intensity".to_string(), Value::Decimal(1.0), None, None),
+    ];
+    let result = OpImagePbrCurvature::run(&mut inputs).await;
+    assert!(result.is_ok(), "single-channel input should not fail: {:?}", result.err());
+}

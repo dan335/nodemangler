@@ -52,6 +52,8 @@ impl OpImagePbrCurvature {
         let width = data.width() as i32;
         let height = data.height() as i32;
         let img = &*data;
+        // Images with fewer than 2 channels have no Y normal component; treat it as flat.
+        let has_y = img.channels() >= 2;
 
         let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |y| {
             let top_y = (y - 1).max(0) as u32;
@@ -63,8 +65,8 @@ impl OpImagePbrCurvature {
                 // Decode normal X/Y from the [0,1] encoded normal map
                 let left_nx = img.get_pixel(left_x, y as u32)[0] * 2.0 - 1.0;
                 let right_nx = img.get_pixel(right_x, y as u32)[0] * 2.0 - 1.0;
-                let top_ny = img.get_pixel(x as u32, top_y)[1] * 2.0 - 1.0;
-                let bottom_ny = img.get_pixel(x as u32, bottom_y)[1] * 2.0 - 1.0;
+                let top_ny = if has_y { img.get_pixel(x as u32, top_y)[1] * 2.0 - 1.0 } else { 0.0 };
+                let bottom_ny = if has_y { img.get_pixel(x as u32, bottom_y)[1] * 2.0 - 1.0 } else { 0.0 };
 
                 // Divergence of normal field
                 let dnx_dx = right_nx - left_nx;

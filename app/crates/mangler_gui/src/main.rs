@@ -40,7 +40,7 @@ async fn main() -> Result<(), eframe::Error> {
     };
 
     eframe::run_native(
-        "Mangler",
+        "NodeMangler",
         options,
         Box::new(|cc| Ok(Box::<app::App>::new(app::App::new(cc)))),
     )
