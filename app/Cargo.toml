@@ -20,12 +20,14 @@ authors = ["Daniel Phillips <danphi@gmail.com>"]
 # Enable a small amount of optimization in debug mode
 [profile.dev]
 opt-level = 1
-panic = "abort"
-# Disable incremental compilation to avoid a nightly-rustc + MSVC linker bug
-# where stale cached `anon.*.llvm.*` symbols from a previous build fail to
-# resolve after the symbol table changes. Trade: ~10-30% slower rebuilds for
-# guaranteed correctness. Remove if upstream rustc fixes this.
-incremental = false
+# No `panic = "abort"` here: cargo forces unwind for test builds, so setting
+# abort makes `cargo test` + `cargo run` compile two variants of every
+# workspace crate per cycle. Release uses the default (unwind) too.
+#
+# Incremental is the default (on). It was disabled 2025-ish to work around a
+# nightly-rustc + MSVC linker bug (stale `anon.*.llvm.*` symbols); we're on
+# stable now. If that linker error resurfaces on Windows, build with
+# CARGO_INCREMENTAL=0 there instead of turning it off for everyone.
 
 # Enable high optimizations for dependencies (incl. Bevy), but not for our code:
 [profile.dev.package."*"]

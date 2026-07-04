@@ -13,11 +13,12 @@ Claude.
 
 ## Features
 
-- **305 nodes** across images, colors, numbers, logic, and text — see the full
+- **315 nodes** across images, colors, numbers, logic, and text — see the full
   [Node Reference](#node-reference) below.
-- **Procedural generation** — 36 noise generators (Perlin, OpenSimplex, Worley, Gabor,
-  phasor, reaction-diffusion, …) plus patterns, shapes, and PBR nodes (normal, height,
-  ambient occlusion, curvature, bevel).
+- **Procedural generation** — 46 noise generators (Perlin, OpenSimplex, Worley, Gabor,
+  phasor, reaction-diffusion, …) including a grunge set (leaks, stains, peeling, smear,
+  growth) plus patterns, shapes, and PBR nodes (normal, height, ambient occlusion,
+  curvature, bevel).
 - **14 color spaces** with conversion between them: sRGB, Linear RGB, HSL, HSV, HWB,
   Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YUV, YCbCr — plus color analysis and harmony
   nodes.
@@ -83,7 +84,7 @@ and I/O for each.
 - **Images** — the largest category: file/URL/clipboard/gradient/text I/O; transforms
   from crop and resize to warp, kaleidoscope, and seam carving; levels, curves, and
   color adjustments; blurs and filters from Gaussian to Kuwahara to halftone; shadows
-  and glows; channel ops; shapes; patterns; PBR maps; and 36 noise generators.
+  and glows; channel ops; shapes; patterns; PBR maps; and 46 noise generators.
 - **Logic** — comparisons, boolean ops, and a `select` multiplexer.
 - **Text** — append, length, case conversion, to-string.
 
@@ -124,7 +125,7 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Combine:** Blend, Compare, Composite
 - **Filter:** Anisotropic Diffusion, Anisotropic Kuwahara, ASCII, Bilateral, Black Hat, Canny, Close, Convolution, Cross Hatch, Difference Of Gaussians, Dilate, Distance Field, Edge Detect, Emboss, Erode, Floyd Steinberg, Guided Filter, Halftone, Highpass, Kuwahara, Luminance Highpass, Median, Morphological Gradient, Non Local Means, Oil Paint, Open, Ordered Dither, Outline, Pixelate, Sharpen, SNN, Toon, Top Hat, Unsharp Mask, Vector Morphology
 - **FX:** Drop Shadow, Inner Glow, Outer Glow
-- **Noise:** Anisotropic Noise, Billow Noise, Blue Noise, Checkerboard Noise, Cloud Noise, Concentric Rings, Craters, Crystal Noise, Curl Noise, Dirt Noise, Domain Warp, Erosion, Fault Terrain, FBM Noise, Fibers, Flow Noise, Gabor Noise, Hybrid Multifractal Noise, Multifractal Noise, Open Simplex Noise, Perlin Noise, Phasor Noise, Plasma Noise, Reaction Diffusion, Ridged Multifractal Noise, Scales, Scratches, Super Simplex Noise, Truchet Tiles, Value Noise, Voronoi Blend, Voronoi Crack Noise, Wave, White Noise, Worley Distance Noise, Worley Value Noise
+- **Noise:** Anisotropic Noise, Billow Noise, Blue Noise, Caustics Noise, Checkerboard Noise, Cloud Noise, Concentric Rings, Craters, Creased Noise, Crystal Noise, Curl Noise, Dirt Noise, Domain Warp, Erosion, Fault Terrain, FBM Noise, Fibers, Flow Noise, Gabor Noise, Growth Noise, Hybrid Multifractal Noise, Leaks Noise, Lightning Noise, Multifractal Noise, Open Simplex Noise, Peeling Noise, Perlin Noise, Phasor Noise, Plasma Noise, Reaction Diffusion, Ridged Multifractal Noise, Scales, Scratches, Smear Noise, Stains Noise, Super Simplex Noise, Truchet Tiles, Value Noise, Veins Noise, Voronoi Blend, Voronoi Crack Noise, Warped Rings Noise, Wave, White Noise, Worley Distance Noise, Worley Value Noise
 - **Patterns:** Brick, Flood Fill, Flood Fill Mapper, Hexagonal, Splatter, Tile Generator, Tile Sampler, Weave
 - **PBR:** AO From Height, Bevel, Curvature, Height Blend, Normal Blend, Normal Combine, Normal From Height, Normal Invert, Normal To Height
 - **Shapes:** Circle, Cone, Ellipse, Line, Paraboloid, Polygon, Pyramid, Rectangle, Star
