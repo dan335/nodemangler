@@ -29,6 +29,7 @@ fn make_file_inputs_with_format(
         Input::new("image format".to_string(), Value::ImageType(format), None, None),
         Input::new("jpg quality".to_string(), Value::Integer(85), None, None),
         Input::new("color format".to_string(), Value::ColorFormat(color_format), None, None),
+        Input::new("png compression".to_string(), Value::Text("fast".to_string()), None, None),
     ]
 }
 
@@ -102,7 +103,7 @@ async fn test_file_output_settings() {
 async fn test_file_output_exact_settings() {
     let s = OpImageOutputFile::settings();
     assert_eq!(s.name, "to file");
-    assert_eq!(OpImageOutputFile::create_inputs().len(), 6);
+    assert_eq!(OpImageOutputFile::create_inputs().len(), 7);
     assert_eq!(OpImageOutputFile::create_outputs().len(), 1);
 }
 
@@ -405,6 +406,184 @@ async fn test_file_output_farbfeld_rgba16() {
     assert_save_ok(result, &path);
 
     std::fs::remove_file(&path).ok();
+    std::fs::remove_dir(&tmp).ok();
+}
+
+// --- Path handling ---
+
+#[tokio::test]
+async fn test_file_output_dotted_filename_keeps_full_name() {
+    // A dot in the file name must not be treated as an extension boundary:
+    // "render.v2" saved as PNG must produce "render.v2.png", not "render.png".
+    let imgbuf = image::RgbaImage::new(4, 4);
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
+
+    let tmp = std::env::temp_dir().join("nodemangler_test_dotted_name");
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    let mut inputs = make_file_inputs(img, tmp.clone(), image::ImageFormat::Png);
+    inputs[1].value = Value::Text("render.v2".to_string());
+    let result = OpImageOutputFile::run(&mut inputs).await;
+    let path = tmp.join("render.v2.png");
+    assert_save_ok(result, &path);
+
+    std::fs::remove_file(&path).ok();
+    std::fs::remove_dir(&tmp).ok();
+}
+
+#[tokio::test]
+async fn test_file_output_empty_filename_errors() {
+    // An empty file name must be rejected; previously it renamed the folder
+    // path itself ("/tmp/out" → "/tmp/out.png").
+    let imgbuf = image::RgbaImage::new(4, 4);
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
+
+    let tmp = std::env::temp_dir().join("nodemangler_test_empty_name");
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    let mut inputs = make_file_inputs(img, tmp.clone(), image::ImageFormat::Png);
+    inputs[1].value = Value::Text("   ".to_string());
+    let result = OpImageOutputFile::run(&mut inputs).await;
+    assert!(result.is_err(), "empty file name should be rejected");
+
+    std::fs::remove_dir(&tmp).ok();
+}
+
+#[tokio::test]
+async fn test_file_output_folder_is_file_errors() {
+    // A folder path that points at an existing file must be rejected.
+    let imgbuf = image::RgbaImage::new(4, 4);
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
+
+    let tmp = std::env::temp_dir().join("nodemangler_test_folder_is_file");
+    std::fs::create_dir_all(&tmp).unwrap();
+    let file_as_folder = tmp.join("not_a_folder.txt");
+    std::fs::write(&file_as_folder, "x").unwrap();
+
+    let mut inputs = make_file_inputs(img, file_as_folder.clone(), image::ImageFormat::Png);
+    let result = OpImageOutputFile::run(&mut inputs).await;
+    assert!(result.is_err(), "file used as folder should be rejected");
+
+    std::fs::remove_file(&file_as_folder).ok();
+    std::fs::remove_dir(&tmp).ok();
+}
+
+// --- Encoder settings ---
+
+#[tokio::test]
+async fn test_file_output_jpg_quality_affects_size() {
+    // The quality input must actually reach the JPEG encoder: a low-quality
+    // save of a non-trivial image must be smaller than a high-quality one.
+    let imgbuf = image::RgbImage::from_fn(64, 64, |x, y| {
+        image::Rgb([(x * 4) as u8, (y * 4) as u8, ((x * y) % 256) as u8])
+    });
+    let img = float_from_dynamic(DynamicImage::ImageRgb8(imgbuf));
+
+    let tmp = std::env::temp_dir().join("nodemangler_test_jpg_quality");
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    let mut sizes = vec![];
+    for (name, quality) in [("q10", 10), ("q95", 95)] {
+        let mut inputs = make_file_inputs_with_format(img.clone(), tmp.clone(), image::ImageFormat::Jpeg, ColorFormat::Rgb8);
+        inputs[1].value = Value::Text(name.to_string());
+        inputs[4].value = Value::Integer(quality);
+        let result = OpImageOutputFile::run(&mut inputs).await;
+        let path = tmp.join(format!("{}.jpg", name));
+        assert_save_ok(result, &path);
+        sizes.push(std::fs::metadata(&path).unwrap().len());
+        std::fs::remove_file(&path).ok();
+    }
+    assert!(sizes[0] < sizes[1], "quality 10 ({} bytes) should be smaller than quality 95 ({} bytes)", sizes[0], sizes[1]);
+
+    std::fs::remove_dir(&tmp).ok();
+}
+
+#[tokio::test]
+async fn test_file_output_png_compression_levels() {
+    // Every compression level must produce a decodable PNG with identical
+    // pixels; "uncompressed" must be larger than "best".
+    let imgbuf = image::RgbaImage::from_fn(32, 32, |x, y| {
+        image::Rgba([(x * 8) as u8, (y * 8) as u8, 128, 255])
+    });
+    let reference = imgbuf.clone();
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
+
+    let tmp = std::env::temp_dir().join("nodemangler_test_png_compression");
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    let mut sizes = std::collections::HashMap::new();
+    for level in ["fast", "default", "best", "uncompressed"] {
+        let mut inputs = make_file_inputs(img.clone(), tmp.clone(), image::ImageFormat::Png);
+        inputs[1].value = Value::Text(level.to_string());
+        inputs[6].value = Value::Text(level.to_string());
+        let result = OpImageOutputFile::run(&mut inputs).await;
+        let path = tmp.join(format!("{}.png", level));
+        assert_save_ok(result, &path);
+
+        let decoded = image::open(&path).unwrap().to_rgba8();
+        assert_eq!(decoded.as_raw(), reference.as_raw(), "{} PNG should decode to identical pixels", level);
+        sizes.insert(level, std::fs::metadata(&path).unwrap().len());
+        std::fs::remove_file(&path).ok();
+    }
+    assert!(sizes["best"] < sizes["uncompressed"], "best ({}) should be smaller than uncompressed ({})", sizes["best"], sizes["uncompressed"]);
+
+    std::fs::remove_dir(&tmp).ok();
+}
+
+#[tokio::test]
+async fn test_file_output_invalid_png_compression_errors() {
+    let imgbuf = image::RgbaImage::new(4, 4);
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
+
+    let tmp = std::env::temp_dir().join("nodemangler_test_bad_png_compression");
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    let mut inputs = make_file_inputs(img, tmp.clone(), image::ImageFormat::Png);
+    inputs[6].value = Value::Text("banana".to_string());
+    let result = OpImageOutputFile::run(&mut inputs).await;
+    assert!(result.is_err(), "unknown png compression should be rejected");
+    let err = result.unwrap_err();
+    assert_eq!(err.input_errors.first().map(|(i, _)| *i), Some(6), "error should point at the png compression input");
+
+    std::fs::remove_dir(&tmp).ok();
+}
+
+#[tokio::test]
+async fn test_file_output_without_png_compression_input_still_saves() {
+    // Graphs saved before the png compression input existed have only 6
+    // inputs; the node must fall back to "fast" instead of panicking.
+    let imgbuf = image::RgbaImage::new(4, 4);
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
+
+    let tmp = std::env::temp_dir().join("nodemangler_test_legacy_inputs");
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    let mut inputs = make_file_inputs(img, tmp.clone(), image::ImageFormat::Png);
+    inputs.truncate(6);
+    let result = OpImageOutputFile::run(&mut inputs).await;
+    let path = tmp.join("test_output.png");
+    assert_save_ok(result, &path);
+
+    std::fs::remove_file(&path).ok();
+    std::fs::remove_dir(&tmp).ok();
+}
+
+#[tokio::test]
+async fn test_file_output_hdr_rejected_with_clear_message() {
+    // HDR is read-only in the image crate; the error should say so rather
+    // than blaming the color format.
+    let imgbuf = image::RgbaImage::new(4, 4);
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
+
+    let tmp = std::env::temp_dir().join("nodemangler_test_hdr_rejected");
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    let mut inputs = make_file_inputs(img, tmp.clone(), image::ImageFormat::Hdr);
+    let result = OpImageOutputFile::run(&mut inputs).await;
+    assert!(result.is_err(), "HDR output should be rejected");
+    let msg = result.unwrap_err().node_error.unwrap();
+    assert!(msg.contains("read-only"), "message should explain HDR is read-only, got: {}", msg);
+
     std::fs::remove_dir(&tmp).ok();
 }
 

@@ -734,7 +734,9 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         ui.with_layout(
                             egui::Layout::top_down(egui::Align::Min).with_cross_justify(true),
                             |ui| {
-                                for image_type in mangler_core::value::ImageType::types().iter() {
+                                // Image format inputs only exist on output nodes,
+                                // so offer writable formats only (excludes HDR).
+                                for image_type in mangler_core::value::ImageType::writable_types().iter() {
                                     if ui.selectable_value(&mut x, image_type.format(), image_type.format().extensions_str()[0].to_string()).changed() {
                                         change_value(tx_change_node, node_id, input_index, input, Value::ImageType(image_type.format()));
                                     }

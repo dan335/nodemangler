@@ -1396,6 +1396,16 @@ fn test_default_color_format_pnm_is_rgb8() {
 }
 
 #[test]
+fn test_writable_types_excludes_only_hdr() {
+    let writable = ImageType::writable_types();
+    assert!(
+        writable.iter().all(|t| t.format() != image::ImageFormat::Hdr),
+        "HDR is read-only and must not be offered for writing"
+    );
+    assert_eq!(writable.len(), ImageType::types().len() - 1);
+}
+
+#[test]
 fn test_default_color_format_is_always_compatible() {
     // The default for every format should itself be compatible with that format
     // (except HDR which is read-only and has no valid write format).

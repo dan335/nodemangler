@@ -799,6 +799,27 @@ impl ImageType {
 
         types
     }
+
+    /// Return the image type variants that can be written (encoded).
+    ///
+    /// Same as [`ImageType::types`] minus HDR, which the image crate can only
+    /// read. Used for format dropdowns on output nodes.
+    pub fn writable_types() -> [ImageType; 12] {
+        [
+            ImageType::Png,
+            ImageType::Jpeg,
+            ImageType::Gif,
+            ImageType::WebP,
+            ImageType::Pnm,
+            ImageType::Tiff,
+            ImageType::Tga,
+            ImageType::Bmp,
+            ImageType::Ico,
+            ImageType::OpenExr,
+            ImageType::Farbfeld,
+            ImageType::Qoi,
+        ]
+    }
 }
 
 /// Horizontal alignment for multi-line text rendering.

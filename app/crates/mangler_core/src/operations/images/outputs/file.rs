@@ -1,7 +1,8 @@
 //! Image-to-file output operation.
 //!
 //! Saves an image to a file on disk, using a configurable file name, folder
-//! path, image format (e.g., JPEG, PNG), and color format (e.g., Rgba8, Rgba16).
+//! path, image format (e.g., JPEG, PNG), color format (e.g., Rgba8, Rgba16),
+//! JPEG quality, and PNG compression level.
 //! The input `FloatImage` is converted directly into the `DynamicImage` variant
 //! matching the requested color format in a single pass (see
 //! [`OpImageOutputFile::convert_from_float`]), then handed to the encoder.
@@ -9,7 +10,8 @@
 
 use image::ImageFormat;
 use image::codecs::jpeg::JpegEncoder;
-use image::{DynamicImage, ImageBuffer, ImageEncoder};
+use image::codecs::png::{CompressionType as PngCompression, FilterType as PngFilter, PngEncoder};
+use image::{DynamicImage, ImageBuffer};
 use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -18,7 +20,7 @@ use crate::operations::{OperationResponse, OperationError, OutputResponse, defau
 use crate::output::Output;
 use crate::value::{Value, ValueType, ColorFormat};
 use serde::{Deserialize, Serialize};
-use std::io::BufWriter;
+use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -87,8 +89,9 @@ fn clamp_to_u16(v: f32) -> u16 {
 /// Operation that saves an image to a file on disk.
 ///
 /// Accepts an image, a file name (without extension), a folder path, an
-/// image format, JPEG quality, and a color format. The extension is derived
-/// from the chosen format. Outputs the full path of the saved file.
+/// image format, JPEG quality, a color format, and a PNG compression level.
+/// The extension is derived from the chosen format. Outputs the full path of
+/// the saved file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageOutputFile {}
 
@@ -98,12 +101,12 @@ impl OpImageOutputFile {
         NodeSettings {
             name: "to file".to_string(),
             description: "Saves an image to a file.".to_string(),
-            help: "Encodes the input image and writes it into the chosen folder under the given base filename; the extension is appended automatically based on the selected image format. The color format selector controls the output bit depth and channel layout (Gray8/16, GrayA8/16, Rgb8/16/32F, Rgba8/16/32F).\n\nThe jpg quality slider only applies when saving as JPEG. Incompatible format/color-format combinations (for example an RGBA channel layout into a JPEG) are rejected before any file is written, and the full saved path is returned as an output for chaining.".to_string(),
+            help: "Encodes the input image and writes it into the chosen folder under the given base filename; the extension is appended automatically based on the selected image format. The color format selector controls the output bit depth and channel layout (Gray8/16, GrayA8/16, Rgb8/16/32F, Rgba8/16/32F).\n\nThe jpg quality slider only applies when saving as JPEG, and the png compression selector only when saving as PNG (all PNG settings produce identical pixels — only file size and encode time differ). WebP is always encoded losslessly; the remaining formats have no encoder settings. Incompatible format/color-format combinations (for example an RGBA channel layout into a JPEG) are rejected before any file is written, and the full saved path is returned as an output for chaining.".to_string(),
         }
     }
 
     /// Creates the input definitions: image, file name, folder path, image format,
-    /// JPEG quality, and color format.
+    /// JPEG quality, color format, and PNG compression.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("image".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None, None)
@@ -124,6 +127,10 @@ impl OpImageOutputFile {
                 .with_description("JPEG compression quality from 1 (smallest) to 100 (best)."),
             Input::new("color format".to_string(), Value::ColorFormat(ColorFormat::Rgb8), None, None)
                 .with_description("Pixel encoding (bit depth and channel layout) used to write the file."),
+            Input::new("png compression".to_string(), Value::Text("fast".to_string()), Some(InputSettings::Dropdown {
+                options: vec!["fast".to_string(), "default".to_string(), "best".to_string(), "uncompressed".to_string()],
+            }), None)
+                .with_description("PNG compression effort (lossless; affects file size and encode time only). Ignored for other formats."),
         ]
     }
 
@@ -243,7 +250,9 @@ impl OpImageOutputFile {
     /// Check whether the given color format is compatible with the image file format.
     /// Returns `Ok(())` if compatible, or `Err(message)` describing why not.
     fn check_compatibility(image_format: &ImageFormat, color_format: &ColorFormat) -> Result<(), String> {
-        if color_format.is_compatible_with_image_format(image_format) {
+        if *image_format == ImageFormat::Hdr {
+            Err("HDR is a read-only format and cannot be written.".to_string())
+        } else if color_format.is_compatible_with_image_format(image_format) {
             Ok(())
         } else {
             Err(format!(
@@ -273,6 +282,13 @@ impl OpImageOutputFile {
         } else {
             Some(Value::ColorFormat(ColorFormat::Rgba8))
         };
+        // PNG compression input (index 6) — default to "fast" (the encoder's own
+        // default, matching the previous save behaviour) if missing (backwards compat)
+        let png_compression_converted = if inputs.len() > 6 {
+            convert_input(inputs, 6, ValueType::Text, &mut input_errors)
+        } else {
+            Some(Value::Text("fast".to_string()))
+        };
 
         // return if error
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
@@ -285,6 +301,23 @@ impl OpImageOutputFile {
         let Value::Integer(quality) = quality_converted.unwrap() else { unreachable!() };
         let quality = quality.clamp(1, 100) as u8;
         let Value::ColorFormat(color_format) = color_format.unwrap() else { unreachable!() };
+        let Value::Text(png_compression_text) = png_compression_converted.unwrap() else { unreachable!() };
+
+        let png_compression = match png_compression_text.trim().to_lowercase().as_str() {
+            "fast" => PngCompression::Fast,
+            "default" => PngCompression::Default,
+            "best" => PngCompression::Best,
+            "uncompressed" => PngCompression::Uncompressed,
+            other => {
+                let msg = format!("Unknown png compression '{}'; expected fast, default, best, or uncompressed.", other);
+                return Err(OperationError { input_errors: vec![(6, msg.clone())], node_error: Some(msg) });
+            }
+        };
+
+        if file_name.trim().is_empty() {
+            let msg = "File name is empty.".to_string();
+            return Err(OperationError { input_errors: vec![(1, msg.clone())], node_error: Some(msg) });
+        }
 
         // Validate that the color format is compatible with the image format
         if let Err(msg) = Self::check_compatibility(&image_type, &color_format) {
@@ -295,66 +328,45 @@ impl OpImageOutputFile {
         }
 
         // run node — build the full output path from folder + file name + format extension
-        if folder_path.exists() {
-            folder_path.push(file_name);
-            folder_path.set_extension(image_type.extensions_str()[0]);
-
-            // Convert the FloatImage directly into the requested color format
-            // in a single pass (no intermediate to_dynamic buffer).
-            let converted = Self::convert_from_float(&data, &color_format);
-
-            let save_result = match image_type {
-                // JPEG uses a custom encoder for quality control
-                ImageFormat::Jpeg => {
-                    let file = std::fs::File::create(&folder_path);
-                    match file {
-                        Ok(f) => {
-                            let writer = BufWriter::new(f);
-                            let encoder = JpegEncoder::new_with_quality(writer, quality);
-                            // JPEG only accepts Rgb8 or Gray8 (validated above),
-                            // so `converted` is already in the right layout.
-                            match converted {
-                                DynamicImage::ImageLuma8(gray) => encoder.write_image(
-                                    gray.as_raw(),
-                                    gray.width(),
-                                    gray.height(),
-                                    image::ExtendedColorType::L8,
-                                ).map_err(|e| e.to_string()),
-                                other => {
-                                    // Rgb8 by validation; `into_rgb8` is a move
-                                    // for that variant, not a conversion.
-                                    let rgb = other.into_rgb8();
-                                    encoder.write_image(
-                                        rgb.as_raw(),
-                                        rgb.width(),
-                                        rgb.height(),
-                                        image::ExtendedColorType::Rgb8,
-                                    ).map_err(|e| e.to_string())
-                                }
-                            }
-                        }
-                        Err(e) => Err(e.to_string()),
-                    }
-                }
-                // All other formats: save the converted image directly. BMP/PNM
-                // only pass validation as Rgb8/Gray8, which are already alpha-free.
-                _ => converted.save_with_format(&folder_path, image_type).map_err(|e| e.to_string()),
-            };
-
-            match save_result {
-                Ok(_) => Ok(OperationResponse { 
-                    time: Instant::now().duration_since(start_time),
-                    responses: vec![OutputResponse {
-                        value: Value::Path(folder_path),
-                    }],
-                }),
-                Err(e) => Err(OperationError { input_errors: vec![], node_error: Some(format!("Failed to save image: {}", e)) }),
-            }
-        } else {
-            Err(OperationError { input_errors: vec![], node_error: Some("Folder does not exist.".to_string()) })
+        if !folder_path.is_dir() {
+            return Err(OperationError { input_errors: vec![], node_error: Some("Folder does not exist or is not a directory.".to_string()) });
         }
+        // Append the extension rather than using `set_extension`, which would
+        // eat everything after a dot in the file name ("render.v2" → "render.png").
+        folder_path.push(format!("{}.{}", file_name, image_type.extensions_str()[0]));
 
+        // Convert the FloatImage directly into the requested color format
+        // in a single pass (no intermediate to_dynamic buffer).
+        let converted = Self::convert_from_float(&data, &color_format);
 
+        let save_result = match image_type {
+            // JPEG and PNG use explicit encoders so quality/compression apply.
+            ImageFormat::Jpeg | ImageFormat::Png => std::fs::File::create(&folder_path)
+                .map_err(|e| e.to_string())
+                .and_then(|f| {
+                    let mut writer = BufWriter::new(f);
+                    if image_type == ImageFormat::Jpeg {
+                        converted.write_with_encoder(JpegEncoder::new_with_quality(&mut writer, quality))
+                    } else {
+                        converted.write_with_encoder(PngEncoder::new_with_quality(&mut writer, png_compression, PngFilter::Adaptive))
+                    }
+                    .map_err(|e| e.to_string())?;
+                    writer.flush().map_err(|e| e.to_string())
+                }),
+            // All other formats have no encoder settings: save directly. BMP/PNM
+            // only pass validation as Rgb8/Gray8, which are already alpha-free.
+            _ => converted.save_with_format(&folder_path, image_type).map_err(|e| e.to_string()),
+        };
+
+        match save_result {
+            Ok(_) => Ok(OperationResponse {
+                time: Instant::now().duration_since(start_time),
+                responses: vec![OutputResponse {
+                    value: Value::Path(folder_path),
+                }],
+            }),
+            Err(e) => Err(OperationError { input_errors: vec![], node_error: Some(format!("Failed to save image: {}", e)) }),
+        }
     }
 }
 
