@@ -10,7 +10,6 @@
 
 use ab_glyph::{Font, FontArc, PxScale, ScaleFont};
 use image::{DynamicImage, GrayImage};
-use imageproc::geometric_transformations::{rotate_about_center, Interpolation};
 use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -327,12 +326,7 @@ impl OpImageInputText {
         let dynamic_image = if use_rotation {
             let rotation_rad = rotation_deg.to_radians();
             // Rotate the temp image around its own centre, which maps to the anchor point.
-            let rotated = rotate_about_center(
-                &temp,
-                rotation_rad,
-                Interpolation::Bilinear,
-                image::Luma([0u8]),
-            );
+            let rotated = rotate_gray_about_center(&temp, rotation_rad);
 
             // Blit the rotated temp image onto the main canvas, centred at the anchor.
             let mut canvas = GrayImage::new(img_width, img_height);
@@ -448,6 +442,48 @@ fn wrap_line<F: Font, SF: ScaleFont<F>>(
 
     result.push(current);
     result
+}
+
+/// Rotates a grayscale image clockwise by `theta` radians around its centre,
+/// resampling bilinearly; pixels with no source coverage stay black. Same
+/// inverse-mapping scheme as the Rotate Around Center node
+/// (`transform/rotate_around_center.rs`), specialised to `Luma<u8>`.
+fn rotate_gray_about_center(src: &GrayImage, theta: f32) -> GrayImage {
+    let (w, h) = src.dimensions();
+    let (s, c) = theta.sin_cos();
+    let cx = (w as f32 - 1.0) / 2.0;
+    let cy = (h as f32 - 1.0) / 2.0;
+    let wm1 = (w.max(1) - 1) as f32;
+    let hm1 = (h.max(1) - 1) as f32;
+
+    let mut out = GrayImage::new(w, h);
+    for y in 0..h {
+        let dy = y as f32 - cy;
+        for x in 0..w {
+            let dx = x as f32 - cx;
+            let sx = cx + dx * c + dy * s;
+            let sy = cy - dx * s + dy * c;
+            if sx >= 0.0 && sx <= wm1 && sy >= 0.0 && sy <= hm1 {
+                let x0 = sx.floor();
+                let y0 = sy.floor();
+                let fx = sx - x0;
+                let fy = sy - y0;
+                let x0 = x0 as u32;
+                let y0 = y0 as u32;
+                let x1 = (x0 + 1).min(w - 1);
+                let y1 = (y0 + 1).min(h - 1);
+                let p00 = src.get_pixel(x0, y0).0[0] as f32;
+                let p10 = src.get_pixel(x1, y0).0[0] as f32;
+                let p01 = src.get_pixel(x0, y1).0[0] as f32;
+                let p11 = src.get_pixel(x1, y1).0[0] as f32;
+                let top = p00 + (p10 - p00) * fx;
+                let bottom = p01 + (p11 - p01) * fx;
+                let value = top + (bottom - top) * fy;
+                out.put_pixel(x, y, image::Luma([value.round().clamp(0.0, 255.0) as u8]));
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]

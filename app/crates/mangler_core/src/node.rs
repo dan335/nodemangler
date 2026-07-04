@@ -426,8 +426,9 @@ impl Node {
                         }
                     }
 
-                    // run subgraph
-                    subgraph.run().await;
+                    // run subgraph (boxed: Graph::run -> Node::run -> Graph::run
+                    // is recursive, so the future needs indirection)
+                    Box::pin(subgraph.run()).await;
 
                     // Copy exposed outputs back by reading the linked values
                     // directly from the child graph's node storage. Each

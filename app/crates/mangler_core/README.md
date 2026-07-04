@@ -151,7 +151,7 @@ is renamed or removed.
 
 ## Dependencies
 
-- `image` / `imageproc` — image load/save/processing
+- `image` — image load/save/processing
 - `tokio` — async runtime for graph execution
 - `serde` / `serde_json` — save/load serialization
 - `glam` — 2D vector math (node positions)

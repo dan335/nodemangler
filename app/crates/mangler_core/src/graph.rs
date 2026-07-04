@@ -23,7 +23,6 @@ use std::{
     path::PathBuf,
 };
 use tokio::sync::mpsc::Sender;
-use async_recursion::async_recursion;
 use crate::NodeChangedMessage::SubgraphLoaded;
 
 /// The node graph engine that owns all nodes, manages connections, and
@@ -793,7 +792,6 @@ impl Graph {
 
     // returns a list of node_ids that ran
     // so that their thumbnails will know to update
-    #[async_recursion]
     pub async fn run(&mut self) {
         let run_start = std::time::Instant::now();
         let mut dirty_nodes: HashSet<String> = HashSet::new();
