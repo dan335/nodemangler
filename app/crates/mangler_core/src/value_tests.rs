@@ -934,7 +934,7 @@ fn test_text_to_distance_function_euclidean() {
         .unwrap();
     match result {
         Value::NoiseWorleyDistanceFunction(f) => {
-            assert_eq!(f, crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Euclidean);
+            assert_eq!(f, crate::operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction::Euclidean);
         }
         other => panic!("Expected NoiseWorleyDistanceFunction, got {:?}", other),
     }
@@ -947,7 +947,7 @@ fn test_text_to_distance_function_chebyshev() {
         .unwrap();
     match result {
         Value::NoiseWorleyDistanceFunction(f) => {
-            assert_eq!(f, crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Chebyshev);
+            assert_eq!(f, crate::operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction::Chebyshev);
         }
         other => panic!("Expected NoiseWorleyDistanceFunction, got {:?}", other),
     }
@@ -960,7 +960,7 @@ fn test_text_to_distance_function_manhattan() {
         .unwrap();
     match result {
         Value::NoiseWorleyDistanceFunction(f) => {
-            assert_eq!(f, crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Manhattan);
+            assert_eq!(f, crate::operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction::Manhattan);
         }
         other => panic!("Expected NoiseWorleyDistanceFunction, got {:?}", other),
     }
@@ -973,7 +973,7 @@ fn test_text_to_distance_function_euclidean_squared() {
         .unwrap();
     match result {
         Value::NoiseWorleyDistanceFunction(f) => {
-            assert_eq!(f, crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::EuclideanSquared);
+            assert_eq!(f, crate::operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction::EuclideanSquared);
         }
         other => panic!("Expected NoiseWorleyDistanceFunction, got {:?}", other),
     }
@@ -986,7 +986,7 @@ fn test_text_to_distance_function_quadratic() {
         .unwrap();
     match result {
         Value::NoiseWorleyDistanceFunction(f) => {
-            assert_eq!(f, crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Quadratic);
+            assert_eq!(f, crate::operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction::Quadratic);
         }
         other => panic!("Expected NoiseWorleyDistanceFunction, got {:?}", other),
     }
@@ -1000,7 +1000,7 @@ fn test_text_to_distance_function_case_insensitive() {
         .unwrap();
     match result {
         Value::NoiseWorleyDistanceFunction(f) => {
-            assert_eq!(f, crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Euclidean);
+            assert_eq!(f, crate::operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction::Euclidean);
         }
         other => panic!("Expected NoiseWorleyDistanceFunction, got {:?}", other),
     }

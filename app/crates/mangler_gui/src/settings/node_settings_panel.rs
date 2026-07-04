@@ -5,7 +5,7 @@ use mangler_core::{
     input::{Input, InputSettings},
     value::{ColorFormat, Value, TextHAlign, TextVAlign},
     ChangeNodeMessage,
-    operations::images::noise::worley_distance::NoiseWorleyDistanceFunction,
+    operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction,
     color::{color_spaces::ColorSpace, blend::BlendMode},
 };
 use egui_extras::{TableBuilder, Column};

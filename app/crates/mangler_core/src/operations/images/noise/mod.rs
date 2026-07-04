@@ -132,50 +132,18 @@ pub(crate) fn pixel_hash(x: u32, y: u32, seed: u32) -> f32 {
     (h & 0x00FFFFFF) as f32 / 0x01000000 as f32
 }
 
-pub mod perlin;
-pub mod worley_distance;
-pub mod worley_value;
-pub mod basic_multifractal;
-pub mod billow;
-pub mod checkerboard;
-pub mod cylinders;
-pub mod domain_warp_fbm;
-pub mod erosion;
-pub mod fbm;
-pub mod gabor;
-pub mod hybrid_multifractal;
-pub mod open_simplex;
-pub mod reaction_diffusion;
-pub mod ridged_multifractal;
-pub mod super_simplex;
-pub mod value;
+/// Shared Voronoi/Worley cell helpers (not a node).
 pub mod voronoi_common;
-pub mod voronoi_crack;
-pub mod voronoise;
-pub mod anisotropic;
-pub mod clouds;
-pub mod crystal;
-pub mod gaussian;
-pub mod plasma;
-pub mod dirt;
-pub mod wave;
-pub mod blue_noise;
-pub mod curl;
-pub mod scratches;
-pub mod fibers;
-pub mod craters;
-pub mod scales;
-pub mod truchet;
-pub mod phasor;
-pub mod flow;
-pub mod fault_terrain;
-pub mod leaks;
-pub mod stains;
-pub mod peeling;
-pub mod smear;
-pub mod growth;
-pub mod caustics;
-pub mod veins;
-pub mod warped_rings;
-pub mod creased;
-pub mod lightning;
+
+/// Raw coherent and stochastic primitives.
+pub mod basic;
+/// Octave-stacked and warped fractal variants.
+pub mod fractal;
+/// Voronoi/Worley cell family.
+pub mod cellular;
+/// Geometric and patterned generators.
+pub mod structural;
+/// Surface wear and dirt generators.
+pub mod grunge;
+/// Physical-process lookalikes.
+pub mod process;

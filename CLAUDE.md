@@ -44,6 +44,7 @@ cargo run -p mangler_cli  # Run the CLI tool
   - `NodeChangedMessage` — engine → UI: output values changed, thumbnails, busy/error status, timing
 - **Async thumbnails**: `Value::Image` thumbnails are computed off the engine thread by `ThumbnailService` (see `thumbnail_service.rs`). Engine emits `OutputChanged { thumbnail: None }` for image outputs; a follow-up `NodeChangedMessage::ThumbnailReady` arrives when the resize finishes, with a stale-check keyed on `change_id`. Scalar/enum thumbnails are still computed inline.
 - Operations are generated via the `operations!` macro in `app/crates/mangler_core/src/operations/mod.rs`
+- **Menu hierarchy mirrors file hierarchy**: the node-menu category tree built in `operation_list()` must match the directory tree under `operations/`. When an operation moves to a different menu (sub)category, move its `.rs` and `_tests.rs` files into the matching directory and update its module path. (Known exception: the adjustments' distance node is listed under the filter/morphology menu.)
 - **Value types** (see `value.rs`): Bool, Integer, Decimal, Text, Color, Image, Path, FilterType, ImageType, ColorFormat, Trigger, NoiseWorleyDistanceFunction, ColorSpace, BlendMode, TextHAlign, TextVAlign
 - Images are `FloatImage` (1–4 channel `f32`, `Arc`-shared); `Value::Image { data, change_id }` carries a change id used by cache invalidation and stale-thumbnail rejection.
 - Color is stored as sRGBA floats with conversions to 14 color spaces: sRGB, Linear RGB, HSL, HSV, HWB, Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YCbCr, YUV
@@ -125,7 +126,12 @@ cargo run -p mangler_cli  # Run the CLI tool
 - `transform/` — crop, resize, resize_exact, resize_fill, flip_horizontal, flip_vertical, rotate_90, rotate_180, rotate_270, rotate_around_center, warp, directional_warp, safe_transform, make_tile, mirror, seam_carve, polar_coordinates, swirl, kaleidoscope, spherize, perspective
 - `adjustments/` — brighten, contrast, levels, auto_levels, curves, grayscale, invert, posterize, saturation, hue_rotate, hsl, threshold, vignette, white_balance, color_balance, selective_color, color_to_mask, replace_color, frequency_split, dither, gradient_map, gradient_dynamic, color_match, distance, histogram_scan, histogram_range, histogram_select (shared `smoothstep`/HSL helpers live in `adjustments/common.rs`)
 - `blur/` — blur, directional_blur, radial_blur, slope_blur, non_uniform_blur
-- `filter/` — edge_detect, canny, emboss, sharpen, unsharpen, highpass, luminance_highpass, dog (difference of gaussians), median, bilateral, guided, non_local_means, anisotropic_diffusion, kuwahara, anisotropic_kuwahara, snn, oil_paint, toon, cross_hatch, halftone, ascii, convolution (custom 3x3 kernel), dilate, erode, open, close, morphological_gradient, top_hat, black_hat, outline, pixelate, vector_morphology, floyd_steinberg, ordered_dither (morphology ops share `separable_morphology` from `erode.rs`; the node menu groups these into edges / smoothing / morphology / stylize / dither subcategories, with convolution at the filter root)
+- `filter/` — subdirectories mirror the node-menu subcategories; convolution (custom 3x3 kernel) sits at the filter root
+  - `edges/` — edge_detect, canny, dog (difference of gaussians), sharpen, unsharpen, highpass, luminance_highpass
+  - `smoothing/` — median, bilateral, guided, non_local_means, anisotropic_diffusion, snn
+  - `morphology/` — erode, dilate, open, close, morphological_gradient, top_hat, black_hat, vector_morphology, outline (all share `separable_morphology` from `erode.rs`; the menu's morphology group also lists adjustments' distance node)
+  - `stylize/` — emboss, kuwahara, anisotropic_kuwahara, toon, oil_paint, halftone, cross_hatch, ascii, pixelate
+  - `dither/` — ordered_dither, floyd_steinberg
 - `fx/` — drop_shadow, inner_glow, outer_glow
 - `combine/` — blit, blend, compare
 - `channels/` — split, merge, shuffle, select, mixer
@@ -133,7 +139,13 @@ cargo run -p mangler_cli  # Run the CLI tool
 - `patterns/` — brick, hexagonal, weave, tile_sampler, tile_generator, splatter, flood_fill, flood_fill_mapper
 - `pbr/` — normal_from_height, normal_to_height, normal_invert, normal_blend, normal_combine, ao_from_height, curvature, bevel, height_blend
 - `simulation/` — physical-process simulation generators (empty scaffold; planned nodes in `plan.md`). Category convention: guidance-map image inputs (weakness, fuel, moisture, height) are optional and fall back to an internal seed-derived map, so every simulation node also works standalone.
-- `noise/` — 46 generators: perlin, value, fbm, billow, ridged_multifractal, hybrid_multifractal, basic_multifractal, open_simplex, super_simplex, voronoise, voronoi_crack, worley_distance, worley_value, gabor, phasor, anisotropic, gaussian (white noise), blue_noise, curl (flow map, 3-channel), flow (rotated-gradient fbm with advection), wave, clouds, plasma, crystal, dirt, scratches, fibers, craters, scales, truchet (truchet tiles), cylinders, checkerboard, erosion, fault_terrain, reaction_diffusion, domain_warp_fbm, leaks (drip streaks, alignment control), stains (coffee-ring rims), peeling (flaking-paint mask), smear (soft directional streaks), growth (clustered organic patches), caustics (refraction simulation), veins (warped vein stripes), warped_rings (fbm-warped concentric rings, non-tiling), creased (crumple facets), lightning (branching filaments, non-tiling) (`voronoi_common.rs` is a shared helper, not a node; `pixel_hash`/`periodic_value_2d`/`build_perm_tables` in `noise/mod.rs` are shared)
+- `noise/` — 46 generators in subdirectories mirroring the node-menu subcategories (`voronoi_common.rs` at the noise root is a shared helper, not a node; `pixel_hash`/`periodic_perlin_2d`/`periodic_value_2d`/`build_perm_tables` in `noise/mod.rs` are shared)
+  - `basic/` — perlin, value, open_simplex, super_simplex, gabor, phasor, anisotropic, gaussian (white noise), blue_noise
+  - `fractal/` — fbm, billow, ridged_multifractal, basic_multifractal, hybrid_multifractal, domain_warp_fbm, flow (rotated-gradient fbm with advection), curl (flow map, 3-channel), clouds, plasma
+  - `cellular/` — worley_distance, worley_value, voronoise, voronoi_crack, crystal, scales, craters
+  - `structural/` — checkerboard, cylinders, wave, truchet (truchet tiles), warped_rings (fbm-warped concentric rings, non-tiling), veins (warped vein stripes), creased (crumple facets)
+  - `grunge/` — dirt, scratches, fibers, leaks (drip streaks, alignment control), stains (coffee-ring rims), peeling (flaking-paint mask), smear (soft directional streaks), growth (clustered organic patches)
+  - `process/` — erosion, fault_terrain, reaction_diffusion, caustics (refraction simulation), lightning (branching filaments, non-tiling)
 
 ## Known Issues
 

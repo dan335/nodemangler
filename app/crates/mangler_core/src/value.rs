@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     color::Color, float_image::FloatImage, get_id,
-    operations::images::noise::worley_distance::NoiseWorleyDistanceFunction,
+    operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction,
     thumbnail::Thumbnail,
 };
 
@@ -399,11 +399,11 @@ impl Value {
                 }
                 ValueType::NoiseWorleyDistanceFunction => {
                     match a.to_lowercase().as_str() {
-                        "chebyshev" => Ok(Value::NoiseWorleyDistanceFunction(crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Chebyshev)),
-                        "euclidean" => Ok(Value::NoiseWorleyDistanceFunction(crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Euclidean)),
-                        "euclideansquared" | "euclidean_squared" | "euclidean squared" => Ok(Value::NoiseWorleyDistanceFunction(crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::EuclideanSquared)),
-                        "manhattan" => Ok(Value::NoiseWorleyDistanceFunction(crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Manhattan)),
-                        "quadratic" => Ok(Value::NoiseWorleyDistanceFunction(crate::operations::images::noise::worley_distance::NoiseWorleyDistanceFunction::Quadratic)),
+                        "chebyshev" => Ok(Value::NoiseWorleyDistanceFunction(crate::operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction::Chebyshev)),
+                        "euclidean" => Ok(Value::NoiseWorleyDistanceFunction(crate::operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction::Euclidean)),
+                        "euclideansquared" | "euclidean_squared" | "euclidean squared" => Ok(Value::NoiseWorleyDistanceFunction(crate::operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction::EuclideanSquared)),
+                        "manhattan" => Ok(Value::NoiseWorleyDistanceFunction(crate::operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction::Manhattan)),
+                        "quadratic" => Ok(Value::NoiseWorleyDistanceFunction(crate::operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction::Quadratic)),
                         _ => Err(ConversionError { message: format!("Unknown distance function '{}'. Expected: chebyshev, euclidean, euclidean_squared, manhattan, quadratic.", a) }),
                     }
                 }
