@@ -232,6 +232,20 @@ pub fn show(
         })
         .body(|mut body| {
             for (input_index, input) in node.inputs.iter_mut().enumerate() {
+                // Hide encoder settings that don't apply to the selected image
+                // format (only nodes with an ImageType input have these).
+                // Connected or exposed inputs stay visible so they can always
+                // be seen and disconnected; hidden values are preserved.
+                if let Some(ref fmt) = sibling_image_format {
+                    let inapplicable = match input.name.as_str() {
+                        "quality" => !matches!(fmt, image::ImageFormat::Jpeg | image::ImageFormat::Avif),
+                        "png compression" => *fmt != image::ImageFormat::Png,
+                        _ => false,
+                    };
+                    if inapplicable && input.connection.is_none() && !input.is_exposed {
+                        continue;
+                    }
+                }
 
                 body.row(30.0, |mut row| {
                     row.col(|ui| {
@@ -734,9 +748,7 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         ui.with_layout(
                             egui::Layout::top_down(egui::Align::Min).with_cross_justify(true),
                             |ui| {
-                                // Image format inputs only exist on output nodes,
-                                // so offer writable formats only (excludes HDR).
-                                for image_type in mangler_core::value::ImageType::writable_types().iter() {
+                                for image_type in mangler_core::value::ImageType::types().iter() {
                                     if ui.selectable_value(&mut x, image_type.format(), image_type.format().extensions_str()[0].to_string()).changed() {
                                         change_value(tx_change_node, node_id, input_index, input, Value::ImageType(image_type.format()));
                                     }

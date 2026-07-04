@@ -23,7 +23,7 @@ impl OpLogicCompareGreaterThan {
         NodeSettings {
             name: "greater than".to_string(),
             description: "Returns true if a is greater than b.".to_string(),
-            help: "Both inputs are coerced to Decimal before the strict a > b test. Equal values produce false; for an inclusive variant use greater-or-equal.\n\nNon-numeric sources convert through the standard Decimal coercion (Bool::true -> 1.0, Bool::false -> 0.0, Integer -> f64), allowing mixed-type comparisons without an explicit cast node.".to_string(),
+            help: "Both inputs are coerced to Decimal before the strict a > b test. Equal values produce false; for an inclusive variant use greater-or-equal.\n\nNon-numeric sources convert through the standard Decimal coercion (Bool::true -> 1.0, Bool::false -> 0.0, Integer -> f32), allowing mixed-type comparisons without an explicit cast node.".to_string(),
         }
     }
 

@@ -23,7 +23,7 @@ impl OpLogicCompareLessThan {
         NodeSettings {
             name: "less than".to_string(),
             description: "Returns true if a is less than b.".to_string(),
-            help: "Both inputs are coerced to Decimal before the strict a < b test. Equal values produce false; use less-or-equal if you want inclusive behavior.\n\nBecause comparison happens in f64, tiny floating-point errors can flip the result near boundaries. Offset b by a small epsilon if you need robust threshold behavior.".to_string(),
+            help: "Both inputs are coerced to Decimal before the strict a < b test. Equal values produce false; use less-or-equal if you want inclusive behavior.\n\nBecause comparison happens in f32, tiny floating-point errors can flip the result near boundaries. Offset b by a small epsilon if you need robust threshold behavior.".to_string(),
         }
     }
 

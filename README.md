@@ -13,16 +13,20 @@ Claude.
 
 ## Features
 
-- **294 nodes** across images, colors, numbers, logic, and text — see the full
+- **305 nodes** across images, colors, numbers, logic, and text — see the full
   [Node Reference](#node-reference) below.
-- **Procedural generation** — 28 noise generators (Perlin, OpenSimplex, Worley, Gabor,
-  reaction-diffusion, …) plus patterns, shapes, and PBR nodes (normal, height, ambient
-  occlusion, curvature, bevel).
+- **Procedural generation** — 36 noise generators (Perlin, OpenSimplex, Worley, Gabor,
+  phasor, reaction-diffusion, …) plus patterns, shapes, and PBR nodes (normal, height,
+  ambient occlusion, curvature, bevel).
 - **14 color spaces** with conversion between them: sRGB, Linear RGB, HSL, HSV, HWB,
   Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YUV, YCbCr — plus color analysis and harmony
   nodes.
 - **Floating-point pipeline** — images stay 1–4 channel `f32` from input to output;
   conversion only happens at I/O.
+- **16 file formats** — PNG, JPEG, GIF, WebP, TIFF, TGA, BMP, ICO, PNM, QOI, Farbfeld,
+  Radiance HDR, OpenEXR, JPEG XL, PSD, and AVIF (JPEG XL and PSD are read-only, AVIF
+  write-only), with quality and compression settings where the encoder supports them
+  and 8/16/32-bit-float output color formats.
 - **Subgraphs** — package an entire pipeline into a single reusable node.
 - **GUI and CLI** — build graphs visually in the desktop app or headless from the
   command line. Both share the same JSON graph format, and the CLI is designed to be
@@ -79,14 +83,14 @@ and I/O for each.
 - **Images** — the largest category: file/URL/clipboard/gradient/text I/O; transforms
   from crop and resize to warp, kaleidoscope, and seam carving; levels, curves, and
   color adjustments; blurs and filters from Gaussian to Kuwahara to halftone; shadows
-  and glows; channel ops; shapes; patterns; PBR maps; and 28 noise generators.
+  and glows; channel ops; shapes; patterns; PBR maps; and 36 noise generators.
 - **Logic** — comparisons, boolean ops, and a `select` multiplexer.
 - **Text** — append, length, case conversion, to-string.
 
 ## Node Reference
 
 Every node in the graph editor's Add Node menu, by category and subcategory
-(294 operation nodes, plus subgraph nodes for composing whole pipelines).
+(305 operation nodes, plus subgraph nodes for composing whole pipelines).
 
 ### Numbers (61)
 
@@ -109,7 +113,7 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Harmony:** Analogous, Complementary, Double Split Comp, Monochromatic, Tetradic, Triadic
 - **Manipulation:** Adjust HSV, Blend, Clamp, Grayscale, Invert, Set Alpha
 
-### Images (161)
+### Images (169)
 
 - **Input:** From Clipboard, From Color, From File, From Gradient, From Text, From URL
 - **Output:** To Clipboard, To File
@@ -120,17 +124,17 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Combine:** Blend, Compare, Composite
 - **Filter:** Anisotropic Diffusion, Anisotropic Kuwahara, ASCII, Bilateral, Black Hat, Canny, Close, Convolution, Cross Hatch, Difference Of Gaussians, Dilate, Distance Field, Edge Detect, Emboss, Erode, Floyd Steinberg, Guided Filter, Halftone, Highpass, Kuwahara, Luminance Highpass, Median, Morphological Gradient, Non Local Means, Oil Paint, Open, Ordered Dither, Outline, Pixelate, Sharpen, SNN, Toon, Top Hat, Unsharp Mask, Vector Morphology
 - **FX:** Drop Shadow, Inner Glow, Outer Glow
-- **Noise:** Anisotropic Noise, Billow Noise, Blue Noise, Checkerboard Noise, Cloud Noise, Concentric Rings, Crystal Noise, Curl Noise, Dirt Noise, Domain Warp, Erosion, FBM Noise, Gabor Noise, Hybrid Multifractal Noise, Multifractal Noise, Open Simplex Noise, Perlin Noise, Plasma Noise, Reaction Diffusion, Ridged Multifractal Noise, Super Simplex Noise, Value Noise, Voronoi Blend, Voronoi Crack Noise, Wave, White Noise, Worley Distance Noise, Worley Value Noise
+- **Noise:** Anisotropic Noise, Billow Noise, Blue Noise, Checkerboard Noise, Cloud Noise, Concentric Rings, Craters, Crystal Noise, Curl Noise, Dirt Noise, Domain Warp, Erosion, Fault Terrain, FBM Noise, Fibers, Flow Noise, Gabor Noise, Hybrid Multifractal Noise, Multifractal Noise, Open Simplex Noise, Perlin Noise, Phasor Noise, Plasma Noise, Reaction Diffusion, Ridged Multifractal Noise, Scales, Scratches, Super Simplex Noise, Truchet Tiles, Value Noise, Voronoi Blend, Voronoi Crack Noise, Wave, White Noise, Worley Distance Noise, Worley Value Noise
 - **Patterns:** Brick, Flood Fill, Flood Fill Mapper, Hexagonal, Splatter, Tile Generator, Tile Sampler, Weave
 - **PBR:** AO From Height, Bevel, Curvature, Height Blend, Normal Blend, Normal Combine, Normal From Height, Normal Invert, Normal To Height
 - **Shapes:** Circle, Cone, Ellipse, Line, Paraboloid, Polygon, Pyramid, Rectangle, Star
 - **Transform:** Crop, Directional Warp, Flip Horizontal, Flip Vertical, Kaleidoscope, Make Tile, Mirror, Perspective, Polar Coordinates, Resize, Resize Exact, Resize Fill, Rotate, Rotate 180, Rotate 270, Rotate 90, Seam Carve, Spherize, Swirl, Tiling Transform, Warp
 
-### Logic (14)
+### Logic (17)
 
 - **Input:** Boolean
-- **Boolean:** And, Nand, Nor, Not, Or, Xor
-- **Comparison:** Equal, Greater Or Equal, Greater Than, Less Or Equal, Less Than, Not Equal
+- **Boolean:** And, Nand, Nor, Not, Or, Xnor, Xor
+- **Comparison:** Approx Equal, Equal, Greater Or Equal, Greater Than, In Range, Less Or Equal, Less Than, Not Equal
 - **Flow:** Select
 
 ### Text (6)

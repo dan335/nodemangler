@@ -25,7 +25,7 @@ impl OpLogicInputBool {
         NodeSettings {
             name: "boolean".to_string(),
             description: "A boolean input.".to_string(),
-            help: "Exposes a single Bool value into the graph. The input socket accepts any type convertible to Bool: Integer and Decimal follow zero/non-zero semantics, Text parses \"true\"/\"false\" (case-insensitive).\n\nUse this as a named toggle that downstream logic, comparison, or select nodes can reference without hard-coding a literal.".to_string(),
+            help: "Exposes a single Bool value into the graph. The input socket accepts any type convertible to Bool: Integer and Decimal follow zero/non-zero semantics, Text parses \"true\"/\"false\" (exact lowercase match; other strings are a conversion error).\n\nUse this as a named toggle that downstream logic, comparison, or select nodes can reference without hard-coding a literal.".to_string(),
         }
     }
 

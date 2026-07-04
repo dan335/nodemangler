@@ -12,6 +12,8 @@ pub mod or;
 pub mod not;
 /// Logical XOR: true when exactly one input is true.
 pub mod xor;
+/// Logical XNOR: true when both inputs match (negated XOR).
+pub mod xnor;
 /// Logical NAND: true unless both inputs are true (negated AND).
 pub mod nand;
 /// Logical NOR: true only when both inputs are false (negated OR).

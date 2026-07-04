@@ -27,7 +27,7 @@ fn make_file_inputs_with_format(
         Input::new("file name".to_string(), Value::Text("test_output".to_string()), None, None),
         Input::new("folder".to_string(), Value::Path(folder), None, None),
         Input::new("image format".to_string(), Value::ImageType(format), None, None),
-        Input::new("jpg quality".to_string(), Value::Integer(85), None, None),
+        Input::new("quality".to_string(), Value::Integer(85), None, None),
         Input::new("color format".to_string(), Value::ColorFormat(color_format), None, None),
         Input::new("png compression".to_string(), Value::Text("fast".to_string()), None, None),
     ]
@@ -569,20 +569,107 @@ async fn test_file_output_without_png_compression_input_still_saves() {
 }
 
 #[tokio::test]
-async fn test_file_output_hdr_rejected_with_clear_message() {
-    // HDR is read-only in the image crate; the error should say so rather
-    // than blaming the color format.
+async fn test_file_output_rgb32f_saves_hdr() {
+    // Radiance HDR writes RGBE from Rgb32F; values above 1.0 must survive
+    // the round trip (within RGBE's shared-exponent precision).
+    let imgbuf = image::Rgb32FImage::from_fn(8, 8, |x, y| {
+        image::Rgb([x as f32 / 4.0, y as f32 / 8.0, 2.5])
+    });
+    let img = float_from_dynamic(DynamicImage::ImageRgb32F(imgbuf));
+
+    let tmp = std::env::temp_dir().join("nodemangler_test_rgb32f_hdr");
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    let mut inputs = make_file_inputs_with_format(img, tmp.clone(), image::ImageFormat::Hdr, ColorFormat::Rgb32F);
+    let result = OpImageOutputFile::run(&mut inputs).await;
+    let path = tmp.join("test_output.hdr");
+    assert_save_ok(result, &path);
+
+    let decoded = image::open(&path).unwrap().to_rgb32f();
+    let px = decoded.get_pixel(7, 0);
+    assert!((px[0] - 1.75).abs() < 0.02, "HDR value above 1.0 should survive, got {}", px[0]);
+    assert!((px[2] - 2.5).abs() < 0.02, "HDR value above 1.0 should survive, got {}", px[2]);
+
+    std::fs::remove_file(&path).ok();
+    std::fs::remove_dir(&tmp).ok();
+}
+
+#[tokio::test]
+async fn test_file_output_hdr_wrong_color_format_errors() {
+    // HDR only accepts Rgb32F; 8-bit layouts must be rejected up front.
     let imgbuf = image::RgbaImage::new(4, 4);
     let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
 
-    let tmp = std::env::temp_dir().join("nodemangler_test_hdr_rejected");
+    let tmp = std::env::temp_dir().join("nodemangler_test_hdr_wrong_cf");
     std::fs::create_dir_all(&tmp).unwrap();
 
     let mut inputs = make_file_inputs(img, tmp.clone(), image::ImageFormat::Hdr);
     let result = OpImageOutputFile::run(&mut inputs).await;
-    assert!(result.is_err(), "HDR output should be rejected");
-    let msg = result.unwrap_err().node_error.unwrap();
-    assert!(msg.contains("read-only"), "message should explain HDR is read-only, got: {}", msg);
+    assert!(result.is_err(), "HDR + Rgba8 should be rejected");
+
+    std::fs::remove_dir(&tmp).ok();
+}
+
+#[tokio::test]
+async fn test_file_output_rgba8_saves_avif() {
+    // AVIF encodes through ravif (pure Rust); verify a decodable, non-empty
+    // file is produced. (Decoding AVIF needs a C library, so only check size.)
+    let imgbuf = image::RgbaImage::from_fn(16, 16, |x, y| {
+        image::Rgba([(x * 16) as u8, (y * 16) as u8, 128, 255])
+    });
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
+
+    let tmp = std::env::temp_dir().join("nodemangler_test_rgba8_avif");
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    let mut inputs = make_file_inputs(img, tmp.clone(), image::ImageFormat::Avif);
+    let result = OpImageOutputFile::run(&mut inputs).await;
+    let path = tmp.join("test_output.avif");
+    assert_save_ok(result, &path);
+
+    std::fs::remove_file(&path).ok();
+    std::fs::remove_dir(&tmp).ok();
+}
+
+#[tokio::test]
+async fn test_file_output_avif_quality_affects_size() {
+    // The shared quality input must reach the AVIF encoder.
+    let imgbuf = image::RgbImage::from_fn(64, 64, |x, y| {
+        image::Rgb([(x * 4) as u8, (y * 4) as u8, ((x * y) % 256) as u8])
+    });
+    let img = float_from_dynamic(DynamicImage::ImageRgb8(imgbuf));
+
+    let tmp = std::env::temp_dir().join("nodemangler_test_avif_quality");
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    let mut sizes = vec![];
+    for (name, quality) in [("q10", 10), ("q95", 95)] {
+        let mut inputs = make_file_inputs_with_format(img.clone(), tmp.clone(), image::ImageFormat::Avif, ColorFormat::Rgb8);
+        inputs[1].value = Value::Text(name.to_string());
+        inputs[4].value = Value::Integer(quality);
+        let result = OpImageOutputFile::run(&mut inputs).await;
+        let path = tmp.join(format!("{}.avif", name));
+        assert_save_ok(result, &path);
+        sizes.push(std::fs::metadata(&path).unwrap().len());
+        std::fs::remove_file(&path).ok();
+    }
+    assert!(sizes[0] < sizes[1], "quality 10 ({} bytes) should be smaller than quality 95 ({} bytes)", sizes[0], sizes[1]);
+
+    std::fs::remove_dir(&tmp).ok();
+}
+
+#[tokio::test]
+async fn test_file_output_avif_wrong_color_format_errors() {
+    // AVIF always encodes 8-bit, so 16-bit/float layouts are rejected.
+    let imgbuf = image::RgbaImage::new(4, 4);
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
+
+    let tmp = std::env::temp_dir().join("nodemangler_test_avif_wrong_cf");
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    let mut inputs = make_file_inputs_with_format(img, tmp.clone(), image::ImageFormat::Avif, ColorFormat::Rgba16);
+    let result = OpImageOutputFile::run(&mut inputs).await;
+    assert!(result.is_err(), "AVIF + Rgba16 should be rejected");
 
     std::fs::remove_dir(&tmp).ok();
 }

@@ -1,9 +1,11 @@
 //! Image-from-file input operation.
 //!
 //! Reads an image from a local file path and outputs the decoded image
-//! along with its width and height. The loaded `DynamicImage` is converted
-//! to a `FloatImage` via [`FloatImage::from_dynamic`], preserving the
-//! original channel count (grayscale stays 1ch, RGB 3ch, etc.).
+//! along with its width and height. Most formats decode through the image
+//! crate into a `DynamicImage`, converted to a `FloatImage` via
+//! [`FloatImage::from_dynamic`], preserving the original channel count
+//! (grayscale stays 1ch, RGB 3ch, etc.). JPEG XL (via jxl-oxide) and PSD
+//! (via psd, flattened composite) are decoded by dedicated pure-Rust crates.
 
 use crate::float_image::FloatImage;
 use crate::get_id;
@@ -31,7 +33,7 @@ impl OpImageInputFile {
         NodeSettings {
             name: "from file".to_string(),
             description: "Grabs an image from a file.".to_string(),
-            help: "Decodes an image file from disk using the image crate and converts it into a FloatImage, preserving the source channel count (grayscale stays 1ch, RGB 3ch, RGBA 4ch). The path input uses a picker filtered to the supported image extensions.\n\nErrors if the file cannot be opened or the format is unsupported. Note that pixel values are interpreted as sRGB by default; connect a linear-RGB conversion downstream if the file holds linear data like a normal or height map.".to_string(),
+            help: "Decodes an image file from disk and converts it into a FloatImage, preserving the source channel count (grayscale stays 1ch, RGB 3ch, RGBA 4ch). The path input uses a picker filtered to the supported image extensions. JPEG XL files are decoded with jxl-oxide and PSD files with the psd crate (the flattened composite image; individual layers are not exposed).\n\nErrors if the file cannot be opened or the format is unsupported. Note that pixel values are interpreted as sRGB by default; connect a linear-RGB conversion downstream if the file holds linear data like a normal or height map.".to_string(),
         }
     }
 
@@ -78,33 +80,67 @@ impl OpImageInputFile {
         // get values
         let Value::Path(path) = path_converted.unwrap() else { unreachable!() };
 
-        // run node
-        let mut width = 0;
-        let mut height = 0;
-        let mut img = None;
+        // run node — JPEG XL and PSD have dedicated decoders; everything else
+        // goes through the image crate.
+        let extension = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase());
+        let decode_result = match extension.as_deref() {
+            Some("jxl") => Self::decode_jxl(&path),
+            Some("psd") => Self::decode_psd(&path),
+            _ => ImageReader::open(&path)
+                .map_err(|e| e.to_string())
+                .and_then(|reader| reader.decode().map_err(|e| e.to_string()))
+                .map(|dynamic_image| FloatImage::from_dynamic(&dynamic_image)),
+        };
 
-        if let Ok(open) = ImageReader::open(path) {
-            if let Ok(dynamic_image) = open.decode() {
-                // Convert to FloatImage, preserving original channel count
-                let float_img = FloatImage::from_dynamic(&dynamic_image);
-                width = float_img.width();
-                height = float_img.height();
-                img = Some(float_img);
+        match decode_result {
+            Ok(float_img) => {
+                let width = float_img.width();
+                let height = float_img.height();
+                Ok(OperationResponse {
+                    time: Instant::now().duration_since(start_time),
+                    responses: vec![
+                        OutputResponse { value: Value::Image { data: Arc::new(float_img), change_id: get_id() } },
+                        OutputResponse { value: Value::Integer(width as i32) },
+                        OutputResponse { value: Value::Integer(height as i32) },
+                    ],
+                })
             }
+            Err(e) => Err(OperationError { input_errors, node_error: Some(format!("Error opening image: {}", e)) }),
         }
+    }
 
-        if let Some(value) = img {
-            Ok(OperationResponse { 
-                time: Instant::now().duration_since(start_time),
-                responses: vec![
-                    OutputResponse { value: Value::Image { data: Arc::new(value), change_id: get_id() } },
-                    OutputResponse { value: Value::Integer(width as i32) },
-                    OutputResponse { value: Value::Integer(height as i32) },
-                ],
-            })
-        } else {
-            Err(OperationError { input_errors, node_error: Some("Error opening image.".to_string()) })
+    /// Decodes a JPEG XL file with jxl-oxide (first frame for animations).
+    ///
+    /// The stream API yields interleaved f32 color + alpha channels, which map
+    /// directly onto `FloatImage` semantics (1ch gray … 4ch RGBA).
+    fn decode_jxl(path: &std::path::Path) -> Result<FloatImage, String> {
+        let image = jxl_oxide::JxlImage::open_with_defaults(path).map_err(|e| e.to_string())?;
+        let render = image.render_frame(0).map_err(|e| e.to_string())?;
+        let mut stream = render.stream();
+        let (width, height, channels) = (stream.width(), stream.height(), stream.channels());
+        if channels == 0 || channels > 4 {
+            return Err(format!("Unsupported JPEG XL channel count: {}", channels));
         }
+        let mut buf = vec![0f32; width as usize * height as usize * channels as usize];
+        stream.write_to_buffer(&mut buf);
+        FloatImage::from_raw(width, height, channels, buf)
+            .ok_or_else(|| "JPEG XL decode produced a mismatched buffer size.".to_string())
+    }
+
+    /// Decodes a PSD file with the psd crate.
+    ///
+    /// Uses the flattened composite image (individual layers are not exposed),
+    /// which the crate always returns as 8-bit RGBA.
+    fn decode_psd(path: &std::path::Path) -> Result<FloatImage, String> {
+        let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+        let parsed = psd::Psd::from_bytes(&bytes).map_err(|e| e.to_string())?;
+        let (width, height) = (parsed.width(), parsed.height());
+        let data: Vec<f32> = parsed.rgba().iter().map(|&v| v as f32 / 255.0).collect();
+        FloatImage::from_raw(width, height, 4, data)
+            .ok_or_else(|| "PSD decode produced a mismatched buffer size.".to_string())
     }
 }
 

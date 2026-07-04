@@ -24,6 +24,8 @@ noise = "0.9"
 ab_glyph = "0.2"
 rayon = "1"
 dashmap = "6"
+jxl-oxide = "0.12.6"
+psd = "0.3.5"
 
 [dev-dependencies]
 filetime = "0.2"

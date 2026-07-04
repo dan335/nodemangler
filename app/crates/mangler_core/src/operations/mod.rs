@@ -456,6 +456,14 @@ operations! {
     OpImageNoiseBlue(crate::operations::images::noise::blue_noise::OpImageNoiseBlue),
     OpImageNoiseCurl(crate::operations::images::noise::curl::OpImageNoiseCurl),
     OpImageNoiseCheckerboard(crate::operations::images::noise::checkerboard::OpImageNoiseCheckerboard),
+    OpImageNoiseScratches(crate::operations::images::noise::scratches::OpImageNoiseScratches),
+    OpImageNoiseFibers(crate::operations::images::noise::fibers::OpImageNoiseFibers),
+    OpImageNoiseCraters(crate::operations::images::noise::craters::OpImageNoiseCraters),
+    OpImageNoiseScales(crate::operations::images::noise::scales::OpImageNoiseScales),
+    OpImageNoiseTruchet(crate::operations::images::noise::truchet::OpImageNoiseTruchet),
+    OpImageNoisePhasor(crate::operations::images::noise::phasor::OpImageNoisePhasor),
+    OpImageNoiseFlow(crate::operations::images::noise::flow::OpImageNoiseFlow),
+    OpImageNoiseFaultTerrain(crate::operations::images::noise::fault_terrain::OpImageNoiseFaultTerrain),
 
     // shapes
     OpImageShapeRectangle(crate::operations::images::shapes::rectangle::OpImageShapeRectangle),
@@ -496,6 +504,8 @@ operations! {
 
     OpLogicCompareEqual(crate::operations::logic::comparison::equal::OpLogicCompareEqual),
     OpLogicCompareNotEqual(crate::operations::logic::comparison::not_equal::OpLogicCompareNotEqual),
+    OpLogicCompareApproxEqual(crate::operations::logic::comparison::approx_equal::OpLogicCompareApproxEqual),
+    OpLogicCompareInRange(crate::operations::logic::comparison::in_range::OpLogicCompareInRange),
     OpLogicCompareLessThan(crate::operations::logic::comparison::less_than::OpLogicCompareLessThan),
     OpLogicCompareLessEqual(crate::operations::logic::comparison::less_equal::OpLogicCompareLessEqual),
     OpLogicCompareGreaterThan(crate::operations::logic::comparison::greater_than::OpLogicCompareGreaterThan),
@@ -505,6 +515,7 @@ operations! {
     OpLogicBoolOr(crate::operations::logic::boolean::or::OpLogicBoolOr),
     OpLogicBoolNot(crate::operations::logic::boolean::not::OpLogicBoolNot),
     OpLogicBoolXor(crate::operations::logic::boolean::xor::OpLogicBoolXor),
+    OpLogicBoolXnor(crate::operations::logic::boolean::xnor::OpLogicBoolXnor),
     OpLogicBoolNand(crate::operations::logic::boolean::nand::OpLogicBoolNand),
     OpLogicBoolNor(crate::operations::logic::boolean::nor::OpLogicBoolNor),
 
@@ -867,6 +878,14 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageNoiseBlue },
                 OperationListItem::Operation { operation: Operation::OpImageNoiseCurl },
                 OperationListItem::Operation { operation: Operation::OpImageNoiseCheckerboard },
+                OperationListItem::Operation { operation: Operation::OpImageNoiseScratches },
+                OperationListItem::Operation { operation: Operation::OpImageNoiseFibers },
+                OperationListItem::Operation { operation: Operation::OpImageNoiseCraters },
+                OperationListItem::Operation { operation: Operation::OpImageNoiseScales },
+                OperationListItem::Operation { operation: Operation::OpImageNoiseTruchet },
+                OperationListItem::Operation { operation: Operation::OpImageNoisePhasor },
+                OperationListItem::Operation { operation: Operation::OpImageNoiseFlow },
+                OperationListItem::Operation { operation: Operation::OpImageNoiseFaultTerrain },
             ]},
             OperationListItem::Category { name: "cast".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageCastToImage },
@@ -879,6 +898,8 @@ pub fn operation_list() -> Vec<OperationListItem> {
             OperationListItem::Category { name: "comparison".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpLogicCompareEqual },
                 OperationListItem::Operation { operation: Operation::OpLogicCompareNotEqual },
+                OperationListItem::Operation { operation: Operation::OpLogicCompareApproxEqual },
+                OperationListItem::Operation { operation: Operation::OpLogicCompareInRange },
                 OperationListItem::Operation { operation: Operation::OpLogicCompareLessThan },
                 OperationListItem::Operation { operation: Operation::OpLogicCompareLessEqual },
                 OperationListItem::Operation { operation: Operation::OpLogicCompareGreaterThan },
@@ -889,6 +910,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpLogicBoolOr },
                 OperationListItem::Operation { operation: Operation::OpLogicBoolNot },
                 OperationListItem::Operation { operation: Operation::OpLogicBoolXor },
+                OperationListItem::Operation { operation: Operation::OpLogicBoolXnor },
                 OperationListItem::Operation { operation: Operation::OpLogicBoolNand },
                 OperationListItem::Operation { operation: Operation::OpLogicBoolNor },
             ]},

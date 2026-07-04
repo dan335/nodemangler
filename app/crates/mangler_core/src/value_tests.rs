@@ -1356,11 +1356,28 @@ fn test_color_format_qoi_8bit_only() {
 }
 
 #[test]
-fn test_color_format_hdr_nothing_compatible() {
+fn test_color_format_hdr_rgb32f_only() {
     let fmt = image::ImageFormat::Hdr;
     for cf in ColorFormat::types() {
-        assert!(!cf.is_compatible_with_image_format(&fmt), "{:?} should be incompatible with HDR (read-only)", cf);
+        let expected = cf == ColorFormat::Rgb32F;
+        assert_eq!(
+            cf.is_compatible_with_image_format(&fmt),
+            expected,
+            "{:?} compatibility with HDR should be {} (RGBE encodes from Rgb32F only)",
+            cf,
+            expected
+        );
     }
+}
+
+#[test]
+fn test_color_format_avif_8bit_only() {
+    let fmt = image::ImageFormat::Avif;
+    assert!(ColorFormat::Rgba8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Rgb8.is_compatible_with_image_format(&fmt));
+    assert!(ColorFormat::Gray8.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgba16.is_compatible_with_image_format(&fmt));
+    assert!(!ColorFormat::Rgba32F.is_compatible_with_image_format(&fmt));
 }
 
 // === ColorFormat::default_for_image_format ===
@@ -1396,24 +1413,10 @@ fn test_default_color_format_pnm_is_rgb8() {
 }
 
 #[test]
-fn test_writable_types_excludes_only_hdr() {
-    let writable = ImageType::writable_types();
-    assert!(
-        writable.iter().all(|t| t.format() != image::ImageFormat::Hdr),
-        "HDR is read-only and must not be offered for writing"
-    );
-    assert_eq!(writable.len(), ImageType::types().len() - 1);
-}
-
-#[test]
 fn test_default_color_format_is_always_compatible() {
-    // The default for every format should itself be compatible with that format
-    // (except HDR which is read-only and has no valid write format).
+    // The default for every format should itself be compatible with that format.
     for image_type in ImageType::types() {
         let fmt = image_type.format();
-        if fmt == image::ImageFormat::Hdr {
-            continue;
-        }
         let default_cf = ColorFormat::default_for_image_format(&fmt);
         assert!(
             default_cf.is_compatible_with_image_format(&fmt),
@@ -1422,4 +1425,16 @@ fn test_default_color_format_is_always_compatible() {
             fmt
         );
     }
+}
+
+#[test]
+fn test_image_file_extensions_reflect_decodability() {
+    let extensions = ValueType::file_extensions(&ValueType::Image);
+    // AVIF is write-only (decoding needs a C library), so the open dialog
+    // must not offer it.
+    assert!(!extensions.contains(&"avif".to_string()));
+    // JPEG XL and PSD decode through dedicated pure-Rust crates.
+    assert!(extensions.contains(&"jxl".to_string()));
+    assert!(extensions.contains(&"psd".to_string()));
+    assert!(extensions.contains(&"hdr".to_string()));
 }

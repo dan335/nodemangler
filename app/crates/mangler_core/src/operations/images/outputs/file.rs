@@ -9,6 +9,7 @@
 //! Outputs the resulting file path.
 
 use image::ImageFormat;
+use image::codecs::avif::AvifEncoder;
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::{CompressionType as PngCompression, FilterType as PngFilter, PngEncoder};
 use image::{DynamicImage, ImageBuffer};
@@ -101,7 +102,7 @@ impl OpImageOutputFile {
         NodeSettings {
             name: "to file".to_string(),
             description: "Saves an image to a file.".to_string(),
-            help: "Encodes the input image and writes it into the chosen folder under the given base filename; the extension is appended automatically based on the selected image format. The color format selector controls the output bit depth and channel layout (Gray8/16, GrayA8/16, Rgb8/16/32F, Rgba8/16/32F).\n\nThe jpg quality slider only applies when saving as JPEG, and the png compression selector only when saving as PNG (all PNG settings produce identical pixels — only file size and encode time differ). WebP is always encoded losslessly; the remaining formats have no encoder settings. Incompatible format/color-format combinations (for example an RGBA channel layout into a JPEG) are rejected before any file is written, and the full saved path is returned as an output for chaining.".to_string(),
+            help: "Encodes the input image and writes it into the chosen folder under the given base filename; the extension is appended automatically based on the selected image format. The color format selector controls the output bit depth and channel layout (Gray8/16, GrayA8/16, Rgb8/16/32F, Rgba8/16/32F).\n\nThe quality slider applies to the lossy formats (JPEG and AVIF), and the png compression selector only to PNG (all PNG settings produce identical pixels — only file size and encode time differ). WebP is always encoded losslessly; Radiance HDR writes from the Rgb32F color format; the remaining formats have no encoder settings. Incompatible format/color-format combinations (for example an RGBA channel layout into a JPEG) are rejected before any file is written, and the full saved path is returned as an output for chaining.".to_string(),
         }
     }
 
@@ -123,8 +124,8 @@ impl OpImageOutputFile {
                 .with_description("Destination folder where the image file will be written."),
             Input::new("image format".to_string(), Value::ImageType(ImageFormat::Jpeg), None, None)
                 .with_description("Image container format (JPEG, PNG, etc.) that determines the extension."),
-            Input::new("jpg quality".to_string(), Value::Integer(85), Some(InputSettings::Slider { range: (1.0, 100.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("JPEG compression quality from 1 (smallest) to 100 (best)."),
+            Input::new("quality".to_string(), Value::Integer(85), Some(InputSettings::Slider { range: (1.0, 100.0), step_by: Some(1.0), clamp_to_range: true }), None)
+                .with_description("Lossy compression quality from 1 (smallest) to 100 (best); applies to JPEG and AVIF."),
             Input::new("color format".to_string(), Value::ColorFormat(ColorFormat::Rgb8), None, None)
                 .with_description("Pixel encoding (bit depth and channel layout) used to write the file."),
             Input::new("png compression".to_string(), Value::Text("fast".to_string()), Some(InputSettings::Dropdown {
@@ -250,9 +251,7 @@ impl OpImageOutputFile {
     /// Check whether the given color format is compatible with the image file format.
     /// Returns `Ok(())` if compatible, or `Err(message)` describing why not.
     fn check_compatibility(image_format: &ImageFormat, color_format: &ColorFormat) -> Result<(), String> {
-        if *image_format == ImageFormat::Hdr {
-            Err("HDR is a read-only format and cannot be written.".to_string())
-        } else if color_format.is_compatible_with_image_format(image_format) {
+        if color_format.is_compatible_with_image_format(image_format) {
             Ok(())
         } else {
             Err(format!(
@@ -340,21 +339,23 @@ impl OpImageOutputFile {
         let converted = Self::convert_from_float(&data, &color_format);
 
         let save_result = match image_type {
-            // JPEG and PNG use explicit encoders so quality/compression apply.
-            ImageFormat::Jpeg | ImageFormat::Png => std::fs::File::create(&folder_path)
+            // JPEG, PNG, and AVIF use explicit encoders so quality/compression apply.
+            ImageFormat::Jpeg | ImageFormat::Png | ImageFormat::Avif => std::fs::File::create(&folder_path)
                 .map_err(|e| e.to_string())
                 .and_then(|f| {
                     let mut writer = BufWriter::new(f);
-                    if image_type == ImageFormat::Jpeg {
-                        converted.write_with_encoder(JpegEncoder::new_with_quality(&mut writer, quality))
-                    } else {
-                        converted.write_with_encoder(PngEncoder::new_with_quality(&mut writer, png_compression, PngFilter::Adaptive))
+                    match image_type {
+                        ImageFormat::Jpeg => converted.write_with_encoder(JpegEncoder::new_with_quality(&mut writer, quality)),
+                        // Speed 4 is the encoder's own default (cavif's choice).
+                        ImageFormat::Avif => converted.write_with_encoder(AvifEncoder::new_with_speed_quality(&mut writer, 4, quality)),
+                        _ => converted.write_with_encoder(PngEncoder::new_with_quality(&mut writer, png_compression, PngFilter::Adaptive)),
                     }
                     .map_err(|e| e.to_string())?;
                     writer.flush().map_err(|e| e.to_string())
                 }),
             // All other formats have no encoder settings: save directly. BMP/PNM
-            // only pass validation as Rgb8/Gray8, which are already alpha-free.
+            // only pass validation as Rgb8/Gray8, which are already alpha-free;
+            // HDR only as Rgb32F, matching its RGBE encoder.
             _ => converted.save_with_format(&folder_path, image_type).map_err(|e| e.to_string()),
         };
 

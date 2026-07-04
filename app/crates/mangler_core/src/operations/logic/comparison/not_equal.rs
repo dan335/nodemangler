@@ -24,7 +24,7 @@ impl OpLogicCompareNotEqual {
         NodeSettings {
             name: "not equal".to_string(),
             description: "Returns true if two values are not equal.".to_string(),
-            help: "Logical inverse of the equal node. Text-to-Text comparisons are performed directly as strings (case-sensitive), while all other combinations are coerced to Decimal first so Bool, Integer, and Decimal values can cross-compare (Bool::true -> 1.0, Bool::false -> 0.0).\n\nAs with equal, numeric differences that fall within floating-point rounding noise may produce a surprising true result.".to_string(),
+            help: "Logical inverse of the equal node. Text-to-Text comparisons are performed directly as strings (case-sensitive), while all other combinations are coerced to Decimal first so Bool, Integer, and Decimal values can cross-compare (Bool::true -> 1.0, Bool::false -> 0.0).\n\nAs with equal, numeric differences that fall within floating-point rounding noise may produce a surprising true result. For a tolerance-based check, invert the approx equal node with not.".to_string(),
         }
     }
 

@@ -529,9 +529,18 @@ impl ValueType {
                 let mut list = vec![];
 
                 for image_format in ImageType::types().iter() {
+                    // AVIF is write-only: decoding needs the avif-native C library.
+                    if matches!(image_format, ImageType::Avif) {
+                        continue;
+                    }
                     let ext = image_format.format().extensions_str()[0];
                     list.push(ext.to_string());
                 }
+
+                // Formats decoded outside the image crate (see the image
+                // "from file" operation): JPEG XL via jxl-oxide, PSD via psd.
+                list.push("jxl".to_string());
+                list.push("psd".to_string());
 
                 list
             }
@@ -691,7 +700,7 @@ impl ColorFormat {
             image::ImageFormat::OpenExr => ColorFormat::Rgba32F,
             image::ImageFormat::Farbfeld => ColorFormat::Rgba16,
             image::ImageFormat::Jpeg | image::ImageFormat::Bmp | image::ImageFormat::Pnm => ColorFormat::Rgb8,
-            image::ImageFormat::Hdr => ColorFormat::Rgb8, // HDR is read-only but need a fallback
+            image::ImageFormat::Hdr => ColorFormat::Rgb32F,
             _ => ColorFormat::Rgba8,
         }
     }
@@ -717,19 +726,21 @@ impl ColorFormat {
             image::ImageFormat::Bmp | image::ImageFormat::Pnm => {
                 matches!(self, ColorFormat::Rgb8 | ColorFormat::Gray8)
             }
-            // GIF, WebP, TGA, ICO, QOI support 8-bit only
+            // GIF, WebP, TGA, ICO, QOI, AVIF support 8-bit only (the AVIF
+            // encoder accepts 16-bit input but always encodes 8-bit)
             image::ImageFormat::Gif
             | image::ImageFormat::WebP
             | image::ImageFormat::Tga
             | image::ImageFormat::Ico
-            | image::ImageFormat::Qoi => {
+            | image::ImageFormat::Qoi
+            | image::ImageFormat::Avif => {
                 matches!(
                     self,
                     ColorFormat::Rgba8 | ColorFormat::Rgb8 | ColorFormat::GrayA8 | ColorFormat::Gray8
                 )
             }
-            // HDR is read-only
-            image::ImageFormat::Hdr => false,
+            // Radiance HDR encodes RGBE, written from 32-bit float RGB only
+            image::ImageFormat::Hdr => matches!(self, ColorFormat::Rgb32F),
             // Unknown/other formats — allow and let the encoder decide
             _ => true,
         }
@@ -752,10 +763,10 @@ pub enum ImageType {
     //Dds,  // can't read or write
     Bmp,
     Ico,
-    Hdr, // can't write
+    Hdr, // write requires Rgb32F
     OpenExr,
     Farbfeld,
-    // Avif, Decoding requires the avif-native feature, uses the libdav1d C library.
+    Avif, // write-only: decoding needs the avif-native feature (libdav1d C library)
     Qoi,
 }
 
@@ -775,13 +786,15 @@ impl ImageType {
             ImageType::Hdr => image::ImageFormat::Hdr,
             ImageType::OpenExr => image::ImageFormat::OpenExr,
             ImageType::Farbfeld => image::ImageFormat::Farbfeld,
+            ImageType::Avif => image::ImageFormat::Avif,
             ImageType::Qoi => image::ImageFormat::Qoi,
         }
     }
 
-    /// Return all available image type variants.
-    pub fn types() -> [ImageType; 13] {
-        let types: [ImageType; 13] = [
+    /// Return all available image type variants. Every listed type can be
+    /// written; all except AVIF can also be read.
+    pub fn types() -> [ImageType; 14] {
+        let types: [ImageType; 14] = [
             ImageType::Png,
             ImageType::Jpeg,
             ImageType::Gif,
@@ -794,31 +807,11 @@ impl ImageType {
             ImageType::Hdr,
             ImageType::OpenExr,
             ImageType::Farbfeld,
+            ImageType::Avif,
             ImageType::Qoi,
         ];
 
         types
-    }
-
-    /// Return the image type variants that can be written (encoded).
-    ///
-    /// Same as [`ImageType::types`] minus HDR, which the image crate can only
-    /// read. Used for format dropdowns on output nodes.
-    pub fn writable_types() -> [ImageType; 12] {
-        [
-            ImageType::Png,
-            ImageType::Jpeg,
-            ImageType::Gif,
-            ImageType::WebP,
-            ImageType::Pnm,
-            ImageType::Tiff,
-            ImageType::Tga,
-            ImageType::Bmp,
-            ImageType::Ico,
-            ImageType::OpenExr,
-            ImageType::Farbfeld,
-            ImageType::Qoi,
-        ]
     }
 }
 

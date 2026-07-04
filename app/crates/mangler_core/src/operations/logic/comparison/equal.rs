@@ -25,7 +25,7 @@ impl OpLogicCompareEqual {
         NodeSettings {
             name: "equal".to_string(),
             description: "Returns true if two values are equal.".to_string(),
-            help: "When both inputs are Text, they are compared as strings (case-sensitive, exact match). Otherwise both inputs are coerced to Decimal and compared numerically, which lets Bool, Integer, and Decimal values cross-compare naturally (Bool::true maps to 1.0, Bool::false to 0.0).\n\nBecause numeric comparison uses f64 equality, floating-point rounding can cause values that look identical to differ. For noisy floats, subtract and threshold with less-than instead.".to_string(),
+            help: "When both inputs are Text, they are compared as strings (case-sensitive, exact match). Otherwise both inputs are coerced to Decimal and compared numerically, which lets Bool, Integer, and Decimal values cross-compare naturally (Bool::true maps to 1.0, Bool::false to 0.0).\n\nBecause numeric comparison uses exact f32 equality, floating-point rounding can cause values that look identical to differ. For noisy floats, use the approx equal node instead.".to_string(),
         }
     }
 

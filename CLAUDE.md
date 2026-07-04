@@ -99,8 +99,8 @@ cargo run -p mangler_cli  # Run the CLI tool
 
 ### logic/
 - `inputs/` — bool
-- `comparison/` — equal, not_equal, less_than, less_equal, greater_than, greater_equal
-- `boolean/` — and, or, not, xor, nand, nor
+- `comparison/` — equal, not_equal, approx_equal (tolerance-based), in_range (inclusive min/max), less_than, less_equal, greater_than, greater_equal
+- `boolean/` — and, or, not, xor, xnor, nand, nor
 - `flow/` — select (mux: picks between two values based on a bool condition)
 
 ### text/
@@ -132,7 +132,7 @@ cargo run -p mangler_cli  # Run the CLI tool
 - `shapes/` — rectangle, ellipse, circle, polygon, star, line, cone, pyramid, paraboloid
 - `patterns/` — brick, hexagonal, weave, tile_sampler, tile_generator, splatter, flood_fill, flood_fill_mapper
 - `pbr/` — normal_from_height, normal_to_height, normal_invert, normal_blend, normal_combine, ao_from_height, curvature, bevel, height_blend
-- `noise/` — 28 generators: perlin, value, fbm, billow, ridged_multifractal, hybrid_multifractal, basic_multifractal, open_simplex, super_simplex, voronoise, voronoi_crack, worley_distance, worley_value, gabor, anisotropic, gaussian (white noise), blue_noise, curl (flow map, 3-channel), wave, clouds, plasma, crystal, dirt, cylinders, checkerboard, erosion, reaction_diffusion, domain_warp_fbm (`voronoi_common.rs` is a shared helper, not a node; `pixel_hash`/`periodic_value_2d`/`build_perm_tables` in `noise/mod.rs` are shared)
+- `noise/` — 36 generators: perlin, value, fbm, billow, ridged_multifractal, hybrid_multifractal, basic_multifractal, open_simplex, super_simplex, voronoise, voronoi_crack, worley_distance, worley_value, gabor, phasor, anisotropic, gaussian (white noise), blue_noise, curl (flow map, 3-channel), flow (rotated-gradient fbm with advection), wave, clouds, plasma, crystal, dirt, scratches, fibers, craters, scales, truchet (truchet tiles), cylinders, checkerboard, erosion, fault_terrain, reaction_diffusion, domain_warp_fbm (`voronoi_common.rs` is a shared helper, not a node; `pixel_hash`/`periodic_value_2d`/`build_perm_tables` in `noise/mod.rs` are shared)
 
 ## Known Issues
 

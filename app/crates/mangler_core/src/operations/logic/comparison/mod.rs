@@ -9,6 +9,10 @@
 pub mod equal;
 /// Inequality comparison (`a != b`).
 pub mod not_equal;
+/// Tolerance-based equality comparison (`|a - b| <= tolerance`).
+pub mod approx_equal;
+/// Inclusive range membership test (`min <= value <= max`).
+pub mod in_range;
 /// Strict less-than comparison (`a < b`).
 pub mod less_than;
 /// Less-than-or-equal comparison (`a <= b`).
