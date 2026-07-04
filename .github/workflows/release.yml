@@ -1,0 +1,107 @@
+# Builds Windows, Linux, and macOS executables and publishes them to GitHub
+# Releases whenever a vX.Y.Z tag is pushed (normally by scripts/release.sh or
+# scripts\release.bat).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libxkbcommon-dev libssl-dev pkg-config
+      - name: Check tag matches Cargo.toml version
+        working-directory: app
+        run: |
+          VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          if [ "v$VERSION" != "${{ github.ref_name }}" ]; then
+            echo "tag ${{ github.ref_name }} does not match workspace version $VERSION" >&2
+            exit 1
+          fi
+      - name: Run tests
+        working-directory: app
+        run: cargo test --workspace
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: linux-x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: windows-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            name: macos-aarch64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            name: macos-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libxkbcommon-dev libssl-dev pkg-config
+      - name: Add target
+        run: rustup target add ${{ matrix.target }}
+      - name: Build
+        working-directory: app
+        run: cargo build --release --target ${{ matrix.target }} -p mangler_gui -p mangler_cli
+      - name: Package (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          STAGE="nodemangler-${{ github.ref_name }}-${{ matrix.name }}"
+          mkdir "$STAGE"
+          cp "app/target/${{ matrix.target }}/release/mangler_gui" \
+             "app/target/${{ matrix.target }}/release/mangler_cli" \
+             README.md LICENSE.md "$STAGE/"
+          tar czf "$STAGE.tar.gz" "$STAGE"
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $stage = "nodemangler-${{ github.ref_name }}-${{ matrix.name }}"
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          Copy-Item "app/target/${{ matrix.target }}/release/mangler_gui.exe", `
+                    "app/target/${{ matrix.target }}/release/mangler_cli.exe", `
+                    README.md, LICENSE.md $stage
+          Compress-Archive -Path $stage -DestinationPath "$stage.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nodemangler-${{ matrix.name }}
+          path: |
+            nodemangler-*.tar.gz
+            nodemangler-*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            nodemangler-*.tar.gz nodemangler-*.zip \
+            --repo "${{ github.repository }}" \
+            --title "NodeMangler ${{ github.ref_name }}" \
+            --generate-notes

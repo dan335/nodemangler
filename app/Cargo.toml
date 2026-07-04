@@ -7,6 +7,16 @@ members = [
     "crates/mangler_gui",
 ]
 
+# Shared metadata inherited by every crate (`version.workspace = true` etc.).
+# This is THE version number for the whole project — bump it here (or run
+# scripts/release.sh, which does it for you).
+[workspace.package]
+version = "1.0.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/dan335/nodemangler"
+authors = ["Daniel Phillips <danphi@gmail.com>"]
+
 # Enable a small amount of optimization in debug mode
 [profile.dev]
 opt-level = 1

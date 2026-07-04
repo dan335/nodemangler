@@ -6,6 +6,16 @@ Node-based visual programming tool for image and color manipulation.
 
 - `app/` — Rust application (Cargo workspace)
 - `website/` — Website (future)
+- `scripts/` — test/build/release scripts (`.sh` + `.bat`); see `scripts/README.md`
+
+## Versioning & Releases
+
+- The project version lives in **one place**: `[workspace.package] version` in
+  `app/Cargo.toml`. All crates inherit it via `version.workspace = true`.
+- `scripts/release.sh <version>` (or `release.bat`) runs tests, bumps the version,
+  commits, tags `vX.Y.Z`, and pushes. The tag triggers
+  `.github/workflows/release.yml`, which builds Windows/Linux/macOS executables on
+  native runners and publishes them to GitHub Releases.
 
 ## Project Structure
 

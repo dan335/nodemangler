@@ -1,11 +1,11 @@
 [package]
 name = "mangler_cli"
-version = "1.0.0"
-edition = "2021"
-license = "MIT OR Apache-2.0"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
 description = "NodeMangler headless CLI: run node graphs without the GUI."
-repository = "https://github.com/dan335/nodemangler"
-authors = ["Daniel Phillips <danphi@gmail.com>"]
 
 [[bin]]
 name = "mangler_cli"
