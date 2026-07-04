@@ -122,5 +122,3 @@ updates its visual state accordingly.
 - `glam` — vector math
 - `fastrand` — random number generation
 - `winapi` (Windows only) — native window APIs
-
-This binary is licensed **MIT OR Apache-2.0**.

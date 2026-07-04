@@ -113,5 +113,3 @@ cargo run -p mangler_cli -- g.json show-output --node sum     # -> 5
 - `serde_json` — graph (de)serialization
 - `image` — saving image outputs
 - `glam` — vector math
-
-The `mangler_cli` binary is licensed **MIT OR Apache-2.0**.
