@@ -22,6 +22,8 @@ pub mod blur;
 pub mod filter;
 /// Procedural noise generation operations.
 pub mod noise;
+/// Physical-process simulation generators (cracks, erosion, weathering, ...).
+pub mod simulation;
 /// Image compositing operations: blit and blend.
 pub mod combine;
 /// RGBA channel manipulation: split, merge, and shuffle.

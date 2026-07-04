@@ -18,7 +18,8 @@ Claude.
 - **Procedural generation** — 46 noise generators (Perlin, OpenSimplex, Worley, Gabor,
   phasor, reaction-diffusion, …) including a grunge set (leaks, stains, peeling, smear,
   growth) plus patterns, shapes, and PBR nodes (normal, height, ambient occlusion,
-  curvature, bevel).
+  curvature, bevel). A simulation category is scaffolded for physical-process
+  generators (crack propagation, hydraulic erosion, frost growth, …) — see `plan.md`.
 - **14 color spaces** with conversion between them: sRGB, Linear RGB, HSL, HSV, HWB,
   Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YUV, YCbCr — plus color analysis and harmony
   nodes.
@@ -123,7 +124,12 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Cast:** To Image
 - **Channels:** Channel Merge, Channel Mixer, Channel Select, Channel Shuffle, Channel Split
 - **Combine:** Blend, Compare, Composite
-- **Filter:** Anisotropic Diffusion, Anisotropic Kuwahara, ASCII, Bilateral, Black Hat, Canny, Close, Convolution, Cross Hatch, Difference Of Gaussians, Dilate, Distance Field, Edge Detect, Emboss, Erode, Floyd Steinberg, Guided Filter, Halftone, Highpass, Kuwahara, Luminance Highpass, Median, Morphological Gradient, Non Local Means, Oil Paint, Open, Ordered Dither, Outline, Pixelate, Sharpen, SNN, Toon, Top Hat, Unsharp Mask, Vector Morphology
+- **Filter / Edges:** Canny, Difference Of Gaussians, Edge Detect, Highpass, Luminance Highpass, Sharpen, Unsharp Mask
+- **Filter / Smoothing:** Anisotropic Diffusion, Bilateral, Guided Filter, Median, Non Local Means, SNN
+- **Filter / Morphology:** Black Hat, Close, Dilate, Distance Field, Erode, Morphological Gradient, Open, Outline, Top Hat, Vector Morphology
+- **Filter / Stylize:** Anisotropic Kuwahara, ASCII, Cross Hatch, Emboss, Halftone, Kuwahara, Oil Paint, Pixelate, Toon
+- **Filter / Dither:** Floyd Steinberg, Ordered Dither
+- **Filter:** Convolution
 - **FX:** Drop Shadow, Inner Glow, Outer Glow
 - **Noise:** Anisotropic Noise, Billow Noise, Blue Noise, Caustics Noise, Checkerboard Noise, Cloud Noise, Concentric Rings, Craters, Creased Noise, Crystal Noise, Curl Noise, Dirt Noise, Domain Warp, Erosion, Fault Terrain, FBM Noise, Fibers, Flow Noise, Gabor Noise, Growth Noise, Hybrid Multifractal Noise, Leaks Noise, Lightning Noise, Multifractal Noise, Open Simplex Noise, Peeling Noise, Perlin Noise, Phasor Noise, Plasma Noise, Reaction Diffusion, Ridged Multifractal Noise, Scales, Scratches, Smear Noise, Stains Noise, Super Simplex Noise, Truchet Tiles, Value Noise, Veins Noise, Voronoi Blend, Voronoi Crack Noise, Warped Rings Noise, Wave, White Noise, Worley Distance Noise, Worley Value Noise
 - **Patterns:** Brick, Flood Fill, Flood Fill Mapper, Hexagonal, Splatter, Tile Generator, Tile Sampler, Weave
