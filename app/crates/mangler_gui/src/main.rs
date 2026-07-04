@@ -2,7 +2,6 @@
 
 use eframe::egui::{self};
 use epaint::Vec2;
-use std::path::Path;
 use themes::theme::Theme;
 mod app;
 mod app_menu;
@@ -29,8 +28,6 @@ pub const NODE_ROUNDING: f32 = 2.0;
 async fn main() -> Result<(), eframe::Error> {
     puffin::set_scopes_on(PROFILE);
 
-    let icon_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/mangler_icon.png");
-
     let options = eframe::NativeOptions {
         // 4x MSAA on the main framebuffer so the 3D viewer gets geometry AA.
         multisampling: 4,
@@ -38,7 +35,7 @@ async fn main() -> Result<(), eframe::Error> {
             .with_maximized(true)
             .with_resizable(true)
             .with_decorations(true)
-            .with_icon(load_icon(icon_path.to_str().unwrap())),
+            .with_icon(load_icon()),
         ..Default::default()
     };
 
@@ -49,21 +46,18 @@ async fn main() -> Result<(), eframe::Error> {
     )
 }
 
-// do this without image crate?
-fn load_icon(path: &str) -> egui::IconData {
-    let (icon_rgba, icon_width, icon_height) = {
-        let image = image::open(path)
-            .expect("Failed to open icon path")
-            .into_rgba8();
-        let (width, height) = image.dimensions();
-        let rgba = image.into_raw();
-        (rgba, width, height)
-    };
+fn load_icon() -> egui::IconData {
+    // Embedded so the binary works standalone, without the source tree.
+    let bytes = include_bytes!("../assets/mangler_icon.png");
+    let image = image::load_from_memory(bytes)
+        .expect("Failed to decode embedded icon")
+        .into_rgba8();
+    let (width, height) = image.dimensions();
 
     egui::IconData {
-        rgba: icon_rgba,
-        width: icon_width,
-        height: icon_height,
+        rgba: image.into_raw(),
+        width,
+        height,
     }
 }
 
