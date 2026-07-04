@@ -460,12 +460,15 @@ impl Color {
 
 /// Available blend modes for compositing two colors.
 ///
-/// `Over` composites the foreground over the background weighted by alpha (Porter-Duff Over).
+/// `Over` lerps the color channels toward the foreground weighted by foreground
+/// alpha, preserving background alpha (a simplified over — not full Porter-Duff,
+/// which would also composite the alpha channels).
 /// `Lerp` linearly interpolates all channels including alpha.
 /// The remaining modes implement standard Photoshop-style blend formulas.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum BlendMode {
-    /// Porter-Duff Over: composites foreground over background, weighted by foreground alpha.
+    /// Over: lerps color channels toward the foreground weighted by foreground
+    /// alpha; background alpha is preserved.
     Over,
     /// Linear interpolation of all channels (including alpha) by the amount factor.
     Lerp,
@@ -534,24 +537,26 @@ impl BlendMode {
 fn blend_ch(a: f32, b: f32, mode: &BlendMode, amount: f32, b_alpha: f32, scale: f32, offset: f32) -> f32 {
     let a_norm = ((a - offset) / scale).clamp(0.0, 1.0);
     let b_norm = ((b - offset) / scale).clamp(0.0, 1.0);
-    let blended_norm = apply_blend_mode(a_norm, b_norm, mode);
+    let blended_norm = per_channel_fn(mode)(a_norm, b_norm);
     let blended = blended_norm * scale + offset;
     lerp(a, blended, amount * b_alpha)
 }
 
-/// Applies a per-channel blend formula for the given mode.
+/// Returns the per-channel blend formula for the given mode.
 ///
-/// `a` is the base (background) value and `b` is the blend (foreground) value,
-/// both expected in `[0, 1]`. `Over` and `Lerp` are not handled here — they are
-/// implemented directly in the `blend_*` methods.
-fn apply_blend_mode(a: f32, b: f32, mode: &BlendMode) -> f32 {
+/// The returned function takes `a` (base/background) and `b` (blend/foreground)
+/// values, both expected in `[0, 1]`. `Over` and `Lerp` have no per-channel
+/// formula — they are implemented directly in the `blend_*` methods — so
+/// requesting them panics. This is the single source of truth for the blend
+/// formulas; the image blend operation's sRGB fast path reuses it.
+pub(crate) fn per_channel_fn(mode: &BlendMode) -> fn(f32, f32) -> f32 {
     match mode {
-        BlendMode::Multiply => a * b,
-        BlendMode::Screen => 1.0 - (1.0 - a) * (1.0 - b),
+        BlendMode::Multiply => |a, b| a * b,
+        BlendMode::Screen => |a, b| 1.0 - (1.0 - a) * (1.0 - b),
         BlendMode::Overlay => {
-            if a < 0.5 { 2.0 * a * b } else { 1.0 - 2.0 * (1.0 - a) * (1.0 - b) }
+            |a, b| if a < 0.5 { 2.0 * a * b } else { 1.0 - 2.0 * (1.0 - a) * (1.0 - b) }
         }
-        BlendMode::SoftLight => {
+        BlendMode::SoftLight => |a, b| {
             if b < 0.5 {
                 a - (1.0 - 2.0 * b) * a * (1.0 - a)
             } else {
@@ -562,26 +567,26 @@ fn apply_blend_mode(a: f32, b: f32, mode: &BlendMode) -> f32 {
                 };
                 a + (2.0 * b - 1.0) * (d - a)
             }
-        }
+        },
         BlendMode::HardLight => {
-            if b < 0.5 { 2.0 * a * b } else { 1.0 - 2.0 * (1.0 - a) * (1.0 - b) }
+            |a, b| if b < 0.5 { 2.0 * a * b } else { 1.0 - 2.0 * (1.0 - a) * (1.0 - b) }
         }
         BlendMode::ColorDodge => {
-            if b >= 1.0 { 1.0 } else { (a / (1.0 - b)).min(1.0) }
+            |a, b| if b >= 1.0 { 1.0 } else { (a / (1.0 - b)).min(1.0) }
         }
         BlendMode::ColorBurn => {
-            if b <= 0.0 { 0.0 } else { 1.0 - ((1.0 - a) / b).min(1.0) }
+            |a, b| if b <= 0.0 { 0.0 } else { 1.0 - ((1.0 - a) / b).min(1.0) }
         }
-        BlendMode::Darken => a.min(b),
-        BlendMode::Lighten => a.max(b),
-        BlendMode::Difference => (a - b).abs(),
-        BlendMode::Exclusion => a + b - 2.0 * a * b,
-        BlendMode::LinearBurn => (a + b - 1.0).max(0.0),
-        BlendMode::LinearDodge => (a + b).min(1.0),
+        BlendMode::Darken => |a, b| a.min(b),
+        BlendMode::Lighten => |a, b| a.max(b),
+        BlendMode::Difference => |a, b| (a - b).abs(),
+        BlendMode::Exclusion => |a, b| a + b - 2.0 * a * b,
+        BlendMode::LinearBurn => |a, b| (a + b - 1.0).max(0.0),
+        BlendMode::LinearDodge => |a, b| (a + b).min(1.0),
         BlendMode::Divide => {
-            if b <= 0.0 { 1.0 } else { (a / b).min(1.0) }
+            |a, b| if b <= 0.0 { 1.0 } else { (a / b).min(1.0) }
         }
-        BlendMode::Subtract => (a - b).max(0.0),
+        BlendMode::Subtract => |a, b| (a - b).max(0.0),
         // Over and Lerp are handled directly in blend methods, not here
         BlendMode::Over | BlendMode::Lerp => unreachable!(),
     }
@@ -590,7 +595,7 @@ fn apply_blend_mode(a: f32, b: f32, mode: &BlendMode) -> f32 {
 /// Linearly interpolates between `a` and `b` by factor `t`.
 ///
 /// Returns `a` when `t == 0.0` and `b` when `t == 1.0`.
-fn lerp(a: f32, b: f32, t: f32) -> f32 {
+pub(crate) fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + t * (b - a)
 }
 

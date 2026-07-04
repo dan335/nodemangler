@@ -2,10 +2,10 @@
 //!
 //! Composites a foreground image onto a background using a configurable blend
 //! mode, blend amount, alpha mask, color space, and position offset. Supports
-//! all 17 blend modes and all 9 color spaces.
+//! all 17 blend modes and all 14 color spaces.
 
 use crate::color::Color;
-use crate::color::blend::BlendMode;
+use crate::color::blend::{BlendMode, lerp, per_channel_fn};
 use crate::color::color_spaces::ColorSpace;
 use crate::float_image::FloatImage;
 use crate::get_id;
@@ -28,7 +28,7 @@ impl OpImageCombineBlend {
         NodeSettings {
             name: "blend".to_string(),
             description: "Blends an image onto another using a blend mode.".to_string(),
-            help: "Walks every background pixel, samples the foreground at the same coordinate minus the position offset, and composites it using the selected BlendMode (Normal, Multiply, Overlay, SoftLight, Difference, and 12 more). Math is performed in the chosen ColorSpace; sRGB, Linear RGB, HSL, HSV, Lab, LCH, CMYK, XYZ, and YUV are all supported and results are converted back to sRGBA for storage.\n\nThe amount input provides a global opacity; the alpha image (per-pixel, averaged to luminance) multiplies that opacity so you can restrict the blend with a mask. Source alpha channels feed into the blend math. Foreground pixels outside the background's bounds leave the background untouched. Output size is taken from the background; negative positions clamp to zero.".to_string(),
+            help: "Walks every background pixel, samples the foreground at the same coordinate minus the position offset, and composites it using the selected BlendMode (Over, Lerp, Multiply, Overlay, SoftLight, and 12 more). Math is performed in the chosen ColorSpace; all 14 spaces (sRGB, Linear RGB, HSL, HSV, HWB, Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YCbCr, YUV) are supported and results are converted back to sRGBA for storage.\n\nThe amount input provides a global opacity; the alpha image (per-pixel, RGB channels averaged) multiplies that opacity so you can restrict the blend with a mask. Source alpha channels feed into the blend math. Foreground pixels outside the background's bounds leave the background untouched. Output size is taken from the background; positions may be negative to shift the foreground past the top-left edge.".to_string(),
         }
     }
 
@@ -41,7 +41,7 @@ impl OpImageCombineBlend {
             Input::new("amount".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Global opacity applied to the blended foreground; 0 shows only the background."),
             Input::new("alpha".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
-                .with_description("Optional mask image; its luminance multiplies the blend amount per pixel."),
+                .with_description("Optional mask image; its per-pixel RGB average multiplies the blend amount."),
             Input::new("blend mode".to_string(), Value::BlendMode(crate::color::blend::BlendMode::Over), None, None)
                 .with_description("Compositing formula used to combine foreground and background."),
             Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Srgb), None, None)
@@ -80,11 +80,8 @@ impl OpImageCombineBlend {
         let Value::Image{data:alpha, change_id:_} = alpha_converted.unwrap() else { unreachable!() };
         let Value::BlendMode(blend_mode) = blend_mode_converted.unwrap() else { unreachable!() };
         let Value::ColorSpace(color_space) = color_space_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut position_x) = position_x_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut position_y) = position_y_converted.unwrap() else { unreachable!() };
-
-        position_x = position_x.max(0);
-        position_y = position_y.max(0);
+        let Value::Integer(position_x) = position_x_converted.unwrap() else { unreachable!() };
+        let Value::Integer(position_y) = position_y_converted.unwrap() else { unreachable!() };
 
         // Output same size as background, 4-channel
         let (bg_w, bg_h) = background.dimensions();
@@ -119,7 +116,7 @@ impl OpImageCombineBlend {
             Some(match blend_mode {
                 BlendMode::Over => SrgbFastBlend::Over,
                 BlendMode::Lerp => SrgbFastBlend::Lerp,
-                _ => SrgbFastBlend::Ch(srgb_mode_fn(&blend_mode)),
+                _ => SrgbFastBlend::Ch(per_channel_fn(&blend_mode)),
             })
         } else {
             None
@@ -203,68 +200,15 @@ fn expand_rgba(px: &[f32]) -> (f32, f32, f32, f32) {
     }
 }
 
-/// Linear interpolation; matches `crate::color::blend`'s private `lerp` exactly.
-#[inline]
-fn lerp(a: f32, b: f32, t: f32) -> f32 {
-    a + t * (b - a)
-}
-
 /// Per-pixel blend strategy for the sRGB fast path, selected once before the loop.
 enum SrgbFastBlend {
-    /// Porter-Duff Over: lerp RGB by `amount * fg_alpha`, keep background alpha.
+    /// Over: lerp RGB by `amount * fg_alpha`, keep background alpha.
     Over,
     /// Linear interpolation of all channels (including alpha) by `amount`.
     Lerp,
-    /// Photoshop-style per-channel formula (unit scale, zero offset).
+    /// Photoshop-style per-channel formula from
+    /// [`per_channel_fn`](crate::color::blend::per_channel_fn) (unit scale, zero offset).
     Ch(fn(f32, f32) -> f32),
-}
-
-/// Returns the per-channel blend formula for `mode`, mirroring
-/// `apply_blend_mode` in `crate::color::blend` exactly.
-///
-/// # Panics
-/// Panics on `Over`/`Lerp`, which are handled directly in [`blend_srgb_raw`].
-fn srgb_mode_fn(mode: &BlendMode) -> fn(f32, f32) -> f32 {
-    match mode {
-        BlendMode::Multiply => |a, b| a * b,
-        BlendMode::Screen => |a, b| 1.0 - (1.0 - a) * (1.0 - b),
-        BlendMode::Overlay => {
-            |a, b| if a < 0.5 { 2.0 * a * b } else { 1.0 - 2.0 * (1.0 - a) * (1.0 - b) }
-        }
-        BlendMode::SoftLight => |a, b| {
-            if b < 0.5 {
-                a - (1.0 - 2.0 * b) * a * (1.0 - a)
-            } else {
-                let d = if a <= 0.25 {
-                    ((16.0 * a - 12.0) * a + 4.0) * a
-                } else {
-                    a.sqrt()
-                };
-                a + (2.0 * b - 1.0) * (d - a)
-            }
-        },
-        BlendMode::HardLight => {
-            |a, b| if b < 0.5 { 2.0 * a * b } else { 1.0 - 2.0 * (1.0 - a) * (1.0 - b) }
-        }
-        BlendMode::ColorDodge => {
-            |a, b| if b >= 1.0 { 1.0 } else { (a / (1.0 - b)).min(1.0) }
-        }
-        BlendMode::ColorBurn => {
-            |a, b| if b <= 0.0 { 0.0 } else { 1.0 - ((1.0 - a) / b).min(1.0) }
-        }
-        BlendMode::Darken => |a, b| a.min(b),
-        BlendMode::Lighten => |a, b| a.max(b),
-        BlendMode::Difference => |a, b| (a - b).abs(),
-        BlendMode::Exclusion => |a, b| a + b - 2.0 * a * b,
-        BlendMode::LinearBurn => |a, b| (a + b - 1.0).max(0.0),
-        BlendMode::LinearDodge => |a, b| (a + b).min(1.0),
-        BlendMode::Divide => {
-            |a, b| if b <= 0.0 { 1.0 } else { (a / b).min(1.0) }
-        }
-        BlendMode::Subtract => |a, b| (a - b).max(0.0),
-        // Over and Lerp are handled directly in blend_srgb_raw, not here
-        BlendMode::Over | BlendMode::Lerp => unreachable!(),
-    }
 }
 
 /// Blends two raw sRGB pixels, producing the same result as

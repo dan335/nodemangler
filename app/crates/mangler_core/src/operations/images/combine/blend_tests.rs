@@ -137,8 +137,12 @@ async fn test_blend_matches_reference() {
         mask.put_pixel(x, y, &[x as f32 / 3.0, y as f32 / 3.0, 0.75, 1.0]);
     } }
 
+    // The three sRGB cases cover all three fast-path branches (Over, Lerp, Ch);
+    // Lab and Oklch cover the Color round-trip path.
     let cases = [
         (ColorSpace::Srgb, BlendMode::Over),
+        (ColorSpace::Srgb, BlendMode::Lerp),
+        (ColorSpace::Srgb, BlendMode::Multiply),
         (ColorSpace::Lab, BlendMode::Multiply),
         (ColorSpace::Oklch, BlendMode::Screen),
     ];
@@ -162,6 +166,70 @@ async fn test_blend_matches_reference() {
         for (i, (a, e)) in actual.as_raw().iter().zip(expected.as_raw().iter()).enumerate() {
             assert!((a - e).abs() < 1e-4, "{:?}/{:?} mismatch at index {}: got {}, expected {}", space, mode, i, a, e);
         }
+    }
+}
+
+#[tokio::test]
+async fn test_blend_negative_position() {
+    // Foreground shifted past the top-left edge: only the region where the
+    // shifted foreground still overlaps the background gets blended.
+    let bg = FloatImage::from_pixel(4, 4, 4, &[0.2, 0.2, 0.2, 1.0]);
+    let fg = FloatImage::from_pixel(4, 4, 4, &[0.8, 0.8, 0.8, 1.0]);
+    let mask = FloatImage::from_pixel(4, 4, 4, &[1.0, 1.0, 1.0, 1.0]);
+    let expected = reference_blend(&bg, &fg, &mask, 1.0, &BlendMode::Over, ColorSpace::Srgb, -2, -1);
+
+    let mut inputs = vec![
+        Input::new("background".to_string(), Value::Image { data: Arc::new(bg), change_id: get_id() }, None, None),
+        Input::new("foreground".to_string(), Value::Image { data: Arc::new(fg), change_id: get_id() }, None, None),
+        Input::new("amount".to_string(), Value::Decimal(1.0), None, None),
+        Input::new("alpha".to_string(), Value::Image { data: Arc::new(mask), change_id: get_id() }, None, None),
+        Input::new("blend mode".to_string(), Value::BlendMode(BlendMode::Over), None, None),
+        Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Srgb), None, None),
+        Input::new("position x".to_string(), Value::Integer(-2), None, None),
+        Input::new("position y".to_string(), Value::Integer(-1), None, None),
+    ];
+    let result = OpImageCombineBlend::run(&mut inputs).await.unwrap();
+    let Value::Image { data: actual, .. } = &result.responses[0].value else { panic!("expected image output") };
+
+    // Spot checks: (0,0) is covered by the shifted foreground, (3,3) is not
+    // (fg x would be 5), nor is (2,0) (fg x would be 4).
+    assert!((actual.get_pixel(0, 0)[0] - 0.8).abs() < 1e-5, "covered pixel should be foreground");
+    assert!((actual.get_pixel(3, 3)[0] - 0.2).abs() < 1e-5, "uncovered pixel should be background");
+    assert!((actual.get_pixel(2, 0)[0] - 0.2).abs() < 1e-5, "uncovered pixel should be background");
+    for (i, (a, e)) in actual.as_raw().iter().zip(expected.as_raw().iter()).enumerate() {
+        assert!((a - e).abs() < 1e-5, "mismatch at index {}: got {}, expected {}", i, a, e);
+    }
+}
+
+#[tokio::test]
+async fn test_blend_non_rgba_channel_counts() {
+    // 1-channel background, 2-channel foreground, 1-channel mask exercise the
+    // gray / gray+alpha expansion paths against the reference implementation.
+    let mut bg = FloatImage::new(4, 4, 1);
+    for y in 0..4u32 { for x in 0..4u32 { bg.put_pixel(x, y, &[(x + y) as f32 / 6.0]); } }
+    let mut fg = FloatImage::new(3, 3, 2);
+    for y in 0..3u32 { for x in 0..3u32 { fg.put_pixel(x, y, &[1.0 - x as f32 / 3.0, 0.25 + y as f32 / 4.0]); } }
+    let mut mask = FloatImage::new(4, 4, 1);
+    for y in 0..4u32 { for x in 0..4u32 { mask.put_pixel(x, y, &[x as f32 / 3.0]); } }
+    let expected = reference_blend(&bg, &fg, &mask, 0.8, &BlendMode::Over, ColorSpace::Srgb, 1, 0);
+
+    let mut inputs = vec![
+        Input::new("background".to_string(), Value::Image { data: Arc::new(bg), change_id: get_id() }, None, None),
+        Input::new("foreground".to_string(), Value::Image { data: Arc::new(fg), change_id: get_id() }, None, None),
+        Input::new("amount".to_string(), Value::Decimal(0.8), None, None),
+        Input::new("alpha".to_string(), Value::Image { data: Arc::new(mask), change_id: get_id() }, None, None),
+        Input::new("blend mode".to_string(), Value::BlendMode(BlendMode::Over), None, None),
+        Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Srgb), None, None),
+        Input::new("position x".to_string(), Value::Integer(1), None, None),
+        Input::new("position y".to_string(), Value::Integer(0), None, None),
+    ];
+    let result = OpImageCombineBlend::run(&mut inputs).await.unwrap();
+    let Value::Image { data: actual, .. } = &result.responses[0].value else { panic!("expected image output") };
+
+    assert_eq!(actual.channels(), 4, "output is always RGBA");
+    assert_eq!(actual.dimensions(), expected.dimensions());
+    for (i, (a, e)) in actual.as_raw().iter().zip(expected.as_raw().iter()).enumerate() {
+        assert!((a - e).abs() < 1e-5, "mismatch at index {}: got {}, expected {}", i, a, e);
     }
 }
 
