@@ -14,7 +14,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
@@ -51,7 +51,7 @@ jobs:
             name: macos-x86_64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: |
@@ -81,7 +81,7 @@ jobs:
                     "app/target/${{ matrix.target }}/release/mangler_cli.exe", `
                     README.md, LICENSE.md $stage
           Compress-Archive -Path $stage -DestinationPath "$stage.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nodemangler-${{ matrix.name }}
           path: |
@@ -93,7 +93,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
       - name: Create GitHub release
