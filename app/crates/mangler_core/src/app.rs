@@ -76,8 +76,9 @@ impl App {
                                     position,
                                     is_enabled,
                                     custom_name,
+                                    input_values,
                                 } => {
-                                    graph.add_node(node_id, node_type, position, is_enabled, custom_name).await;
+                                    graph.add_node(node_id, node_type, position, is_enabled, custom_name, input_values).await;
                                     needs_to_save = true;
                                 }
                                 ChangeGraphMessage::RemoveNode { node_id } => {

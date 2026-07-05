@@ -80,7 +80,7 @@ mod graph_perf {
                 get_id(),
                 AddNodeType::Operation(Operation::OpImageAdjustmentBlur),
                 glam::Vec2::ZERO, true, None,
-            )
+            Vec::new())
             .await;
 
         let image_value = make_image_value(1024, 1024);
@@ -125,7 +125,7 @@ mod graph_perf {
                 get_id(),
                 AddNodeType::Operation(Operation::OpImageAdjustmentBlur),
                 glam::Vec2::new(0.0, 0.0), true, None,
-            )
+            Vec::new())
             .await;
 
         let mut prev_id = input_id.clone();
@@ -136,7 +136,7 @@ mod graph_perf {
                     get_id(),
                     AddNodeType::Operation(Operation::OpImageAdjustmentBlur),
                     glam::Vec2::new(i as f32 * 200.0, 0.0), true, None,
-                )
+                Vec::new())
                 .await;
 
             graph
@@ -190,7 +190,7 @@ mod graph_perf {
                 get_id(),
                 AddNodeType::Operation(Operation::OpImageAdjustmentBlur),
                 glam::Vec2::new(0.0, 0.0), true, None,
-            )
+            Vec::new())
             .await;
 
         graph.set_input(source_id.clone(), 0, make_image_value(1024, 1024));
@@ -202,7 +202,7 @@ mod graph_perf {
                     get_id(),
                     AddNodeType::Operation(Operation::OpImageAdjustmentBlur),
                     glam::Vec2::new(200.0, i as f32 * 100.0), true, None,
-                )
+                Vec::new())
                 .await;
 
             graph

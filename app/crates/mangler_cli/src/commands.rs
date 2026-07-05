@@ -26,7 +26,7 @@ use crate::value_parse::parse_typed_value;
 pub(crate) async fn do_add_node(graph: &mut Graph, op_type: &str, id: Option<String>, custom_name: Option<String>) -> Result<String, String> {
     let operation = resolve_op(op_type)?;
     let node_id = id.unwrap_or_else(get_id);
-    graph.add_node(node_id.clone(), AddNodeType::Operation(operation), glam::Vec2::ZERO, true, custom_name).await;
+    graph.add_node(node_id.clone(), AddNodeType::Operation(operation), glam::Vec2::ZERO, true, custom_name, Vec::new()).await;
     Ok(node_id)
 }
 
@@ -353,6 +353,7 @@ pub(crate) async fn cmd_add_subgraph(
         glam::Vec2::ZERO,
         true,
         None,
+        Vec::new(),
     ).await;
 
     if let Some(file) = subgraph_file.as_ref() {

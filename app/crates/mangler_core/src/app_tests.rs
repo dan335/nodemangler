@@ -40,6 +40,7 @@ async fn test_auto_save_is_debounced_and_final_save_not_lost() {
             position: glam::Vec2::ZERO,
             is_enabled: true,
             custom_name: None,
+            input_values: Vec::new(),
         })
         .await
         .unwrap();

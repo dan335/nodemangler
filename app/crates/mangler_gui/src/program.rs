@@ -462,7 +462,7 @@ impl Program {
                                                 let x = app_rect.center().x + fastrand::f32() * random_size - random_size * 0.5;
                                                 let y = app_rect.center().y + fastrand::f32() * random_size - random_size * 0.5;
                                                 let pos = view_to_graph_space_pos2(self.graph_editor.zoom, Pos2::new(x, y)) - self.graph_editor.position.to_vec2();
-                                                if let Ok(node_id) = self.add_node(AddNodeType::Operation(mangler_core::operations::Operation::OpImageInputFile), pos, true, None) {
+                                                if let Ok(node_id) = self.add_node(AddNodeType::Operation(mangler_core::operations::Operation::OpImageInputFile), pos, true, None, Vec::new()) {
 
                                                     let message = ChangeNodeMessage::SetInput { node_id, input_index: 0, value: Value::Path(path.clone()) };
 
@@ -744,7 +744,7 @@ impl Program {
                 let from_connection = self.node_search_popup.from_connection.clone();
 
                 if let Ok(new_node_id) =
-                    self.add_node(AddNodeType::Operation(operation.clone()), graph_pos, true, None)
+                    self.add_node(AddNodeType::Operation(operation.clone()), graph_pos, true, None, Vec::new())
                 {
                     self.edit_node(new_node_id.clone());
 
@@ -780,6 +780,7 @@ impl Program {
                                 - self.graph_editor.position.to_vec2(),
                             true,
                             None,
+                            Vec::new(),
                         ) {
                             self.edit_node(node_id);
                         }
@@ -792,6 +793,7 @@ impl Program {
                                 - self.graph_editor.position.to_vec2(),
                             true,
                             None,
+                            Vec::new(),
                         ) {
                             self.edit_node(node_id);
                         }
@@ -905,6 +907,7 @@ impl Program {
         position_graph_space: Pos2,
         is_enabled: bool,
         custom_name: Option<String>,
+        input_values: Vec<(usize, Value)>,
     ) -> Result<String, ManglerError> {
         let node_id = get_id();
 
@@ -914,6 +917,7 @@ impl Program {
             position: glam::f32::Vec2::new(position_graph_space.x, position_graph_space.y),
             is_enabled,
             custom_name,
+            input_values,
         };
 
         match self.tx_change_graph.try_send(add_node_message) {
@@ -1010,25 +1014,19 @@ impl Program {
                 clipboard_node.position.y + offset.y,
             );
 
+            // The input values travel with the AddNode message so the engine
+            // applies them before echoing the node back — the local node is
+            // then built with the pasted values, not defaults. (Images are
+            // excluded by the clipboard; connected inputs get their values
+            // from propagation once connections are restored below.)
             if let Ok(new_id) = self.add_node(
                 clipboard_node.node_type.clone(),
                 new_pos,
                 clipboard_node.is_enabled,
                 clipboard_node.custom_name.clone(),
+                clipboard_node.input_values.clone(),
             ) {
                 id_map.insert(clipboard_node.original_id.clone(), new_id.clone());
-
-                // Restore input values.
-                for (input_index, value) in &clipboard_node.input_values {
-                    let message = ChangeNodeMessage::SetInput {
-                        node_id: new_id.clone(),
-                        input_index: *input_index,
-                        value: value.clone(),
-                    };
-                    if let Err(err) = self.tx_change_node.try_send(message) {
-                        println!("Error sending SetInput during paste: {:?}", err);
-                    }
-                }
             }
         }
 

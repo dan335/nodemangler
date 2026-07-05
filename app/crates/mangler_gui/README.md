@@ -15,9 +15,6 @@ JSON as the [mangler_cli](../mangler_cli/), so files round-trip between the two.
 cargo run -p mangler_gui
 ```
 
-The app launches maximized into a node-graph editor. On Windows the console window is
-hidden in release builds.
-
 ## Features
 
 ### Graph editor
@@ -106,19 +103,3 @@ Engine ──NodeChangedMessage───▶ UI  (output values, thumbnails, timi
 
 The engine runs on a separate tokio task. Each frame, the UI drains incoming messages and
 updates its visual state accordingly.
-
-## Dependencies
-
-- `eframe` / `epaint` — egui framework for native desktop apps
-- `egui_extras` — additional egui widgets
-- `egui-phosphor` — icon font
-- `mangler_core` — the engine and operation library
-- `tokio` — async runtime
-- `image` — icon loading
-- `rfd` — native file dialogs (open/save)
-- `puffin` — profiling (opt-in via the `PROFILE` constant)
-- `sanitize-filename` — safe file naming
-- `time` — time utilities
-- `glam` — vector math
-- `fastrand` — random number generation
-- `winapi` (Windows only) — native window APIs

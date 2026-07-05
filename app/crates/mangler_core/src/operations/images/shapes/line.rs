@@ -111,8 +111,11 @@ impl OpImageShapeLine {
         let dx = bx - ax;
         let dy = by - ay;
         let seg_len_sq = dx * dx + dy * dy;
-        // anti-aliasing width in normalized coordinates
-        let pixel_size = 1.5 / (width.max(height) as f64 * 0.5);
+        // Anti-aliasing half-width in normalized coordinates. `dist` is a true
+        // distance in the [-1,1] space where one pixel spans 2/max_dim, so a
+        // half-width of 1/max_dim ramps the edge over ~1 pixel — crisp. (The
+        // old 3/max_dim value spread the ramp over ~3 pixels, which looked blurry.)
+        let pixel_size = 1.0 / (width.max(height) as f64);
 
         // 1-channel grayscale mask
         let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |y| {

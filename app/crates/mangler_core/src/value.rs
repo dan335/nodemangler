@@ -76,6 +76,8 @@ pub enum Value {
     ColorSpace(crate::color::color_spaces::ColorSpace),
     /// A blend mode for image/color compositing operations.
     BlendMode(crate::color::blend::BlendMode),
+    /// Edge-fill mode for image transforms (fill / wrap / extend / mirror).
+    EdgeMode(EdgeMode),
     /// Horizontal alignment for text rendering.
     TextHAlign(TextHAlign),
     /// Vertical alignment for text rendering.
@@ -119,6 +121,7 @@ impl Value {
             }
             Value::ColorSpace(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::BlendMode(value) => Some(Thumbnail::Text(format!("{:?}", value))),
+            Value::EdgeMode(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::TextHAlign(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::TextVAlign(value) => Some(Thumbnail::Text(format!("{:?}", value))),
         }
@@ -158,6 +161,7 @@ impl Value {
             Value::NoiseWorleyDistanceFunction(w) => std::mem::discriminant(w).hash(&mut h),
             Value::ColorSpace(cs) => std::mem::discriminant(cs).hash(&mut h),
             Value::BlendMode(bm) => std::mem::discriminant(bm).hash(&mut h),
+            Value::EdgeMode(v) => std::mem::discriminant(v).hash(&mut h),
             Value::TextHAlign(v) => std::mem::discriminant(v).hash(&mut h),
             Value::TextVAlign(v) => std::mem::discriminant(v).hash(&mut h),
         }
@@ -185,6 +189,7 @@ impl Value {
             Value::NoiseWorleyDistanceFunction(_) => ValueType::NoiseWorleyDistanceFunction,
             Value::ColorSpace(_) => ValueType::ColorSpace,
             Value::BlendMode(_) => ValueType::BlendMode,
+            Value::EdgeMode(_) => ValueType::EdgeMode,
             Value::TextHAlign(_) => ValueType::TextHAlign,
             Value::TextVAlign(_) => ValueType::TextVAlign,
         }
@@ -365,6 +370,10 @@ impl Value {
                     message: "Unable to convert.".to_string(),
                 }),
             },
+            Value::EdgeMode(a) => match other {
+                ValueType::EdgeMode => Ok(Value::EdgeMode(*a)),
+                _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
+            },
             Value::TextHAlign(a) => match other {
                 ValueType::TextHAlign => Ok(Value::TextHAlign(*a)),
                 _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
@@ -447,6 +456,8 @@ pub enum ValueType {
     ColorSpace,
     /// Blend mode type.
     BlendMode,
+    /// Edge-fill mode type for image transforms.
+    EdgeMode,
     /// Horizontal text alignment type.
     TextHAlign,
     /// Vertical text alignment type.
@@ -494,6 +505,7 @@ impl ValueType {
             }
             ValueType::ColorSpace => Value::ColorSpace(crate::color::color_spaces::ColorSpace::Srgb),
             ValueType::BlendMode => Value::BlendMode(crate::color::blend::BlendMode::Over),
+            ValueType::EdgeMode => Value::EdgeMode(EdgeMode::Fill),
             ValueType::TextHAlign => Value::TextHAlign(TextHAlign::Center),
             ValueType::TextVAlign => Value::TextVAlign(TextVAlign::Middle),
         }
@@ -516,6 +528,7 @@ impl ValueType {
             ValueType::NoiseWorleyDistanceFunction => "worley noise distance function".to_string(),
             ValueType::ColorSpace => "color space".to_string(),
             ValueType::BlendMode => "blend mode".to_string(),
+            ValueType::EdgeMode => "edge mode".to_string(),
             ValueType::TextHAlign => "text h-align".to_string(),
             ValueType::TextVAlign => "text v-align".to_string(),
         }
@@ -607,6 +620,7 @@ impl ValueType {
             }
             ValueType::ColorSpace => vec![ValueType::ColorSpace, ValueType::Trigger],
             ValueType::BlendMode => vec![ValueType::BlendMode, ValueType::Trigger],
+            ValueType::EdgeMode => vec![ValueType::EdgeMode, ValueType::Trigger],
             ValueType::TextHAlign => vec![ValueType::TextHAlign, ValueType::Trigger],
             ValueType::TextVAlign => vec![ValueType::TextVAlign, ValueType::Trigger],
         }
@@ -812,6 +826,26 @@ impl ImageType {
         ];
 
         types
+    }
+}
+
+/// How an image transform fills the space it exposes (translate/rotate/scale).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum EdgeMode {
+    /// Exposed space is filled with a solid colour (transparent by default).
+    Fill,
+    /// The image tiles: content off one side reappears on the other.
+    Wrap,
+    /// Border pixels are stretched out to the edge.
+    Extend,
+    /// The image is reflected back across each edge.
+    Mirror,
+}
+
+impl EdgeMode {
+    /// Returns all edge modes in display order (matches dropdown ordering).
+    pub fn types() -> [EdgeMode; 4] {
+        [EdgeMode::Fill, EdgeMode::Wrap, EdgeMode::Extend, EdgeMode::Mirror]
     }
 }
 

@@ -350,7 +350,7 @@ operations! {
 
     OpImageTransformWarp(crate::operations::images::transform::warp::OpImageTransformWarp),
     OpImageTransformDirectionalWarp(crate::operations::images::transform::directional_warp::OpImageTransformDirectionalWarp),
-    OpImageTransformSafeTransform(crate::operations::images::transform::safe_transform::OpImageTransformSafeTransform),
+    OpImageTransformAffine(crate::operations::images::transform::transform::OpImageTransformAffine),
     OpImageTransformMakeTile(crate::operations::images::transform::make_tile::OpImageTransformMakeTile),
     OpImageTransformMirror(crate::operations::images::transform::mirror::OpImageTransformMirror),
     OpImageTransformSeamCarve(crate::operations::images::transform::seam_carve::OpImageTransformSeamCarve),
@@ -840,6 +840,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageCombineCompare },
             ]},
             OperationListItem::Category { name: "transform".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpImageTransformAffine },
                 OperationListItem::Operation { operation: Operation::OpImageTransformCrop },
                 OperationListItem::Operation { operation: Operation::OpImageTransformResize },
                 OperationListItem::Operation { operation: Operation::OpImageTransformResizeExact },
@@ -852,7 +853,6 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageTransformRotateAroundCenter },
                 OperationListItem::Operation { operation: Operation::OpImageTransformWarp },
                 OperationListItem::Operation { operation: Operation::OpImageTransformDirectionalWarp },
-                OperationListItem::Operation { operation: Operation::OpImageTransformSafeTransform },
                 OperationListItem::Operation { operation: Operation::OpImageTransformMakeTile },
                 OperationListItem::Operation { operation: Operation::OpImageTransformMirror },
                 OperationListItem::Operation { operation: Operation::OpImageTransformSeamCarve },

@@ -3,7 +3,7 @@ use epaint::{vec2, Color32};
 use image::imageops::FilterType;
 use mangler_core::{
     input::{Input, InputSettings},
-    value::{ColorFormat, Value, TextHAlign, TextVAlign},
+    value::{ColorFormat, EdgeMode, Value, TextHAlign, TextVAlign},
     ChangeNodeMessage,
     operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction,
     color::{color_spaces::ColorSpace, blend::BlendMode},
@@ -198,6 +198,12 @@ pub fn show(
         }
     });
 
+    // The transform node's `fill color` input only applies when its `edge`
+    // mode is Fill; used below to hide it for the other modes.
+    let sibling_edge_mode = node.inputs.iter().find_map(|i| {
+        if let Value::EdgeMode(m) = &i.value { Some(*m) } else { None }
+    });
+
     // Auto-correct: if the current color format is incompatible with the
     // selected image format, switch to a sensible default.
     if let Some(ref img_fmt) = sibling_image_format {
@@ -245,6 +251,16 @@ pub fn show(
                     if inapplicable && input.connection.is_none() && !input.is_exposed {
                         continue;
                     }
+                }
+
+                // Hide `fill color` unless the sibling `edge` mode is Fill.
+                // Connected/exposed inputs stay visible so they can be managed.
+                if input.name == "fill color"
+                    && matches!(sibling_edge_mode, Some(m) if m != EdgeMode::Fill)
+                    && input.connection.is_none()
+                    && !input.is_exposed
+                {
+                    continue;
                 }
 
                 body.row(30.0, |mut row| {
@@ -486,6 +502,7 @@ fn output_value(ui: &mut egui::Ui, value: &Value) {
         Value::NoiseWorleyDistanceFunction(v) => { ui.add(Label::new(format!("{:?}", v))); }
         Value::ColorSpace(v) => { ui.add(Label::new(format!("{:?}", v))); }
         Value::BlendMode(v) => { ui.add(Label::new(format!("{:?}", v))); }
+        Value::EdgeMode(v) => { ui.add(Label::new(format!("{:?}", v))); }
         Value::TextHAlign(v) => { ui.add(Label::new(format!("{:?}", v))); }
         Value::TextVAlign(v) => { ui.add(Label::new(format!("{:?}", v))); }
     }
@@ -794,6 +811,19 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                     |v| format!("{:?}", v),
                     input, input_index, node_id, tx_change_node,
                     |v| Value::BlendMode(v.clone()),
+                );
+            }
+        }
+        Value::EdgeMode(a) => {
+            if input.connection.is_some() {
+                ui.label(format!("{:?}", a));
+            } else {
+                let variants = EdgeMode::types();
+                show_enum_combo(
+                    ui, "edge", a, &variants,
+                    |v| format!("{:?}", v),
+                    input, input_index, node_id, tx_change_node,
+                    |v| Value::EdgeMode(*v),
                 );
             }
         }

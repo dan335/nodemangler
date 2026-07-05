@@ -26,7 +26,7 @@ async fn test_add_node() {
             get_id(),
             AddNodeType::Operation(Operation::OpNumberMathAdd),
             glam::Vec2::ZERO, true, None,
-        )
+        Vec::new())
         .await;
 
     assert!(graph.nodes.contains_key(&node_id));
@@ -38,6 +38,31 @@ async fn test_add_node() {
 }
 
 #[tokio::test]
+async fn disconnecting_restores_input_value_type() {
+    use crate::value::ValueType;
+    let mut graph = create_test_graph();
+    let int_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+    let add_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
+        .await;
+
+    // The add node's first input is declared as a Decimal.
+    assert_eq!(graph.nodes.get(&add_id).unwrap().inputs[0].value.value_type(), ValueType::Decimal);
+
+    // Connecting an Integer source coerces the input's stored value to Integer
+    // (the source value is propagated into the input for display).
+    graph.add_connection(add_id.clone(), 0, int_id.clone(), 0).await;
+    assert_eq!(graph.nodes.get(&add_id).unwrap().inputs[0].value.value_type(), ValueType::Integer);
+
+    // Disconnecting must restore the input's declared type so its editing
+    // widget (a Decimal slider/drag) comes back instead of staying an Integer.
+    graph.remove_connection(add_id.clone(), 0).await;
+    assert_eq!(graph.nodes.get(&add_id).unwrap().inputs[0].value.value_type(), ValueType::Decimal);
+}
+
+#[tokio::test]
 async fn test_add_decimal_input_node() {
     let mut graph = create_test_graph();
     let node_id = graph
@@ -45,7 +70,7 @@ async fn test_add_decimal_input_node() {
             get_id(),
             AddNodeType::Operation(Operation::OpNumberInputDecimal),
             glam::Vec2::ZERO, true, None,
-        )
+        Vec::new())
         .await;
 
     let node = graph.nodes.get(&node_id).unwrap();
@@ -62,7 +87,7 @@ async fn test_remove_node() {
             get_id(),
             AddNodeType::Operation(Operation::OpNumberInputDecimal),
             glam::Vec2::ZERO, true, None,
-        )
+        Vec::new())
         .await;
 
     assert!(graph.nodes.contains_key(&node_id));
@@ -78,7 +103,7 @@ async fn test_set_input() {
             get_id(),
             AddNodeType::Operation(Operation::OpNumberMathAdd),
             glam::Vec2::ZERO, true, None,
-        )
+        Vec::new())
         .await;
 
     graph.set_input(node_id.clone(), 0, Value::Decimal(42.0));
@@ -100,7 +125,7 @@ async fn test_add_connection() {
             get_id(),
             AddNodeType::Operation(Operation::OpNumberInputDecimal),
             glam::Vec2::new(0.0, 0.0), true, None,
-        )
+        Vec::new())
         .await;
 
     let add_node_id = graph
@@ -108,7 +133,7 @@ async fn test_add_connection() {
             get_id(),
             AddNodeType::Operation(Operation::OpNumberMathAdd),
             glam::Vec2::new(200.0, 0.0), true, None,
-        )
+        Vec::new())
         .await;
 
     // Connect decimal output 0 -> add input 0
@@ -136,7 +161,7 @@ async fn test_run_single_node() {
             get_id(),
             AddNodeType::Operation(Operation::OpNumberMathAdd),
             glam::Vec2::ZERO, true, None,
-        )
+        Vec::new())
         .await;
 
     graph.set_input(node_id.clone(), 0, Value::Decimal(5.0));
@@ -161,14 +186,14 @@ async fn test_run_connected_nodes() {
             get_id(),
             AddNodeType::Operation(Operation::OpNumberInputDecimal),
             glam::Vec2::new(0.0, 0.0), true, None,
-        )
+        Vec::new())
         .await;
     let input_b_id = graph
         .add_node(
             get_id(),
             AddNodeType::Operation(Operation::OpNumberInputDecimal),
             glam::Vec2::new(0.0, 100.0), true, None,
-        )
+        Vec::new())
         .await;
 
     // Create add node
@@ -177,7 +202,7 @@ async fn test_run_connected_nodes() {
             get_id(),
             AddNodeType::Operation(Operation::OpNumberMathAdd),
             glam::Vec2::new(200.0, 0.0), true, None,
-        )
+        Vec::new())
         .await;
 
     // Set input values
@@ -210,7 +235,7 @@ async fn test_set_node_position() {
             get_id(),
             AddNodeType::Operation(Operation::OpNumberInputDecimal),
             glam::Vec2::ZERO, true, None,
-        )
+        Vec::new())
         .await;
 
     graph.set_node_position(node_id.clone(), glam::Vec2::new(100.0, 200.0));
@@ -229,7 +254,7 @@ async fn test_multiple_nodes_multiple_types() {
             get_id(),
             AddNodeType::Operation(Operation::OpNumberMathAdd),
             glam::Vec2::ZERO, true, None,
-        )
+        Vec::new())
         .await;
 
     graph.set_input(add_id.clone(), 0, Value::Integer(100));
@@ -263,10 +288,10 @@ async fn test_remove_connection() {
     let mut graph = create_test_graph();
 
     let decimal_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let add_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
 
     graph.add_connection(add_id.clone(), 0, decimal_id.clone(), 0).await;
@@ -293,10 +318,10 @@ async fn test_remove_node_cleans_up_connections() {
     let mut graph = create_test_graph();
 
     let decimal_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let add_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
 
     graph.add_connection(add_id.clone(), 0, decimal_id.clone(), 0).await;
@@ -315,10 +340,10 @@ async fn test_remove_connected_downstream_node() {
     let mut graph = create_test_graph();
 
     let decimal_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let add_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
 
     graph.add_connection(add_id.clone(), 0, decimal_id.clone(), 0).await;
@@ -339,7 +364,7 @@ async fn test_remove_connected_downstream_node() {
 async fn test_add_connection_nonexistent_input_node() {
     let mut graph = create_test_graph();
     let decimal_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
 
     // Try to connect to a node that doesn't exist — should be a no-op
@@ -354,7 +379,7 @@ async fn test_add_connection_nonexistent_input_node() {
 async fn test_add_connection_nonexistent_output_node() {
     let mut graph = create_test_graph();
     let add_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
 
     graph.add_connection(add_id.clone(), 0, "nonexistent".to_string(), 0).await;
@@ -377,7 +402,7 @@ async fn test_set_input_nonexistent_node() {
 async fn test_set_input_out_of_bounds_index() {
     let mut graph = create_test_graph();
     let node_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
 
     // Add node has 2 inputs (indices 0, 1). Index 99 should be a no-op.
@@ -424,7 +449,7 @@ async fn test_run_empty_graph() {
 async fn test_run_clean_graph_no_dirty_nodes() {
     let mut graph = create_test_graph();
     let node_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
 
     graph.set_input(node_id.clone(), 0, Value::Decimal(1.0));
@@ -451,7 +476,7 @@ async fn test_run_clean_graph_no_dirty_nodes() {
 async fn test_run_caching_same_inputs() {
     let mut graph = create_test_graph();
     let node_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
 
     graph.set_input(node_id.clone(), 0, Value::Decimal(5.0));
@@ -473,7 +498,7 @@ async fn test_run_caching_same_inputs() {
 async fn test_run_cache_invalidation_on_changed_input() {
     let mut graph = create_test_graph();
     let node_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
 
     graph.set_input(node_id.clone(), 0, Value::Decimal(5.0));
@@ -498,13 +523,13 @@ async fn test_run_three_node_chain() {
 
     // decimal(5) → add(_, 10) → add(_, 100)
     let input_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let add1_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
     let add2_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(400.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(400.0, 0.0), true, None, Vec::new())
         .await;
 
     graph.set_input(input_id.clone(), 0, Value::Decimal(5.0));
@@ -529,13 +554,13 @@ async fn test_run_fan_out() {
 
     // decimal(10) → add1(_, 1) and add2(_, 2)
     let input_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let add1_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
     let add2_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 100.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 100.0), true, None, Vec::new())
         .await;
 
     graph.set_input(input_id.clone(), 0, Value::Decimal(10.0));
@@ -563,10 +588,10 @@ async fn test_run_value_propagation_through_connection() {
     let mut graph = create_test_graph();
 
     let decimal_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let add_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
 
     graph.set_input(decimal_id.clone(), 0, Value::Decimal(42.0));
@@ -590,7 +615,7 @@ async fn test_save_and_load_round_trip() {
     let graph_id = graph.id.clone();
 
     let node_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(50.0, 75.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(50.0, 75.0), true, None, Vec::new())
         .await;
     graph.set_input(node_id.clone(), 0, Value::Decimal(42.0));
 
@@ -677,7 +702,7 @@ async fn test_remove_nonexistent_node() {
 async fn test_remove_connection_when_none_exists() {
     let mut graph = create_test_graph();
     let add_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
 
     // Input 0 has no connection — should be a no-op, not panic
@@ -693,9 +718,9 @@ async fn test_remove_connection_when_none_exists() {
 async fn test_add_and_remove_multiple_nodes() {
     let mut graph = create_test_graph();
 
-    let id1 = graph.add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None).await;
-    let id2 = graph.add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::ZERO, true, None).await;
-    let id3 = graph.add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None).await;
+    let id1 = graph.add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new()).await;
+    let id2 = graph.add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::ZERO, true, None, Vec::new()).await;
+    let id3 = graph.add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new()).await;
 
     assert_eq!(graph.nodes.len(), 3);
 
@@ -717,10 +742,10 @@ async fn test_connect_adapts_select_inputs_and_output_to_source_type() {
     let mut graph = create_test_graph();
 
     let int_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let select_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicFlowSelect), glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicFlowSelect), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
 
     // Before connection: select inputs default to Decimal
@@ -749,10 +774,10 @@ async fn test_disconnect_only_connection_reverts_to_decimal() {
     let mut graph = create_test_graph();
 
     let int_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let select_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicFlowSelect), glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicFlowSelect), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
 
     // Connect and then disconnect
@@ -773,13 +798,13 @@ async fn test_disconnect_one_of_two_keeps_remaining_type() {
     let mut graph = create_test_graph();
 
     let int1_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let int2_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::new(0.0, 100.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::new(0.0, 100.0), true, None, Vec::new())
         .await;
     let select_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicFlowSelect), glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicFlowSelect), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
 
     // Connect both branch inputs to integer sources
@@ -804,10 +829,10 @@ async fn test_connect_to_condition_does_not_adapt_types() {
     let mut graph = create_test_graph();
 
     let bool_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicInputBool), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicInputBool), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let select_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicFlowSelect), glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicFlowSelect), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
 
     graph.add_connection(select_id.clone(), 0, bool_id.clone(), 0).await;
@@ -826,16 +851,16 @@ async fn test_select_run_after_type_adaptation() {
     let mut graph = create_test_graph();
 
     let bool_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicInputBool), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicInputBool), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let int_true_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::new(0.0, 100.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::new(0.0, 100.0), true, None, Vec::new())
         .await;
     let int_false_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::new(0.0, 200.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputInteger), glam::Vec2::new(0.0, 200.0), true, None, Vec::new())
         .await;
     let select_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicFlowSelect), glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpLogicFlowSelect), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
 
     // Set source values
@@ -873,10 +898,10 @@ async fn test_run_upstream_change_propagates() {
     let mut graph = create_test_graph();
 
     let input_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let add_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
 
     graph.set_input(input_id.clone(), 0, Value::Decimal(5.0));
@@ -910,13 +935,13 @@ async fn test_reconnect_input_cleans_up_old_output_connection() {
 
     // Create three decimal-input nodes (source_a, source_b) and an add node (consumer).
     let source_a = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let source_b = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let consumer = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
 
     // Connect source_a output 0 → consumer input 0
@@ -953,13 +978,13 @@ async fn test_reconnect_input_propagates_correct_value() {
     let mut graph = create_test_graph();
 
     let source_a = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let source_b = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let consumer = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
 
     // source_a = 10, source_b = 42
@@ -1001,7 +1026,7 @@ async fn test_add_node_disabled() {
             get_id(),
             AddNodeType::Operation(Operation::OpNumberMathAdd),
             glam::Vec2::ZERO, false, None,
-        )
+        Vec::new())
         .await;
 
     let node = graph.nodes.get(&node_id).unwrap();
@@ -1018,7 +1043,7 @@ async fn test_add_node_with_custom_name() {
             get_id(),
             AddNodeType::Operation(Operation::OpNumberMathAdd),
             glam::Vec2::ZERO, true, Some("my add node".to_string()),
-        )
+        Vec::new())
         .await;
 
     let node = graph.nodes.get(&node_id).unwrap();
@@ -1035,7 +1060,7 @@ async fn test_add_node_with_disabled_and_custom_name() {
             get_id(),
             AddNodeType::Operation(Operation::OpNumberInputDecimal),
             glam::Vec2::ZERO, false, Some("constants".to_string()),
-        )
+        Vec::new())
         .await;
 
     let node = graph.nodes.get(&node_id).unwrap();
@@ -1052,7 +1077,7 @@ async fn test_add_node_defaults() {
             get_id(),
             AddNodeType::Operation(Operation::OpNumberMathAdd),
             glam::Vec2::ZERO, true, None,
-        )
+        Vec::new())
         .await;
 
     let node = graph.nodes.get(&node_id).unwrap();
@@ -1084,7 +1109,7 @@ async fn test_subgraph_propagates_value_end_to_end() {
             glam::Vec2::ZERO,
             true,
             None,
-        )
+        Vec::new())
         .await;
 
     {
@@ -1113,7 +1138,7 @@ async fn test_subgraph_propagates_value_end_to_end() {
             glam::Vec2::ZERO,
             true,
             None,
-        )
+        Vec::new())
         .await;
 
     // Load the child graph via the dedicated API. The parent node's
@@ -1190,7 +1215,7 @@ async fn test_subgraph_many_nodes_exposed_output_not_dropped() {
             glam::Vec2::ZERO,
             true,
             None,
-        )
+        Vec::new())
         .await;
 
     let mut previous_id = decimal_id.clone();
@@ -1203,7 +1228,7 @@ async fn test_subgraph_many_nodes_exposed_output_not_dropped() {
                 glam::Vec2::ZERO,
                 true,
                 None,
-            )
+            Vec::new())
             .await;
         child
             .add_connection(increment_id.clone(), 0, previous_id.clone(), 0)
@@ -1235,7 +1260,7 @@ async fn test_subgraph_many_nodes_exposed_output_not_dropped() {
     // Build the parent and attach the child.
     let mut parent = create_test_graph();
     let subgraph_node_id = parent
-        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     parent.set_subgraph_path(subgraph_node_id.clone(), tmp_path.clone());
 
@@ -1299,7 +1324,7 @@ async fn test_detached_snapshot_executes_subgraph() {
             glam::Vec2::ZERO,
             true,
             None,
-        )
+        Vec::new())
         .await;
 
     {
@@ -1323,7 +1348,7 @@ async fn test_detached_snapshot_executes_subgraph() {
     // value and get cloned into the snapshot, masking a skipped subgraph.
     let mut parent = create_test_graph();
     let subgraph_node_id = parent
-        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     parent.set_subgraph_path(subgraph_node_id.clone(), tmp_path.clone());
     parent.set_input(subgraph_node_id.clone(), 0, Value::Decimal(42.0));
@@ -1378,7 +1403,7 @@ async fn test_load_restores_typed_input_and_output_defaults() {
             glam::Vec2::ZERO,
             true,
             None,
-        )
+        Vec::new())
         .await;
 
     let tmp_path = std::env::temp_dir()
@@ -1433,7 +1458,7 @@ async fn test_load_graph_with_saved_subgraph_node_auto_reloads() {
             get_id(),
             AddNodeType::Operation(Operation::OpNumberInputDecimal),
             glam::Vec2::ZERO, true, None,
-        )
+        Vec::new())
         .await;
     {
         let n = child.nodes.get_mut(&child_node_id).unwrap();
@@ -1456,7 +1481,7 @@ async fn test_load_graph_with_saved_subgraph_node_auto_reloads() {
             get_id(),
             AddNodeType::Subgraph,
             glam::Vec2::ZERO, true, None,
-        )
+        Vec::new())
         .await;
     parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
 
@@ -1526,7 +1551,7 @@ async fn test_subgraph_image_output_in_memory_flow() {
             get_id(),
             AddNodeType::Operation(Operation::OpImageInputColor),
             glam::Vec2::ZERO, true, None,
-        )
+        Vec::new())
         .await;
     // Color = RED (1,0,0,1), 64x64 so pixel data is verifiable.
     child.set_input(child_node_id.clone(), 0, Value::Color(Color::from_srgb_float(1.0, 0.0, 0.0, 1.0)));
@@ -1548,7 +1573,7 @@ async fn test_subgraph_image_output_in_memory_flow() {
 
     let mut parent = create_test_graph();
     let subgraph_node_id = parent
-        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
 
@@ -1586,7 +1611,7 @@ async fn test_subgraph_emits_output_changed_with_real_image_through_channel() {
     let (child_tx_gc, _child_rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
     let mut child = Graph::new(get_id(), child_tx_nc, child_tx_gc, true).unwrap();
     let child_node_id = child
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpImageInputColor), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpImageInputColor), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     child.set_input(child_node_id.clone(), 0, Value::Color(Color::from_srgb_float(1.0, 0.0, 0.0, 1.0)));
     child.set_input(child_node_id.clone(), 1, Value::Integer(64));
@@ -1611,7 +1636,7 @@ async fn test_subgraph_emits_output_changed_with_real_image_through_channel() {
     let mut parent = Graph::new(get_id(), parent_tx_nc, parent_tx_gc, false).unwrap();
 
     let subgraph_node_id = parent
-        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
 
@@ -1662,7 +1687,7 @@ async fn test_subgraph_image_output_propagates_real_image() {
             get_id(),
             AddNodeType::Operation(Operation::OpImageInputColor),
             glam::Vec2::ZERO, true, None,
-        )
+        Vec::new())
         .await;
     // width = 64, height = 64 so the real image is clearly not the 1x1 placeholder.
     child.set_input(child_node_id.clone(), 1, Value::Integer(64));
@@ -1684,7 +1709,7 @@ async fn test_subgraph_image_output_propagates_real_image() {
     // Build parent, reference the child, save, load fresh, run.
     let mut parent = create_test_graph();
     let subgraph_node_id = parent
-        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
 
@@ -1746,7 +1771,7 @@ async fn write_child_with_color(color: crate::color::Color, label: &str) -> std:
     let mut child = Graph::new(get_id(), tx_nc, tx_gc, true).unwrap();
     let child_node_id = child
         .add_node(get_id(), AddNodeType::Operation(Operation::OpImageInputColor),
-                  glam::Vec2::ZERO, true, None)
+                  glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     child.set_input(child_node_id.clone(), 0, Value::Color(color));
     child.set_input(child_node_id.clone(), 1, Value::Integer(32));
@@ -1782,7 +1807,7 @@ async fn test_subgraph_reloads_when_file_mtime_changes() {
     // Parent references the child — expect a red 32x32 image.
     let mut parent = create_test_graph();
     let subgraph_node_id = parent
-        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
     parent.run().await;
@@ -1842,7 +1867,7 @@ async fn test_check_subgraphs_noop_when_unchanged() {
     let mut parent = Graph::new(get_id(), tx_nc, tx_gc, false).unwrap();
 
     let subgraph_node_id = parent
-        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
 
@@ -1876,7 +1901,7 @@ async fn test_check_subgraphs_handles_missing_file() {
 
     let mut parent = create_test_graph();
     let subgraph_node_id = parent
-        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
 
@@ -1920,7 +1945,7 @@ async fn test_image_output_defers_thumbnail() {
             get_id(),
             AddNodeType::Operation(Operation::OpImageInputColor),
             glam::Vec2::ZERO, true, None,
-        )
+        Vec::new())
         .await;
     graph.run().await;
 
@@ -1972,10 +1997,10 @@ async fn test_image_output_defers_thumbnail() {
 async fn test_add_connection_output_index_equal_to_len_no_panic() {
     let mut graph = create_test_graph();
     let decimal_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let add_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
 
     // decimal node has exactly 1 output — index 1 == len, the old off-by-one.
@@ -1989,10 +2014,10 @@ async fn test_add_connection_output_index_equal_to_len_no_panic() {
 async fn test_add_connection_input_index_equal_to_len_no_panic() {
     let mut graph = create_test_graph();
     let decimal_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let add_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
 
     // add node has exactly 2 inputs — index 2 == len, the old off-by-one.
@@ -2007,10 +2032,10 @@ async fn test_add_connection_input_index_equal_to_len_no_panic() {
 async fn test_add_connection_way_out_of_range_indices_no_panic() {
     let mut graph = create_test_graph();
     let decimal_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let add_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
 
     graph.add_connection(add_id.clone(), 99, decimal_id.clone(), 99).await;
@@ -2025,7 +2050,7 @@ async fn test_add_connection_way_out_of_range_indices_no_panic() {
 async fn test_add_connection_rejects_self_connection() {
     let mut graph = create_test_graph();
     let add_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
 
     // A -> A: type-compatible (Decimal -> Decimal) but must be refused.
@@ -2041,10 +2066,10 @@ async fn test_add_connection_rejects_self_connection() {
 async fn test_add_connection_rejects_two_node_cycle() {
     let mut graph = create_test_graph();
     let a_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let b_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
 
     // A -> B is fine.
@@ -2067,13 +2092,13 @@ async fn test_add_connection_rejects_two_node_cycle() {
 async fn test_add_connection_rejects_three_node_cycle() {
     let mut graph = create_test_graph();
     let a_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let b_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
     let c_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(400.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(400.0, 0.0), true, None, Vec::new())
         .await;
 
     // A -> B -> C
@@ -2094,16 +2119,16 @@ async fn test_add_connection_allows_diamond() {
     // still be allowed by the cycle check.
     let mut graph = create_test_graph();
     let a_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let b_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, -100.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, -100.0), true, None, Vec::new())
         .await;
     let c_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 100.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 100.0), true, None, Vec::new())
         .await;
     let d_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(400.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(400.0, 0.0), true, None, Vec::new())
         .await;
 
     graph.add_connection(b_id.clone(), 0, a_id.clone(), 0).await;
@@ -2135,10 +2160,10 @@ async fn test_add_connection_allows_diamond() {
 async fn test_run_with_stale_out_of_range_connection_does_not_panic() {
     let mut graph = create_test_graph();
     let source_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let consumer_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
 
     graph.add_connection(consumer_id.clone(), 1, source_id.clone(), 0).await;
@@ -2171,10 +2196,10 @@ async fn test_run_with_stale_out_of_range_connection_does_not_panic() {
 async fn test_run_disabled_passthrough_with_stale_connection_does_not_panic() {
     let mut graph = create_test_graph();
     let source_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let consumer_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
 
     graph.add_connection(consumer_id.clone(), 1, source_id.clone(), 0).await;
@@ -2208,7 +2233,7 @@ async fn write_child_with_exposed_inputs(exposed_inputs: usize, label: &str) -> 
     let (tx_gc, _rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
     let mut child = Graph::new(get_id(), tx_nc, tx_gc, true).unwrap();
     let node_id = child
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     {
         let n = child.nodes.get_mut(&node_id).unwrap();
@@ -2239,14 +2264,14 @@ async fn test_subgraph_reload_prunes_out_of_range_upstream_connections() {
 
     let mut parent = create_test_graph();
     let subgraph_id = parent
-        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
     parent.set_subgraph_path(subgraph_id.clone(), two_input_path.clone());
     assert_eq!(parent.nodes.get(&subgraph_id).unwrap().inputs.len(), 2);
 
     // Feed both exposed inputs from one decimal source.
     let source_id = parent
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     parent.add_connection(subgraph_id.clone(), 0, source_id.clone(), 0).await;
     parent.add_connection(subgraph_id.clone(), 1, source_id.clone(), 0).await;
@@ -2290,7 +2315,7 @@ async fn test_subgraph_reload_prunes_out_of_range_upstream_connections() {
 async fn test_save_to_file_write_failure_does_not_panic() {
     let mut graph = create_test_graph();
     graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
 
     // Point the save path into a directory that does not exist: fs::write
@@ -2315,13 +2340,13 @@ async fn test_save_to_file_write_failure_does_not_panic() {
 async fn create_trigger_chain() -> (Graph, String, String, String) {
     let mut graph = create_test_graph();
     let random_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberRandomDecimal), glam::Vec2::ZERO, true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberRandomDecimal), glam::Vec2::ZERO, true, None, Vec::new())
         .await;
     let add1_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
         .await;
     let add2_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(400.0, 0.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(400.0, 0.0), true, None, Vec::new())
         .await;
 
     graph.add_connection(add1_id.clone(), 0, random_id.clone(), 0).await;
@@ -2386,7 +2411,7 @@ async fn test_no_trigger_fire_downstream_nodes_stay_cached() {
     // Second input of add1 driven by a decimal node so we can dirty part of
     // the graph without firing the trigger.
     let dec_id = graph
-        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::new(0.0, 200.0), true, None)
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::new(0.0, 200.0), true, None, Vec::new())
         .await;
     graph.add_connection(add1_id.clone(), 1, dec_id.clone(), 0).await;
 

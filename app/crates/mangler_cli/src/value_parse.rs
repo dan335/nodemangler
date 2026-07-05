@@ -87,6 +87,7 @@ pub(crate) fn parse_typed_value(s: &str) -> Result<Value, String> {
             // Map canonical lowercase name to the serde PascalCase name for JSON deser.
             let serde_name = match canonical {
                 "blendmode" => "BlendMode",
+                "edgemode" => "EdgeMode",
                 "colorspace" => "ColorSpace",
                 "filtertype" => "FilterType",
                 "imagetype" => "ImageType",

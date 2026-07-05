@@ -187,6 +187,7 @@ pub(crate) fn value_type_name(vt: &ValueType) -> &'static str {
         ValueType::Image => "image",
         ValueType::Trigger => "trigger",
         ValueType::BlendMode => "blendmode",
+        ValueType::EdgeMode => "edgemode",
         ValueType::ColorSpace => "colorspace",
         ValueType::FilterType => "filtertype",
         ValueType::ImageType => "imagetype",
@@ -202,13 +203,14 @@ pub(crate) fn value_type_name(vt: &ValueType) -> &'static str {
 /// All enum-like value types that users can set via the CLI.
 /// Canonical lowercase enum type names shown in output.
 pub(crate) const ENUM_TYPE_NAMES: &[&str] = &[
-    "blendmode", "colorspace", "filtertype", "imagetype",
+    "blendmode", "edgemode", "colorspace", "filtertype", "imagetype",
     "colorformat", "worleydistance", "texthalign", "textvalign",
 ];
 
 /// Legacy PascalCase aliases accepted as input prefixes (mapped to canonical names).
 pub(crate) const ENUM_TYPE_ALIASES: &[(&str, &str)] = &[
     ("BlendMode", "blendmode"),
+    ("EdgeMode", "edgemode"),
     ("ColorSpace", "colorspace"),
     ("FilterType", "filtertype"),
     ("ImageType", "imagetype"),
@@ -243,6 +245,7 @@ pub(crate) fn enum_variants(type_name: &str) -> Option<Vec<&'static str>> {
         "worleydistance" | "noiseworleydistancefunction" => Some(vec![
             "Chebyshev", "Euclidean", "EuclideanSquared", "Manhattan", "Quadratic",
         ]),
+        "edgemode" => Some(vec!["Fill", "Wrap", "Extend", "Mirror"]),
         "texthalign" => Some(vec!["Left", "Center", "Right"]),
         "textvalign" => Some(vec!["Top", "Middle", "Bottom"]),
         _ => None,
@@ -253,6 +256,7 @@ pub(crate) fn enum_variants(type_name: &str) -> Option<Vec<&'static str>> {
 pub(crate) fn value_type_enum_name(vt: &ValueType) -> Option<&'static str> {
     match vt {
         ValueType::BlendMode => Some("blendmode"),
+        ValueType::EdgeMode => Some("edgemode"),
         ValueType::ColorSpace => Some("colorspace"),
         ValueType::FilterType => Some("filtertype"),
         ValueType::ImageType => Some("imagetype"),

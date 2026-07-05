@@ -238,6 +238,10 @@ pub enum ChangeGraphMessage {
         is_enabled: bool,
         /// Optional user-defined display name.
         custom_name: Option<String>,
+        /// Initial input overrides `(input_index, value)` applied before the
+        /// node is echoed back — used by paste/duplicate so the recreated node
+        /// carries the copied values instead of defaults. Empty for a plain add.
+        input_values: Vec<(usize, Value)>,
     },
     /// Remove a node and clean up all its connections.
     RemoveNode {

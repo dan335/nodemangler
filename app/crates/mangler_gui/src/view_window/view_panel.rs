@@ -200,6 +200,7 @@ impl ViewPanel {
                 mangler_core::value::Value::NoiseWorleyDistanceFunction(value) => TextViewer::show(ui, format!("{:?}", value)),
                 mangler_core::value::Value::ColorSpace(value) => TextViewer::show(ui, format!("{:?}", value)),
                 mangler_core::value::Value::BlendMode(value) => TextViewer::show(ui, format!("{:?}", value)),
+                mangler_core::value::Value::EdgeMode(value) => TextViewer::show(ui, format!("{:?}", value)),
                 mangler_core::value::Value::TextHAlign(value) => TextViewer::show(ui, format!("{:?}", value)),
                 mangler_core::value::Value::TextVAlign(value) => TextViewer::show(ui, format!("{:?}", value)),
                 mangler_core::value::Value::Image { .. } => unreachable!(),

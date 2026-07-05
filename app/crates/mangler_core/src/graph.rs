@@ -178,6 +178,14 @@ impl Graph {
     ///
     /// For subgraph nodes, a file path input is created so the user can select
     /// which `.mangle.json` file to load. Returns the node ID.
+    /// Add a node to the graph and echo it to the UI.
+    ///
+    /// `input_values` (`(input_index, value)` pairs) seed the node's inputs
+    /// before it is echoed back — paste/duplicate pass the copied values so the
+    /// recreated node carries them instead of defaults. Applying them here,
+    /// ahead of the `AddedNode` message, is what lets the UI build the node with
+    /// the right values: `set_input` emits no echo, so a later correction would
+    /// never reach the UI. Pass `Vec::new()` for a plain add.
     pub async fn add_node(
         &mut self,
         node_id: String,
@@ -185,10 +193,19 @@ impl Graph {
         position: Vec2,
         is_enabled: bool,
         custom_name: Option<String>,
+        input_values: Vec<(usize, Value)>,
     ) -> String {
         let mut node = Node::new(node_id.clone(), node_type.clone(), position);
         node.is_enabled = is_enabled;
         node.custom_name = custom_name.clone();
+
+        // Apply initial input overrides before echoing the node back.
+        for (input_index, value) in input_values {
+            if let Some(input) = node.inputs.get_mut(input_index) {
+                input.value = value;
+            }
+        }
+
         let is_subgraph = matches!(node_type, AddNodeType::Subgraph);
 
         if let Some(tx) = &self.tx_graph_changed {
@@ -505,6 +522,34 @@ impl Graph {
                         }
                     }
                 }
+            }
+        }
+
+        // A normal (typed) input keeps whatever value the connection last
+        // propagated into it. If that value is a different type than the input
+        // declares — e.g. an Integer source left in a Decimal input — restore
+        // the input to its default so its type, and its editing widget/slider,
+        // come back. (accepts_any_type inputs are re-adapted above.)
+        let restore = self.nodes.get(&node_id)
+            .and_then(|n| n.inputs.get(input_index))
+            .filter(|i| !i.accepts_any_type
+                && i.value.value_type() != i.default_value.value_type())
+            .map(|i| i.default_value.clone());
+
+        if let Some(default_value) = restore {
+            if let Some(node) = self.nodes.get_mut(&node_id) {
+                if let Some(input) = node.inputs.get_mut(input_index) {
+                    input.value = default_value.clone();
+                }
+                node.is_dirty = true;
+                node.cached_input_hash = None;
+            }
+            if let Some(tx) = &self.tx_node_changed {
+                let _ = tx.try_send(NodeChangedMessage::InputChanged {
+                    node_id: node_id.clone(),
+                    input_index,
+                    value: default_value,
+                });
             }
         }
 
