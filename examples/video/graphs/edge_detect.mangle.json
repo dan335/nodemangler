@@ -1,0 +1,184 @@
+{
+  "id": "MYEjLJdlX75IKbP0n9FBi",
+  "name": "edge_detect.mangle",
+  "nodes": {
+    "input": {
+      "id": "input",
+      "settings": {
+        "name": "from file",
+        "description": "Grabs an image from a file.",
+        "help": "Decodes an image file from disk and converts it into a FloatImage, preserving the source channel count (grayscale stays 1ch, RGB 3ch, RGBA 4ch). The path input uses a picker filtered to the supported image extensions. JPEG XL files are decoded with jxl-oxide and PSD files with the psd crate (the flattened composite image; individual layers are not exposed).\n\nErrors if the file cannot be opened or the format is unsupported. Note that pixel values are interpreted as sRGB by default; connect a linear-RGB conversion downstream if the file holds linear data like a normal or height map."
+      },
+      "inputs": [
+        {
+          "id": "FTY4zAW9mLk9-_XiAnJ2L",
+          "name": "path",
+          "description": "Path to an image file to load from disk.",
+          "value": {
+            "Path": ""
+          },
+          "settings": {
+            "Path": {
+              "extension_filter": [
+                "png",
+                "jpg",
+                "gif",
+                "webp",
+                "pbm",
+                "tiff",
+                "tga",
+                "bmp",
+                "ico",
+                "hdr",
+                "exr",
+                "ff",
+                "qoi",
+                "jxl",
+                "psd"
+              ],
+              "set_directory": null,
+              "set_file_name": null,
+              "set_title": "image",
+              "file_dialog_type": "PickFile"
+            }
+          },
+          "connection": null,
+          "is_exposed": false,
+          "accepts_any_type": false
+        }
+      ],
+      "outputs": [
+        {
+          "id": "rVDikUK9BidEkMdTP0oAR",
+          "name": "output",
+          "description": "Image decoded from the file on disk.",
+          "connection": [
+            [
+              "fx",
+              0
+            ]
+          ],
+          "is_exposed": false
+        },
+        {
+          "id": "mBjRmo5k2a1UjZniLojBO",
+          "name": "width",
+          "description": "Width of the loaded image in pixels.",
+          "connection": null,
+          "is_exposed": false
+        },
+        {
+          "id": "gv-tGvpEcqv23Yi-Tnvev",
+          "name": "height",
+          "description": "Height of the loaded image in pixels.",
+          "connection": null,
+          "is_exposed": false
+        }
+      ],
+      "is_dirty": true,
+      "position": [
+        0.0,
+        0.0
+      ],
+      "node_type": {
+        "Operation": {
+          "operation": "OpImageInputFile"
+        }
+      },
+      "is_enabled": true,
+      "custom_name": null
+    },
+    "fx": {
+      "id": "fx",
+      "settings": {
+        "name": "edge detect",
+        "description": "Detects edges using Sobel operator.",
+        "help": "Convolves the Rec. 709 luminance with a 3x3 Sobel Gx and Gy pair, then outputs `sqrt(Gx^2 + Gy^2) * intensity` as a grayscale value on every color channel. Alpha is preserved.\n\nFast single-pass detector; unlike Canny there is no smoothing, non-max suppression, or thresholding, so raw gradients are kept and response scales with noise. Edges are handled by clamping. Intensity acts as a brightness multiplier before clamping to [0, 1]."
+      },
+      "inputs": [
+        {
+          "id": "N-0C7D6eUBSeDGcqopT4J",
+          "name": "image",
+          "description": "Source image whose luminance is analyzed for edge gradients.",
+          "value": {
+            "Image": {
+              "data": {
+                "channels": 4,
+                "width": 1,
+                "height": 1,
+                "data": [
+                  0,
+                  0,
+                  128,
+                  63,
+                  0,
+                  0,
+                  128,
+                  63,
+                  0,
+                  0,
+                  128,
+                  63,
+                  0,
+                  0,
+                  128,
+                  63
+                ]
+              },
+              "change_id": "qxFM8TiPcZI8Q2hLQ868Q"
+            }
+          },
+          "settings": null,
+          "connection": [
+            "input",
+            0
+          ],
+          "is_exposed": false,
+          "accepts_any_type": false
+        },
+        {
+          "id": "IaswayucIOyTn73SJX_lb",
+          "name": "intensity",
+          "description": "Multiplier applied to the Sobel magnitude; higher values make edges brighter.",
+          "value": {
+            "Decimal": 1.5
+          },
+          "settings": {
+            "Slider": {
+              "range": [
+                0.0,
+                10.0
+              ],
+              "step_by": 0.1,
+              "clamp_to_range": true
+            }
+          },
+          "connection": null,
+          "is_exposed": false,
+          "accepts_any_type": false
+        }
+      ],
+      "outputs": [
+        {
+          "id": "m_nlOIWFjydjlDa_8AxMM",
+          "name": "output",
+          "description": "Grayscale image of the Sobel gradient magnitude at each pixel.",
+          "connection": null,
+          "is_exposed": false
+        }
+      ],
+      "is_dirty": true,
+      "position": [
+        0.0,
+        0.0
+      ],
+      "node_type": {
+        "Operation": {
+          "operation": "OpImageAdjustmentEdgeDetect"
+        }
+      },
+      "is_enabled": true,
+      "custom_name": null
+    }
+  }
+}
