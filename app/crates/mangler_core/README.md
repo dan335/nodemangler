@@ -99,7 +99,7 @@ enum and every dispatch `match` arm. The categories:
 | **logic** | `inputs` (bool), `comparison`, `boolean`, `flow` (`select` mux) |
 | **text** | `inputs` (text), `manipulation` (append, length, uppercase, lowercase, to_string) |
 | **colors** | `inputs`/`outputs` (all 14 color spaces), `generation` (from/to hex, random), `manipulation` (adjust_hsv, clamp, grayscale, invert, set_alpha), `relationship` (harmony), `analysis`, `blend`, `cast`, `sample_image` |
-| **images** | `inputs`, `outputs`, `transform`, `adjustments`, `blur`, `filter`, `fx`, `combine`, `channels`, `shapes`, `patterns`, `pbr`, `noise` (36 generators), `cast` |
+| **images** | `inputs`, `outputs`, `transform`, `adjustments`, `blur`, `filter`, `fx`, `combine`, `channels`, `shapes`, `patterns`, `pbr`, `noise` (45 generators), `simulation` (physical-process generators: hydraulic erosion), `cast` |
 
 The image file ops read PNG, JPEG, GIF, WebP, TIFF, TGA, BMP, ICO, PNM, QOI, Farbfeld,
 Radiance HDR, and OpenEXR through the `image` crate, plus JPEG XL (`jxl-oxide`) and PSD

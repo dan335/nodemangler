@@ -537,6 +537,11 @@ impl Program {
             );
 
             ui.scope_builder(egui::UiBuilder::new().max_rect(ui_rect), |ui| {
+                // Scroll the settings content so long help text and tall input
+                // lists stay reachable when they exceed the panel height.
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
                 let mut show_graph_settings = true;
 
                 // show node settings
@@ -602,6 +607,7 @@ impl Program {
                         }
                     }
                 }
+                });
             });
         });
 

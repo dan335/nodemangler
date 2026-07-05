@@ -182,6 +182,7 @@ operations! {
     OpNumberInputPi(crate::operations::numbers::inputs::pi::OpNumberInputPi),
     OpNumberInputTau(crate::operations::numbers::inputs::tau::OpNumberInputTau),
     OpNumberInputE(crate::operations::numbers::inputs::e::OpNumberInputE),
+    OpNumberInputPhi(crate::operations::numbers::inputs::phi::OpNumberInputPhi),
 
     OpNumberMathAdd(crate::operations::numbers::arithmetic::add::OpNumberMathAdd),
     OpNumberMathSubtract(crate::operations::numbers::arithmetic::subtract::OpNumberMathSubtract),
@@ -202,6 +203,9 @@ operations! {
     OpNumberMathFloor(crate::operations::numbers::arithmetic::floor::OpNumberMathFloor),
     OpNumberMathTrunc(crate::operations::numbers::arithmetic::trunc::OpNumberMathTrunc),
     OpNumberMathFrac(crate::operations::numbers::arithmetic::frac::OpNumberMathFrac),
+    OpNumberMathSnap(crate::operations::numbers::arithmetic::snap::OpNumberMathSnap),
+    OpNumberMathWrap(crate::operations::numbers::arithmetic::wrap::OpNumberMathWrap),
+    OpNumberMathPingPong(crate::operations::numbers::arithmetic::ping_pong::OpNumberMathPingPong),
 
     // interpolation
     OpNumberMathStep(crate::operations::numbers::interpolation::step::OpNumberMathStep),
@@ -220,10 +224,16 @@ operations! {
     OpNumberTrigSinh(crate::operations::numbers::trigonometry::sinh::OpNumberTrigSinh),
     OpNumberTrigCosh(crate::operations::numbers::trigonometry::cosh::OpNumberTrigCosh),
     OpNumberTrigTanh(crate::operations::numbers::trigonometry::tanh::OpNumberTrigTanh),
+    OpNumberTrigToDegrees(crate::operations::numbers::trigonometry::to_degrees::OpNumberTrigToDegrees),
+    OpNumberTrigToRadians(crate::operations::numbers::trigonometry::to_radians::OpNumberTrigToRadians),
+    OpNumberTrigAsinh(crate::operations::numbers::trigonometry::asinh::OpNumberTrigAsinh),
+    OpNumberTrigAcosh(crate::operations::numbers::trigonometry::acosh::OpNumberTrigAcosh),
+    OpNumberTrigAtanh(crate::operations::numbers::trigonometry::atanh::OpNumberTrigAtanh),
 
     // random
     OpNumberRandomDecimal(crate::operations::numbers::random::random_decimal::OpNumberRandomDecimal),
     OpNumberRandomInteger(crate::operations::numbers::random::random_integer::OpNumberRandomInteger),
+    OpNumberRandomGaussian(crate::operations::numbers::random::random_gaussian::OpNumberRandomGaussian),
 
     // algebra
     OpNumberMathAbs(crate::operations::numbers::algebra::abs::OpNumberMathAbs),
@@ -234,6 +244,8 @@ operations! {
     OpNumberMathFactorial(crate::operations::numbers::algebra::factorial::OpNumberMathFactorial),
     OpNumberMathGcd(crate::operations::numbers::algebra::gcd::OpNumberMathGcd),
     OpNumberMathLcm(crate::operations::numbers::algebra::lcm::OpNumberMathLcm),
+    OpNumberMathHypot(crate::operations::numbers::algebra::hypot::OpNumberMathHypot),
+    OpNumberMathDistance2d(crate::operations::numbers::algebra::distance_2d::OpNumberMathDistance2d),
 
     // cast
     OpNumberCastToDecimal(crate::operations::numbers::cast::to_decimal::OpNumberCastToDecimal),
@@ -280,6 +292,7 @@ operations! {
     OpColorBlendMode(crate::operations::colors::blend::blend_mode::OpColorBlendMode),
 
     OpColorSampleMostCommonColors(crate::operations::colors::sample_image::most_common_colors::OpColorSampleMostCommonColors),
+    OpColorSampleSamplePixel(crate::operations::colors::sample_image::sample_pixel::OpColorSampleSamplePixel),
 
     OpColorCastToColor(crate::operations::colors::cast::to_color::OpColorCastToColor),
 
@@ -315,6 +328,7 @@ operations! {
     OpImageInputFile(crate::operations::images::inputs::file::OpImageInputFile),
     OpImageInputGradient(crate::operations::images::inputs::gradient::OpImageInputGradient),
     OpImageInputText(crate::operations::images::inputs::text::OpImageInputText),
+    OpImageInputConstant(crate::operations::images::inputs::constant::OpImageInputConstant),
 
     OpImageOutputClipboard(crate::operations::images::outputs::clipboard::OpImageOutputClipboard),
     OpImageOutputFile(crate::operations::images::outputs::file::OpImageOutputFile),
@@ -474,6 +488,9 @@ operations! {
     OpImageNoiseWarpedRings(crate::operations::images::noise::structural::warped_rings::OpImageNoiseWarpedRings),
     OpImageNoiseLightning(crate::operations::images::noise::process::lightning::OpImageNoiseLightning),
 
+    // simulation
+    OpImageSimulationHydraulicErosion(crate::operations::images::simulation::hydraulic_erosion::OpImageSimulationHydraulicErosion),
+
     // shapes
     OpImageShapeRectangle(crate::operations::images::shapes::rectangle::OpImageShapeRectangle),
     OpImageShapeEllipse(crate::operations::images::shapes::ellipse::OpImageShapeEllipse),
@@ -530,6 +547,13 @@ operations! {
 
     OpLogicFlowSelect(crate::operations::logic::flow::select::OpLogicFlowSelect),
 
+    // logic ← text (predicates)
+    OpLogicTextContains(crate::operations::logic::text::contains::OpLogicTextContains),
+    OpLogicTextStartsWith(crate::operations::logic::text::starts_with::OpLogicTextStartsWith),
+    OpLogicTextEndsWith(crate::operations::logic::text::ends_with::OpLogicTextEndsWith),
+    OpLogicTextIsEmpty(crate::operations::logic::text::is_empty::OpLogicTextIsEmpty),
+    OpLogicTextEqualsIgnoreCase(crate::operations::logic::text::equals_ignore_case::OpLogicTextEqualsIgnoreCase),
+
     // text
     OpTextInput(crate::operations::text::inputs::text_input::OpTextInput),
     OpTextAppend(crate::operations::text::manipulation::append::OpTextAppend),
@@ -537,6 +561,30 @@ operations! {
     OpTextToUppercase(crate::operations::text::manipulation::to_uppercase::OpTextToUppercase),
     OpTextToLowercase(crate::operations::text::manipulation::to_lowercase::OpTextToLowercase),
     OpTextToString(crate::operations::text::manipulation::to_string::OpTextToString),
+    OpTextJoin(crate::operations::text::manipulation::join::OpTextJoin),
+    OpTextReplace(crate::operations::text::manipulation::replace::OpTextReplace),
+    OpTextSubstring(crate::operations::text::manipulation::substring::OpTextSubstring),
+    OpTextSplit(crate::operations::text::manipulation::split::OpTextSplit),
+    OpTextTrim(crate::operations::text::manipulation::trim::OpTextTrim),
+    OpTextPad(crate::operations::text::manipulation::pad::OpTextPad),
+    OpTextRepeat(crate::operations::text::manipulation::repeat::OpTextRepeat),
+    OpTextReverse(crate::operations::text::manipulation::reverse::OpTextReverse),
+    OpTextTemplate(crate::operations::text::manipulation::template::OpTextTemplate),
+    OpTextTitleCase(crate::operations::text::manipulation::title_case::OpTextTitleCase),
+    OpTextFormatNumber(crate::operations::text::manipulation::format_number::OpTextFormatNumber),
+
+    // text encoding
+    OpTextBase64Encode(crate::operations::text::encoding::base64_encode::OpTextBase64Encode),
+    OpTextBase64Decode(crate::operations::text::encoding::base64_decode::OpTextBase64Decode),
+    OpTextUrlEncode(crate::operations::text::encoding::url_encode::OpTextUrlEncode),
+    OpTextUrlDecode(crate::operations::text::encoding::url_decode::OpTextUrlDecode),
+
+    // text ← image
+    OpTextImageAsciiArt(crate::operations::text::image::ascii_art::OpTextImageAsciiArt),
+    OpTextImageDataUri(crate::operations::text::image::data_uri::OpTextImageDataUri),
+    OpTextImageInfo(crate::operations::text::image::image_info::OpTextImageInfo),
+    OpTextImagePaletteHex(crate::operations::text::image::palette_hex::OpTextImagePaletteHex),
+    OpTextImageHash(crate::operations::text::image::image_hash::OpTextImageHash),
 
     // bitwise
     OpNumberBitwiseAnd(crate::operations::numbers::bitwise::bit_and::OpNumberBitwiseAnd),
@@ -545,6 +593,35 @@ operations! {
     OpNumberBitwiseNot(crate::operations::numbers::bitwise::bit_not::OpNumberBitwiseNot),
     OpNumberBitwiseShiftLeft(crate::operations::numbers::bitwise::bit_shift_left::OpNumberBitwiseShiftLeft),
     OpNumberBitwiseShiftRight(crate::operations::numbers::bitwise::bit_shift_right::OpNumberBitwiseShiftRight),
+
+    // image (image → number measurements)
+    OpNumberImageDimensions(crate::operations::numbers::image::dimensions::OpNumberImageDimensions),
+    OpNumberImageMean(crate::operations::numbers::image::mean::OpNumberImageMean),
+    OpNumberImageMinMax(crate::operations::numbers::image::min_max::OpNumberImageMinMax),
+    OpNumberImageMedian(crate::operations::numbers::image::median::OpNumberImageMedian),
+    OpNumberImagePercentile(crate::operations::numbers::image::percentile::OpNumberImagePercentile),
+    OpNumberImageStdDev(crate::operations::numbers::image::std_dev::OpNumberImageStdDev),
+    OpNumberImageEntropy(crate::operations::numbers::image::entropy::OpNumberImageEntropy),
+    OpNumberImageSkewness(crate::operations::numbers::image::skewness::OpNumberImageSkewness),
+    OpNumberImageKurtosis(crate::operations::numbers::image::kurtosis::OpNumberImageKurtosis),
+    OpNumberImageBoundingBox(crate::operations::numbers::image::bounding_box::OpNumberImageBoundingBox),
+    OpNumberImageCentroid(crate::operations::numbers::image::centroid::OpNumberImageCentroid),
+    OpNumberImageCoverage(crate::operations::numbers::image::coverage::OpNumberImageCoverage),
+    OpNumberImageSharpness(crate::operations::numbers::image::sharpness::OpNumberImageSharpness),
+    OpNumberImageEdgeDensity(crate::operations::numbers::image::edge_density::OpNumberImageEdgeDensity),
+    OpNumberImageUniqueColors(crate::operations::numbers::image::unique_colors::OpNumberImageUniqueColors),
+    OpNumberImageAverageHue(crate::operations::numbers::image::average_hue::OpNumberImageAverageHue),
+    OpNumberImageDifference(crate::operations::numbers::image::image_difference::OpNumberImageDifference),
+    OpNumberImagePerceptualHash(crate::operations::numbers::image::perceptual_hash::OpNumberImagePerceptualHash),
+
+    // numbers ← text (measurements / parsing)
+    OpNumberTextParseDecimal(crate::operations::numbers::text::parse_decimal::OpNumberTextParseDecimal),
+    OpNumberTextParseInteger(crate::operations::numbers::text::parse_integer::OpNumberTextParseInteger),
+    OpNumberTextWordCount(crate::operations::numbers::text::word_count::OpNumberTextWordCount),
+    OpNumberTextLineCount(crate::operations::numbers::text::line_count::OpNumberTextLineCount),
+    OpNumberTextByteLength(crate::operations::numbers::text::byte_length::OpNumberTextByteLength),
+    OpNumberTextIndexOf(crate::operations::numbers::text::index_of::OpNumberTextIndexOf),
+    OpNumberTextCountOccurrences(crate::operations::numbers::text::count_occurrences::OpNumberTextCountOccurrences),
 }
 
 /// Returns the full hierarchical menu of available operations.
@@ -561,6 +638,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpNumberInputPi },
                 OperationListItem::Operation { operation: Operation::OpNumberInputTau },
                 OperationListItem::Operation { operation: Operation::OpNumberInputE },
+                OperationListItem::Operation { operation: Operation::OpNumberInputPhi },
             ]},
             OperationListItem::Category { name: "arithmetic".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpNumberMathAdd },
@@ -582,6 +660,9 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpNumberMathFloor },
                 OperationListItem::Operation { operation: Operation::OpNumberMathTrunc },
                 OperationListItem::Operation { operation: Operation::OpNumberMathFrac },
+                OperationListItem::Operation { operation: Operation::OpNumberMathSnap },
+                OperationListItem::Operation { operation: Operation::OpNumberMathWrap },
+                OperationListItem::Operation { operation: Operation::OpNumberMathPingPong },
             ]},
             OperationListItem::Category { name: "interpolation".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpNumberMathLerp },
@@ -600,6 +681,11 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpNumberTrigSinh },
                 OperationListItem::Operation { operation: Operation::OpNumberTrigCosh },
                 OperationListItem::Operation { operation: Operation::OpNumberTrigTanh },
+                OperationListItem::Operation { operation: Operation::OpNumberTrigToDegrees },
+                OperationListItem::Operation { operation: Operation::OpNumberTrigToRadians },
+                OperationListItem::Operation { operation: Operation::OpNumberTrigAsinh },
+                OperationListItem::Operation { operation: Operation::OpNumberTrigAcosh },
+                OperationListItem::Operation { operation: Operation::OpNumberTrigAtanh },
             ]},
             OperationListItem::Category { name: "algebraic".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpNumberMathAbs },
@@ -610,6 +696,8 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpNumberMathFactorial },
                 OperationListItem::Operation { operation: Operation::OpNumberMathGcd },
                 OperationListItem::Operation { operation: Operation::OpNumberMathLcm },
+                OperationListItem::Operation { operation: Operation::OpNumberMathHypot },
+                OperationListItem::Operation { operation: Operation::OpNumberMathDistance2d },
             ]},
             OperationListItem::Category { name: "cast".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpNumberCastToDecimal },
@@ -625,6 +713,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
             OperationListItem::Category { name: "random".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpNumberRandomDecimal },
                 OperationListItem::Operation { operation: Operation::OpNumberRandomInteger },
+                OperationListItem::Operation { operation: Operation::OpNumberRandomGaussian },
             ]},
             OperationListItem::Category { name: "bitwise".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpNumberBitwiseAnd },
@@ -633,6 +722,35 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpNumberBitwiseNot },
                 OperationListItem::Operation { operation: Operation::OpNumberBitwiseShiftLeft },
                 OperationListItem::Operation { operation: Operation::OpNumberBitwiseShiftRight },
+            ]},
+            OperationListItem::Category { name: "image".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpNumberImageDimensions },
+                OperationListItem::Operation { operation: Operation::OpNumberImageMean },
+                OperationListItem::Operation { operation: Operation::OpNumberImageMinMax },
+                OperationListItem::Operation { operation: Operation::OpNumberImageMedian },
+                OperationListItem::Operation { operation: Operation::OpNumberImagePercentile },
+                OperationListItem::Operation { operation: Operation::OpNumberImageStdDev },
+                OperationListItem::Operation { operation: Operation::OpNumberImageEntropy },
+                OperationListItem::Operation { operation: Operation::OpNumberImageSkewness },
+                OperationListItem::Operation { operation: Operation::OpNumberImageKurtosis },
+                OperationListItem::Operation { operation: Operation::OpNumberImageBoundingBox },
+                OperationListItem::Operation { operation: Operation::OpNumberImageCentroid },
+                OperationListItem::Operation { operation: Operation::OpNumberImageCoverage },
+                OperationListItem::Operation { operation: Operation::OpNumberImageSharpness },
+                OperationListItem::Operation { operation: Operation::OpNumberImageEdgeDensity },
+                OperationListItem::Operation { operation: Operation::OpNumberImageUniqueColors },
+                OperationListItem::Operation { operation: Operation::OpNumberImageAverageHue },
+                OperationListItem::Operation { operation: Operation::OpNumberImageDifference },
+                OperationListItem::Operation { operation: Operation::OpNumberImagePerceptualHash },
+            ]},
+            OperationListItem::Category { name: "text".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpNumberTextParseDecimal },
+                OperationListItem::Operation { operation: Operation::OpNumberTextParseInteger },
+                OperationListItem::Operation { operation: Operation::OpNumberTextWordCount },
+                OperationListItem::Operation { operation: Operation::OpNumberTextLineCount },
+                OperationListItem::Operation { operation: Operation::OpNumberTextByteLength },
+                OperationListItem::Operation { operation: Operation::OpNumberTextIndexOf },
+                OperationListItem::Operation { operation: Operation::OpNumberTextCountOccurrences },
             ]},
         ]},
         OperationListItem::Category { name: "colors".to_string(), operation_list_items: vec![
@@ -670,6 +788,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
             ]},
             OperationListItem::Category { name: "analysis".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpColorSampleMostCommonColors },
+                OperationListItem::Operation { operation: Operation::OpColorSampleSamplePixel },
                 OperationListItem::Operation { operation: Operation::OpColorAnalysisDistance },
                 OperationListItem::Operation { operation: Operation::OpColorAnalysisLuminance },
                 OperationListItem::Operation { operation: Operation::OpColorAnalysisContrastRatio },
@@ -709,6 +828,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageInputColor },
                 OperationListItem::Operation { operation: Operation::OpImageInputGradient },
                 OperationListItem::Operation { operation: Operation::OpImageInputText },
+                OperationListItem::Operation { operation: Operation::OpImageInputConstant },
             ]},
             OperationListItem::Category { name: "output".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageOutputFile },
@@ -927,9 +1047,9 @@ pub fn operation_list() -> Vec<OperationListItem> {
                     OperationListItem::Operation { operation: Operation::OpImageNoiseLightning },
                 ]},
             ]},
-            // Physical-process simulation generators; empty until the first
-            // simulation nodes land (see plan.md).
+            // Physical-process simulation generators (see plan.md for the backlog).
             OperationListItem::Category { name: "simulation".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpImageSimulationHydraulicErosion },
             ]},
             OperationListItem::Category { name: "cast".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageCastToImage },
@@ -961,6 +1081,13 @@ pub fn operation_list() -> Vec<OperationListItem> {
             OperationListItem::Category { name: "flow".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpLogicFlowSelect },
             ]},
+            OperationListItem::Category { name: "text".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpLogicTextContains },
+                OperationListItem::Operation { operation: Operation::OpLogicTextStartsWith },
+                OperationListItem::Operation { operation: Operation::OpLogicTextEndsWith },
+                OperationListItem::Operation { operation: Operation::OpLogicTextIsEmpty },
+                OperationListItem::Operation { operation: Operation::OpLogicTextEqualsIgnoreCase },
+            ]},
         ]},
         OperationListItem::Category { name: "text".to_string(), operation_list_items: vec![
             OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
@@ -972,6 +1099,30 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpTextToUppercase },
                 OperationListItem::Operation { operation: Operation::OpTextToLowercase },
                 OperationListItem::Operation { operation: Operation::OpTextToString },
+                OperationListItem::Operation { operation: Operation::OpTextJoin },
+                OperationListItem::Operation { operation: Operation::OpTextReplace },
+                OperationListItem::Operation { operation: Operation::OpTextSubstring },
+                OperationListItem::Operation { operation: Operation::OpTextSplit },
+                OperationListItem::Operation { operation: Operation::OpTextTrim },
+                OperationListItem::Operation { operation: Operation::OpTextPad },
+                OperationListItem::Operation { operation: Operation::OpTextRepeat },
+                OperationListItem::Operation { operation: Operation::OpTextReverse },
+                OperationListItem::Operation { operation: Operation::OpTextTemplate },
+                OperationListItem::Operation { operation: Operation::OpTextTitleCase },
+                OperationListItem::Operation { operation: Operation::OpTextFormatNumber },
+            ]},
+            OperationListItem::Category { name: "image".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpTextImageAsciiArt },
+                OperationListItem::Operation { operation: Operation::OpTextImageDataUri },
+                OperationListItem::Operation { operation: Operation::OpTextImageInfo },
+                OperationListItem::Operation { operation: Operation::OpTextImagePaletteHex },
+                OperationListItem::Operation { operation: Operation::OpTextImageHash },
+            ]},
+            OperationListItem::Category { name: "encoding".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpTextBase64Encode },
+                OperationListItem::Operation { operation: Operation::OpTextBase64Decode },
+                OperationListItem::Operation { operation: Operation::OpTextUrlEncode },
+                OperationListItem::Operation { operation: Operation::OpTextUrlDecode },
             ]},
         ]},
     ];

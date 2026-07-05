@@ -21,3 +21,7 @@ pub mod logarithmic;
 pub mod trigonometry;
 /// Bitwise logic and shift operations (and, or, xor, not, shifts).
 pub mod bitwise;
+/// Image measurement operations that reduce an image to numbers.
+pub mod image;
+/// Text measurement/parsing operations that reduce text to numbers.
+pub mod text;

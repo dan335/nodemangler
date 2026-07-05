@@ -10,3 +10,5 @@ pub mod pi;
 pub mod tau;
 /// Euler's number e (2.71828...) input node.
 pub mod e;
+/// Golden ratio phi (1.61803...) input node.
+pub mod phi;

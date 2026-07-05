@@ -22,3 +22,13 @@ pub mod sinh;
 pub mod cosh;
 /// Hyperbolic tangent function.
 pub mod tanh;
+/// Converts radians to degrees.
+pub mod to_degrees;
+/// Converts degrees to radians.
+pub mod to_radians;
+/// Inverse hyperbolic sine function.
+pub mod asinh;
+/// Inverse hyperbolic cosine function (errors for inputs below 1).
+pub mod acosh;
+/// Inverse hyperbolic tangent function (errors for |input| ≥ 1).
+pub mod atanh;

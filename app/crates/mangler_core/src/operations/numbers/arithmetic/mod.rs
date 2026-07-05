@@ -41,3 +41,9 @@ pub mod floor;
 pub mod trunc;
 /// Fractional part of a decimal (`fract()`).
 pub mod frac;
+/// Snaps a number to the nearest multiple of a step.
+pub mod snap;
+/// Wraps a number into the half-open range `[min, max)` (true modulo).
+pub mod wrap;
+/// Folds a number back and forth within `[min, max]` (triangle wave).
+pub mod ping_pong;

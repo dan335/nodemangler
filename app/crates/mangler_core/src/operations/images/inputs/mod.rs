@@ -16,3 +16,5 @@ pub mod color;
 pub mod gradient;
 /// Renders a text string to a grayscale image using an embedded font.
 pub mod text;
+/// Generates a solid grayscale image from a single constant value.
+pub mod constant;

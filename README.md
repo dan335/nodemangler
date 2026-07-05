@@ -13,13 +13,14 @@ Claude.
 
 ## Features
 
-- **315 nodes** across images, colors, numbers, logic, and text — see the full
+- **381 nodes** across images, colors, numbers, logic, and text — see the full
   [Node Reference](#node-reference) below.
-- **Procedural generation** — 46 noise generators (Perlin, OpenSimplex, Worley, Gabor,
+- **Procedural generation** — 45 noise generators (Perlin, OpenSimplex, Worley, Gabor,
   phasor, reaction-diffusion, …) including a grunge set (leaks, stains, peeling, smear,
   growth) plus patterns, shapes, and PBR nodes (normal, height, ambient occlusion,
-  curvature, bevel). A simulation category is scaffolded for physical-process
-  generators (crack propagation, hydraulic erosion, frost growth, …) — see `plan.md`.
+  curvature, bevel). A simulation category generates materials by simulating the
+  physical process behind their look, starting with Beyer hydraulic erosion —
+  more planned in `PLAN.md`.
 - **14 color spaces** with conversion between them: sRGB, Linear RGB, HSL, HSV, HWB,
   Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YUV, YCbCr — plus color analysis and harmony
   nodes.
@@ -85,39 +86,42 @@ and I/O for each.
 - **Images** — the largest category: file/URL/clipboard/gradient/text I/O; transforms
   from crop and resize to warp, kaleidoscope, and seam carving; levels, curves, and
   color adjustments; blurs and filters from Gaussian to Kuwahara to halftone; shadows
-  and glows; channel ops; shapes; patterns; PBR maps; and 46 noise generators.
+  and glows; channel ops; shapes; patterns; PBR maps; 45 noise generators; and
+  physical-process simulations (erosion, sand).
 - **Logic** — comparisons, boolean ops, and a `select` multiplexer.
 - **Text** — append, length, case conversion, to-string.
 
 ## Node Reference
 
 Every node in the graph editor's Add Node menu, by category and subcategory
-(305 operation nodes, plus subgraph nodes for composing whole pipelines).
+(307 operation nodes, plus subgraph nodes for composing whole pipelines).
 
-### Numbers (61)
+### Numbers (98)
 
-- **Input:** Decimal, E, Integer, Pi, Tau
-- **Algebraic:** Absolute Value, Cube Root, Factorial, GCD, LCM, Nth Root, Power, Square Root
-- **Arithmetic:** Add, Average, Ceil, Clamp, Decrement, Divide, Floor, Fractional Part, Increment, Max, Min, Modulus, Multiply, Negate, Reciprocal, Round, Sign, Subtract, Truncate
+- **Input:** Decimal, E, Integer, Phi, Pi, Tau
+- **Algebraic:** Absolute Value, Cube Root, Distance 2D, Factorial, GCD, Hypot, LCM, Nth Root, Power, Square Root
+- **Arithmetic:** Add, Average, Ceil, Clamp, Decrement, Divide, Floor, Fractional Part, Increment, Max, Min, Modulus, Multiply, Negate, Ping Pong, Reciprocal, Round, Sign, Snap, Subtract, Truncate, Wrap
 - **Bitwise:** Bitwise And, Bitwise Not, Bitwise Or, Bitwise Xor, Shift Left, Shift Right
 - **Cast:** To Decimal, To Integer
+- **Image:** Average Hue, Bounding Box, Centroid, Coverage, Dimensions, Edge Density, Entropy, Image Difference, Kurtosis, Mean, Median, Min Max, Percentile, Perceptual Hash, Sharpness, Skewness, Standard Deviation, Unique Colors
 - **Interpolation:** Lerp, Map Range, Smoothstep, Step
 - **Logarithmic:** Exp, Ln, Log, Log10, Log2
-- **Random:** Random Decimal, Random Integer
-- **Trigonometry:** Acos, Asin, Atan, Atan2, Cos, Cosh, Sin, Sinh, Tan, Tanh
+- **Random:** Random Decimal, Random Gaussian, Random Integer
+- **Text:** Byte Length, Count Occurrences, Index Of, Line Count, Parse Decimal, Parse Integer, Word Count
+- **Trigonometry:** Acos, Acosh, Asin, Asinh, Atan, Atan2, Atanh, Cos, Cosh, Sin, Sinh, Tan, Tanh, To Degrees, To Radians
 
-### Colors (52)
+### Colors (53)
 
 - **Input:** CMYK, HSL, HSV, HWB, Lab, LCH, Oklab, Oklch, RGB, RGB Linear, xyY, XYZ, YCbCr, YUV
 - **Output:** To CMYK, To HSL, To HSV, To HWB, To Lab, To LCH, To Oklab, To Oklch, To RGB, To RGB Linear, To xyY, To XYZ, To YCbCr, To YUV
-- **Analysis:** Color Temperature, Contrast Ratio, Distance, Dominant Hue, Harmony Score, Luminance, Mix Ratio, Most Common Colors
+- **Analysis:** Color Temperature, Contrast Ratio, Distance, Dominant Hue, Harmony Score, Luminance, Mix Ratio, Most Common Colors, Sample Pixel
 - **Generation:** From Hex, Random Color, To Color, To Hex
 - **Harmony:** Analogous, Complementary, Double Split Comp, Monochromatic, Tetradic, Triadic
 - **Manipulation:** Adjust HSV, Blend, Clamp, Grayscale, Invert, Set Alpha
 
-### Images (169)
+### Images (172)
 
-- **Input:** From Clipboard, From Color, From File, From Gradient, From Text, From URL
+- **Input:** Constant, From Clipboard, From Color, From File, From Gradient, From Text, From URL
 - **Output:** To Clipboard, To File
 - **Adjustments:** Auto Levels, Brighten, Color Balance, Color Match, Color To Mask, Contrast, Curves, Dither, Frequency Split, Gradient Dynamic, Gradient Map, Grayscale, Histogram Range, Histogram Scan, Histogram Select, HSL, Hue Shift, Invert, Levels, Posterize, Replace Color, Saturation, Selective Color, Threshold, Vignette, White Balance
 - **Blur:** Blur, Directional Blur, Non-Uniform Blur, Radial Blur, Slope Blur
@@ -135,19 +139,23 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Patterns:** Brick, Flood Fill, Flood Fill Mapper, Hexagonal, Splatter, Tile Generator, Tile Sampler, Weave
 - **PBR:** AO From Height, Bevel, Curvature, Height Blend, Normal Blend, Normal Combine, Normal From Height, Normal Invert, Normal To Height
 - **Shapes:** Circle, Cone, Ellipse, Line, Paraboloid, Polygon, Pyramid, Rectangle, Star
+- **Simulation:** Hydraulic Erosion
 - **Transform:** Crop, Directional Warp, Flip Horizontal, Flip Vertical, Kaleidoscope, Make Tile, Mirror, Perspective, Polar Coordinates, Resize, Resize Exact, Resize Fill, Rotate, Rotate 180, Rotate 270, Rotate 90, Seam Carve, Spherize, Swirl, Tiling Transform, Warp
 
-### Logic (17)
+### Logic (22)
 
 - **Input:** Boolean
 - **Boolean:** And, Nand, Nor, Not, Or, Xnor, Xor
 - **Comparison:** Approx Equal, Equal, Greater Or Equal, Greater Than, In Range, Less Or Equal, Less Than, Not Equal
 - **Flow:** Select
+- **Text:** Contains, Ends With, Equals Ignore Case, Is Empty, Starts With
 
-### Text (6)
+### Text (26)
 
 - **Input:** Text
-- **Manipulation:** Append, Length, To Lowercase, To String, To Uppercase
+- **Encoding:** Base64 Decode, Base64 Encode, Url Decode, Url Encode
+- **Image:** Ascii Art, Data Uri, Image Hash, Image Info, Palette Hex
+- **Manipulation:** Append, Format Number, Join, Length, Pad, Repeat, Replace, Reverse, Split, Substring, Template, Title Case, To Lowercase, To String, To Uppercase, Trim
 
 ## License
 

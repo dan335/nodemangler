@@ -19,3 +19,7 @@ pub mod factorial;
 pub mod gcd;
 /// Least common multiple of two integers.
 pub mod lcm;
+/// Hypotenuse `sqrt(a² + b²)` (length of a 2D vector).
+pub mod hypot;
+/// Euclidean distance between two 2D points.
+pub mod distance_2d;

@@ -14,3 +14,5 @@ pub mod comparison;
 pub mod boolean;
 /// Control flow operations (conditional selection).
 pub mod flow;
+/// Text predicates that produce boolean outputs (contains, starts with, ...).
+pub mod text;

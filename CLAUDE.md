@@ -88,25 +88,30 @@ cargo run -p mangler_cli  # Run the CLI tool
 ## Operation Categories
 
 ### numbers/
-- `inputs/` — decimal, integer, e, pi, tau
-- `arithmetic/` — add, subtract, multiply, divide, modulus, negate, min, max, average, clamp, floor, ceil, round, trunc, frac, sign, reciprocal, increment, decrement
-- `algebra/` — abs, sqrt, cbrt, nth_root, pow, factorial, gcd, lcm
-- `trigonometry/` — sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh
+- `inputs/` — decimal, integer, e, pi, tau, phi
+- `arithmetic/` — add, subtract, multiply, divide, modulus, negate, min, max, average, clamp, floor, ceil, round, trunc, frac, sign, reciprocal, increment, decrement, snap (round to step), wrap (fold into [min,max)), ping_pong (triangle fold)
+- `algebra/` — abs, sqrt, cbrt, nth_root, pow, factorial, gcd, lcm, hypot, distance_2d
+- `trigonometry/` — sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, to_degrees, to_radians, asinh, acosh, atanh
 - `interpolation/` — lerp, map_range, smoothstep, step
 - `logarithmic/` — exp, ln, log, log2, log10
 - `bitwise/` — bit_and, bit_or, bit_xor, bit_not, bit_shift_left, bit_shift_right
-- `random/` — random_decimal, random_integer
+- `random/` — random_decimal, random_integer, random_gaussian (Box–Muller normal)
 - `cast/` — to_decimal, to_integer
+- `image/` — image→number measurements (each takes an image, emits numbers; lives under numbers because it *produces* numbers). Shared `pixel_luma`/`pixel_rgba`/`luma_values` helpers in `numbers/image/mod.rs`. Nodes: dimensions, mean, min_max, median, percentile, std_dev, entropy, skewness, kurtosis, bounding_box, centroid, coverage, sharpness (variance of Laplacian), edge_density (Sobel), unique_colors, average_hue, image_difference (MSE/RMSE/MAE/PSNR), perceptual_hash (dHash Hamming). (The color-producing `sample pixel` node lives under `colors/sample_image/` instead.)
+- `text/` — text→number (same output-type rule): parse_decimal, parse_integer, word_count, line_count, byte_length (UTF-8 bytes; distinct from `text/manipulation/length`'s char count), index_of, count_occurrences.
 
 ### logic/
 - `inputs/` — bool
 - `comparison/` — equal, not_equal, approx_equal (tolerance-based), in_range (inclusive min/max), less_than, less_equal, greater_than, greater_equal
 - `boolean/` — and, or, not, xor, xnor, nand, nor
 - `flow/` — select (mux: picks between two values based on a bool condition)
+- `text/` — text→bool predicates (output-type rule): contains, starts_with, ends_with, is_empty, equals_ignore_case
 
 ### text/
 - `inputs/` — text
-- `manipulation/` — append, length, to_uppercase, to_lowercase, to_string
+- `manipulation/` — append, length, to_uppercase, to_lowercase, to_string, join, replace, substring, split, trim, pad, repeat, reverse, template ({}-placeholder substitution), title_case, format_number (number→text)
+- `image/` — image→text (categorized under text because they *output* text): ascii_art, data_uri (base64 PNG data URI), image_info, palette_hex (dominant colors as hex), image_hash (average-hash). Reuse `pixel_luma`/`pixel_rgba` from `numbers/image/`.
+- `encoding/` — base64_encode, base64_decode, url_encode, url_decode. Self-contained base64 codec (`base64_encode`/`base64_decode`) lives in `text/encoding/mod.rs` — no base64 crate dependency; also used by `text/image/data_uri`.
 - (`text/text_from_clipboard.rs` exists but is an unimplemented stub — not a registered node)
 
 ### colors/
@@ -118,10 +123,10 @@ cargo run -p mangler_cli  # Run the CLI tool
 - `analysis/` — luminance, contrast_ratio, distance, color_temperature, dominant_hue, harmony_score, mix_ratio
 - `blend/` — blend_mode
 - `cast/` — to_color
-- `sample_image/` — most_common_colors
+- `sample_image/` — most_common_colors, sample_pixel (reads the color at a normalized x/y coordinate; menu-listed under colors→analysis alongside most_common_colors)
 
 ### images/
-- `inputs/` — file, url, clipboard, color, gradient, text
+- `inputs/` — file, url, clipboard, color, gradient, text, constant (number-driven solid grayscale fill)
 - `outputs/` — file, clipboard
 - `transform/` — crop, resize, resize_exact, resize_fill, flip_horizontal, flip_vertical, rotate_90, rotate_180, rotate_270, rotate_around_center, warp, directional_warp, safe_transform, make_tile, mirror, seam_carve, polar_coordinates, swirl, kaleidoscope, spherize, perspective
 - `adjustments/` — brighten, contrast, levels, auto_levels, curves, grayscale, invert, posterize, saturation, hue_rotate, hsl, threshold, vignette, white_balance, color_balance, selective_color, color_to_mask, replace_color, frequency_split, dither, gradient_map, gradient_dynamic, color_match, distance, histogram_scan, histogram_range, histogram_select (shared `smoothstep`/HSL helpers live in `adjustments/common.rs`)
@@ -138,7 +143,7 @@ cargo run -p mangler_cli  # Run the CLI tool
 - `shapes/` — rectangle, ellipse, circle, polygon, star, line, cone, pyramid, paraboloid
 - `patterns/` — brick, hexagonal, weave, tile_sampler, tile_generator, splatter, flood_fill, flood_fill_mapper
 - `pbr/` — normal_from_height, normal_to_height, normal_invert, normal_blend, normal_combine, ao_from_height, curvature, bevel, height_blend
-- `simulation/` — physical-process simulation generators (empty scaffold; planned nodes in `plan.md`). Category convention: guidance-map image inputs (weakness, fuel, moisture, height) are optional and fall back to an internal seed-derived map, so every simulation node also works standalone.
+- `simulation/` — physical-process simulation generators (more planned in `PLAN.md`). Category conventions: guidance-map image inputs (weakness, fuel, moisture, height) are optional and fall back to an internal seed-derived map, so every simulation node also works standalone (`is_unconnected`/`guidance_map_to_grid` helpers in `simulation/mod.rs`); input order is seed/width/height, guidance maps, then the main drivers (iteration-style counts like iterations/droplets/particles first — users step through them to watch the sim work), then fine-tuning params last. Nodes: hydraulic_erosion (faithful Beyer/Lague droplet sim; sequential single-threaded, erosion brush, single height output). (Frost DLA, drying-cracks, and sand-ripples nodes were built and deleted 2026-07 — not good enough; see PLAN.md. Each simulation node's `settings().help` should say what real model it's based on, or admit it's a heuristic — do not oversell heuristics as physical simulations.)
 - `noise/` — 45 generators in subdirectories mirroring the node-menu subcategories (`voronoi_common.rs` at the noise root is a shared helper, not a node; `pixel_hash`/`periodic_perlin_2d`/`periodic_value_2d`/`build_perm_tables` in `noise/mod.rs` are shared)
   - `basic/` — perlin, value, open_simplex, super_simplex, gabor, phasor, anisotropic, gaussian (white noise), blue_noise
   - `fractal/` — fbm, billow, ridged_multifractal, basic_multifractal, hybrid_multifractal, domain_warp_fbm, flow (rotated-gradient fbm with advection), curl (flow map, 3-channel), clouds, plasma
