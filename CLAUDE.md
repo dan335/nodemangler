@@ -45,7 +45,7 @@ cargo run -p mangler_cli  # Run the CLI tool
 - **Async thumbnails**: `Value::Image` thumbnails are computed off the engine thread by `ThumbnailService` (see `thumbnail_service.rs`). Engine emits `OutputChanged { thumbnail: None }` for image outputs; a follow-up `NodeChangedMessage::ThumbnailReady` arrives when the resize finishes, with a stale-check keyed on `change_id`. Scalar/enum thumbnails are still computed inline.
 - Operations are generated via the `operations!` macro in `app/crates/mangler_core/src/operations/mod.rs`
 - **Menu hierarchy mirrors file hierarchy**: the node-menu category tree built in `operation_list()` must match the directory tree under `operations/`. When an operation moves to a different menu (sub)category, move its `.rs` and `_tests.rs` files into the matching directory and update its module path. (Known exception: the adjustments' distance node is listed under the filter/morphology menu.)
-- **Value types** (see `value.rs`): Bool, Integer, Decimal, Text, Color, Image, Path, FilterType, ImageType, ColorFormat, Trigger, NoiseWorleyDistanceFunction, ColorSpace, BlendMode, TextHAlign, TextVAlign
+- **Value types** (see `value.rs`): Bool, Integer, Decimal, Text, Color, Image, Path, FilterType, ImageType, ColorFormat, Trigger, NoiseWorleyDistanceFunction, ColorSpace, BlendMode, EdgeMode (transform edge-fill: Fill/Wrap/Extend/Mirror), TextHAlign, TextVAlign
 - Images are `FloatImage` (1–4 channel `f32`, `Arc`-shared); `Value::Image { data, change_id }` carries a change id used by cache invalidation and stale-thumbnail rejection.
 - Color is stored as sRGBA floats with conversions to 14 color spaces: sRGB, Linear RGB, HSL, HSV, HWB, Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YCbCr, YUV
 - BlendMode has 17 modes: Over, Lerp, Multiply, Screen, Overlay, SoftLight, HardLight, ColorDodge, ColorBurn, Darken, Lighten, Difference, Exclusion, LinearBurn, LinearDodge, Divide, Subtract
@@ -128,7 +128,7 @@ cargo run -p mangler_cli  # Run the CLI tool
 ### images/
 - `inputs/` — file, url, clipboard, color, gradient, text, constant (number-driven solid grayscale fill)
 - `outputs/` — file, clipboard
-- `transform/` — crop, resize, resize_exact, resize_fill, flip_horizontal, flip_vertical, rotate_90, rotate_180, rotate_270, rotate_around_center, warp, directional_warp, safe_transform, make_tile, mirror, seam_carve, polar_coordinates, swirl, kaleidoscope, spherize, perspective
+- `transform/` — transform (combined affine: translate px + rotate + scale about centre, with fill/wrap/extend/mirror edge modes; replaced the old translate-only and wrap-only `safe_transform`/"tiling transform" nodes), crop, resize, resize_exact, resize_fill, flip_horizontal, flip_vertical, rotate_90, rotate_180, rotate_270, rotate_around_center, warp, directional_warp, make_tile, mirror, seam_carve, polar_coordinates, swirl, kaleidoscope, spherize, perspective
 - `adjustments/` — brighten, contrast, levels, auto_levels, curves, grayscale, invert, posterize, saturation, hue_rotate, hsl, threshold, vignette, white_balance, color_balance, selective_color, color_to_mask, replace_color, frequency_split, dither, gradient_map, gradient_dynamic, color_match, distance, histogram_scan, histogram_range, histogram_select (shared `smoothstep`/HSL helpers live in `adjustments/common.rs`)
 - `blur/` — blur, directional_blur, radial_blur, slope_blur, non_uniform_blur
 - `filter/` — subdirectories mirror the node-menu subcategories; convolution (custom 3x3 kernel) sits at the filter root

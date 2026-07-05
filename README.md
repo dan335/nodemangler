@@ -1,9 +1,6 @@
 # NodeMangler
 
-An open-source, node-based image editor and procedural texture generator written in
-Rust — in the spirit of Substance Designer, Blender's compositor, or TouchDesigner.
-Build image and color pipelines by connecting nodes; the graph re-runs automatically as
-you tweak it.
+An node-based image editor and procedural texture generator. Similar to Substance Designer and Material Maker but open source, free and not built on top of a game engine.  100% Rust and very fast.  GUI to create graphs and CLI to integrate them into your workflow.
 
 ![NodeMangler screenshot](screenshot.jpg)
 
@@ -15,29 +12,20 @@ Claude.
 
 - **381 nodes** across images, colors, numbers, logic, and text — see the full
   [Node Reference](#node-reference) below.
-- **Procedural generation** — 45 noise generators (Perlin, OpenSimplex, Worley, Gabor,
-  phasor, reaction-diffusion, …) including a grunge set (leaks, stains, peeling, smear,
-  growth) plus patterns, shapes, and PBR nodes (normal, height, ambient occlusion,
-  curvature, bevel). A simulation category generates materials by simulating the
-  physical process behind their look, starting with Beyer hydraulic erosion —
-  more planned in `PLAN.md`.
+- **Procedural generation** — 45 noise generators.
 - **14 color spaces** with conversion between them: sRGB, Linear RGB, HSL, HSV, HWB,
-  Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YUV, YCbCr — plus color analysis and harmony
-  nodes.
+  Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YUV, YCbCr.
 - **Floating-point pipeline** — images stay 1–4 channel `f32` from input to output;
   conversion only happens at I/O.
 - **16 file formats** — PNG, JPEG, GIF, WebP, TIFF, TGA, BMP, ICO, PNM, QOI, Farbfeld,
   Radiance HDR, OpenEXR, JPEG XL, PSD, and AVIF (JPEG XL and PSD are read-only, AVIF
-  write-only), with quality and compression settings where the encoder supports them
-  and 8/16/32-bit-float output color formats.
+  write-only) and 8/16/32-bit-float output color formats.
 - **Subgraphs** — package an entire pipeline into a single reusable node.
 - **GUI and CLI** — build graphs visually in the desktop app or headless from the
   command line. Both share the same JSON graph format, and the CLI is designed to be
   easy for scripts and LLMs to drive.
 
 ## Build & run
-
-Requires a stable Rust toolchain (pinned in `app/rust-toolchain.toml`).
 
 ```bash
 cd app
@@ -71,25 +59,6 @@ internals.
 | [**mangler_cli**](app/crates/mangler_cli/README.md) | `app/crates/mangler_cli/` | Headless CLI for building and running graphs |
 
 Each crate README goes into detail on that component.
-
-## Operations
-
-A quick tour of the operation library. The [Node Reference](#node-reference) below lists
-every node by name, and `cargo run -p mangler_cli -- show-ops` prints full descriptions
-and I/O for each.
-
-- **Numbers** — arithmetic, trigonometry, algebra, logarithms, interpolation, bitwise,
-  random, casts, and constants (π, τ, e).
-- **Colors** — construct from / decompose into all 14 color spaces; hex conversion; 17
-  blend modes; harmony (complementary, triadic, analogous, …); and analysis (luminance,
-  contrast ratio, temperature, dominant colors sampled from an image).
-- **Images** — the largest category: file/URL/clipboard/gradient/text I/O; transforms
-  from crop and resize to warp, kaleidoscope, and seam carving; levels, curves, and
-  color adjustments; blurs and filters from Gaussian to Kuwahara to halftone; shadows
-  and glows; channel ops; shapes; patterns; PBR maps; 45 noise generators; and
-  physical-process simulations (erosion, sand).
-- **Logic** — comparisons, boolean ops, and a `select` multiplexer.
-- **Text** — append, length, case conversion, to-string.
 
 ## Node Reference
 
@@ -140,7 +109,7 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **PBR:** AO From Height, Bevel, Curvature, Height Blend, Normal Blend, Normal Combine, Normal From Height, Normal Invert, Normal To Height
 - **Shapes:** Circle, Cone, Ellipse, Line, Paraboloid, Polygon, Pyramid, Rectangle, Star
 - **Simulation:** Hydraulic Erosion
-- **Transform:** Crop, Directional Warp, Flip Horizontal, Flip Vertical, Kaleidoscope, Make Tile, Mirror, Perspective, Polar Coordinates, Resize, Resize Exact, Resize Fill, Rotate, Rotate 180, Rotate 270, Rotate 90, Seam Carve, Spherize, Swirl, Tiling Transform, Warp
+- **Transform:** Crop, Directional Warp, Flip Horizontal, Flip Vertical, Kaleidoscope, Make Tile, Mirror, Perspective, Polar Coordinates, Resize, Resize Exact, Resize Fill, Rotate, Rotate 180, Rotate 270, Rotate 90, Seam Carve, Spherize, Swirl, Transform, Warp
 
 ### Logic (22)
 
