@@ -93,10 +93,19 @@ pub fn render_tree(
             }
         }
 
-        // Subtle chrome strip matching the menu bar so the gaps read as part of
-        // the app frame rather than as harsh separators.
+        // Chrome strip matching the menu bar so the gaps read as part of the
+        // app frame rather than as harsh separators; nudged toward the
+        // selected-button accent while hovered/dragged so the strip a user is
+        // about to grab (or is grabbing) stands out slightly.
+        let strip_color = if response.dragged() {
+            colors.menu_bar.lerp_to_gamma(colors.menu_bar_button_selected, 0.6)
+        } else if response.hovered() {
+            colors.menu_bar.lerp_to_gamma(colors.menu_bar_button_selected, 0.3)
+        } else {
+            colors.menu_bar
+        };
         ui.painter()
-            .rect_filled(splitter.rect, CornerRadius::ZERO, colors.menu_bar);
+            .rect_filled(splitter.rect, CornerRadius::ZERO, strip_color);
     }
 
     // --- leaves ------------------------------------------------------------

@@ -103,7 +103,9 @@ impl eframe::App for App {
             }
 
             if let Some(current_program) = &self.current_program {
+                let has_preview_2d_panel = self.has_preview_2d_panel();
                 if let Some(program) = self.programs.get_mut(current_program) {
+                    program.has_preview_2d_panel = has_preview_2d_panel;
                     program.update(&ctx, ui);
                     let resp = panel_view::render_tree(
                         ui,
@@ -358,6 +360,21 @@ impl App {
             .into_iter()
             .find(|(id, _)| *id == focus.leaf)
             .map(|(_, kind)| kind)
+    }
+
+    /// Whether any panel tree (main window or a secondary window) currently
+    /// has a Preview2D leaf open.
+    fn has_preview_2d_panel(&self) -> bool {
+        let is_preview_2d = |leaves: &[(LeafId, PanelKind)]| {
+            leaves.iter().any(|(_, kind)| *kind == PanelKind::Preview2D)
+        };
+        self.main_tree
+            .as_ref()
+            .is_some_and(|t| is_preview_2d(&t.leaves()))
+            || self
+                .secondary_windows
+                .iter()
+                .any(|w| is_preview_2d(&w.tree.leaves()))
     }
 
     /// Union of live leaf ids across the main tree and all secondary windows.

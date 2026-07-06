@@ -59,7 +59,6 @@ impl GraphEditor {
         editing_node_id: &Option<String>,
         viewing_node_id_index: &Option<(String, usize)>,
         theme: &Theme,
-        is_mouse_over_viewer: bool,
         is_popup_open: bool,
     ) -> GraphEditorResponse {
         puffin::profile_scope!("graph panel.show()");
@@ -81,7 +80,7 @@ impl GraphEditor {
             ui.allocate_rect(editor_rect, egui::Sense::click().union(egui::Sense::drag()).union(egui::Sense::hover()));
         //let panel_cursor_position = Pos2::new(cursor_position.x - editor_rect.min.x, cursor_position.y - editor_rect.min.y);
 
-        if editor_rect.contains(cursor_position) && !is_mouse_over_viewer && !is_popup_open {
+        if editor_rect.contains(cursor_position) && !is_popup_open {
             ui.ctx().input(|input_state| {
                 // let mouse_x = cursor_position.x - editor_rect.min.x;
                 // let mouse_y = cursor_position.y - editor_rect.min.y;

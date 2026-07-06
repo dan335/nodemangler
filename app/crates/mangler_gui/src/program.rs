@@ -51,6 +51,11 @@ pub struct Program {
     node_search_popup: NodeSearchPopup,
     /// Temporary status message shown on screen (text, expiry time).
     status_message: Option<(String, std::time::Instant)>,
+    /// Whether any panel tree (main window or a secondary window) currently
+    /// has a Preview2D leaf open. Recomputed by `App` every frame from the
+    /// union of trees — `Program` cannot see the panel tree itself — and used
+    /// to hint the user when viewing a node with nowhere to show it.
+    pub has_preview_2d_panel: bool,
     /// Per-leaf 2D preview pan/zoom state, keyed by panel leaf id.
     viewers_2d: HashMap<LeafId, ImageViewer>,
     /// Per-leaf 3D preview state (arcball camera + material channel bindings).
@@ -89,6 +94,7 @@ impl Program {
                 graph_run_time: Duration::ZERO,
                 node_search_popup: NodeSearchPopup::new(),
                 status_message: None,
+                has_preview_2d_panel: false,
                 viewers_2d: HashMap::new(),
                 viewers_3d: HashMap::new(),
             }),
@@ -516,10 +522,7 @@ impl Program {
         match kind {
             PanelKind::NodeList => self.show_node_list_panel(ui, theme),
             PanelKind::Settings => self.show_settings_panel(ui, theme),
-            // The floating viewer is gone, so nothing can be "over the viewer";
-            // `is_mouse_over_viewer` is always false. (The dead param is removed
-            // from `GraphEditor::show` in a later cleanup phase.)
-            PanelKind::Graph => self.show_graph_panel(ui, theme, false),
+            PanelKind::Graph => self.show_graph_panel(ui, theme),
             PanelKind::Preview2D => self.show_preview_2d_panel(ui, leaf_id, theme),
             PanelKind::Preview3D => self.show_preview_3d_panel(ui, leaf_id, theme),
         }
@@ -626,7 +629,7 @@ impl Program {
         });
     }
 
-    fn show_graph_panel(&mut self, ui: &mut egui::Ui, theme: &Theme, is_mouse_over_viewer: bool) {
+    fn show_graph_panel(&mut self, ui: &mut egui::Ui, theme: &Theme) {
         puffin::profile_scope!("graph panel");
 
         let cursor_primary_down: bool = ui.ctx().input(|i| i.pointer.primary_down());
@@ -638,7 +641,6 @@ impl Program {
             &self.editing_node_id,
             &self.viewing_node_id_index,
             theme,
-            is_mouse_over_viewer,
             self.node_search_popup.is_open,
         );
 
@@ -994,9 +996,12 @@ impl Program {
 
     pub fn view_node(&mut self, node_id: String, output_index: usize) {
         self.viewing_node_id_index = Some((node_id, output_index));
-        // TODO(panel-system): toast/hint when no Preview2D panel is open so the
-        // user knows to switch a panel's corner menu to 2D. Program can't see
-        // the tree, so this is wired at the app level in a later phase.
+        if !self.has_preview_2d_panel {
+            self.status_message = Some((
+                "no 2D preview panel open — use a panel's corner menu to add one".to_string(),
+                std::time::Instant::now(),
+            ));
+        }
         //self.needs_to_save = true;
     }
 
