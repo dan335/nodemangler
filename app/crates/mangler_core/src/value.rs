@@ -23,6 +23,18 @@ use crate::{
 /// Dimensions (width, height) used when generating thumbnail previews.
 pub const THUMBNAIL_SIZE: [u32; 2] = [150, 150];
 
+/// Maximum characters kept in a text thumbnail. The UI wraps and elides
+/// further; this just keeps arbitrarily long strings out of the messages.
+pub const THUMBNAIL_TEXT_MAX_CHARS: usize = 300;
+
+/// Truncate `text` to [`THUMBNAIL_TEXT_MAX_CHARS`], appending `…` if cut.
+fn truncate_thumbnail_text(text: &str) -> String {
+    match text.char_indices().nth(THUMBNAIL_TEXT_MAX_CHARS) {
+        Some((byte_index, _)) => format!("{}…", &text[..byte_index]),
+        None => text.to_string(),
+    }
+}
+
 /// The universal data type carried on every node input and output.
 ///
 /// Values flow through the graph along connections, are converted between
@@ -110,8 +122,10 @@ impl Value {
             Value::Bool(value) => Some(Thumbnail::Text(value.to_string())),
             Value::Integer(value) => Some(Thumbnail::Text(value.to_string())),
             Value::Decimal(value) => Some(Thumbnail::Text(format!("{:?}", value))),
-            Value::Text(value) => Some(Thumbnail::Text(value.clone())),
-            Value::Path(path) => Some(Thumbnail::Text(path.to_str().unwrap_or("none").to_string())),
+            Value::Text(value) => Some(Thumbnail::Text(truncate_thumbnail_text(value))),
+            Value::Path(path) => Some(Thumbnail::Text(truncate_thumbnail_text(
+                path.to_str().unwrap_or("none"),
+            ))),
             Value::FilterType(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::ColorFormat(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::Trigger => Some(Thumbnail::Text("trigger".to_string())),

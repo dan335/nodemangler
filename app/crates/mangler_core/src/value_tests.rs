@@ -1438,3 +1438,39 @@ fn test_image_file_extensions_reflect_decodability() {
     assert!(extensions.contains(&"psd".to_string()));
     assert!(extensions.contains(&"hdr".to_string()));
 }
+
+#[test]
+fn test_text_thumbnail_truncates_long_text() {
+    let long = "x".repeat(THUMBNAIL_TEXT_MAX_CHARS + 50);
+    let thumb = Value::Text(long).create_thumbnail().unwrap();
+    match thumb {
+        Thumbnail::Text(t) => {
+            assert_eq!(t.chars().count(), THUMBNAIL_TEXT_MAX_CHARS + 1);
+            assert!(t.ends_with('…'));
+        }
+        other => panic!("Expected Text thumbnail, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_text_thumbnail_short_text_unchanged() {
+    let thumb = Value::Text("hello".to_string()).create_thumbnail().unwrap();
+    match thumb {
+        Thumbnail::Text(t) => assert_eq!(t, "hello"),
+        other => panic!("Expected Text thumbnail, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_text_thumbnail_truncation_respects_char_boundaries() {
+    // Multi-byte chars: truncation must not slice mid-codepoint.
+    let long = "é".repeat(THUMBNAIL_TEXT_MAX_CHARS + 10);
+    let thumb = Value::Text(long).create_thumbnail().unwrap();
+    match thumb {
+        Thumbnail::Text(t) => {
+            assert_eq!(t.chars().count(), THUMBNAIL_TEXT_MAX_CHARS + 1);
+            assert!(t.ends_with('…'));
+        }
+        other => panic!("Expected Text thumbnail, got {:?}", other),
+    }
+}

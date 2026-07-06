@@ -126,7 +126,7 @@ impl App {
             programs: programs,
             current_program: current_program,
             theme: theme,
-            view_in_separate_window: true,
+            view_in_separate_window: false,
         }
     }
 }

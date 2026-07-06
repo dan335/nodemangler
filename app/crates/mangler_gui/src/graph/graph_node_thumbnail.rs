@@ -1,5 +1,5 @@
 use crate::themes::theme::Theme;
-use crate::{graph_to_view_space_pos2, graph_to_view_space};
+use crate::{graph_to_view_space_pos2, graph_to_view_space, NODE_SIZE};
 use eframe::epaint::{Color32, FontId};
 use eframe::{egui, emath::Align2};
 use egui::{Pos2, Rect, Vec2};
@@ -88,12 +88,32 @@ impl GraphNodeThumbnail {
                 );
             },
             GraphNodeThumbnail::Text(txt) => {
-                ui.painter().text(
-                    Pos2::new(top_center_pos.x, top_center_pos.y + 10.0),
-                    Align2::CENTER_TOP,
-                    txt,
-                    FontId::proportional(graph_to_view_space(graph_zoom, 20.0)),
-                    Color32::from(theme.get().override_text_color),
+                // Wrap at the node width and cap the row count so long text
+                // stays a compact block under the node instead of one huge
+                // line. Short values (numbers, enums) keep the large font.
+                let wrap_width = graph_to_view_space(graph_zoom, NODE_SIZE.x);
+                let is_short = txt.chars().count() <= 16 && !txt.contains('\n');
+                let font_size =
+                    graph_to_view_space(graph_zoom, if is_short { 20.0 } else { 11.0 });
+                let color = Color32::from(theme.get().override_text_color);
+
+                let mut job = egui::text::LayoutJob::simple(
+                    txt.clone(),
+                    FontId::proportional(font_size),
+                    color,
+                    wrap_width,
+                );
+                job.halign = egui::Align::Center;
+                job.wrap.max_rows = 8;
+
+                let galley = ui.painter().layout_job(job);
+                ui.painter().galley(
+                    Pos2::new(
+                        top_center_pos.x,
+                        top_center_pos.y + graph_to_view_space(graph_zoom, 10.0),
+                    ),
+                    galley,
+                    color,
                 );
             },
             GraphNodeThumbnail::Color { texture_handle } => {
