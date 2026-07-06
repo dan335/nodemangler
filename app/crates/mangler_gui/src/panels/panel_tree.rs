@@ -89,7 +89,6 @@ pub struct TreeLayout {
 
 impl PanelTree {
     /// A tree consisting of a single leaf.
-    #[allow(dead_code)] // used by secondary windows in Phase 5
     pub fn single(kind: PanelKind, id: LeafId) -> Self {
         Self {
             root: PanelNode::Leaf { id, kind },

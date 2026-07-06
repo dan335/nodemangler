@@ -2,8 +2,10 @@ use crate::{
     app_menu::app_menu::AppMenu,
     config::AppConfig,
     panels::{
-        panel_tree::{LeafId, PanelTree, SplitDirection},
+        panel_kind::PanelKind,
+        panel_tree::{CloseError, LeafId, PanelTree, SplitDirection},
         panel_view::{self, PanelAction, PanelFocus, PanelWindowId},
+        panel_windows::{self, SecondaryWindow},
     },
     themes::theme::{set_theme, Theme},
     APP_MENU_HEIGHT,
@@ -31,6 +33,10 @@ pub struct App {
     next_leaf_id: LeafId,
     /// Last-hovered panel — the target for split/close actions.
     focused: Option<PanelFocus>,
+    /// Secondary OS windows, each hosting its own panel tree (session-only).
+    secondary_windows: Vec<SecondaryWindow>,
+    /// Monotonic allocator for secondary window ids.
+    next_window_id: u64,
 }
 
 impl eframe::App for App {
@@ -109,7 +115,41 @@ impl eframe::App for App {
                         &self.theme,
                     );
                     program.show_overlays(&ctx, ui, &self.theme, &resp.graph_rects, work_rect);
+
+                    // Secondary windows render the same current program. These
+                    // App fields are all disjoint from `program`, so borrow
+                    // them directly (no method calls on `self` here).
+                    for win in &mut self.secondary_windows {
+                        panel_windows::show_secondary_window(
+                            &ctx,
+                            win,
+                            &mut self.focused,
+                            program,
+                            &self.theme,
+                        );
+                    }
                 }
+            }
+
+            // Reap secondary windows whose titlebar close button was pressed.
+            if self.secondary_windows.iter().any(|w| w.close_requested) {
+                // Drop focus if it points into a window that is going away.
+                if let Some(PanelFocus {
+                    window: PanelWindowId::Secondary(wid),
+                    ..
+                }) = self.focused
+                {
+                    if self
+                        .secondary_windows
+                        .iter()
+                        .any(|w| w.id == wid && w.close_requested)
+                    {
+                        self.focused = None;
+                    }
+                }
+                self.secondary_windows.retain(|w| !w.close_requested);
+                // Prune viewers to the leaves that remain live.
+                self.prune_all_viewers();
             }
 
             if let Some(program_id_to_close) = bar_response.program_to_close {
@@ -178,28 +218,34 @@ impl App {
             main_tree: None,
             next_leaf_id: 0,
             focused: None,
+            secondary_windows: Vec::new(),
+            next_window_id: 0,
         }
     }
 
-    /// Apply a panel-management command from the settings menu to the main
-    /// window's tree, targeting the focused panel (falling back to the first
-    /// leaf) and pruning per-leaf viewer state when leaves disappear.
+    /// Apply a panel-management command from the settings menu. Split/close
+    /// act on the focused panel — which may live in a secondary window —
+    /// falling back to the main tree's first leaf. SaveLayoutAsDefault and
+    /// ResetLayout are main-window-only by design.
     fn handle_panel_action(&mut self, action: PanelAction, work_rect: Rect) {
-        let Some(tree) = self.main_tree.as_mut() else {
-            return;
-        };
-
-        // Resolve the target leaf: the focused panel if it still exists in the
-        // main window, else the first leaf.
-        let target = self
-            .focused
-            .filter(|f| f.window == PanelWindowId::Main && tree.contains(f.leaf))
-            .map(|f| f.leaf)
-            .unwrap_or_else(|| tree.first_leaf());
-
         match action {
             PanelAction::NewWindow => {
-                // TODO(panel-system Phase 5): create a secondary OS window panel.
+                // Initial kind = focused panel's kind if it still exists, else
+                // a 2D preview.
+                let kind = self.focused_kind().unwrap_or(PanelKind::Preview2D);
+                let leaf = self.next_leaf_id;
+                self.next_leaf_id += 1;
+                let id = self.next_window_id;
+                self.next_window_id += 1;
+                self.secondary_windows.push(SecondaryWindow {
+                    id,
+                    tree: PanelTree::single(kind, leaf),
+                    close_requested: false,
+                });
+                self.focused = Some(PanelFocus {
+                    window: PanelWindowId::Secondary(id),
+                    leaf,
+                });
             }
             PanelAction::SplitHorizontal | PanelAction::SplitVertical => {
                 let direction = if matches!(action, PanelAction::SplitHorizontal) {
@@ -207,38 +253,131 @@ impl App {
                 } else {
                     SplitDirection::Column
                 };
+                let Some((window, target)) = self.resolve_target() else {
+                    return;
+                };
                 let new_id = self.next_leaf_id;
                 self.next_leaf_id += 1;
-                tree.split(target, direction, new_id);
-                self.focused = Some(PanelFocus {
-                    window: PanelWindowId::Main,
-                    leaf: target,
-                });
-            }
-            PanelAction::ClosePanel => {
-                // `Err(IsRoot)` (last panel) and `Err(NotFound)` are no-ops.
-                if tree.close(target).is_ok() {
-                    self.focused = None;
-                    let live: HashSet<LeafId> =
-                        tree.leaves().iter().map(|(id, _)| *id).collect();
-                    for program in self.programs.values_mut() {
-                        program.prune_viewers(&live);
+                if let Some(tree) = self.tree_mut(window) {
+                    if tree.split(target, direction, new_id) {
+                        self.focused = Some(PanelFocus {
+                            window,
+                            leaf: target,
+                        });
                     }
                 }
             }
-            PanelAction::SaveLayoutAsDefault => {
-                let mut config = AppConfig::load();
-                config.default_layout = Some(tree.root.clone());
-                config.save();
-            }
-            PanelAction::ResetLayout => {
-                *tree = PanelTree::system_default(work_rect.width(), &mut self.next_leaf_id);
-                self.focused = None;
-                let live: HashSet<LeafId> = tree.leaves().iter().map(|(id, _)| *id).collect();
-                for program in self.programs.values_mut() {
-                    program.prune_viewers(&live);
+            PanelAction::ClosePanel => {
+                let Some((window, target)) = self.resolve_target() else {
+                    return;
+                };
+                let result = match self.tree_mut(window) {
+                    Some(tree) => tree.close(target),
+                    None => return,
+                };
+                match result {
+                    Ok(()) => {
+                        self.focused = None;
+                        self.prune_all_viewers();
+                    }
+                    Err(CloseError::IsRoot) => {
+                        // Closing a secondary window's last panel closes the
+                        // window; on the main window it is a no-op.
+                        if let PanelWindowId::Secondary(wid) = window {
+                            if let Some(win) =
+                                self.secondary_windows.iter_mut().find(|w| w.id == wid)
+                            {
+                                win.close_requested = true;
+                            }
+                        }
+                    }
+                    Err(CloseError::NotFound) => {}
                 }
             }
+            PanelAction::SaveLayoutAsDefault => {
+                if let Some(tree) = &self.main_tree {
+                    let mut config = AppConfig::load();
+                    config.default_layout = Some(tree.root.clone());
+                    config.save();
+                }
+            }
+            PanelAction::ResetLayout => {
+                self.main_tree =
+                    Some(PanelTree::system_default(work_rect.width(), &mut self.next_leaf_id));
+                self.focused = None;
+                self.prune_all_viewers();
+            }
+        }
+    }
+
+    /// The window + leaf a split/close action targets: the focused panel if it
+    /// still exists, else the main tree's first leaf.
+    fn resolve_target(&self) -> Option<(PanelWindowId, LeafId)> {
+        if let Some(focus) = self.focused {
+            let exists = match focus.window {
+                PanelWindowId::Main => self
+                    .main_tree
+                    .as_ref()
+                    .is_some_and(|t| t.contains(focus.leaf)),
+                PanelWindowId::Secondary(wid) => self
+                    .secondary_windows
+                    .iter()
+                    .any(|w| w.id == wid && w.tree.contains(focus.leaf)),
+            };
+            if exists {
+                return Some((focus.window, focus.leaf));
+            }
+        }
+        self.main_tree
+            .as_ref()
+            .map(|t| (PanelWindowId::Main, t.first_leaf()))
+    }
+
+    /// The panel tree owned by a window, if it still exists.
+    fn tree_mut(&mut self, window: PanelWindowId) -> Option<&mut PanelTree> {
+        match window {
+            PanelWindowId::Main => self.main_tree.as_mut(),
+            PanelWindowId::Secondary(wid) => self
+                .secondary_windows
+                .iter_mut()
+                .find(|w| w.id == wid)
+                .map(|w| &mut w.tree),
+        }
+    }
+
+    /// The kind of the focused leaf, if the focused panel still exists.
+    fn focused_kind(&self) -> Option<PanelKind> {
+        let focus = self.focused?;
+        let leaves = match focus.window {
+            PanelWindowId::Main => self.main_tree.as_ref()?.leaves(),
+            PanelWindowId::Secondary(wid) => {
+                self.secondary_windows.iter().find(|w| w.id == wid)?.tree.leaves()
+            }
+        };
+        leaves
+            .into_iter()
+            .find(|(id, _)| *id == focus.leaf)
+            .map(|(_, kind)| kind)
+    }
+
+    /// Union of live leaf ids across the main tree and all secondary windows.
+    fn live_leaf_ids(&self) -> HashSet<LeafId> {
+        let mut live = HashSet::new();
+        if let Some(tree) = &self.main_tree {
+            live.extend(tree.leaves().iter().map(|(id, _)| *id));
+        }
+        for win in &self.secondary_windows {
+            live.extend(win.tree.leaves().iter().map(|(id, _)| *id));
+        }
+        live
+    }
+
+    /// Prune per-leaf viewer state in every program to the currently live
+    /// leaves (main tree + all secondary windows).
+    fn prune_all_viewers(&mut self) {
+        let live = self.live_leaf_ids();
+        for program in self.programs.values_mut() {
+            program.prune_viewers(&live);
         }
     }
 }

@@ -19,8 +19,7 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PanelWindowId {
     Main,
-    /// A secondary OS window. Wired up in Phase 5; unused for now.
-    #[allow(dead_code)]
+    /// A secondary OS window.
     Secondary(u64),
 }
 
