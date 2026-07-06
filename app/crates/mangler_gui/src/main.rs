@@ -8,6 +8,7 @@ mod app_menu;
 mod config;
 mod graph;
 mod node_menu;
+mod panels;
 mod program;
 mod settings;
 mod themes;
