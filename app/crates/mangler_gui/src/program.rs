@@ -31,9 +31,8 @@ use crate::{
         image_viewer::ImageViewer,
         preview_2d,
         preview_3d::{self, Preview3dPanel},
-        view_panel::ViewPanel,
     },
-    ManglerError, APP_MENU_HEIGHT, NODE_MENU_WIDTH, NODE_SIZE, SETTINGS_PANEL_WIDTH,
+    ManglerError, NODE_SIZE,
 };
 
 pub struct Program {
@@ -43,7 +42,6 @@ pub struct Program {
     rx_node_changed: mpsc::Receiver<NodeChangedMessage>,
     rx_graph_changed: mpsc::Receiver<GraphChangedMessage>,
     graph_editor: GraphEditor,
-    view_panel: ViewPanel,
     menu_panel: MenuPanel,
     editing_node_id: Option<String>,
     viewing_node_id_index: Option<(String, usize)>, // id and output index
@@ -53,13 +51,9 @@ pub struct Program {
     node_search_popup: NodeSearchPopup,
     /// Temporary status message shown on screen (text, expiry time).
     status_message: Option<(String, std::time::Instant)>,
-    // Consumed by the panel-tree renderer in Phase 3; only touched via the
-    // (currently unused) `show_panel` path until then.
     /// Per-leaf 2D preview pan/zoom state, keyed by panel leaf id.
-    #[allow(dead_code)]
     viewers_2d: HashMap<LeafId, ImageViewer>,
     /// Per-leaf 3D preview state (arcball camera + material channel bindings).
-    #[allow(dead_code)]
     viewers_3d: HashMap<LeafId, Preview3dPanel>,
 }
 
@@ -84,7 +78,6 @@ impl Program {
                 tx_change_graph,
                 app,
                 graph_editor: GraphEditor::new(),
-                view_panel: ViewPanel::new(),
                 menu_panel: MenuPanel::new(),
                 dragging_menu_button: MenuItemsResult::default(),
                 editing_node_id: None,
@@ -512,9 +505,7 @@ impl Program {
     }
 
     /// Render one panel's content given its leaf id and kind. Called once per
-    /// visible leaf per frame by the panel-tree renderer (Phase 3); the
-    /// temporary `show` wrapper drives the fixed three-column layout for now.
-    #[allow(dead_code)] // wired up by the panel-tree renderer in Phase 3
+    /// visible leaf per frame by the panel-tree renderer.
     pub fn show_panel(
         &mut self,
         ui: &mut egui::Ui,
@@ -525,9 +516,9 @@ impl Program {
         match kind {
             PanelKind::NodeList => self.show_node_list_panel(ui, theme),
             PanelKind::Settings => self.show_settings_panel(ui, theme),
-            // The real `is_mouse_over_viewer` is only known in the temporary
-            // wrapper (which owns the floating ViewPanel); the panel-tree path
-            // has no floating viewer, so it passes `false`.
+            // The floating viewer is gone, so nothing can be "over the viewer";
+            // `is_mouse_over_viewer` is always false. (The dead param is removed
+            // from `GraphEditor::show` in a later cleanup phase.)
             PanelKind::Graph => self.show_graph_panel(ui, theme, false),
             PanelKind::Preview2D => self.show_preview_2d_panel(ui, leaf_id, theme),
             PanelKind::Preview3D => self.show_preview_3d_panel(ui, leaf_id, theme),
@@ -711,7 +702,6 @@ impl Program {
         }
     }
 
-    #[allow(dead_code)] // reached via `show_panel` in Phase 3
     fn show_preview_2d_panel(&mut self, ui: &mut egui::Ui, leaf_id: LeafId, theme: &Theme) {
         // Destructure so the per-leaf viewer and the graph nodes can be
         // borrowed simultaneously (disjoint fields).
@@ -742,7 +732,6 @@ impl Program {
         preview_2d::show_empty(ui, theme);
     }
 
-    #[allow(dead_code)] // reached via `show_panel` in Phase 3
     fn show_preview_3d_panel(&mut self, ui: &mut egui::Ui, leaf_id: LeafId, theme: &Theme) {
         let Self {
             viewers_3d,
@@ -756,7 +745,6 @@ impl Program {
 
     /// Discard per-leaf viewer state for leaves that no longer exist. 3D
     /// viewers hold GL resources, so pruning frees them promptly.
-    #[allow(dead_code)] // called by the panel-tree renderer in Phase 3
     pub fn prune_viewers(&mut self, live: &HashSet<LeafId>) {
         self.viewers_2d.retain(|id, _| live.contains(id));
         self.viewers_3d.retain(|id, _| live.contains(id));
@@ -968,97 +956,6 @@ impl Program {
         );
     }
 
-    // TODO(panel-system Phase 3): replaced by panel tree rendering. This
-    // wrapper preserves today's fixed three-column layout (node list | graph |
-    // settings) plus the floating ViewPanel so `app.rs` stays untouched this
-    // phase.
-    pub fn show(
-        &mut self,
-        ctx: &egui::Context,
-        ui: &mut egui::Ui,
-        theme: &Theme,
-        view_in_separate_window: bool,
-    ) {
-        puffin::profile_scope!("central panel show");
-
-        self.update(ctx, ui);
-
-        let app_rect = ctx.content_rect();
-
-        let menu_panel_rect = Rect::from_two_pos(
-            Pos2::new(0.0, APP_MENU_HEIGHT),
-            Pos2::new(NODE_MENU_WIDTH, app_rect.height()),
-        );
-
-        let node_graph_rect = Rect::from_two_pos(
-            Pos2::new(NODE_MENU_WIDTH, APP_MENU_HEIGHT),
-            Pos2::new(app_rect.width() - SETTINGS_PANEL_WIDTH, app_rect.height()),
-        );
-
-        let settings_panel_rect = Rect::from_two_pos(
-            Pos2::new(app_rect.width() - SETTINGS_PANEL_WIDTH, APP_MENU_HEIGHT),
-            Pos2::new(app_rect.width(), app_rect.height()),
-        );
-
-        // -------------------------
-        // menu panel
-
-        ui.scope_builder(egui::UiBuilder::new().max_rect(menu_panel_rect), |ui| {
-            self.show_node_list_panel(ui, theme);
-        });
-
-        // -------------------------
-        // settings panel - top right
-
-        ui.scope_builder(egui::UiBuilder::new().max_rect(settings_panel_rect), |ui| {
-            self.show_settings_panel(ui, theme);
-        });
-
-        // -------------------------
-        // floating view panel (dies in Phase 3)
-
-        let mut is_mouse_over_viewer = false;
-
-        if let Some((viewing_node_id, graph_node_output_index)) = &self.viewing_node_id_index {
-            if let Some(graph_node) = self.graph_editor.graph_nodes.get(viewing_node_id) {
-                let view_panel_response = self.view_panel.show(
-                    ctx,
-                    graph_node,
-                    *graph_node_output_index,
-                    theme,
-                    view_in_separate_window,
-                    self.pointer_position,
-                    &self.graph_editor.graph_nodes,
-                );
-
-                if !view_in_separate_window && view_panel_response.is_mouse_over {
-                    is_mouse_over_viewer = true;
-                }
-
-                if self.view_panel.close_window {
-                    self.viewing_node_id_index = None;
-                }
-            }
-        }
-
-        // -------------------------
-        // graph editor
-
-        ui.scope_builder(egui::UiBuilder::new().max_rect(node_graph_rect), |ui| {
-            self.show_graph_panel(ui, theme, is_mouse_over_viewer);
-        });
-
-        // -------------------------
-        // overlays over the whole work area
-
-        let work_rect = Rect::from_two_pos(
-            Pos2::new(0.0, APP_MENU_HEIGHT),
-            Pos2::new(app_rect.width(), app_rect.height()),
-        );
-
-        self.show_overlays(ctx, ui, theme, &[node_graph_rect], work_rect);
-    }
-
     pub fn add_node(
         &mut self,
         node_type: AddNodeType,
@@ -1097,6 +994,9 @@ impl Program {
 
     pub fn view_node(&mut self, node_id: String, output_index: usize) {
         self.viewing_node_id_index = Some((node_id, output_index));
+        // TODO(panel-system): toast/hint when no Preview2D panel is open so the
+        // user knows to switch a panel's corner menu to 2D. Program can't see
+        // the tree, so this is wired at the app level in a later phase.
         //self.needs_to_save = true;
     }
 

@@ -1,8 +1,17 @@
-use crate::{app_menu::app_menu::AppMenu, config::AppConfig, themes::theme::{Theme, set_theme}};
+use crate::{
+    app_menu::app_menu::AppMenu,
+    config::AppConfig,
+    panels::{
+        panel_tree::{LeafId, PanelTree, SplitDirection},
+        panel_view::{self, PanelAction, PanelFocus, PanelWindowId},
+    },
+    themes::theme::{set_theme, Theme},
+    APP_MENU_HEIGHT,
+};
 use eframe::egui;
-use epaint::CornerRadius;
+use epaint::{pos2, CornerRadius, Rect};
 use crate::program::Program;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub const PROFILE: bool = false;
 // pub const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
@@ -15,7 +24,13 @@ pub struct App {
     programs: HashMap<String, Program>,
     current_program: Option<String>,
     theme: Theme,
-    view_in_separate_window: bool,
+    /// The main window's panel layout. Lazily initialized on first frame once
+    /// the work rect is known (config loading arrives in Phase 4).
+    main_tree: Option<PanelTree>,
+    /// Monotonic allocator for panel leaf ids across all windows.
+    next_leaf_id: LeafId,
+    /// Last-hovered panel — the target for split/close actions.
+    focused: Option<PanelFocus>,
 }
 
 impl eframe::App for App {
@@ -35,7 +50,7 @@ impl eframe::App for App {
                 self.theme.get().panel_fill,
             ));
 
-            let bar_response = self.app_menu.show(&ctx, ui, &self.programs, &self.current_program, &self.theme, &mut self.view_in_separate_window);
+            let bar_response = self.app_menu.show(&ctx, ui, &self.programs, &self.current_program, &self.theme);
 
             if let Some(new_program) = bar_response.new_program {
                 let program_id = new_program.app.id.clone();
@@ -57,9 +72,35 @@ impl eframe::App for App {
                 config.save();
             }
 
+            // Work area = everything below the menu bar. Same source the old
+            // fixed layout used (`ctx.content_rect()`).
+            let content_rect = ctx.content_rect();
+            let work_rect =
+                Rect::from_min_max(pos2(content_rect.left(), APP_MENU_HEIGHT), content_rect.max);
+
+            // Lazy tree init: the system default needs the work width.
+            if self.main_tree.is_none() {
+                self.main_tree =
+                    Some(PanelTree::system_default(work_rect.width(), &mut self.next_leaf_id));
+            }
+
+            if let Some(action) = bar_response.panel_action {
+                self.handle_panel_action(action, work_rect);
+            }
+
             if let Some(current_program) = &self.current_program {
                 if let Some(program) = self.programs.get_mut(current_program) {
-                    program.show(&ctx, ui, &self.theme, self.view_in_separate_window);
+                    program.update(&ctx, ui);
+                    let resp = panel_view::render_tree(
+                        ui,
+                        self.main_tree.as_mut().unwrap(),
+                        work_rect,
+                        PanelWindowId::Main,
+                        &mut self.focused,
+                        program,
+                        &self.theme,
+                    );
+                    program.show_overlays(&ctx, ui, &self.theme, &resp.graph_rects, work_rect);
                 }
             }
 
@@ -126,7 +167,68 @@ impl App {
             programs: programs,
             current_program: current_program,
             theme: theme,
-            view_in_separate_window: false,
+            main_tree: None,
+            next_leaf_id: 0,
+            focused: None,
+        }
+    }
+
+    /// Apply a panel-management command from the settings menu to the main
+    /// window's tree, targeting the focused panel (falling back to the first
+    /// leaf) and pruning per-leaf viewer state when leaves disappear.
+    fn handle_panel_action(&mut self, action: PanelAction, work_rect: Rect) {
+        let Some(tree) = self.main_tree.as_mut() else {
+            return;
+        };
+
+        // Resolve the target leaf: the focused panel if it still exists in the
+        // main window, else the first leaf.
+        let target = self
+            .focused
+            .filter(|f| f.window == PanelWindowId::Main && tree.contains(f.leaf))
+            .map(|f| f.leaf)
+            .unwrap_or_else(|| tree.first_leaf());
+
+        match action {
+            PanelAction::NewWindow => {
+                // TODO(panel-system Phase 5): create a secondary OS window panel.
+            }
+            PanelAction::SplitHorizontal | PanelAction::SplitVertical => {
+                let direction = if matches!(action, PanelAction::SplitHorizontal) {
+                    SplitDirection::Row
+                } else {
+                    SplitDirection::Column
+                };
+                let new_id = self.next_leaf_id;
+                self.next_leaf_id += 1;
+                tree.split(target, direction, new_id);
+                self.focused = Some(PanelFocus {
+                    window: PanelWindowId::Main,
+                    leaf: target,
+                });
+            }
+            PanelAction::ClosePanel => {
+                // `Err(IsRoot)` (last panel) and `Err(NotFound)` are no-ops.
+                if tree.close(target).is_ok() {
+                    self.focused = None;
+                    let live: HashSet<LeafId> =
+                        tree.leaves().iter().map(|(id, _)| *id).collect();
+                    for program in self.programs.values_mut() {
+                        program.prune_viewers(&live);
+                    }
+                }
+            }
+            PanelAction::SaveLayoutAsDefault => {
+                // TODO(panel-system Phase 4): persist the layout to config.
+            }
+            PanelAction::ResetLayout => {
+                *tree = PanelTree::system_default(work_rect.width(), &mut self.next_leaf_id);
+                self.focused = None;
+                let live: HashSet<LeafId> = tree.leaves().iter().map(|(id, _)| *id).collect();
+                for program in self.programs.values_mut() {
+                    program.prune_viewers(&live);
+                }
+            }
         }
     }
 }

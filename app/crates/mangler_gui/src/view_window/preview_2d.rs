@@ -1,6 +1,3 @@
-// Consumed by the panel-tree renderer in Phase 3; unused behind the temporary
-// `Program::show` wrapper until then.
-#![allow(dead_code)]
 //! 2D preview content: renders a single node output into an arbitrary `Ui`.
 //!
 //! Free functions (no owning panel struct) so the caller keeps the per-leaf

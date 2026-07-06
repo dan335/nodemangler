@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use eframe::egui::{self, Layout};
 use epaint::{CornerRadius, Pos2, Rect};
 
-use crate::{program::Program, themes::theme::Theme, APP_MENU_HEIGHT};
+use crate::{
+    panels::panel_view::PanelAction, program::Program, themes::theme::Theme, APP_MENU_HEIGHT,
+};
 
 pub struct AppMenu;
 
@@ -19,7 +21,6 @@ impl AppMenu {
         programs: &HashMap<String, Program>,
         current_program: &Option<String>,
         current_theme: &Theme,
-        view_in_separate_window: &mut bool,
     ) -> BarResponse {
         // save current theme
         // show that we know which to highlight
@@ -35,14 +36,8 @@ impl AppMenu {
             current_theme.get().menu_bar,
         ));
 
-        let bar_response = self.show_menu(
-            ui,
-            programs,
-            current_program,
-            app_menu_rect,
-            current_theme,
-            view_in_separate_window,
-        );
+        let bar_response =
+            self.show_menu(ui, programs, current_program, app_menu_rect, current_theme);
 
         bar_response
     }
@@ -54,7 +49,6 @@ impl AppMenu {
         current_program: &Option<String>,
         app_menu_rect: Rect,
         current_theme: &Theme,
-        view_in_separate_window: &mut bool,
     ) -> BarResponse {
         let mut bar_response = BarResponse::new();
 
@@ -107,7 +101,37 @@ impl AppMenu {
                                     }
                                     //});
                                 });
-                                ui.checkbox(view_in_separate_window, "viewer in separate window");
+
+                                ui.separator();
+
+                                if ui.button("create separate window panel").clicked() {
+                                    bar_response.panel_action = Some(PanelAction::NewWindow);
+                                    ui.close();
+                                }
+                                if ui.button("split horizontal").clicked() {
+                                    bar_response.panel_action = Some(PanelAction::SplitHorizontal);
+                                    ui.close();
+                                }
+                                if ui.button("split vertical").clicked() {
+                                    bar_response.panel_action = Some(PanelAction::SplitVertical);
+                                    ui.close();
+                                }
+                                if ui.button("close panel").clicked() {
+                                    bar_response.panel_action = Some(PanelAction::ClosePanel);
+                                    ui.close();
+                                }
+
+                                ui.separator();
+
+                                if ui.button("set panel layout as default").clicked() {
+                                    bar_response.panel_action =
+                                        Some(PanelAction::SaveLayoutAsDefault);
+                                    ui.close();
+                                }
+                                if ui.button("reset panel layout to system default").clicked() {
+                                    bar_response.panel_action = Some(PanelAction::ResetLayout);
+                                    ui.close();
+                                }
                                 //});
                             });
                         });
@@ -250,6 +274,7 @@ pub struct BarResponse {
     pub current_program: Option<String>,
     pub program_to_close: Option<String>,
     pub theme_changed_to: Option<Theme>,
+    pub panel_action: Option<PanelAction>,
 }
 
 impl BarResponse {
@@ -259,6 +284,7 @@ impl BarResponse {
             current_program: None,
             program_to_close: None,
             theme_changed_to: None,
+            panel_action: None,
         }
     }
 }

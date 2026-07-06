@@ -89,6 +89,7 @@ pub struct TreeLayout {
 
 impl PanelTree {
     /// A tree consisting of a single leaf.
+    #[allow(dead_code)] // used by secondary windows in Phase 5
     pub fn single(kind: PanelKind, id: LeafId) -> Self {
         Self {
             root: PanelNode::Leaf { id, kind },
@@ -144,6 +145,7 @@ impl PanelTree {
 
     /// Give every leaf a fresh id from the counter. Used when loading a saved
     /// layout so ids never collide with live ones.
+    #[allow(dead_code)] // used by config layout loading in Phase 4
     pub fn reassign_ids(&mut self, next_id: &mut LeafId) {
         fn walk(node: &mut PanelNode, next_id: &mut LeafId) {
             match node {

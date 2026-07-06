@@ -1,6 +1,3 @@
-// Consumed by the panel-tree renderer in Phase 3; unused behind the temporary
-// `Program::show` wrapper until then.
-#![allow(dead_code)]
 //! 3D preview content: a standalone material viewer with mesh selection and
 //! per-channel image assignments. Extracted from `ViewPanel::show_material_ui`
 //! plus the material-resolution + render call, no longer gated on a currently
