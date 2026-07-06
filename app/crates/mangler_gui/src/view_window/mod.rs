@@ -6,3 +6,5 @@ pub mod arcball_camera;
 pub mod gl_renderer;
 pub mod material_channels;
 pub mod viewer_3d;
+pub mod preview_2d;
+pub mod preview_3d;

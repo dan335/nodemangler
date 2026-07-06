@@ -8,6 +8,7 @@ use mangler_core::{
     NodeChangedMessage,
 };
 use crate::graph::clipboard::Clipboard;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -22,10 +23,16 @@ use crate::{
     },
     graph_to_view_space,
     node_menu::{menu_item::MenuItemsResult, menu_panel::MenuPanel},
+    panels::{panel_kind::PanelKind, panel_tree::LeafId},
     settings::{graph_settings_panel, node_settings_panel},
     themes::theme::Theme,
     view_to_graph_space_pos2,
-    view_window::view_panel::ViewPanel,
+    view_window::{
+        image_viewer::ImageViewer,
+        preview_2d,
+        preview_3d::{self, Preview3dPanel},
+        view_panel::ViewPanel,
+    },
     ManglerError, APP_MENU_HEIGHT, NODE_MENU_WIDTH, NODE_SIZE, SETTINGS_PANEL_WIDTH,
 };
 
@@ -46,6 +53,14 @@ pub struct Program {
     node_search_popup: NodeSearchPopup,
     /// Temporary status message shown on screen (text, expiry time).
     status_message: Option<(String, std::time::Instant)>,
+    // Consumed by the panel-tree renderer in Phase 3; only touched via the
+    // (currently unused) `show_panel` path until then.
+    /// Per-leaf 2D preview pan/zoom state, keyed by panel leaf id.
+    #[allow(dead_code)]
+    viewers_2d: HashMap<LeafId, ImageViewer>,
+    /// Per-leaf 3D preview state (arcball camera + material channel bindings).
+    #[allow(dead_code)]
+    viewers_3d: HashMap<LeafId, Preview3dPanel>,
 }
 
 impl Program {
@@ -81,6 +96,8 @@ impl Program {
                 graph_run_time: Duration::ZERO,
                 node_search_popup: NodeSearchPopup::new(),
                 status_message: None,
+                viewers_2d: HashMap::new(),
+                viewers_3d: HashMap::new(),
             }),
             Err(error) => Err(NewGraphError(format!(
                 "Error creating program. {:?}",
@@ -93,15 +110,11 @@ impl Program {
         self.app.thread_handle.abort();
     }
 
-    pub fn show(
-        &mut self,
-        ctx: &egui::Context,
-        ui: &mut egui::Ui,
-        theme: &Theme,
-        view_in_separate_window: bool,
-    ) {
-        puffin::profile_scope!("central panel show");
-
+    /// Once-per-frame logic that must run before any panel rendering: pointer
+    /// tracking, copy/paste, the engine message pumps, dropped-file handling,
+    /// and the repaint policy. Must be called before `show_panel` /
+    /// `show_overlays` each frame (mirrors the head of the old `show`).
+    pub fn update(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         // Update pointer position early so paste places nodes at the current cursor.
         if let Some(pos) = ctx.pointer_latest_pos() {
             self.pointer_position = pos;
@@ -485,233 +498,291 @@ impl Program {
             }
         });
 
-        let cursor_primary_down: bool = ui.ctx().input(|i| i.pointer.primary_down());
+        // Request repaint only when needed:
+        // - Immediately if we received engine messages this frame
+        // - Immediately if a status message animation is active
+        // - Otherwise poll at 10fps for new engine messages
+        if received_messages {
+            ctx.request_repaint();
+        } else if self.status_message.is_some() {
+            ctx.request_repaint();
+        } else {
+            ctx.request_repaint_after(Duration::from_millis(100));
+        }
+    }
 
-        let cursor_inside = app_rect.contains(self.pointer_position);
+    /// Render one panel's content given its leaf id and kind. Called once per
+    /// visible leaf per frame by the panel-tree renderer (Phase 3); the
+    /// temporary `show` wrapper drives the fixed three-column layout for now.
+    #[allow(dead_code)] // wired up by the panel-tree renderer in Phase 3
+    pub fn show_panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        leaf_id: LeafId,
+        kind: PanelKind,
+        theme: &Theme,
+    ) {
+        match kind {
+            PanelKind::NodeList => self.show_node_list_panel(ui, theme),
+            PanelKind::Settings => self.show_settings_panel(ui, theme),
+            // The real `is_mouse_over_viewer` is only known in the temporary
+            // wrapper (which owns the floating ViewPanel); the panel-tree path
+            // has no floating viewer, so it passes `false`.
+            PanelKind::Graph => self.show_graph_panel(ui, theme, false),
+            PanelKind::Preview2D => self.show_preview_2d_panel(ui, leaf_id, theme),
+            PanelKind::Preview3D => self.show_preview_3d_panel(ui, leaf_id, theme),
+        }
+    }
 
-        let menu_panel_rect = Rect::from_two_pos(
-            Pos2::new(0.0, APP_MENU_HEIGHT),
-            Pos2::new(NODE_MENU_WIDTH, app_rect.height()),
+    fn show_node_list_panel(&mut self, ui: &mut egui::Ui, theme: &Theme) {
+        puffin::profile_scope!("menu panel");
+        let r = self.menu_panel.show(ui, theme);
+
+        if r.subgraph_being_created {
+            self.dragging_menu_button.subgraph_being_created = true;
+        }
+
+        if r.operation_being_created.is_some() {
+            self.dragging_menu_button.operation_being_created = r.operation_being_created;
+        }
+    }
+
+    fn show_settings_panel(&mut self, ui: &mut egui::Ui, theme: &Theme) {
+        puffin::profile_scope!("settings panel");
+
+        let left_top = ui.max_rect().left_top();
+        let right_bottom = ui.max_rect().right_bottom();
+        let padding = 10.0;
+
+        // create rect for content
+        let ui_rect = egui::Rect::from_two_pos(
+            egui::Pos2::new(left_top.x + padding, left_top.y + padding),
+            egui::Pos2::new(right_bottom.x - padding, right_bottom.y - padding),
         );
 
-        let node_graph_rect = Rect::from_two_pos(
-            Pos2::new(NODE_MENU_WIDTH, APP_MENU_HEIGHT),
-            Pos2::new(app_rect.width() - SETTINGS_PANEL_WIDTH, app_rect.height()),
-        );
+        ui.scope_builder(egui::UiBuilder::new().max_rect(ui_rect), |ui| {
+            // Scroll the settings content so long help text and tall input
+            // lists stay reachable when they exceed the panel height.
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+            let mut show_graph_settings = true;
 
-        let settings_panel_rect = Rect::from_two_pos(
-            Pos2::new(app_rect.width() - SETTINGS_PANEL_WIDTH, APP_MENU_HEIGHT),
-            Pos2::new(app_rect.width(), app_rect.height()),
-        );
+            // show node settings
+            if let Some(editing_node_id) = &self.editing_node_id {
+                if let Some(node) = self.graph_editor.graph_nodes.get_mut(editing_node_id) {
+                    let node_settings_response =
+                        node_settings_panel::show(
+                            ui,
+                            node,
+                            &self.tx_change_node,
+                            theme,
+                        );
+                    show_graph_settings = false;
 
-        // -------------------------
-        // menu panel
-
-        ui.scope_builder(egui::UiBuilder::new().max_rect(menu_panel_rect), |ui| {
-            puffin::profile_scope!("menu panel");
-            let r = self.menu_panel.show(ui, theme);
-
-            if r.subgraph_being_created {
-                self.dragging_menu_button.subgraph_being_created = true;
+                    if node_settings_response.deselect_node {
+                        self.graph_editor.selected_node_ids.remove(editing_node_id);
+                        self.editing_node_id = None;
+                    }
+                }
             }
 
-            if r.operation_being_created.is_some() {
-                self.dragging_menu_button.operation_being_created = r.operation_being_created;
-            }
-        });
+            if show_graph_settings {
+                let graph_settings_response =
+                    graph_settings_panel::show(ui, &mut self.app.name, &self.app.save_path);
 
-        // -------------------------
-        // settings panel - top right
+                // name changed
+                if let Some(new_name) = graph_settings_response.new_name {
+                    self.app.name = new_name.clone();
 
-        ui.scope_builder(egui::UiBuilder::new().max_rect(settings_panel_rect), |ui| {
-            puffin::profile_scope!("settings panel");
+                    let message = ChangeGraphMessage::SetGraphName(new_name);
 
-            let left_top = ui.max_rect().left_top();
-            let right_bottom = ui.max_rect().right_bottom();
-            let padding = 10.0;
-
-            // create rect for content
-            let ui_rect = egui::Rect::from_two_pos(
-                egui::Pos2::new(left_top.x + padding, left_top.y + padding),
-                egui::Pos2::new(right_bottom.x - padding, right_bottom.y - padding),
-            );
-
-            ui.scope_builder(egui::UiBuilder::new().max_rect(ui_rect), |ui| {
-                // Scroll the settings content so long help text and tall input
-                // lists stay reachable when they exceed the panel height.
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                let mut show_graph_settings = true;
-
-                // show node settings
-                if let Some(editing_node_id) = &self.editing_node_id {
-                    if let Some(node) = self.graph_editor.graph_nodes.get_mut(editing_node_id) {
-                        let node_settings_response =
-                            node_settings_panel::show(
-                                ui,
-                                node,
-                                &self.tx_change_node,
-                                theme,
-                            );
-                        show_graph_settings = false;
-
-                        if node_settings_response.deselect_node {
-                            self.graph_editor.selected_node_ids.remove(editing_node_id);
-                            self.editing_node_id = None;
+                    match self.tx_change_graph.try_send(message) {
+                        Ok(_) => {}
+                        Err(err) => {
+                            println!("Error sending graph_message: {:?}", err);
                         }
                     }
                 }
 
-                if show_graph_settings {
-                    let graph_settings_response =
-                        graph_settings_panel::show(ui, &mut self.app.name, &self.app.save_path);
-
-                    // name changed
-                    if let Some(new_name) = graph_settings_response.new_name {
-                        self.app.name = new_name.clone();
-
-                        let message = ChangeGraphMessage::SetGraphName(new_name);
-
-                        match self.tx_change_graph.try_send(message) {
-                            Ok(_) => {}
-                            Err(err) => {
-                                println!("Error sending graph_message: {:?}", err);
-                            }
-                        }
+                // auto arrange requested
+                if graph_settings_response.auto_arrange {
+                    let moved_nodes = self.graph_editor.auto_arrange();
+                    for (node_id, new_pos) in moved_nodes {
+                        let message = ChangeNodeMessage::SetPosition {
+                            node_id,
+                            position: glam::f32::vec2(new_pos.x, new_pos.y),
+                        };
+                        let _ = self.tx_change_node.try_send(message);
                     }
+                }
 
-                    // auto arrange requested
-                    if graph_settings_response.auto_arrange {
-                        let moved_nodes = self.graph_editor.auto_arrange();
-                        for (node_id, new_pos) in moved_nodes {
-                            let message = ChangeNodeMessage::SetPosition {
-                                node_id,
-                                position: glam::f32::vec2(new_pos.x, new_pos.y),
-                            };
-                            let _ = self.tx_change_node.try_send(message);
-                        }
-                    }
+                // save path changed
+                if let Some(save_path) = graph_settings_response.new_save_path {
+                    self.app.save_path = Some(save_path.clone());
 
-                    // save path changed
-                    if let Some(save_path) = graph_settings_response.new_save_path {
-                        self.app.save_path = Some(save_path.clone());
+                    let message = ChangeGraphMessage::SetSavePath(save_path);
 
-                        let message = ChangeGraphMessage::SetSavePath(save_path);
-
-                        match self.tx_change_graph.try_send(message) {
-                            Ok(_) => {}
-                            Err(err) => {
-                                println!("Error sending graph_message: {:?}", err);
-                            }
+                    match self.tx_change_graph.try_send(message) {
+                        Ok(_) => {}
+                        Err(err) => {
+                            println!("Error sending graph_message: {:?}", err);
                         }
                     }
                 }
-                });
+            }
             });
         });
+    }
 
-        let mut is_mouse_over_viewer = false;
+    fn show_graph_panel(&mut self, ui: &mut egui::Ui, theme: &Theme, is_mouse_over_viewer: bool) {
+        puffin::profile_scope!("graph panel");
 
-        if let Some((viewing_node_id, graph_node_output_index)) = &self.viewing_node_id_index {
-            if let Some(graph_node) = self.graph_editor.graph_nodes.get(viewing_node_id) {
-                let view_panel_response = self.view_panel.show(
-                    ctx,
-                    graph_node,
-                    *graph_node_output_index,
-                    theme,
-                    view_in_separate_window,
-                    self.pointer_position,
-                    &self.graph_editor.graph_nodes,
-                );
+        let cursor_primary_down: bool = ui.ctx().input(|i| i.pointer.primary_down());
 
-                if !view_in_separate_window && view_panel_response.is_mouse_over {
-                    is_mouse_over_viewer = true;
-                }
+        let graph_editor_response: GraphEditorResponse = self.graph_editor.show(
+            ui,
+            self.pointer_position,
+            cursor_primary_down,
+            &self.editing_node_id,
+            &self.viewing_node_id_index,
+            theme,
+            is_mouse_over_viewer,
+            self.node_search_popup.is_open,
+        );
 
-                if self.view_panel.close_window {
-                    self.viewing_node_id_index = None;
+        for (node_id, pos) in graph_editor_response.new_node_positions {
+            let node_position_message = ChangeNodeMessage::SetPosition {
+                node_id,
+                position: glam::f32::vec2(pos.x, pos.y),
+            };
+
+            match self.tx_change_node.try_send(node_position_message) {
+                Ok(_) => {}
+                Err(error) => {
+                    println!("Error sending node position message. {:?}", error);
                 }
             }
         }
 
-        // -------------------------
+        // if graph_editor_response.request_redraw {
+        //     ctx.request_repaint();
+        // }
 
-        ui.scope_builder(egui::UiBuilder::new().max_rect(node_graph_rect), |ui| {
-            puffin::profile_scope!("graph panel");
-            let graph_editor_response: GraphEditorResponse = self.graph_editor.show(
-                ui,
-                self.pointer_position,
-                cursor_primary_down,
-                &self.editing_node_id,
-                &self.viewing_node_id_index,
-                theme,
-                is_mouse_over_viewer,
-                self.node_search_popup.is_open,
+        if let Some(editing_node_id) = graph_editor_response.editing_node_id {
+            self.edit_node(editing_node_id);
+        }
+
+        if let Some((viewing_node_id, viewing_output_index)) =
+            graph_editor_response.viewing_node_id_index
+        {
+            self.view_node(viewing_node_id, viewing_output_index);
+        }
+
+        if graph_editor_response.clear_editing_node {
+            self.editing_node_id = None;
+        }
+
+        if graph_editor_response.clear_viewing_node {
+            self.viewing_node_id_index = None;
+        }
+
+        if let Some(new_connection) = graph_editor_response.new_connection {
+            self.add_connection(
+                new_connection.input_node_id,
+                new_connection.input_connection_index,
+                new_connection.output_node_id,
+                new_connection.output_connection_index,
             );
+        }
 
-            for (node_id, pos) in graph_editor_response.new_node_positions {
-                let node_position_message = ChangeNodeMessage::SetPosition {
-                    node_id,
-                    position: glam::f32::vec2(pos.x, pos.y),
-                };
+        for (node_id, input_index) in graph_editor_response.connections_to_delete.iter() {
+            self.remove_connection(node_id.clone(), *input_index);
+        }
 
-                match self.tx_change_node.try_send(node_position_message) {
-                    Ok(_) => {}
-                    Err(error) => {
-                        println!("Error sending node position message. {:?}", error);
-                    }
-                }
-            }
+        for node_id in graph_editor_response.nodes_to_delete.iter() {
+            self.remove_node(node_id.clone());
+        }
 
-            // if graph_editor_response.request_redraw {
-            //     ctx.request_repaint();
-            // }
+        // Open search popup when a connection is dropped on empty space
+        if let Some(dropped) = graph_editor_response.dropped_connection {
+            self.node_search_popup
+                .open(self.pointer_position, Some(dropped));
+        }
+    }
 
-            if let Some(editing_node_id) = graph_editor_response.editing_node_id {
-                self.edit_node(editing_node_id);
-            }
+    #[allow(dead_code)] // reached via `show_panel` in Phase 3
+    fn show_preview_2d_panel(&mut self, ui: &mut egui::Ui, leaf_id: LeafId, theme: &Theme) {
+        // Destructure so the per-leaf viewer and the graph nodes can be
+        // borrowed simultaneously (disjoint fields).
+        let Self {
+            viewers_2d,
+            graph_editor,
+            viewing_node_id_index,
+            pointer_position,
+            ..
+        } = self;
 
-            if let Some((viewing_node_id, viewing_output_index)) =
-                graph_editor_response.viewing_node_id_index
-            {
-                self.view_node(viewing_node_id, viewing_output_index);
-            }
+        let viewer = viewers_2d.entry(leaf_id).or_insert_with(ImageViewer::new);
 
-            if graph_editor_response.clear_editing_node {
-                self.editing_node_id = None;
-            }
-
-            if graph_editor_response.clear_viewing_node {
-                self.viewing_node_id_index = None;
-            }
-
-            if let Some(new_connection) = graph_editor_response.new_connection {
-                self.add_connection(
-                    new_connection.input_node_id,
-                    new_connection.input_connection_index,
-                    new_connection.output_node_id,
-                    new_connection.output_connection_index,
+        if let Some((viewing_node_id, output_index)) = viewing_node_id_index.as_ref() {
+            if let Some(graph_node) = graph_editor.graph_nodes.get(viewing_node_id) {
+                preview_2d::show(
+                    ui,
+                    viewer,
+                    graph_node,
+                    *output_index,
+                    *pointer_position,
+                    theme,
                 );
+                return;
             }
+        }
 
-            for (node_id, input_index) in graph_editor_response.connections_to_delete.iter() {
-                self.remove_connection(node_id.clone(), *input_index);
-            }
+        preview_2d::show_empty(ui, theme);
+    }
 
-            for node_id in graph_editor_response.nodes_to_delete.iter() {
-                self.remove_node(node_id.clone());
-            }
+    #[allow(dead_code)] // reached via `show_panel` in Phase 3
+    fn show_preview_3d_panel(&mut self, ui: &mut egui::Ui, leaf_id: LeafId, theme: &Theme) {
+        let Self {
+            viewers_3d,
+            graph_editor,
+            ..
+        } = self;
 
-            // Open search popup when a connection is dropped on empty space
-            if let Some(dropped) = graph_editor_response.dropped_connection {
-                self.node_search_popup
-                    .open(self.pointer_position, Some(dropped));
-            }
-        });
+        let panel = viewers_3d.entry(leaf_id).or_insert_with(Preview3dPanel::new);
+        preview_3d::show(panel, ui, &graph_editor.graph_nodes, theme);
+    }
+
+    /// Discard per-leaf viewer state for leaves that no longer exist. 3D
+    /// viewers hold GL resources, so pruning frees them promptly.
+    #[allow(dead_code)] // called by the panel-tree renderer in Phase 3
+    pub fn prune_viewers(&mut self, live: &HashSet<LeafId>) {
+        self.viewers_2d.retain(|id, _| live.contains(id));
+        self.viewers_3d.retain(|id, _| live.contains(id));
+    }
+
+    /// Full-window overlays drawn on top of every panel: Tab-to-search,
+    /// delete-key handling, the node-search popup, drag-from-menu release,
+    /// the ghost drag node, status message, graph timing, and help text.
+    ///
+    /// `graph_rects` are the on-screen rects of every graph panel (used for
+    /// hover/hit-tests); `work_rect` is the area below the menu bar used to
+    /// anchor the corner overlays.
+    pub fn show_overlays(
+        &mut self,
+        ctx: &egui::Context,
+        ui: &mut egui::Ui,
+        theme: &Theme,
+        graph_rects: &[Rect],
+        work_rect: Rect,
+    ) {
+        let cursor_inside = ctx.content_rect().contains(self.pointer_position);
 
         // Open search popup on Tab key (only when popup isn't already open)
-        if !self.node_search_popup.is_open && node_graph_rect.contains(self.pointer_position) {
+        if !self.node_search_popup.is_open
+            && graph_rects.iter().any(|r| r.contains(self.pointer_position))
+        {
             let tab_pressed = ctx.input(|i| i.key_pressed(egui::Key::Tab));
             if tab_pressed {
                 self.node_search_popup.open(self.pointer_position, None);
@@ -779,7 +850,7 @@ impl Program {
         ui.input(|i| {
             if i.pointer.primary_released() {
                 if let Some(operation) = &self.dragging_menu_button.operation_being_created {
-                    if node_graph_rect.contains(self.pointer_position) {
+                    if graph_rects.iter().any(|r| r.contains(self.pointer_position)) {
                         //let node_position_view_space = Pos2::new(cursor_position.x - bottom_panel_rect.min.x, cursor_position.y - bottom_panel_rect.min.y);
                         if let Ok(node_id) = self.add_node(
                             AddNodeType::Operation(operation.clone()),
@@ -793,7 +864,7 @@ impl Program {
                         }
                     }
                 } else if self.dragging_menu_button.subgraph_being_created {
-                    if node_graph_rect.contains(self.pointer_position) {
+                    if graph_rects.iter().any(|r| r.contains(self.pointer_position)) {
                         if let Ok(node_id) = self.add_node(
                             AddNodeType::Subgraph,
                             view_to_graph_space_pos2(self.graph_editor.zoom, self.pointer_position)
@@ -853,7 +924,7 @@ impl Program {
                 } else {
                     255
                 };
-                let pos = Pos2::new(app_rect.center().x, app_rect.bottom() - 40.0);
+                let pos = Pos2::new(work_rect.center().x, work_rect.bottom() - 40.0);
                 ui.painter().text(
                     pos,
                     egui::Align2::CENTER_BOTTOM,
@@ -870,7 +941,7 @@ impl Program {
         {
             let graph_ms = self.graph_run_time.as_secs_f64() * 1000.0;
             let status_txt = format!("graph: {:.1}ms", graph_ms);
-            let pos = Pos2::new(app_rect.right() - 10.0, app_rect.bottom() - 10.0);
+            let pos = Pos2::new(work_rect.right() - 10.0, work_rect.bottom() - 10.0);
             ui.painter().text(
                 pos,
                 egui::Align2::RIGHT_BOTTOM,
@@ -881,10 +952,11 @@ impl Program {
         }
 
         // show help in bottom left
-        let pos = Pos2::new(
-            app_rect.left() + NODE_MENU_WIDTH + 20.0,
-            app_rect.bottom() - 10.0,
-        );
+        let help_left = graph_rects
+            .first()
+            .map(|r| r.left())
+            .unwrap_or(work_rect.left());
+        let pos = Pos2::new(help_left + 20.0, work_rect.bottom() - 10.0);
         let txt =
             "left click: edit      right click: view      ctrl + left click: delete      delete/backspace: delete selected      shift + click: multi-select      ctrl+c: copy      ctrl+v: paste".to_string();
         ui.painter().text(
@@ -894,18 +966,97 @@ impl Program {
             egui::FontId::proportional(12.0),
             egui::Color32::from(theme.get().text_faint),
         );
+    }
 
-        // Request repaint only when needed:
-        // - Immediately if we received engine messages this frame
-        // - Immediately if a status message animation is active
-        // - Otherwise poll at 10fps for new engine messages
-        if received_messages {
-            ctx.request_repaint();
-        } else if self.status_message.is_some() {
-            ctx.request_repaint();
-        } else {
-            ctx.request_repaint_after(Duration::from_millis(100));
+    // TODO(panel-system Phase 3): replaced by panel tree rendering. This
+    // wrapper preserves today's fixed three-column layout (node list | graph |
+    // settings) plus the floating ViewPanel so `app.rs` stays untouched this
+    // phase.
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        ui: &mut egui::Ui,
+        theme: &Theme,
+        view_in_separate_window: bool,
+    ) {
+        puffin::profile_scope!("central panel show");
+
+        self.update(ctx, ui);
+
+        let app_rect = ctx.content_rect();
+
+        let menu_panel_rect = Rect::from_two_pos(
+            Pos2::new(0.0, APP_MENU_HEIGHT),
+            Pos2::new(NODE_MENU_WIDTH, app_rect.height()),
+        );
+
+        let node_graph_rect = Rect::from_two_pos(
+            Pos2::new(NODE_MENU_WIDTH, APP_MENU_HEIGHT),
+            Pos2::new(app_rect.width() - SETTINGS_PANEL_WIDTH, app_rect.height()),
+        );
+
+        let settings_panel_rect = Rect::from_two_pos(
+            Pos2::new(app_rect.width() - SETTINGS_PANEL_WIDTH, APP_MENU_HEIGHT),
+            Pos2::new(app_rect.width(), app_rect.height()),
+        );
+
+        // -------------------------
+        // menu panel
+
+        ui.scope_builder(egui::UiBuilder::new().max_rect(menu_panel_rect), |ui| {
+            self.show_node_list_panel(ui, theme);
+        });
+
+        // -------------------------
+        // settings panel - top right
+
+        ui.scope_builder(egui::UiBuilder::new().max_rect(settings_panel_rect), |ui| {
+            self.show_settings_panel(ui, theme);
+        });
+
+        // -------------------------
+        // floating view panel (dies in Phase 3)
+
+        let mut is_mouse_over_viewer = false;
+
+        if let Some((viewing_node_id, graph_node_output_index)) = &self.viewing_node_id_index {
+            if let Some(graph_node) = self.graph_editor.graph_nodes.get(viewing_node_id) {
+                let view_panel_response = self.view_panel.show(
+                    ctx,
+                    graph_node,
+                    *graph_node_output_index,
+                    theme,
+                    view_in_separate_window,
+                    self.pointer_position,
+                    &self.graph_editor.graph_nodes,
+                );
+
+                if !view_in_separate_window && view_panel_response.is_mouse_over {
+                    is_mouse_over_viewer = true;
+                }
+
+                if self.view_panel.close_window {
+                    self.viewing_node_id_index = None;
+                }
+            }
         }
+
+        // -------------------------
+        // graph editor
+
+        ui.scope_builder(egui::UiBuilder::new().max_rect(node_graph_rect), |ui| {
+            self.show_graph_panel(ui, theme, is_mouse_over_viewer);
+        });
+
+        // -------------------------
+        // overlays over the whole work area
+
+        let work_rect = Rect::from_two_pos(
+            Pos2::new(0.0, APP_MENU_HEIGHT),
+            Pos2::new(app_rect.width(), app_rect.height()),
+        );
+
+        self.show_overlays(ctx, ui, theme, &[node_graph_rect], work_rect);
     }
 
     pub fn add_node(
@@ -998,8 +1149,6 @@ impl Program {
     /// Creates new nodes at positions offset from the cursor, restores input values
     /// and internal connections, then selects all newly pasted nodes.
     fn paste_clipboard(&mut self, cb: &Clipboard) {
-        use std::collections::HashMap;
-
         // Compute paste offset: center the pasted nodes on the current pointer position.
         let centroid = cb.centroid();
         let paste_target = view_to_graph_space_pos2(
