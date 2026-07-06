@@ -84,12 +84,14 @@ pub fn render_tree(
 
         if response.dragged() {
             if let Some(pointer) = ui.ctx().pointer_interact_pos() {
-                let parent = splitter.parent_rect;
-                let fraction = match splitter.direction {
-                    SplitDirection::Row => (pointer.x - parent.min.x) / parent.width().max(1.0),
-                    SplitDirection::Column => (pointer.y - parent.min.y) / parent.height().max(1.0),
+                // Drag trades space only between the two panels touching this
+                // divider (Blender behavior); non-adjacent panels keep their
+                // pixel size. `parent_rect` is the split node's own rect.
+                let pointer_coord = match splitter.direction {
+                    SplitDirection::Row => pointer.x,
+                    SplitDirection::Column => pointer.y,
                 };
-                tree.set_fraction(&splitter.path, fraction);
+                tree.drag_splitter(&splitter.path, splitter.parent_rect, pointer_coord);
             }
         }
 

@@ -306,7 +306,9 @@ impl PanelTree {
 
     /// Set the fraction of the `Split` node reached by following `path`
     /// (child indices from the root), clamped to keep both children visible.
-    /// No-op if the path does not resolve to a split.
+    /// No-op if the path does not resolve to a split. Retained for tests and
+    /// programmatic layout tweaks; interactive drags use [`Self::drag_splitter`].
+    #[allow(dead_code)]
     pub fn set_fraction(&mut self, path: &[usize], fraction: f32) {
         let mut node = &mut self.root;
         for &index in path {
@@ -321,6 +323,81 @@ impl PanelTree {
         if let PanelNode::Split { fraction: f, .. } = node {
             *f = fraction.clamp(*FRACTION_RANGE.start(), *FRACTION_RANGE.end());
         }
+    }
+
+    /// Drag the divider of the `Split` at `path` (whose on-screen rect was
+    /// `node_rect`) so its divider sits at `pointer` (coordinate along the
+    /// split axis, absolute, same space as `node_rect`). Only the leaves
+    /// adjacent to the divider change size; all other leaves keep their pixel
+    /// extent. Returns `true` if anything changed.
+    ///
+    /// This is the Blender-style behavior: a divider trades space between the
+    /// two panels touching it, rather than proportionally rescaling the whole
+    /// nested group on the far side.
+    pub fn drag_splitter(&mut self, path: &[usize], node_rect: Rect, pointer: f32) -> bool {
+        // Navigate to the split node addressed by `path`.
+        let mut node: &mut PanelNode = &mut self.root;
+        for &index in path {
+            match node {
+                PanelNode::Split { children, .. } => match children.get_mut(index) {
+                    Some(child) => node = child,
+                    None => return false,
+                },
+                PanelNode::Leaf { .. } => return false,
+            }
+        }
+        let PanelNode::Split {
+            direction,
+            fraction,
+            children,
+        } = node
+        else {
+            return false;
+        };
+        let axis = *direction;
+        let extent = axis_extent(node_rect, axis);
+        let available = (extent - SPLITTER_WIDTH).max(0.0);
+        if available <= 0.0 {
+            return false;
+        }
+
+        // Effective current first-child extent, mirroring `layout()`'s clamp so
+        // the absorb math below matches what is actually on screen.
+        let mut old_e0 = *fraction * available;
+        if available >= 2.0 * MIN_PANEL_SIZE {
+            old_e0 = old_e0.clamp(MIN_PANEL_SIZE, available - MIN_PANEL_SIZE);
+        }
+
+        // Where the user wants the divider, as an offset from the node's origin.
+        let new_e0 = pointer - axis_min(node_rect, axis);
+        let mut delta = new_e0 - old_e0;
+
+        // Clamp the delta so neither divider-adjacent leaf drops below the
+        // minimum: shrinking child1 (moving right, +delta) is bounded by the
+        // leading leaves of child1; shrinking child0 (moving left, -delta) by
+        // the trailing leaves of child0.
+        let child1_lead = min_edge_leaf_extent(&children[1], axis, Edge::Leading, available - old_e0);
+        let child0_trail = min_edge_leaf_extent(&children[0], axis, Edge::Trailing, old_e0);
+        let delta_max = child1_lead - MIN_PANEL_SIZE;
+        let delta_min = -(child0_trail - MIN_PANEL_SIZE);
+        if delta_min > delta_max {
+            return false;
+        }
+        delta = delta.clamp(delta_min, delta_max);
+        if delta.abs() < 0.001 {
+            return false;
+        }
+
+        // Move the dragged divider. `available` is unchanged (the node's own
+        // rect does not move), so the new fraction is just the new extent over
+        // the same available space.
+        *fraction = (old_e0 + delta) / available;
+
+        // Absorb the delta into each subtree so only the divider-adjacent
+        // leaves resize and everything else keeps its pixel extent.
+        absorb(&mut children[0], axis, delta, Edge::Trailing, old_e0);
+        absorb(&mut children[1], axis, -delta, Edge::Leading, available - old_e0);
+        true
     }
 
     /// Recursively subdivide `rect`, producing a rect for every leaf and a
@@ -391,6 +468,101 @@ impl PanelTree {
         let mut out = TreeLayout::default();
         walk(&self.root, rect, &mut Vec::new(), &mut out);
         out
+    }
+}
+
+/// Which side of a subtree, along a split axis, an operation touches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Edge {
+    /// The min side along the axis (left for `Row`, top for `Column`).
+    Leading,
+    /// The max side along the axis (right for `Row`, bottom for `Column`).
+    Trailing,
+}
+
+/// A rect's extent along the given split axis.
+fn axis_extent(rect: Rect, axis: SplitDirection) -> f32 {
+    match axis {
+        SplitDirection::Row => rect.width(),
+        SplitDirection::Column => rect.height(),
+    }
+}
+
+/// A rect's min coordinate along the given split axis.
+fn axis_min(rect: Rect, axis: SplitDirection) -> f32 {
+    match axis {
+        SplitDirection::Row => rect.min.x,
+        SplitDirection::Column => rect.min.y,
+    }
+}
+
+/// The minimum pixel extent (along `axis`) among the leaves that touch `edge`
+/// of this subtree, given the subtree spans `extent` along `axis`.
+fn min_edge_leaf_extent(node: &PanelNode, axis: SplitDirection, edge: Edge, extent: f32) -> f32 {
+    match node {
+        PanelNode::Leaf { .. } => extent,
+        PanelNode::Split {
+            direction,
+            fraction,
+            children,
+        } => {
+            if *direction == axis {
+                // Split along the axis: only one child touches `edge`.
+                let avail = (extent - SPLITTER_WIDTH).max(0.0);
+                let e0 = fraction * avail;
+                let e1 = avail - e0;
+                match edge {
+                    Edge::Leading => min_edge_leaf_extent(&children[0], axis, edge, e0),
+                    Edge::Trailing => min_edge_leaf_extent(&children[1], axis, edge, e1),
+                }
+            } else {
+                // Split perpendicular to the axis: both children span the full
+                // extent and both touch `edge`.
+                min_edge_leaf_extent(&children[0], axis, edge, extent)
+                    .min(min_edge_leaf_extent(&children[1], axis, edge, extent))
+            }
+        }
+    }
+}
+
+/// Absorb a `delta` change in this subtree's extent along `axis` into the leaf
+/// that touches `edge`, keeping every other leaf's pixel extent fixed.
+/// `old_extent` is the subtree's extent along `axis` before the change.
+fn absorb(node: &mut PanelNode, axis: SplitDirection, delta: f32, edge: Edge, old_extent: f32) {
+    let PanelNode::Split {
+        direction,
+        fraction,
+        children,
+    } = node
+    else {
+        // Leaf: it simply resizes with its rect.
+        return;
+    };
+    if *direction == axis {
+        // Split along the axis: the child on `edge` absorbs the delta; the
+        // other child keeps its pixel extent.
+        let avail_old = (old_extent - SPLITTER_WIDTH).max(0.0);
+        let e0 = *fraction * avail_old;
+        let e1 = avail_old - e0;
+        let avail_new = avail_old + delta;
+        if avail_new <= 0.0 {
+            return;
+        }
+        match edge {
+            Edge::Leading => {
+                *fraction = (e0 + delta) / avail_new;
+                absorb(&mut children[0], axis, delta, edge, e0);
+            }
+            Edge::Trailing => {
+                *fraction = e0 / avail_new;
+                absorb(&mut children[1], axis, delta, edge, e1);
+            }
+        }
+    } else {
+        // Split perpendicular to the axis: both children span the full extent
+        // along `axis`, so both absorb the same delta on the same edge.
+        absorb(&mut children[0], axis, delta, edge, old_extent);
+        absorb(&mut children[1], axis, delta, edge, old_extent);
     }
 }
 

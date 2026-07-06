@@ -340,6 +340,221 @@ fn system_default_is_three_columns_with_expected_widths() {
     );
 }
 
+/// Three columns A(1) | B(2) | C(3), built as Row(A, Row(B, C)).
+fn three_columns() -> PanelTree {
+    PanelTree {
+        root: PanelNode::Split {
+            direction: SplitDirection::Row,
+            fraction: 0.25,
+            children: [
+                Box::new(PanelNode::Leaf {
+                    id: 1,
+                    kind: PanelKind::NodeList,
+                }),
+                Box::new(PanelNode::Split {
+                    direction: SplitDirection::Row,
+                    fraction: 0.7,
+                    children: [
+                        Box::new(PanelNode::Leaf {
+                            id: 2,
+                            kind: PanelKind::Graph,
+                        }),
+                        Box::new(PanelNode::Leaf {
+                            id: 3,
+                            kind: PanelKind::Settings,
+                        }),
+                    ],
+                }),
+            ],
+        },
+    }
+}
+
+/// Width of the leaf with `id` in a laid-out tree.
+fn width_of(layout: &TreeLayout, id: LeafId) -> f32 {
+    layout
+        .leaves
+        .iter()
+        .find(|(lid, _, _)| *lid == id)
+        .map(|(_, _, r)| r.width())
+        .unwrap_or_else(|| panic!("no leaf {id}"))
+}
+
+/// The splitter whose path matches `path` in a laid-out tree.
+fn splitter_at<'a>(layout: &'a TreeLayout, path: &[usize]) -> &'a Splitter {
+    layout
+        .splitters
+        .iter()
+        .find(|s| s.path == path)
+        .expect("splitter with that path")
+}
+
+#[test]
+fn drag_first_divider_only_resizes_adjacent_columns() {
+    let mut tree = three_columns();
+    let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 720.0));
+
+    let before = tree.layout(rect);
+    let (wa0, wb0, wc0) = (width_of(&before, 1), width_of(&before, 2), width_of(&before, 3));
+
+    // First divider = the root split (path []). Push it 50px to the right.
+    let splitter = splitter_at(&before, &[]);
+    let pointer = splitter.rect.min.x + 50.0;
+    assert!(tree.drag_splitter(&[], splitter.parent_rect, pointer));
+
+    let after = tree.layout(rect);
+    let (wa1, wb1, wc1) = (width_of(&after, 1), width_of(&after, 2), width_of(&after, 3));
+
+    // A grows by 50, B shrinks by 50, C keeps its exact pixel width.
+    assert!((wa1 - (wa0 + 50.0)).abs() < 0.5, "A: {wa0} -> {wa1}");
+    assert!((wb1 - (wb0 - 50.0)).abs() < 0.5, "B: {wb0} -> {wb1}");
+    assert!((wc1 - wc0).abs() < 0.5, "C changed: {wc0} -> {wc1}");
+}
+
+#[test]
+fn drag_second_divider_only_resizes_adjacent_columns() {
+    let mut tree = three_columns();
+    let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 720.0));
+
+    let before = tree.layout(rect);
+    let (wa0, wb0, wc0) = (width_of(&before, 1), width_of(&before, 2), width_of(&before, 3));
+
+    // Second divider = the inner split (path [1]). Pull it 30px to the left.
+    let splitter = splitter_at(&before, &[1]);
+    let pointer = splitter.rect.min.x - 30.0;
+    assert!(tree.drag_splitter(&[1], splitter.parent_rect, pointer));
+
+    let after = tree.layout(rect);
+    let (wa1, wb1, wc1) = (width_of(&after, 1), width_of(&after, 2), width_of(&after, 3));
+
+    // Divider moves left: B shrinks by 30, C grows by 30, A untouched.
+    assert!((wa1 - wa0).abs() < 0.5, "A changed: {wa0} -> {wa1}");
+    assert!((wb1 - (wb0 - 30.0)).abs() < 0.5, "B: {wb0} -> {wb1}");
+    assert!((wc1 - (wc0 + 30.0)).abs() < 0.5, "C: {wc0} -> {wc1}");
+}
+
+#[test]
+fn drag_outer_divider_with_nested_perpendicular_group() {
+    // Row(A, Column(B, Row(C, D))): the outer divider's far side is a Column
+    // whose leading-edge leaves along x are B and C; D does not touch it.
+    let mut tree = PanelTree {
+        root: PanelNode::Split {
+            direction: SplitDirection::Row,
+            fraction: 0.25,
+            children: [
+                Box::new(PanelNode::Leaf {
+                    id: 1,
+                    kind: PanelKind::NodeList,
+                }),
+                Box::new(PanelNode::Split {
+                    direction: SplitDirection::Column,
+                    fraction: 0.5,
+                    children: [
+                        Box::new(PanelNode::Leaf {
+                            id: 2,
+                            kind: PanelKind::Graph,
+                        }),
+                        Box::new(PanelNode::Split {
+                            direction: SplitDirection::Row,
+                            fraction: 0.5,
+                            children: [
+                                Box::new(PanelNode::Leaf {
+                                    id: 3,
+                                    kind: PanelKind::Settings,
+                                }),
+                                Box::new(PanelNode::Leaf {
+                                    id: 4,
+                                    kind: PanelKind::NodeList,
+                                }),
+                            ],
+                        }),
+                    ],
+                }),
+            ],
+        },
+    };
+    let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 720.0));
+
+    let before = tree.layout(rect);
+    let (wa0, wb0, wc0, wd0) = (
+        width_of(&before, 1),
+        width_of(&before, 2),
+        width_of(&before, 3),
+        width_of(&before, 4),
+    );
+
+    let splitter = splitter_at(&before, &[]);
+    let pointer = splitter.rect.min.x + 40.0;
+    assert!(tree.drag_splitter(&[], splitter.parent_rect, pointer));
+
+    let after = tree.layout(rect);
+    let (wa1, wb1, wc1, wd1) = (
+        width_of(&after, 1),
+        width_of(&after, 2),
+        width_of(&after, 3),
+        width_of(&after, 4),
+    );
+
+    // A grows by 40; the divider-adjacent leaves B and C each shrink by 40;
+    // D (not touching the divider) keeps its exact pixel width.
+    assert!((wa1 - (wa0 + 40.0)).abs() < 0.5, "A: {wa0} -> {wa1}");
+    assert!((wb1 - (wb0 - 40.0)).abs() < 0.5, "B: {wb0} -> {wb1}");
+    assert!((wc1 - (wc0 - 40.0)).abs() < 0.5, "C: {wc0} -> {wc1}");
+    assert!((wd1 - wd0).abs() < 0.5, "D changed: {wd0} -> {wd1}");
+}
+
+#[test]
+fn drag_is_noop_when_adjacent_panel_already_at_min() {
+    let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 720.0));
+    // Root first extent = 0.25 * (1280 - 4) = 319, so the inner split spans
+    // 957px -> inner available 953px. Set B to exactly MIN_PANEL_SIZE.
+    let inner_fraction = MIN_PANEL_SIZE / 953.0;
+    let mut tree = PanelTree {
+        root: PanelNode::Split {
+            direction: SplitDirection::Row,
+            fraction: 0.25,
+            children: [
+                Box::new(PanelNode::Leaf {
+                    id: 1,
+                    kind: PanelKind::NodeList,
+                }),
+                Box::new(PanelNode::Split {
+                    direction: SplitDirection::Row,
+                    fraction: inner_fraction,
+                    children: [
+                        Box::new(PanelNode::Leaf {
+                            id: 2,
+                            kind: PanelKind::Graph,
+                        }),
+                        Box::new(PanelNode::Leaf {
+                            id: 3,
+                            kind: PanelKind::Settings,
+                        }),
+                    ],
+                }),
+            ],
+        },
+    };
+
+    let before = tree.layout(rect);
+    assert!(
+        (width_of(&before, 2) - MIN_PANEL_SIZE).abs() < 0.5,
+        "B should start at MIN_PANEL_SIZE, got {}",
+        width_of(&before, 2)
+    );
+    let (wa0, wb0, wc0) = (width_of(&before, 1), width_of(&before, 2), width_of(&before, 3));
+
+    // Dragging the first divider further right would shrink B below MIN: no-op.
+    let splitter = splitter_at(&before, &[]);
+    let pointer = splitter.rect.min.x + 50.0;
+    assert!(!tree.drag_splitter(&[], splitter.parent_rect, pointer));
+
+    let after = tree.layout(rect);
+    assert!((width_of(&after, 1) - wa0).abs() < 0.5);
+    assert!((width_of(&after, 2) - wb0).abs() < 0.5);
+    assert!((width_of(&after, 3) - wc0).abs() < 0.5);
+}
+
 #[test]
 fn system_default_survives_tiny_work_width() {
     let mut next_id: LeafId = 1;
