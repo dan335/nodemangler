@@ -72,10 +72,12 @@ cargo run -p mangler_cli  # Run the CLI tool
 - `app/crates/mangler_core/src/thumbnail_service.rs` — async thumbnail worker with supersede-by-seq coalescing
 - `app/crates/mangler_core/src/color/` — `Color` struct and color space conversions
 - `app/crates/mangler_gui/src/main.rs` — entry point, eframe window setup
-- `app/crates/mangler_gui/src/app.rs` — GUI `App`: manages programs, themes, menu bar
-- `app/crates/mangler_gui/src/program.rs` — `Program`: owns engine instance + all UI panels for one graph
+- `app/crates/mangler_gui/src/app.rs` — GUI `App`: manages programs, themes, menu bar, panel tree + secondary windows
+- `app/crates/mangler_gui/src/program.rs` — `Program`: owns engine instance + per-panel content (`update` / `show_panel` / `show_overlays`) for one graph
+- `app/crates/mangler_gui/src/panels/` — Blender-style panel system: `panel_tree.rs` (recursive split tree, pure logic), `panel_view.rs` (splitters, kind-switcher chrome, focus), `panel_windows.rs` (secondary OS windows via immediate viewports). Each panel hosts one of 5 `PanelKind` contexts (Graph, Preview2D, Preview3D, NodeList, Settings); layout is app-level and persisted to config as `default_layout`; split/close in the settings menu act on the focused (last-hovered) panel
 - `app/crates/mangler_gui/src/graph/` — graph editor canvas, node rendering, connections
-- `app/crates/mangler_gui/src/themes/` — 4 themes: Dark, DarkGreen (default), Light, LightBlue
+- `app/crates/mangler_gui/src/view_window/` — panel content viewers: `preview_2d.rs` (image/color/text value dispatch), `preview_3d.rs` (PBR material view, GL renderer, arcball)
+- `app/crates/mangler_gui/src/themes/` — 4 themes: Dark, DarkGreen (default), Light, LightBlue; all panel chrome must derive colors from `theme.get()` (no hardcoded colors)
 
 ## Adding a New Operation
 
