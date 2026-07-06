@@ -10,7 +10,7 @@
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::operations::images::filter::morphology::erode::separable_morphology;
 use crate::output::Output;
 use crate::value::{Value, ValueType};
@@ -28,7 +28,7 @@ impl OpImageAdjustmentDilate {
         NodeSettings {
             name: "dilate".to_string(),
             description: "Morphological dilation — per-channel max in a square neighborhood. Grows bright regions.".to_string(),
-            help: "For each pixel takes the per-channel maximum over a (2r+1) square window. Bright regions grow by `radius` pixels, dark regions shrink, small dark pits are filled, and isolated bright pixels spread.\n\nDual of erosion; combining the two yields open/close. Implemented as two 1D sweeps (horizontal then vertical) via the separable morphology primitive in `erode.rs`, so cost is O(r) per pixel.".to_string(),
+            help: "For each pixel takes the per-channel maximum over a (2r+1) square window. Bright regions grow by `radius` pixels, dark regions shrink, small dark pits are filled, and isolated bright pixels spread.\n\nDual of erosion; combining the two yields open/close. Implemented as two 1D sweeps (horizontal then vertical) via the separable morphology primitive in `erode.rs`, so cost is O(r) per pixel. `radius` is authored at a 1024px reference resolution and scales with the image, so the effect is consistent at any resolution.".to_string(),
         }
     }
 
@@ -38,7 +38,7 @@ impl OpImageAdjustmentDilate {
             Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
                 .with_description("Source image or mask to dilate."),
             Input::new("radius".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Half-size of the square window in pixels; larger values grow bright regions more."),
+                .with_description("Half-size of the square window, in pixels at a 1024px reference (scales with image size, so the effect is the same at any resolution); larger values grow bright regions more."),
         ]
     }
 
@@ -63,7 +63,10 @@ impl OpImageAdjustmentDilate {
         let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
 
-        let radius = radius.max(1);
+        // Radius is authored in reference pixels (at 1024px) and scaled to the
+        // actual image so the dilation is the same relative size at any resolution.
+        let (rw, rh) = data.dimensions();
+        let radius = scale_to_resolution(radius.max(1) as f32, rw, rh).round().max(1.0) as i32;
 
         // Reuse the separable pass from erode.rs with max as the reducer
         let out = separable_morphology(&data, radius, |a, b| a.max(b));

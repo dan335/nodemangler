@@ -15,7 +15,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -43,7 +43,7 @@ impl OpImageAdjustmentSnn {
             Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
                 .with_description("Source image to smooth using symmetric nearest-neighbor selection."),
             Input::new("radius".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Half-size of the square window in pixels; larger values smooth over broader areas."),
+                .with_description("Half-size of the square window, in pixels at a 1024px reference (scales with image size); larger values smooth over broader areas."),
         ]
     }
 
@@ -71,9 +71,10 @@ impl OpImageAdjustmentSnn {
         let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
 
-        let radius = radius.max(1);
-
+        // Radius is authored in reference pixels (at 1024px) and scaled to the
+        // actual image so the filter looks the same relative size at any resolution.
         let (width, height) = data.dimensions();
+        let radius = scale_to_resolution(radius.max(1) as f32, width, height).round().max(1.0) as i32;
         let ch = data.channels() as usize;
         let has_alpha = ch == 2 || ch == 4;
         let color_ch = if has_alpha { ch - 1 } else { ch };

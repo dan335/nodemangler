@@ -9,7 +9,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use rayon::prelude::*;
@@ -51,7 +51,7 @@ impl OpImagePatternSplatter {
         NodeSettings {
             name: "splatter".to_string(),
             description: "Stamps a pattern image at random positions with per-stamp rotation / scale / color tint.".to_string(),
-            help: "Places `count` copies of the pattern at deterministic pseudo-random positions across the canvas, using an LCG keyed on `seed` so the same seed always produces the same layout.\n\nEach stamp draws at `stamp size` pixels with a per-instance scale jittered by `scale random`, a rotation in +/- `rotation random` degrees, and an RGB tint whose strength is controlled by `color variation`. Stamps that fall off the edge are clipped (no wrapping), and overlapping stamps are composited with a max blend per channel, so the output tends toward the brightest contribution. Output channel count matches the input pattern.".to_string(),
+            help: "Places `count` copies of the pattern at deterministic pseudo-random positions across the canvas, using an LCG keyed on `seed` so the same seed always produces the same layout.\n\nEach stamp draws at `stamp size` pixels (at a 1024px reference; scales with image size) with a per-instance scale jittered by `scale random`, a rotation in +/- `rotation random` degrees, and an RGB tint whose strength is controlled by `color variation`. Stamps that fall off the edge are clipped (no wrapping), and overlapping stamps are composited with a max blend per channel, so the output tends toward the brightest contribution. Output channel count matches the input pattern.".to_string(),
         }
     }
 
@@ -66,7 +66,7 @@ impl OpImagePatternSplatter {
             Input::new("count".to_string(), Value::Integer(32), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None)
                 .with_description("Number of stamps to place across the output."),
             Input::new("stamp size".to_string(), Value::Decimal(64.0), Some(InputSettings::DragValue { clamp: Some((1.0, 2048.0)), speed: None }), None)
-                .with_description("Base stamp size in pixels before per-instance random scaling."),
+                .with_description("Base stamp size in pixels at a 1024px reference (scales with image size) before per-instance random scaling."),
             Input::new("scale random".to_string(), Value::Decimal(0.25), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
                 .with_description("Random variation applied to each stamp's scale."),
             Input::new("rotation random".to_string(), Value::Decimal(180.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: true }), None)
@@ -114,7 +114,9 @@ impl OpImagePatternSplatter {
         width = width.max(1);
         height = height.max(1);
         count = count.max(0);
-        let stamp_size = (stamp_size as f64).max(1.0);
+        // Stamp size is authored in reference pixels (at 1024px) and scaled to the
+        // actual output so the pattern looks the same relative size at any resolution.
+        let stamp_size = scale_to_resolution(stamp_size.max(1.0), width as u32, height as u32) as f64;
         let scale_random = scale_random as f64;
         let rotation_random = (rotation_random as f64).to_radians();
         let color_variation = color_variation.clamp(0.0, 1.0) as f64;

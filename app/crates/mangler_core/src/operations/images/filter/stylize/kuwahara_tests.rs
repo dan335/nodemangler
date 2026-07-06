@@ -241,8 +241,10 @@ fn kuwahara_reference(img: &FloatImage, radius: i32) -> Vec<f32> {
 
 #[tokio::test]
 async fn test_kuwahara_matches_bruteforce_reference() {
-    let img = hashed_image(24, 17, 4);
-    // radius 9 also exercises heavy quadrant clamping on a 24x17 image
+    // Max dimension = 1024 (the reference resolution) so the node's resolution
+    // scaling of `radius` is identity here and matches the brute-force radius.
+    let img = hashed_image(1024, 17, 4);
+    // radius 9 also exercises heavy quadrant clamping on a 1024x17 image
     for radius in [3i32, 9i32] {
         let mut inputs = vec![
             Input::new("image".to_string(), Value::Image { data: img.clone(), change_id: get_id() }, None, None),

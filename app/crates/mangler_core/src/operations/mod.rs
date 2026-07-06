@@ -133,6 +133,24 @@ pub fn default_image() -> Arc<FloatImage> {
     Arc::new(FloatImage::from_pixel(1, 1, 4, &[1.0, 1.0, 1.0, 1.0]))
 }
 
+/// Reference resolution at which a resolution-independent spatial value equals
+/// its literal pixel amount.
+///
+/// Spatial effect parameters (blur radii, morphology radii, glow/shadow sizes,
+/// offsets, etc.) are authored as "pixels at 1024px" and scaled to the actual
+/// image via [`scale_to_resolution`], so the *same value* produces the *same
+/// relative* result at any resolution — design at 512px, render at 4096px, and
+/// the numbers don't change.
+pub const REFERENCE_RESOLUTION: f32 = 1024.0;
+
+/// Scales a spatial value expressed in reference pixels (see
+/// [`REFERENCE_RESOLUTION`]) to the actual image size, using the larger of
+/// width/height as the reference dimension. Use for isotropic sizes/radii; for
+/// per-axis offsets scale by `width`/`height` directly (`v * dim / REFERENCE_RESOLUTION`).
+pub fn scale_to_resolution(value: f32, width: u32, height: u32) -> f32 {
+    value * (width.max(height) as f32 / REFERENCE_RESOLUTION)
+}
+
 /// Generates the [`Operation`] enum and its method dispatch implementations.
 ///
 /// Each variant maps to an operation struct that provides `settings()`,

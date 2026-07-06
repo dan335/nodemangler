@@ -10,7 +10,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use crate::operations::images::noise::pixel_hash;
@@ -28,7 +28,7 @@ impl OpImageNoiseGaussian {
         NodeSettings {
             name: "white noise".to_string(),
             description: "Creates a seamlessly tiling image of per-pixel white noise.".to_string(),
-            help: "Uncorrelated white noise: each pixel is hashed independently from its wrapped integer coordinates and the seed, giving a uniform random brightness in [0,1] with no spatial structure at all. Adjacent pixels have no relationship, so the output has flat frequency content across the spectrum.\n\nScale is the tile period in pixels: coordinates are wrapped modulo scale, so the pattern repeats every scale pixels for seamless tiling.\n\nUseful as a dither source, film grain, a starting mask for stochastic operations, or as a feed into blurs that turn it into coherent noise.".to_string(),
+            help: "Uncorrelated white noise: each pixel is hashed independently from its wrapped integer coordinates and the seed, giving a uniform random brightness in [0,1] with no spatial structure at all. Adjacent pixels have no relationship, so the output has flat frequency content across the spectrum.\n\nScale is the tile period in pixels at a 1024px reference (scales with image size): coordinates are wrapped modulo scale, so the pattern repeats every scale pixels for seamless tiling.\n\nUseful as a dither source, film grain, a starting mask for stochastic operations, or as a feed into blurs that turn it into coherent noise.".to_string(),
         }
     }
 
@@ -42,7 +42,7 @@ impl OpImageNoiseGaussian {
             Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
                 .with_description("Output image height in pixels."),
             Input::new("scale".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
-                .with_description("Tile period in pixels; the noise repeats every scale pixels for seamless tiling."),
+                .with_description("Tile period in pixels at a 1024px reference (scales with image size); the noise repeats every scale pixels for seamless tiling."),
         ]
     }
 
@@ -77,7 +77,9 @@ impl OpImageNoiseGaussian {
         width = width.max(1);
         height = height.max(1);
         seed = seed.max(1);
-        let period = scale.max(1) as u32;
+        // Scale (tile period) is authored in reference pixels (at 1024px) and scaled
+        // to the actual output so the tiling frequency looks the same at any resolution.
+        let period = scale_to_resolution(scale.max(1) as f32, width as u32, height as u32).round().max(1.0) as u32;
         let seed_u32 = seed as u32;
 
         let w = width as usize;

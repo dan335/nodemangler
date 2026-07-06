@@ -9,7 +9,7 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::blur::blur::gaussian_blur_image;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -34,7 +34,7 @@ impl OpImageAdjustmentLuminanceHighpass {
             Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
                 .with_description("Source image whose luminance is sharpened without shifting chroma."),
             Input::new("radius".to_string(), Value::Decimal(4.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 256.0)) }), None)
-                .with_description("Blur radius in pixels for the low-pass component subtracted from luminance."),
+                .with_description("Blur radius in pixels at a 1024px reference (scales with image size), for the low-pass component subtracted from luminance."),
         ]
     }
 
@@ -57,9 +57,13 @@ impl OpImageAdjustmentLuminanceHighpass {
         let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Decimal(radius) = radius_converted.unwrap() else { unreachable!() };
 
-        let blurred = gaussian_blur_image(&data, radius.max(0.0));
         let (width, height) = data.dimensions();
         let ch = data.channels() as usize;
+
+        // Radius is authored in reference pixels (at 1024px) and scaled to the
+        // actual image, so the sharpening scale looks the same at any resolution.
+        let radius = scale_to_resolution(radius.max(0.0), width, height);
+        let blurred = gaussian_blur_image(&data, radius);
 
         let mut output = FloatImage::new(width, height, data.channels());
 

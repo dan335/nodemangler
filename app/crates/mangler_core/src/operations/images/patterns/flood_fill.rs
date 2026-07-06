@@ -20,7 +20,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, REFERENCE_RESOLUTION};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -47,7 +47,7 @@ impl OpImagePatternFloodFill {
             Input::new("threshold".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Luminance cutoff; pixels at or above this are considered inside."),
             Input::new("min size".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
-                .with_description("Discard cells smaller than this many pixels."),
+                .with_description("Discard cells smaller than this many pixels; this is an area, at a 1024px reference (scales with the square of image size)."),
             Input::new("max cells".to_string(), Value::Integer(65536), Some(InputSettings::DragValue { clamp: Some((1.0, 262144.0)), speed: None }), None)
                 .with_description("Maximum number of cells kept; overflow cells become outside."),
         ]
@@ -76,10 +76,14 @@ impl OpImagePatternFloodFill {
         let Value::Integer(min_size) = min_size_converted.unwrap() else { unreachable!() };
         let Value::Integer(max_cells) = max_cells_converted.unwrap() else { unreachable!() };
 
-        let min_size = min_size.max(1) as usize;
+        let (width, height) = data.dimensions();
+        // min_size bounds a cell's pixel AREA (not a length), so it's authored in
+        // reference px^2 (at 1024px) and scaled by the SQUARE of the resolution
+        // ratio to stay proportionally the same fraction of the image at any size.
+        let min_size = (min_size.max(1) as f32 * (width.max(height) as f32 / REFERENCE_RESOLUTION).powi(2)).round().max(1.0) as i32;
+        let min_size = min_size as usize;
         let max_cells = max_cells.max(1) as usize;
 
-        let (width, height) = data.dimensions();
         let w = width as usize;
         let h = height as usize;
         let ch = data.channels() as usize;

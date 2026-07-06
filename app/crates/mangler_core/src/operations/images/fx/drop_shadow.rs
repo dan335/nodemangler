@@ -11,7 +11,7 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::blur::blur::gaussian_blur_image;
 use crate::operations::images::fx::outer_glow::{tint_field, to_mask_field, PARALLEL_PIXELS};
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution, REFERENCE_RESOLUTION};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use rayon::prelude::*;
@@ -28,7 +28,7 @@ impl OpImageFxDropShadow {
         NodeSettings {
             name: "drop shadow".to_string(),
             description: "Offsets and blurs a mask, tints it, and outputs an RGBA shadow layer for compositing below the source.".to_string(),
-            help: "Reduces the mask input to a single-channel field (alpha times luminance for RGBA, or luminance for RGB), shifts it by (offset x, offset y) pixels with zero-fill outside the image, applies a Gaussian blur with the requested sigma, and paints the result with the chosen colour. The final alpha is mask * color.a * opacity clamped to 0-1.\n\nThe offset and blur are separate passes so zero blur yields a crisp displaced silhouette. The output is always 4-channel RGBA and matches the mask's size. Composite it below the source using a `blend` node in Normal mode; feed the source's own alpha as the mask input.".to_string(),
+            help: "Reduces the mask input to a single-channel field (alpha times luminance for RGBA, or luminance for RGB), shifts it by (offset x, offset y), applies a Gaussian blur, and paints the result with the chosen colour. The final alpha is mask * color.a * opacity clamped to 0-1.\n\nOffset and blur are given in pixels at a 1024px reference and scale with the image, so the shadow keeps the same look at any resolution — the values don't change when you resize.\n\nThe offset and blur are separate passes so zero blur yields a crisp displaced silhouette. The output is always 4-channel RGBA and matches the mask's size. Composite it below the source using a `blend` node in Normal mode; feed the source's own alpha as the mask input.".to_string(),
         }
     }
 
@@ -37,11 +37,11 @@ impl OpImageFxDropShadow {
             Input::new("mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
                 .with_description("Shape whose alpha or luminance defines the silhouette that casts the shadow."),
             Input::new("offset x".to_string(), Value::Decimal(6.0), Some(InputSettings::DragValue { speed: None, clamp: Some((-256.0, 256.0)) }), None)
-                .with_description("Horizontal pixel offset of the shadow from the mask."),
+                .with_description("Horizontal offset of the shadow, in pixels at a 1024px reference (scales with image size, so the value stays the same at any resolution)."),
             Input::new("offset y".to_string(), Value::Decimal(6.0), Some(InputSettings::DragValue { speed: None, clamp: Some((-256.0, 256.0)) }), None)
-                .with_description("Vertical pixel offset of the shadow from the mask."),
+                .with_description("Vertical offset of the shadow, in pixels at a 1024px reference (scales with image size)."),
             Input::new("blur radius".to_string(), Value::Decimal(4.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 256.0)) }), None)
-                .with_description("Gaussian sigma in pixels used to soften the shadow; 0 gives a crisp offset."),
+                .with_description("Gaussian sigma to soften the shadow, in pixels at a 1024px reference (scales with image size); 0 gives a crisp offset."),
             Input::new("color".to_string(), Value::Color(Color::from_srgb_float(0.0, 0.0, 0.0, 1.0)), None, None)
                 .with_description("Colour the shadow layer is tinted with."),
             Input::new("opacity".to_string(), Value::Decimal(0.6), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
@@ -85,8 +85,10 @@ impl OpImageFxDropShadow {
         // the image). We do a separate offset + blur pass rather than folding
         // them together so the caller can use zero blur for a crisp offset
         // shadow.
-        let ox = off_x.round() as i32;
-        let oy = off_y.round() as i32;
+        // Offset/blur are authored in reference pixels (at 1024px) and scaled
+        // to the actual image so the shadow looks the same at any resolution.
+        let ox = (off_x * width as f32 / REFERENCE_RESOLUTION).round() as i32;
+        let oy = (off_y * height as f32 / REFERENCE_RESOLUTION).round() as i32;
         let w = width as usize;
         let mask_raw = mask_field.as_raw();
         let mut offset_data = vec![0.0f32; mask_raw.len()];
@@ -113,7 +115,8 @@ impl OpImageFxDropShadow {
         }
         let offset_field = FloatImage::from_raw(width, height, 1, offset_data).unwrap();
 
-        let blurred = gaussian_blur_image(&offset_field, blur.max(0.0));
+        let blur_px = scale_to_resolution(blur, width, height).max(0.0);
+        let blurred = gaussian_blur_image(&offset_field, blur_px);
 
         let (cr, cg, cb, ca) = color.to_srgb_float();
         let opacity = opacity.clamp(0.0, 1.0);

@@ -85,7 +85,9 @@ async fn separable_matches_naive_extremum() {
     // equals the naive full-window scan's extremum. Ties may resolve to a
     // different source pixel, so we compare the chosen extremum VALUE (from
     // the output pixel), not source indices.
-    let (w, h) = (17u32, 11u32);
+    // Max dimension = 1024 (the reference resolution) so the node's resolution
+    // scaling of `radius` is identity here and matches the naive-window radius.
+    let (w, h) = (1024u32, 11u32);
     let ch = 4usize;
     let mut img = FloatImage::new(w, h, ch as u32);
     let mut state: u32 = 0xDEAD_BEEF;

@@ -16,7 +16,7 @@ use crate::get_id;
 use crate::operations::images::blur::blur::gaussian_blur_planar;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -45,7 +45,7 @@ impl OpImageAdjustmentCanny {
                 .with_description("Source image whose luminance is analyzed for edges."),
             // sigma for the pre-smoothing Gaussian
             Input::new("sigma".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 5.0), step_by: Some(0.1), clamp_to_range: true }), None)
-                .with_description("Standard deviation of the Gaussian pre-smoothing; larger values suppress more noise."),
+                .with_description("Standard deviation of the Gaussian pre-smoothing, in pixels at a 1024px reference (scales with image size); larger values suppress more noise."),
             // lower threshold: below this, gradients are rejected
             Input::new("low threshold".to_string(), Value::Decimal(0.1), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Weak-edge cutoff; gradients below this are rejected outright."),
@@ -89,6 +89,10 @@ impl OpImageAdjustmentCanny {
         let w = width as i32;
         let h = height as i32;
         let n = (width * height) as usize;
+
+        // Sigma is authored in reference pixels (at 1024px) and scaled to the
+        // actual image, so pre-smoothing scales consistently at any resolution.
+        let sigma = scale_to_resolution(sigma.max(0.0), width, height);
 
         // --- stage 1: extract luminance & Gaussian-smooth ---
         let mut lum = vec![0.0f32; n];

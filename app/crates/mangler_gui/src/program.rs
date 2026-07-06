@@ -718,8 +718,15 @@ impl Program {
             }
         }
 
-        // Delete all selected nodes on Delete key
-        let delete_pressed = ctx.input(|i| i.key_pressed(egui::Key::Delete));
+        // Delete all selected nodes on Delete/Backspace key.
+        // Backspace is included because on macOS the key labelled "delete" is
+        // Backspace (true forward-delete is Fn+Delete). Skip when a text field
+        // has keyboard focus so backspace still edits text there.
+        let typing = ctx.egui_wants_keyboard_input();
+        let delete_pressed = !typing
+            && ctx.input(|i| {
+                i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)
+            });
         if delete_pressed {
             let node_ids = collect_selected_nodes_to_delete(
                 &mut self.graph_editor.selected_node_ids,
@@ -879,7 +886,7 @@ impl Program {
             app_rect.bottom() - 10.0,
         );
         let txt =
-            "left click: edit      right click: view      ctrl + left click: delete      delete: delete selected      shift + click: multi-select      ctrl+c: copy      ctrl+v: paste".to_string();
+            "left click: edit      right click: view      ctrl + left click: delete      delete/backspace: delete selected      shift + click: multi-select      ctrl+c: copy      ctrl+v: paste".to_string();
         ui.painter().text(
             pos,
             egui::Align2::LEFT_BOTTOM,

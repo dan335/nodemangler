@@ -15,7 +15,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -45,10 +45,10 @@ impl OpImageAdjustmentCrossHatch {
                 .with_description("Source image whose luminance drives the density of hatch strokes."),
             // Distance (in pixels) between successive hatch lines in a layer
             Input::new("spacing".to_string(), Value::Decimal(6.0), Some(InputSettings::Slider { range: (2.0, 32.0), step_by: Some(0.5), clamp_to_range: true }), None)
-                .with_description("Distance in pixels between parallel hatch lines in each layer."),
+                .with_description("Distance in pixels at a 1024px reference (scales with image size) between parallel hatch lines in each layer."),
             // Half-width of each stroke (in pixels) — i.e. anti-alias-free radius
             Input::new("thickness".to_string(), Value::Decimal(0.8), Some(InputSettings::Slider { range: (0.1, 4.0), step_by: Some(0.1), clamp_to_range: true }), None)
-                .with_description("Half-width of each stroke in pixels."),
+                .with_description("Half-width of each stroke, in pixels at a 1024px reference (scales with image size)."),
             // Luminance cutoffs: below threshold_n → layer n draws ink. Ordered
             // so each subsequent darker tone keeps the previous layers and
             // adds another.
@@ -94,10 +94,11 @@ impl OpImageAdjustmentCrossHatch {
         let Value::Decimal(t3) = t3_converted.unwrap() else { unreachable!() };
         let Value::Decimal(t4) = t4_converted.unwrap() else { unreachable!() };
 
-        let spacing = spacing.max(1.0);
-        let thickness = thickness.max(0.1);
-
         let (width, height) = data.dimensions();
+        // Spacing and thickness are authored in reference pixels (at 1024px) and
+        // scaled to the actual image, so stroke density/weight look the same at any resolution.
+        let spacing = scale_to_resolution(spacing.max(1.0), width, height);
+        let thickness = scale_to_resolution(thickness.max(0.1), width, height);
         let ch = data.channels() as usize;
 
         // The four hatch layers are parallel line-sets rotated by these angles.

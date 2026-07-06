@@ -71,7 +71,8 @@ async fn test_ascii_white_input_uses_blank_glyph() {
 async fn test_ascii_black_input_uses_dense_glyph() {
     // Pure black → densest glyph (@) → majority of output is ink.
     let img = Arc::new(FloatImage::from_pixel(16, 16, 3, &[0.0, 0.0, 0.0]));
-    let mut inputs = default_inputs(Value::Image { data: img, change_id: get_id() }, 8, false);
+    // cell size is reference-px (at 1024); 512 → 8px effective on this 16x16 image.
+    let mut inputs = default_inputs(Value::Image { data: img, change_id: get_id() }, 512, false);
     let result = OpImageAdjustmentAscii::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
         Value::Image { data, .. } => {
@@ -113,7 +114,8 @@ async fn test_ascii_invert_flips_polarity() {
     // and the polarity of ink/paper is also flipped so glyph pixels render
     // bright and the rest of the cell stays dark.
     let img = Arc::new(FloatImage::from_pixel(16, 16, 3, &[1.0, 1.0, 1.0]));
-    let mut inputs = default_inputs(Value::Image { data: img, change_id: get_id() }, 8, true);
+    // cell size is reference-px (at 1024); 512 → 8px effective on this 16x16 image.
+    let mut inputs = default_inputs(Value::Image { data: img, change_id: get_id() }, 512, true);
     let result = OpImageAdjustmentAscii::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
         Value::Image { data, .. } => {

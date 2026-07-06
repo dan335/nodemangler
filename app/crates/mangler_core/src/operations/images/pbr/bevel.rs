@@ -14,7 +14,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use rayon::prelude::*;
@@ -91,7 +91,7 @@ impl OpImagePbrBevel {
         NodeSettings {
             name: "bevel".to_string(),
             description: "Produces a beveled height/normal from a mask using a distance-field ramp.".to_string(),
-            help: "Thresholds the input mask into inside/outside pixels, then for each inside pixel finds the Euclidean distance to the nearest outside pixel within the configured search window. That distance is normalised against distance (in pixels), shaped by the corner profile (round sin-curve or angular linear), and blended toward a smoothstep by smoothing.\n\nIn height mode (default) the output is a single-channel height field; in normal mode a Sobel operator is run over the internal height to produce a tangent-space normal map whose apparent strength scales inversely with distance so wider bevels give gentler normals.".to_string(),
+            help: "Thresholds the input mask into inside/outside pixels, then for each inside pixel finds the Euclidean distance to the nearest outside pixel within the configured search window. That distance is normalised against distance (in pixels), shaped by the corner profile (round sin-curve or angular linear), and blended toward a smoothstep by smoothing.\n\nIn height mode (default) the output is a single-channel height field; in normal mode a Sobel operator is run over the internal height to produce a tangent-space normal map whose apparent strength scales inversely with distance so wider bevels give gentler normals. `distance` is expressed in pixels at a 1024px reference and is scaled to the actual image size — including the normal-mode intensity derived from it — so the bevel reads the same at any resolution.".to_string(),
         }
     }
 
@@ -100,7 +100,7 @@ impl OpImagePbrBevel {
             Input::new("mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
                 .with_description("Source mask that defines the shape to be beveled."),
             Input::new("distance".to_string(), Value::Decimal(16.0), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 256.0)) }), None)
-                .with_description("Bevel width in pixels, measured inward from the mask edge."),
+                .with_description("Bevel width in pixels at a 1024px reference (scales with image size), measured inward from the mask edge."),
             Input::new("smoothing".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Blends the ramp toward a smoothstep curve for softer bevels."),
             // 0 = round (sin curve), 1 = angular (linear)
@@ -141,10 +141,13 @@ impl OpImagePbrBevel {
         let Value::Integer(mode) = mode_converted.unwrap() else { unreachable!() };
         let Value::Decimal(threshold) = threshold_converted.unwrap() else { unreachable!() };
 
-        let distance = distance.max(1.0);
         let smoothing = smoothing.clamp(0.0, 1.0);
 
         let (width, height) = data.dimensions();
+        // Distance is authored in reference pixels (at 1024px) and scaled to
+        // the actual image so the bevel width — and the normal-mode intensity
+        // derived from it — stays the same relative size at any resolution.
+        let distance = scale_to_resolution(distance.max(1.0), width, height).max(1.0);
         let w = width as usize;
         let h = height as usize;
         let ch = data.channels() as usize;

@@ -188,7 +188,8 @@ async fn test_toon_edge_thickness_widens_outline() {
         Input::new("image".to_string(), Value::Image { data: Arc::new(img), change_id: get_id() }, None, None),
         Input::new("levels".to_string(), Value::Integer(2), None, None),
         Input::new("smoothing".to_string(), Value::Integer(0), None, None),
-        Input::new("edge thickness".to_string(), Value::Decimal(2.0), None, None),
+        // edge thickness is reference-px (at 1024); 64 → 2px effective on this 32x32 image.
+        Input::new("edge thickness".to_string(), Value::Decimal(64.0), None, None),
         Input::new("edge color".to_string(), Value::Color(red), None, None),
         Input::new("edge strength".to_string(), Value::Decimal(1.0), None, None),
     ];

@@ -25,7 +25,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -58,12 +58,12 @@ impl OpImageAdjustmentToon {
             // pre-blur radius (in pixels) applied to the image before quantization;
             // 0 disables smoothing, default 2 is a good starting point for most photos
             Input::new("smoothing".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (0.0, 5.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Pre-quantization blur radius in pixels; larger values flatten texture before banding."),
+                .with_description("Pre-quantization blur radius, in pixels at a 1024px reference (scales with image size); larger values flatten texture before banding."),
             // blur radius (in pixels) applied to the binary cel-boundary mask;
             // 0 = sharp 1-pixel lines, larger = thicker / softer outlines.
             // Integer because the underlying box-blur radius is an integer pixel count.
             Input::new("edge thickness".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (0.0, 5.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Blur radius applied to the cel-boundary mask; 0 gives sharp 1-pixel outlines."),
+                .with_description("Blur radius applied to the cel-boundary mask, in pixels at a 1024px reference (scales with image size); 0 gives sharp 1-pixel outlines."),
             // color drawn on detected edges
             Input::new("edge color".to_string(), Value::Color(Color::default()), None, None)
                 .with_description("Color drawn along the detected cel-band outlines."),
@@ -107,12 +107,15 @@ impl OpImageAdjustmentToon {
 
         let levels = (levels.max(2)) as f32;
         let steps = levels - 1.0;
-        let smoothing = smoothing.max(0) as usize;
-        let edge_thickness = edge_thickness.max(0);
+        let (width, height) = data.dimensions();
+        // Smoothing and edge thickness are authored in reference pixels (at
+        // 1024px) and scaled to the actual image; 0 means "off" and stays 0
+        // regardless of resolution.
+        let smoothing = if smoothing <= 0 { 0usize } else { scale_to_resolution(smoothing as f32, width, height).round().max(1.0) as usize };
+        let edge_thickness = if edge_thickness <= 0 { 0 } else { scale_to_resolution(edge_thickness as f32, width, height).round().max(1.0) as i32 };
         let edge_strength = edge_strength.clamp(0.0, 1.0);
         let (edge_r, edge_g, edge_b, _edge_a) = edge_color.to_srgb_float();
 
-        let (width, height) = data.dimensions();
         let w = width as usize;
         let h = height as usize;
         let n = w * h;

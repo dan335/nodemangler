@@ -9,7 +9,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -36,7 +36,7 @@ impl OpImageAdjustmentUnsharpen {
             Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
                 .with_description("Source image to sharpen via unsharp masking."),
             Input::new("sigma".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 1000.0)) }), None)
-                .with_description("Gaussian blur standard deviation; larger values widen the sharpening halo."),
+                .with_description("Gaussian blur standard deviation, in pixels at a 1024px reference (scales with image size); larger values widen the sharpening halo."),
             Input::new("threshold".to_string(), Value::Integer(1), Some(InputSettings::DragValue { speed: None, clamp: None }), None)
                 .with_description("Minimum local contrast required before a pixel is sharpened; higher values spare flat areas."),
         ]
@@ -70,7 +70,10 @@ impl OpImageAdjustmentUnsharpen {
 
         // run node — use DynamicImage for unsharpen, then convert back.
         // image 0.25's blur rejects sigma=0/subnormal; unsharpen with sigma<=0 is a no-op so pass through.
-        sigma = sigma.max(0.0);
+        // Sigma is authored in reference pixels (at 1024px) and scaled to the
+        // actual image, so the sharpening halo looks the same at any resolution.
+        let (w, h) = data.dimensions();
+        sigma = scale_to_resolution(sigma.max(0.0), w, h);
         let result = if sigma <= f32::MIN_POSITIVE {
             (*data).clone()
         } else {

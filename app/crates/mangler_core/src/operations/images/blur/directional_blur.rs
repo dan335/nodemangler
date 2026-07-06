@@ -9,7 +9,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -27,7 +27,7 @@ impl OpImageAdjustmentDirectionalBlur {
         NodeSettings {
             name: "directional blur".to_string(),
             description: "Blurs an image along a specified angle.".to_string(),
-            help: "Samples the image at equally spaced positions along a line of length 2 * intensity centred on each output pixel, then averages them. The line direction is (cos(angle), sin(angle)) with angle in degrees counter-clockwise from +X, so 0 smears horizontally and 90 smears vertically.\n\nSamples are bilinear so sub-pixel offsets produce smooth results. Higher sample counts yield smoother motion trails but cost linearly more work. Work is parallelised across rows via rayon. Intensity 0 or one sample returns the image unchanged (each tap lands on the centre pixel).".to_string(),
+            help: "Samples the image at equally spaced positions along a line of length 2 * intensity centred on each output pixel, then averages them. The line direction is (cos(angle), sin(angle)) with angle in degrees counter-clockwise from +X, so 0 smears horizontally and 90 smears vertically.\n\nSamples are bilinear so sub-pixel offsets produce smooth results. Higher sample counts yield smoother motion trails but cost linearly more work. Work is parallelised across rows via rayon. Intensity 0 or one sample returns the image unchanged (each tap lands on the centre pixel). Intensity is measured in pixels at a 1024px reference and scales with the image, so the blur looks the same at any resolution.".to_string(),
         }
     }
 
@@ -41,7 +41,7 @@ impl OpImageAdjustmentDirectionalBlur {
             Input::new("samples".to_string(), Value::Integer(10), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 100.0)) }), None)
                 .with_description("Number of taps averaged along the blur line; higher values are smoother but slower."),
             Input::new("intensity".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 100.0), step_by: Some(0.5), clamp_to_range: true }), None)
-                .with_description("Half-length of the blur line in pixels."),
+                .with_description("Half-length of the blur line in pixels at a 1024px reference (scales with image size, so the effect looks the same at any resolution)."),
         ]
     }
 
@@ -76,12 +76,15 @@ impl OpImageAdjustmentDirectionalBlur {
 
         // run node
         let samples = samples.max(1) as u32;
-        let intensity = intensity.max(0.0);
+        let (width, height) = data.dimensions();
+        // Intensity is authored in reference pixels (at 1024px) and scaled to the
+        // actual image, so the same value blurs the same amount relative to the
+        // content at any resolution.
+        let intensity = scale_to_resolution(intensity.max(0.0), width, height);
         let angle_rad = angle.to_radians();
         let dx = angle_rad.cos();
         let dy = angle_rad.sin();
 
-        let (width, height) = data.dimensions();
         let ch = data.channels() as usize;
         let data_ref = &data;
         let h = height as usize;

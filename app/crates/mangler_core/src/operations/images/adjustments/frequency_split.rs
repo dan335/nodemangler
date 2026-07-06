@@ -11,7 +11,7 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::blur::blur::gaussian_blur_image;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -36,7 +36,7 @@ impl OpImageAdjustmentFrequencySplit {
             Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
                 .with_description("Source image to decompose."),
             Input::new("sigma".to_string(), Value::Decimal(8.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 1000.0)) }), None)
-                .with_description("Gaussian blur sigma in pixels; larger values put more detail in the high output."),
+                .with_description("Gaussian blur sigma in pixels at a 1024px reference (scales with image size); larger values put more detail in the high output."),
         ]
     }
 
@@ -61,11 +61,14 @@ impl OpImageAdjustmentFrequencySplit {
         let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Decimal(sigma) = sigma_converted.unwrap() else { unreachable!() };
 
-        let sigma = sigma.max(0.0);
         let (w, h) = data.dimensions();
         let ch = data.channels() as usize;
         let has_alpha = ch == 2 || ch == 4;
         let color_ch = if has_alpha { ch - 1 } else { ch };
+
+        // Sigma is authored in reference pixels (at 1024px) and scaled to the
+        // actual image, so the low/high split looks the same at any resolution.
+        let sigma = scale_to_resolution(sigma.max(0.0), w, h);
 
         // Low-frequency = gaussian-blurred source. Reuse the shared helper so we
         // match the standard blur operator exactly.

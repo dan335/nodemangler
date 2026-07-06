@@ -18,7 +18,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use rayon::prelude::*;
@@ -35,7 +35,7 @@ impl OpImageAdjustmentOutline {
         NodeSettings {
             name: "outline".to_string(),
             description: "Stroke a mask edge with a configurable colour and thickness.".to_string(),
-            help: "Thresholds the input into a binary mask at 0.5, then computes an exact Euclidean distance field to the boundary with a Felzenszwalb–Huttenlocher distance transform. The stroke is the set of pixels whose signed distance to the edge falls inside a band, so the ring has perfectly uniform width and follows curves cleanly — no corner-bulging like a square-kernel dilate/erode (which grows a circle into a rounded square, ≈√2 thicker on the diagonals).\n\nThe mask is taken from the alpha channel when the image has one whose alpha crosses 0.5 (shapes on a transparent background are defined by alpha, and their RGB is often uniformly opaque-looking); otherwise it falls back to Rec.709 luminance. So a shape on a transparent background strokes its silhouette, and an opaque black-on-white image strokes its luminance edge.\n\n`position` places the band relative to the edge: `0` = outer (0…thickness outside), `1` = inner (thickness…0 inside), `2` = centred (±thickness/2 straddling the edge). `thickness` is the total stroke width in pixels. Output is always 4-channel RGBA; alpha carries a 1-pixel antialiased falloff at both edges of the band and is multiplied by the input colour's alpha. Composite over the source with `blit` or `blend`.".to_string(),
+            help: "Thresholds the input into a binary mask at 0.5, then computes an exact Euclidean distance field to the boundary with a Felzenszwalb–Huttenlocher distance transform. The stroke is the set of pixels whose signed distance to the edge falls inside a band, so the ring has perfectly uniform width and follows curves cleanly — no corner-bulging like a square-kernel dilate/erode (which grows a circle into a rounded square, ≈√2 thicker on the diagonals).\n\nThe mask is taken from the alpha channel when the image has one whose alpha crosses 0.5 (shapes on a transparent background are defined by alpha, and their RGB is often uniformly opaque-looking); otherwise it falls back to Rec.709 luminance. So a shape on a transparent background strokes its silhouette, and an opaque black-on-white image strokes its luminance edge.\n\n`position` places the band relative to the edge: `0` = outer (0…thickness outside), `1` = inner (thickness…0 inside), `2` = centred (±thickness/2 straddling the edge). `thickness` is the total stroke width in pixels. Output is always 4-channel RGBA; alpha carries a 1-pixel antialiased falloff at both edges of the band and is multiplied by the input colour's alpha. Composite over the source with `blit` or `blend`. `thickness` is authored at a 1024px reference resolution and scales with the image, so the stroke width is consistent at any resolution.".to_string(),
         }
     }
 
@@ -44,7 +44,7 @@ impl OpImageAdjustmentOutline {
             Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
                 .with_description("Source image or mask whose edges to stroke."),
             Input::new("thickness".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (1.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Stroke width in pixels."),
+                .with_description("Stroke width in pixels at a 1024px reference (scales with image size, so the effect is the same at any resolution)."),
             Input::new("position".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (0.0, 2.0), step_by: Some(1.0), clamp_to_range: true }), None)
                 .with_description("0 = outer, 1 = inner, 2 = centred around the edge."),
             Input::new("color".to_string(), Value::Color(Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 }), None, None)
@@ -75,13 +75,18 @@ impl OpImageAdjustmentOutline {
         let Value::Integer(position) = position_converted.unwrap() else { unreachable!() };
         let Value::Color(color) = color_converted.unwrap() else { unreachable!() };
 
-        let thickness = thickness.max(1) as f32;
         let position = position.clamp(0, 2);
 
         let (width, height) = data.dimensions();
         let w = width as usize;
         let h = height as usize;
         let ch = data.channels() as usize;
+
+        // Thickness is authored in reference pixels (at 1024px) and scaled to
+        // the actual image so the stroke width is the same relative size at
+        // any resolution. It's used downstream purely as a float distance
+        // (compared against the EDT's Euclidean distances), so no rounding.
+        let thickness = scale_to_resolution(thickness.max(1) as f32, width, height).max(1.0);
 
         // Pick the channel that defines the shape. Prefer alpha when the image
         // has one AND its alpha actually crosses 0.5 — shapes on a transparent

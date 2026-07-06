@@ -10,7 +10,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use crate::operations::images::noise::pixel_hash;
@@ -97,7 +97,7 @@ impl OpImageNoiseBlue {
             Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None)
                 .with_description("Output image height in pixels."),
             Input::new("radius".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("High-pass blur radius; larger values produce a bluer spectrum."),
+                .with_description("High-pass blur radius, in pixels at a 1024px reference (scales with image size); larger values produce a bluer spectrum."),
         ]
     }
 
@@ -129,7 +129,9 @@ impl OpImageNoiseBlue {
         width = width.max(1);
         height = height.max(1);
         seed = seed.max(1);
-        let r = radius.max(1);
+        // Radius is authored in reference pixels (at 1024px) and scaled to the actual
+        // output so the high-pass filter removes the same relative frequencies at any resolution.
+        let r = scale_to_resolution(radius.max(1) as f32, width as u32, height as u32).round().max(1.0) as i32;
         let seed_u32 = seed as u32;
         let w = width as usize;
         let h = height as usize;

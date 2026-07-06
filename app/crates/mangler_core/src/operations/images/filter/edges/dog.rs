@@ -19,7 +19,7 @@ use crate::operations::images::blur::blur::gaussian_blur_planar;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -49,7 +49,7 @@ impl OpImageAdjustmentDog {
                 .with_description("Source image whose luminance is stylized into a line drawing."),
             // small sigma (inner Gaussian) — controls line thickness
             Input::new("sigma".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 10.0), step_by: Some(0.1), clamp_to_range: true }), None)
-                .with_description("Inner Gaussian standard deviation; controls line thickness."),
+                .with_description("Inner Gaussian standard deviation, in pixels at a 1024px reference (scales with image size); controls line thickness."),
             // k ratio (outer sigma = k * sigma); 1.6 is the canonical Marr–Hildreth value
             Input::new("k".to_string(), Value::Decimal(1.6), Some(InputSettings::Slider { range: (1.01, 5.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Ratio between outer and inner sigma; 1.6 is the canonical Marr-Hildreth value."),
@@ -100,11 +100,13 @@ impl OpImageAdjustmentDog {
         let Value::Decimal(phi) = phi_converted.unwrap() else { unreachable!() };
         let Value::Bool(use_xdog) = xdog_converted.unwrap() else { unreachable!() };
 
-        let sigma = sigma.max(0.1);
-        let k = k.max(1.01);
-
         let (width, height) = data.dimensions();
         let ch = data.channels() as usize;
+
+        // Sigma is authored in reference pixels (at 1024px) and scaled to the
+        // actual image, so line thickness scales consistently at any resolution.
+        let sigma = scale_to_resolution(sigma.max(0.1), width, height);
+        let k = k.max(1.01);
 
         // Extract luminance channel (Rec. 709) into a planar buffer
         let mut lum = vec![0.0f32; (width * height) as usize];

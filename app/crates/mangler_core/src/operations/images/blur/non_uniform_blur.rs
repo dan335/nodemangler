@@ -10,7 +10,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -28,7 +28,7 @@ impl OpImageAdjustmentNonUniformBlur {
         NodeSettings {
             name: "non-uniform blur".to_string(),
             description: "Blurs with per-pixel intensity controlled by a grayscale map.".to_string(),
-            help: "For each pixel, reads the first channel of the blur map as a 0-1 factor, multiplies it by max intensity to get a local radius in pixels, then averages that many bilinear samples laid out on a Vogel (sunflower) disc. Vogel placement uses the golden angle so the samples stay evenly distributed regardless of count.\n\nThe blur map is resized with bilinear filtering to match the source if dimensions differ, so a small mask can drive a large image. Dark areas of the map stay sharp, bright areas smear out to max intensity pixels. Parallelised across rows via rayon. Useful for depth-of-field, motion-tagged blur, or selective softening.".to_string(),
+            help: "For each pixel, reads the first channel of the blur map as a 0-1 factor, multiplies it by max intensity to get a local radius in pixels, then averages that many bilinear samples laid out on a Vogel (sunflower) disc. Vogel placement uses the golden angle so the samples stay evenly distributed regardless of count.\n\nThe blur map is resized with bilinear filtering to match the source if dimensions differ, so a small mask can drive a large image. Dark areas of the map stay sharp, bright areas smear out to max intensity pixels. Parallelised across rows via rayon. Useful for depth-of-field, motion-tagged blur, or selective softening. Max intensity is measured in pixels at a 1024px reference and scales with the image, so the effect looks the same at any resolution.".to_string(),
         }
     }
 
@@ -41,7 +41,7 @@ impl OpImageAdjustmentNonUniformBlur {
             Input::new("blur map".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
                 .with_description("Grayscale map; bright pixels get more blur, dark pixels stay sharp."),
             Input::new("max intensity".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 50.0), step_by: Some(0.5), clamp_to_range: true }), None)
-                .with_description("Blur radius in pixels when the blur map is fully white."),
+                .with_description("Blur radius in pixels at a 1024px reference (scales with image size, so the effect looks the same at any resolution) when the blur map is fully white."),
             Input::new("samples".to_string(), Value::Integer(16), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 64.0)) }), None)
                 .with_description("Number of Vogel disc taps per pixel; more samples are smoother but slower."),
         ]
@@ -78,9 +78,12 @@ impl OpImageAdjustmentNonUniformBlur {
 
         // run node
         let samples = samples.max(1) as u32;
-        let max_intensity = max_intensity.max(0.0);
-
         let (width, height) = data.dimensions();
+        // Max intensity is authored in reference pixels (at 1024px) and scaled to
+        // the actual image, so the same value blurs the same amount relative to
+        // the content at any resolution.
+        let max_intensity = scale_to_resolution(max_intensity.max(0.0), width, height);
+
         let ch = data.channels() as usize;
 
         // Resize blur map to match source dimensions if needed

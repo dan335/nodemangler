@@ -10,7 +10,7 @@ use crate::value::ValueType;
 use rayon::prelude::*;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -23,7 +23,7 @@ pub struct OpImagePbrAoFromHeight {}
 
 impl OpImagePbrAoFromHeight {
     pub fn settings() -> NodeSettings {
-        NodeSettings { name: "ao from height".to_string(), description: "Computes ambient occlusion from a height map.".to_string(), help: "Approximates ambient occlusion by sampling the height at the given number of angles around each pixel within a search radius in pixels. Positive neighbor-minus-center height differences divided by distance are averaged; the result subtracts from 1.0 to produce a greyscale RGBA AO image where crevices are dark and high points are bright.\n\nThe source is read as linear height: if the input has three or more channels it is Rec.709-luminance weighted. intensity scales the darkening, samples trades quality for speed, and the whole pass runs in parallel via rayon.".to_string() }
+        NodeSettings { name: "ao from height".to_string(), description: "Computes ambient occlusion from a height map.".to_string(), help: "Approximates ambient occlusion by sampling the height at the given number of angles around each pixel within a search radius in pixels (expressed at a 1024px reference and scaled to the actual image size). Positive neighbor-minus-center height differences divided by distance are averaged; the result subtracts from 1.0 to produce a greyscale RGBA AO image where crevices are dark and high points are bright.\n\nThe source is read as linear height: if the input has three or more channels it is Rec.709-luminance weighted. intensity scales the darkening, samples trades quality for speed, and the whole pass runs in parallel via rayon.".to_string() }
     }
 
     pub fn create_inputs() -> Vec<Input> {
@@ -31,7 +31,7 @@ impl OpImagePbrAoFromHeight {
             Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
                 .with_description("Grayscale height map used as the source surface."),
             Input::new("radius".to_string(), Value::Integer(8), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 64.0)) }), None)
-                .with_description("Sampling radius in pixels that controls the scale of the occlusion."),
+                .with_description("Sampling radius in pixels at a 1024px reference (scales with image size) that controls the scale of the occlusion."),
             Input::new("intensity".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 10.0), step_by: Some(0.1), clamp_to_range: true }), None)
                 .with_description("Strength of the occlusion darkening applied in concavities."),
             Input::new("samples".to_string(), Value::Integer(16), Some(InputSettings::DragValue { speed: None, clamp: Some((4.0, 64.0)) }), None)
@@ -64,7 +64,10 @@ impl OpImagePbrAoFromHeight {
         let width = data.width() as usize;
         let height = data.height() as usize;
         let ch = data.channels() as usize;
-        let radius = (radius as i64).clamp(1, 64) as usize;
+        // Radius is authored in reference pixels (at 1024px) and scaled to the
+        // actual image so the occlusion falloff is the same relative size at
+        // any resolution.
+        let radius = scale_to_resolution((radius as i64).clamp(1, 64) as f32, width as u32, height as u32).round().max(1.0) as usize;
         let samples = (samples as i64).clamp(4, 64) as usize;
 
         // Extract luminance as height values

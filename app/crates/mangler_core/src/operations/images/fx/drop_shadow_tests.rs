@@ -34,9 +34,11 @@ async fn zero_offset_zero_blur_matches_mask() {
 #[tokio::test]
 async fn offset_shifts_shadow() {
     // Non-zero offset moves the shadow so the original mask position is clear.
+    // Offsets are reference pixels (at 1024px), so on this 16px image a value of
+    // `6 * 1024/16` yields a 6px effective shift.
     let mut inputs = vec![
         Input::new("mask".into(), Value::Image { data: centered_square(), change_id: get_id() }, None, None),
-        Input::new("offset x".into(), Value::Decimal(6.0), None, None),
+        Input::new("offset x".into(), Value::Decimal(6.0 * 1024.0 / 16.0), None, None),
         Input::new("offset y".into(), Value::Decimal(0.0), None, None),
         Input::new("blur radius".into(), Value::Decimal(0.0), None, None),
         Input::new("color".into(), Value::Color(crate::color::Color::from_srgb_float(0.0, 0.0, 0.0, 1.0)), None, None),

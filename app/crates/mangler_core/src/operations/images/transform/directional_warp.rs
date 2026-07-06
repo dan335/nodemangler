@@ -6,7 +6,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
 use crate::float_image::FloatImage;
@@ -30,7 +30,7 @@ impl OpImageTransformDirectionalWarp {
         NodeSettings {
             name: "directional warp".to_string(),
             description: "Displaces pixels along a single angle, with intensity driven by a grayscale map.".to_string(),
-            help: "For each output pixel the intensity map is bilinearly sampled (resized to match the source), its luminance is centered to -0.5..0.5, and the source is then sampled at an offset of that value times intensity along the fixed angle vector.\n\nUnlike the regular warp node which uses separate R/G channels for X and Y, this node smears pixels in one direction only, making it ideal for wind, motion streaks, or anisotropic distortion. Output preserves the source's channel count; coordinates are clamped at edges rather than wrapped.".to_string(),
+            help: "For each output pixel the intensity map is bilinearly sampled (resized to match the source), its luminance is centered to -0.5..0.5, and the source is then sampled at an offset of that value times intensity along the fixed angle vector.\n\nUnlike the regular warp node which uses separate R/G channels for X and Y, this node smears pixels in one direction only, making it ideal for wind, motion streaks, or anisotropic distortion. Output preserves the source's channel count; coordinates are clamped at edges rather than wrapped. Intensity is measured in pixels at a 1024px reference and scales with the image, so the effect looks the same at any resolution.".to_string(),
         }
     }
 
@@ -44,7 +44,7 @@ impl OpImageTransformDirectionalWarp {
             Input::new("angle".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(0.1), clamp_to_range: false }), None)
                 .with_description("Direction of displacement in degrees."),
             Input::new("intensity".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 200.0), step_by: Some(0.1), clamp_to_range: false }), None)
-                .with_description("Maximum displacement in pixels scaled by the intensity map."),
+                .with_description("Maximum displacement in pixels at a 1024px reference (scales with image size, so the effect looks the same at any resolution), scaled by the intensity map."),
         ]
     }
 
@@ -74,6 +74,10 @@ impl OpImageTransformDirectionalWarp {
         let Value::Decimal(intensity) = intensity_converted.unwrap() else { unreachable!() };
 
         let (w, h) = src_data.dimensions();
+        // Intensity is authored in reference pixels (at 1024px) and scaled to the
+        // actual image, so the same value displaces the same amount relative to
+        // the content at any resolution.
+        let intensity = scale_to_resolution(intensity, w, h);
         // Output preserves the source image's channel count
         let mut output = FloatImage::new(w, h, src_data.channels());
 

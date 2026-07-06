@@ -14,7 +14,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType, TextHAlign, TextVAlign};
 use serde::{Deserialize, Serialize};
@@ -40,18 +40,18 @@ impl OpImageInputText {
         NodeSettings {
             name: "from text".to_string(),
             description: "Renders a text string to a grayscale image.".to_string(),
-            help: "Rasterises the input string using the embedded Manrope Regular font into a 1-channel FloatImage, with white glyphs on a black background suitable for use as a mask. Explicit line breaks come from \\n in the text; setting wrap_width above 0 adds automatic word-wrap at that pixel column.\n\nx_position and y_position are normalised 0-1 fractions of the canvas that define the text anchor. h_align and v_align place the block relative to that anchor, and a non-zero rotation rotates the full block clockwise around the anchor with bilinear resampling. letter_spacing and line_spacing fine-tune tracking and leading.".to_string(),
+            help: "Rasterises the input string using the embedded Manrope Regular font into a 1-channel FloatImage, with white glyphs on a black background suitable for use as a mask. Explicit line breaks come from \\n in the text; setting wrap_width above 0 adds automatic word-wrap at that pixel column (at a 1024px reference; scales with image size).\n\nx_position and y_position are normalised 0-1 fractions of the canvas that define the text anchor. h_align and v_align place the block relative to that anchor, and a non-zero rotation rotates the full block clockwise around the anchor with bilinear resampling. letter_spacing and line_spacing fine-tune tracking and leading.".to_string(),
         }
     }
 
     /// Creates the input definitions:
     /// - `text` — the string to render (supports `\n` for explicit line breaks)
-    /// - `font_size` — size in pixels (default 64)
+    /// - `font_size` — size in pixels at a 1024px reference (default 64)
     /// - `image_width` / `image_height` — output canvas size in pixels
     /// - `x_position` / `y_position` — normalised (0–1) anchor for text placement
-    /// - `letter_spacing` — extra pixels added between glyphs (can be negative)
+    /// - `letter_spacing` — extra pixels added between glyphs at a 1024px reference (can be negative)
     /// - `line_spacing` — multiplier on line height between stacked lines (1.0 = tight)
-    /// - `wrap_width` — word-wrap column in pixels (0 = no wrapping)
+    /// - `wrap_width` — word-wrap column in pixels at a 1024px reference (0 = no wrapping)
     /// - `h_align` — horizontal alignment of lines relative to the anchor x
     /// - `v_align` — vertical alignment of the text block relative to the anchor y
     /// - `rotation` — clockwise rotation in degrees around the anchor point
@@ -65,7 +65,7 @@ impl OpImageInputText {
                 Some(InputSettings::DragValue { clamp: Some((1.0, 1000.0)), speed: None }),
                 None,
             )
-                .with_description("Glyph height in pixels."),
+                .with_description("Glyph height in pixels at a 1024px reference (scales with image size)."),
             Input::new(
                 "image_width".to_string(),
                 Value::Integer(512),
@@ -100,7 +100,7 @@ impl OpImageInputText {
                 Some(InputSettings::DragValue { clamp: Some((-100.0, 500.0)), speed: None }),
                 None,
             )
-                .with_description("Extra pixels added between glyphs; may be negative for tighter tracking."),
+                .with_description("Extra pixels added between glyphs, at a 1024px reference (scales with image size); may be negative for tighter tracking."),
             Input::new(
                 "line_spacing".to_string(),
                 Value::Decimal(1.0),
@@ -114,7 +114,7 @@ impl OpImageInputText {
                 Some(InputSettings::DragValue { clamp: Some((0.0, 10000.0)), speed: None }),
                 None,
             )
-                .with_description("Word-wrap column in pixels; 0 disables wrapping."),
+                .with_description("Word-wrap column in pixels at a 1024px reference (scales with image size); 0 disables wrapping."),
             Input::new("h_align".to_string(), Value::TextHAlign(TextHAlign::Center), None, None)
                 .with_description("Horizontal alignment of each line relative to the anchor x."),
             Input::new("v_align".to_string(), Value::TextVAlign(TextVAlign::Middle), None, None)
@@ -186,9 +186,19 @@ impl OpImageInputText {
 
         let img_width   = img_width.max(1) as u32;
         let img_height  = img_height.max(1) as u32;
-        let font_size   = font_size.max(1.0);
+        // font_size, letter_spacing, and wrap_width are authored in reference pixels
+        // (at 1024px) and scaled to the actual canvas so text layout looks the same
+        // relative size at any resolution. letter_spacing may be negative (tighter
+        // tracking), so it is scaled without clamping to a non-negative floor.
+        let font_size   = scale_to_resolution(font_size.max(1.0), img_width, img_height);
         let line_sp     = line_sp.max(0.0);
-        let wrap_px     = wrap_width.max(0) as f32;
+        let letter_sp   = scale_to_resolution(letter_sp, img_width, img_height);
+        let wrap_width  = if wrap_width <= 0 {
+            0
+        } else {
+            scale_to_resolution(wrap_width as f32, img_width, img_height).round().max(1.0) as i32
+        };
+        let wrap_px     = wrap_width as f32;
 
         // Load the embedded font and create a scaled instance.
         let font = FontArc::try_from_slice(FONT_BYTES).map_err(|e| OperationError {

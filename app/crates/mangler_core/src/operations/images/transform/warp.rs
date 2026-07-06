@@ -7,7 +7,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
 use crate::float_image::FloatImage;
@@ -31,7 +31,7 @@ impl OpImageTransformWarp {
         NodeSettings {
             name: "warp".to_string(),
             description: "Displaces pixels using a displacement map. Red channel offsets X, green channel offsets Y.".to_string(),
-            help: "For each output pixel, the displacement map is bilinearly sampled (with coordinate scaling so the map need not match source dimensions). The red channel drives horizontal offset and green drives vertical: 0.5 is zero displacement, with values above/below pushing pixels in opposite directions. The final displacement is (channel - 0.5) * intensity pixels.\n\nSingle-channel maps use the same value for both X and Y. Source sampling is bilinear and coordinates are clamped at image edges (not wrapped), so strong warps near borders can produce streaking. Output channel count matches the source image.".to_string(),
+            help: "For each output pixel, the displacement map is bilinearly sampled (with coordinate scaling so the map need not match source dimensions). The red channel drives horizontal offset and green drives vertical: 0.5 is zero displacement, with values above/below pushing pixels in opposite directions. The final displacement is (channel - 0.5) * intensity pixels.\n\nSingle-channel maps use the same value for both X and Y. Source sampling is bilinear and coordinates are clamped at image edges (not wrapped), so strong warps near borders can produce streaking. Output channel count matches the source image. Intensity is measured in pixels at a 1024px reference and scales with the image, so the effect looks the same at any resolution.".to_string(),
         }
     }
 
@@ -43,7 +43,7 @@ impl OpImageTransformWarp {
             Input::new("displacement".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
                 .with_description("Displacement map: red channel drives X offset, green drives Y offset."),
             Input::new("intensity".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 200.0), step_by: Some(0.1), clamp_to_range: false }), None)
-                .with_description("Maximum displacement in pixels scaled by the map values."),
+                .with_description("Maximum displacement in pixels at a 1024px reference (scales with image size, so the effect looks the same at any resolution), scaled by the map values."),
         ]
     }
 
@@ -71,6 +71,10 @@ impl OpImageTransformWarp {
         let Value::Decimal(intensity) = intensity_converted.unwrap() else { unreachable!() };
 
         let (w, h) = src_data.dimensions();
+        // Intensity is authored in reference pixels (at 1024px) and scaled to the
+        // actual image, so the same value displaces the same amount relative to
+        // the content at any resolution.
+        let intensity = scale_to_resolution(intensity, w, h);
         // Output preserves the source image's channel count
         let mut output = FloatImage::new(w, h, src_data.channels());
 

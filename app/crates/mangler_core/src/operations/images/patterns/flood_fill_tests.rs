@@ -55,7 +55,9 @@ async fn below_threshold_is_zero() {
 
 #[tokio::test]
 async fn min_size_discards_small_cells() {
-    let mut img = FloatImage::new(8, 8, 1);
+    // Width 1024 (the reference resolution) so the node's area-scaling of
+    // `min size` is identity here and the 3-pixel threshold is exact.
+    let mut img = FloatImage::new(1024, 8, 1);
     img.put_pixel(1, 1, &[1.0]); // single pixel cell
     img.put_pixel(5, 5, &[1.0]);
     img.put_pixel(6, 5, &[1.0]);

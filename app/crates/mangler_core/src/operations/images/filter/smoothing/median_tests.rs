@@ -200,7 +200,9 @@ fn median_reference(img: &FloatImage, radius: i32) -> Vec<f32> {
 
 #[tokio::test]
 async fn test_median_matches_bruteforce_reference() {
-    let img = hashed_image(24, 17, 4);
+    // Max dimension = 1024 (the reference resolution) so the node's resolution
+    // scaling of `radius` is identity here and matches the brute-force radius.
+    let img = hashed_image(1024, 17, 4);
     // radius 8 makes the 17-wide window exceed the image height, exercising
     // heavy clamping in the sliding path
     for radius in [1i32, 2i32, 8i32] {

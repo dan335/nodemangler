@@ -154,7 +154,9 @@ fn oil_paint_reference(img: &FloatImage, radius: i32, levels: usize) -> Vec<f32>
 
 #[tokio::test]
 async fn test_oil_paint_matches_bruteforce_reference() {
-    let img = hashed_image(24, 17, 4);
+    // Max dimension = 1024 (the reference resolution) so the node's resolution
+    // scaling of `radius` is identity here and matches the brute-force radius.
+    let img = hashed_image(1024, 17, 4);
     let mut inputs = vec![
         Input::new("image".to_string(), Value::Image { data: img.clone(), change_id: get_id() }, None, None),
         Input::new("radius".to_string(), Value::Integer(3), None, None),

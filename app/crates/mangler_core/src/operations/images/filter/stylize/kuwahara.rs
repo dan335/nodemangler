@@ -15,7 +15,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -44,7 +44,7 @@ impl OpImageAdjustmentKuwahara {
                 .with_description("Source image to smooth with classic Kuwahara quadrant averaging."),
             // radius is the half-size of each quadrant; quadrants are (radius+1) x (radius+1) pixels
             Input::new("radius".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Half-size of each quadrant in pixels; larger values yield a chunkier painterly look."),
+                .with_description("Half-size of each quadrant, in pixels at a 1024px reference (scales with image size); larger values yield a chunkier painterly look."),
         ]
     }
 
@@ -72,10 +72,10 @@ impl OpImageAdjustmentKuwahara {
         let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
 
-        // clamp radius to at least 1 — a radius of 0 would make each quadrant a single pixel and the filter would be a no-op
-        let radius = radius.max(1);
-
         let (width, height) = data.dimensions();
+        // clamp radius to at least 1 — a radius of 0 would make each quadrant a single pixel and the filter would be a no-op.
+        // Radius is authored in reference pixels (at 1024px) and scaled to the actual image.
+        let radius = scale_to_resolution(radius.max(1) as f32, width, height).round().max(1.0) as i32;
         let ch = data.channels() as usize;
         // for RGBA (4) or gray+alpha (2), treat the last channel as alpha and exclude it from variance computation
         let has_alpha = ch == 2 || ch == 4;

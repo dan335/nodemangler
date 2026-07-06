@@ -29,7 +29,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -128,7 +128,7 @@ impl OpImageSimulationHydraulicErosion {
             Input::new("lifetime".to_string(), Value::Integer(100), Some(InputSettings::DragValue { clamp: Some((1.0, 512.0)), speed: Some(1.0) }), None)
                 .with_description("Maximum steps a droplet travels before drying up; longer lives carve longer drainage paths that reach the valleys."),
             Input::new("erosion radius".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 8.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Radius of the erosion brush in pixels; larger values carve wider, softer gullies."),
+                .with_description("Radius of the erosion brush in pixels at a 1024px reference (scales with the output size); larger values carve wider, softer gullies."),
             Input::new("inertia".to_string(), Value::Decimal(0.05), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("How much a droplet keeps its previous direction versus following the gradient; higher values give straighter paths."),
             Input::new("evaporation".to_string(), Value::Decimal(0.01), Some(InputSettings::DragValue { clamp: Some((0.0, 0.5)), speed: Some(0.001) }), None)
@@ -234,7 +234,11 @@ impl OpImageSimulationHydraulicErosion {
         let deposition_rate = (deposition_rate as f64).clamp(0.0, 1.0);
         let evaporation = (evaporation as f64).clamp(0.0, 0.5);
         let inertia = (inertia as f64).clamp(0.0, 1.0);
-        let radius = radius.clamp(1, 8) as i64;
+        // Erosion radius is authored in reference pixels (at 1024px) and
+        // scaled to the generator's own width/height inputs (there is no
+        // source image here) so gully width is the same relative size at any
+        // output resolution.
+        let radius = scale_to_resolution(radius.clamp(1, 8) as f32, width as u32, height as u32).round().max(1.0) as i64;
         let lifetime = lifetime.clamp(1, 512) as usize;
 
         let w = width as usize;

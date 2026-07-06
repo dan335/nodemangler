@@ -15,7 +15,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use rayon::prelude::*;
@@ -44,7 +44,7 @@ impl OpImageAdjustmentOilPaint {
                 .with_description("Source image to stylize with brush-stroke oil-paint posterization."),
             // Brush radius — larger = chunkier strokes
             Input::new("radius".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 10.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Brush radius in pixels; larger values produce chunkier brush strokes."),
+                .with_description("Brush radius, in pixels at a 1024px reference (scales with image size); larger values produce chunkier brush strokes."),
             // Number of intensity bins — lower = more posterized palette
             Input::new("levels".to_string(), Value::Integer(8), Some(InputSettings::Slider { range: (2.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None)
                 .with_description("Number of luminance bins; fewer levels give a more posterized palette."),
@@ -74,10 +74,10 @@ impl OpImageAdjustmentOilPaint {
         let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
         let Value::Integer(levels) = levels_converted.unwrap() else { unreachable!() };
 
-        let radius = radius.max(1);
-        let levels = levels.max(2) as usize;
-
         let (width, height) = data.dimensions();
+        // Radius is authored in reference pixels (at 1024px) and scaled to the actual image.
+        let radius = scale_to_resolution(radius.max(1) as f32, width, height).round().max(1.0) as i32;
+        let levels = levels.max(2) as usize;
         let ch = data.channels() as usize;
         let w = width as i32;
         let h = height as i32;

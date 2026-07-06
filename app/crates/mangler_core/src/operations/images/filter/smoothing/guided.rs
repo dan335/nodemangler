@@ -20,7 +20,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -49,7 +49,7 @@ impl OpImageAdjustmentGuided {
                 .with_description("Source image to smooth while preserving edges; also acts as its own guide."),
             // box-blur radius — cost is independent of this thanks to prefix sums, so we allow large values
             Input::new("radius".to_string(), Value::Integer(8), Some(InputSettings::Slider { range: (1.0, 64.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Window radius for the internal box blurs; larger values smooth over broader areas."),
+                .with_description("Window radius for the internal box blurs, in pixels at a 1024px reference (scales with image size); larger values smooth over broader areas."),
             // epsilon controls how aggressively edges are preserved: smaller values keep more detail
             // (sharper edges, less smoothing); larger values smooth more aggressively across edges
             Input::new("epsilon".to_string(), Value::Decimal(0.01), Some(InputSettings::Slider { range: (0.0001, 1.0), step_by: Some(0.001), clamp_to_range: true }), None)
@@ -83,10 +83,12 @@ impl OpImageAdjustmentGuided {
         let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
         let Value::Decimal(epsilon) = epsilon_converted.unwrap() else { unreachable!() };
 
-        let radius = radius.max(1) as usize;
         let epsilon = epsilon.max(1e-6);
 
+        // Radius is authored in reference pixels (at 1024px) and scaled to the
+        // actual image so the filter looks the same relative size at any resolution.
         let (width, height) = data.dimensions();
+        let radius = scale_to_resolution(radius.max(1) as f32, width, height).round().max(1.0) as usize;
         let w = width as usize;
         let h = height as usize;
         let n = w * h;

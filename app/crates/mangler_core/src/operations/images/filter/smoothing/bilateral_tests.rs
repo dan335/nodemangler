@@ -215,7 +215,9 @@ fn bilateral_reference(img: &FloatImage, radius: i32, spatial_sigma: f32, range_
 
 #[tokio::test]
 async fn test_bilateral_matches_exact_exp_reference() {
-    let img = hashed_image(24, 17, 4);
+    // Max dimension = 1024 (the reference resolution) so the node's resolution
+    // scaling of `radius`/`spatial sigma` is identity and matches the reference.
+    let img = hashed_image(1024, 17, 4);
     let mut inputs = vec![
         Input::new("image".to_string(), Value::Image { data: img.clone(), change_id: get_id() }, None, None),
         Input::new("radius".to_string(), Value::Integer(4), None, None),

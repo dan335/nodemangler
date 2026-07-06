@@ -23,7 +23,8 @@ fn filled_mask() -> Arc<FloatImage> {
 async fn center_is_bright() {
     let mut inputs = vec![
         Input::new("mask".into(), Value::Image { data: filled_mask(), change_id: get_id() }, None, None),
-        Input::new("distance".into(), Value::Decimal(4.0), None, None),
+        // distance is reference-px (at 1024); 128 → 4px effective on this 32x32 mask.
+        Input::new("distance".into(), Value::Decimal(128.0), None, None),
         Input::new("smoothing".into(), Value::Decimal(0.0), None, None),
         Input::new("corner type".into(), Value::Integer(1), None, None),
         Input::new("output mode".into(), Value::Integer(0), None, None),
@@ -45,7 +46,9 @@ async fn center_is_bright() {
 /// a brute-force reference computed here.
 #[tokio::test]
 async fn matches_brute_force_reference() {
-    let w = 32usize;
+    // Width 1024 (the reference resolution) so the node's resolution scaling of
+    // `distance` is identity here and matches the brute-force distance.
+    let w = 1024usize;
     let h = 24usize;
     let distance = 8.0f32;
     let smoothing = 0.25f32;

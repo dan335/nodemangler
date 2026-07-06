@@ -290,7 +290,9 @@ fn reference_filter(data: &FloatImage, radius: i32, q: f32, alpha: f32) -> Vec<f
 async fn test_anisotropic_kuwahara_matches_bruteforce_reference() {
     // Golden test: the offset-major LUT restructure must match a brute-force
     // per-pixel all-sector reference to well below visual precision.
-    let (w, h) = (14u32, 11u32);
+    // Max dimension = 1024 (the reference resolution) so the node's resolution
+    // scaling of `radius` is identity here and matches the brute-force radius.
+    let (w, h) = (1024u32, 11u32);
     let mut img = FloatImage::new(w, h, 4);
     let mut state: u32 = 0xCAFE_F00D;
     for y in 0..h {

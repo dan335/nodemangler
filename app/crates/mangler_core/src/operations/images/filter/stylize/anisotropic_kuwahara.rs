@@ -28,7 +28,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -62,7 +62,7 @@ impl OpImageAdjustmentAnisotropicKuwahara {
                 .with_description("Source image to stylize with edge-following painterly smoothing."),
             // base sampling radius — neighborhood is (2r+1) x (2r+1) before the elliptical warp
             Input::new("radius".to_string(), Value::Integer(4), Some(InputSettings::Slider { range: (2.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Base sampling radius in pixels; larger values give bigger brush strokes."),
+                .with_description("Base sampling radius, in pixels at a 1024px reference (scales with image size); larger values give bigger brush strokes."),
             // sharpness q: exponent on per-sector variance when computing blend weights.
             // Higher = sharper edges and flatter regions (more posterised);
             // lower = softer transitions (more averaged).
@@ -104,11 +104,11 @@ impl OpImageAdjustmentAnisotropicKuwahara {
         let Value::Decimal(sharpness) = sharpness_converted.unwrap() else { unreachable!() };
         let Value::Decimal(alpha) = alpha_converted.unwrap() else { unreachable!() };
 
-        let radius = radius.max(2);
+        let (width, height) = data.dimensions();
+        // Radius is authored in reference pixels (at 1024px) and scaled to the actual image.
+        let radius = scale_to_resolution(radius.max(2) as f32, width, height).round().max(1.0) as i32;
         let q = sharpness.max(1.0);
         let alpha = alpha.max(0.1);
-
-        let (width, height) = data.dimensions();
         let w = width as usize;
         let h = height as usize;
         let n = w * h;

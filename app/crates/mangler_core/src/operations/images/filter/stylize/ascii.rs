@@ -19,7 +19,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -76,7 +76,7 @@ impl OpImageAdjustmentAscii {
                 .with_description("Source image whose brightness drives the ASCII glyph selection."),
             // Pixel size of each ASCII cell; glyphs are 8×8 so smaller cells lose detail
             Input::new("cell size".to_string(), Value::Integer(8), Some(InputSettings::Slider { range: (2.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Pixel size of each square ASCII cell; larger cells yield chunkier glyphs."),
+                .with_description("Size of each square ASCII cell, in pixels at a 1024px reference (scales with image size); larger cells yield chunkier glyphs."),
             // Invert: false = dark glyph on bright paper (default); true = bright glyph on dark ink
             Input::new("invert".to_string(), Value::Bool(false), None, None)
                 .with_description("Invert ink and paper so glyphs render bright on a dark background."),
@@ -106,8 +106,10 @@ impl OpImageAdjustmentAscii {
         let Value::Integer(cell) = cell_converted.unwrap() else { unreachable!() };
         let Value::Bool(invert) = invert_converted.unwrap() else { unreachable!() };
 
-        let cell = cell.max(2) as u32;
         let (width, height) = data.dimensions();
+        // Cell size is authored in reference pixels (at 1024px) and scaled to
+        // the actual image, so glyphs are the same relative size at any resolution.
+        let cell = scale_to_resolution(cell.max(2) as f32, width, height).round().max(1.0) as u32;
         let ch = data.channels() as usize;
 
         let mut out = FloatImage::new(width, height, ch as u32);

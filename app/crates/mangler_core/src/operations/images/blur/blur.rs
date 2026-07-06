@@ -11,7 +11,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -37,7 +37,7 @@ impl OpImageAdjustmentBlur {
             Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
                 .with_description("Source image to blur."),
             Input::new("sigma".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 1000.0)) }), None)
-                .with_description("Gaussian standard deviation in pixels; larger values produce a softer blur."),
+                .with_description("Gaussian standard deviation, in pixels at a 1024px reference (scales with image size, so the blur looks the same at any resolution); larger values are softer."),
         ]
     }
 
@@ -62,7 +62,11 @@ impl OpImageAdjustmentBlur {
         let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Decimal(sigma) = sigma_converted.unwrap() else { unreachable!() };
 
-        let sigma = sigma.max(0.0);
+        // Sigma is authored in reference pixels (at 1024px) and scaled to the
+        // actual image, so the same value blurs the same amount relative to the
+        // content at any resolution.
+        let (w, h) = data.dimensions();
+        let sigma = scale_to_resolution(sigma.max(0.0), w, h);
 
         // Zero sigma means no blur — return the original image unchanged
         if sigma < f32::EPSILON {

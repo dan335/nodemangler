@@ -145,7 +145,8 @@ async fn strokes_alpha_defined_shape_with_bright_rgb() {
     // no edge here and emitted a fully-transparent (empty) image.
     let mut inputs = vec![
         Input::new("image".into(), Value::Image { data: alpha_square(32, 32), change_id: get_id() }, None, None),
-        Input::new("thickness".into(), Value::Integer(2), None, None),
+        // thickness is reference-px (at 1024); 64 → 2px effective on this 32x32 image.
+        Input::new("thickness".into(), Value::Integer(64), None, None),
         Input::new("position".into(), Value::Integer(2), None, None),
         Input::new("color".into(), black(), None, None),
     ];
@@ -171,7 +172,8 @@ async fn outer_ring_thickness_is_uniform_around_a_circle() {
     let size = 96;
     let mut inputs = vec![
         Input::new("image".into(), Value::Image { data: filled_circle(size, 24.0), change_id: get_id() }, None, None),
-        Input::new("thickness".into(), Value::Integer(8), None, None),
+        // thickness is reference-px (at 1024); 85 → ~8px effective on this 96x96 image.
+        Input::new("thickness".into(), Value::Integer(85), None, None),
         Input::new("position".into(), Value::Integer(0), None, None),
         Input::new("color".into(), black(), None, None),
     ];

@@ -11,7 +11,7 @@ use crate::value::ValueType;
 use rayon::prelude::*;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -41,7 +41,7 @@ impl OpImageAdjustmentDistance {
             Input::new("threshold".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Luminance cutoff separating inside (above) from outside (below)."),
             Input::new("spread".to_string(), Value::Decimal(32.0), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 256.0)) }), None)
-                .with_description("Maximum search radius in pixels; caps how far the distance field extends."),
+                .with_description("Maximum search radius in pixels at a 1024px reference (scales with image size); caps how far the distance field extends."),
         ]
     }
 
@@ -73,7 +73,10 @@ impl OpImageAdjustmentDistance {
         let Value::Decimal(spread) = spread_converted.unwrap() else { unreachable!() };
 
         // run node — work directly on FloatImage data
-        let spread = spread.max(1.0);
+        // Spread is authored in reference pixels (at 1024px) and scaled to the
+        // actual image, so the field extends the same relative distance at any
+        // resolution.
+        let spread = scale_to_resolution(spread.max(0.0), data.width(), data.height()).max(1.0);
         let width = data.width() as i32;
         let height = data.height() as i32;
         let w = width as usize;

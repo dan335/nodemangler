@@ -18,7 +18,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use rayon::prelude::*;
@@ -48,10 +48,10 @@ impl OpImageAdjustmentNonLocalMeans {
                 .with_description("Source image to denoise using patch-similarity weighted averaging."),
             // search window radius — how far NLM looks for similar patches
             Input::new("search radius".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 8.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Half-size of the search window; larger values consider patches farther away."),
+                .with_description("Half-size of the search window, in pixels at a 1024px reference (scales with image size); larger values consider patches farther away."),
             // patch radius — size of the neighborhood used for similarity
             Input::new("patch radius".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (0.0, 4.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Half-size of the comparison patch; larger values weigh broader context in the match."),
+                .with_description("Half-size of the comparison patch, in pixels at a 1024px reference (scales with image size); larger values weigh broader context in the match."),
             // filter strength h; small h = sharp but noisy, large h = smooth but blurry
             Input::new("strength".to_string(), Value::Decimal(0.1), Some(InputSettings::Slider { range: (0.001, 1.0), step_by: Some(0.001), clamp_to_range: true }), None)
                 .with_description("Denoising strength h; smaller values keep more detail, larger values smooth more."),
@@ -83,12 +83,16 @@ impl OpImageAdjustmentNonLocalMeans {
         let Value::Integer(patch_r) = patch_converted.unwrap() else { unreachable!() };
         let Value::Decimal(h) = h_converted.unwrap() else { unreachable!() };
 
-        let search_r = search_r.max(1);
-        let patch_r = patch_r.max(0);
         // Guard against division by zero in the exponent
         let h2 = (h * h).max(1e-8);
 
         let (width, height) = data.dimensions();
+        // Search radius and patch radius are authored in reference pixels (at
+        // 1024px) and scaled to the actual image so the filter looks the same
+        // relative size at any resolution. Patch radius allows 0 (single-pixel
+        // patch, i.e. plain distance weighting), so it is left unscaled in that case.
+        let search_r = scale_to_resolution(search_r.max(1) as f32, width, height).round().max(1.0) as i32;
+        let patch_r = if patch_r <= 0 { 0 } else { scale_to_resolution(patch_r as f32, width, height).round().max(1.0) as i32 };
         let ch = data.channels() as usize;
         let w = width as i32;
         let h_i = height as i32;

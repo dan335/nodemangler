@@ -15,7 +15,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -44,7 +44,7 @@ impl OpImageAdjustmentMedian {
                 .with_description("Source image to denoise or stylize with per-channel median filtering."),
             // radius is capped at 8 — at r=8 the per-pixel window is 17x17=289 samples
             Input::new("radius".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (1.0, 8.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Half-size of the square window in pixels; larger values produce a chunkier look."),
+                .with_description("Half-size of the square window, in pixels at a 1024px reference (scales with image size); larger values produce a chunkier look."),
         ]
     }
 
@@ -72,9 +72,10 @@ impl OpImageAdjustmentMedian {
         let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
 
-        let radius = radius.max(1);
-
+        // Radius is authored in reference pixels (at 1024px) and scaled to the
+        // actual image so the filter looks the same relative size at any resolution.
         let (width, height) = data.dimensions();
+        let radius = scale_to_resolution(radius.max(1) as f32, width, height).round().max(1.0) as i32;
         let ch = data.channels() as usize;
         let data_ref = &data;
         let w = width as i32;

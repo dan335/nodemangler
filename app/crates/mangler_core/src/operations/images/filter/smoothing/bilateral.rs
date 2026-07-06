@@ -15,7 +15,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -44,10 +44,10 @@ impl OpImageAdjustmentBilateral {
                 .with_description("Source image to smooth while keeping edges crisp."),
             // radius of the square window in pixels (full window is (2r+1) x (2r+1))
             Input::new("radius".to_string(), Value::Integer(4), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Half-size of the sampling window in pixels; larger values average over a wider area."),
+                .with_description("Half-size of the sampling window, in pixels at a 1024px reference (scales with image size); larger values average over a wider area."),
             // spatial sigma: controls how fast spatial weight falls off with distance; tends to track radius
             Input::new("spatial sigma".to_string(), Value::Decimal(2.0), Some(InputSettings::Slider { range: (0.1, 10.0), step_by: Some(0.1), clamp_to_range: true }), None)
-                .with_description("Falloff of the spatial Gaussian; larger values smooth further across distance."),
+                .with_description("Falloff of the spatial Gaussian, in pixels at a 1024px reference (scales with image size); larger values smooth further across distance."),
             // range sigma: controls how tolerant the filter is of color differences (smaller = more edge-preserving)
             Input::new("range sigma".to_string(), Value::Decimal(0.15), Some(InputSettings::Slider { range: (0.01, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Color-similarity tolerance; smaller values preserve edges more strongly."),
@@ -84,15 +84,18 @@ impl OpImageAdjustmentBilateral {
         let Value::Decimal(range_sigma) = range_converted.unwrap() else { unreachable!() };
 
         // clamp controls to valid ranges to avoid division-by-zero and negative widths
-        let radius = radius.max(1);
-        let spatial_sigma = spatial_sigma.max(1e-4);
+        // Radius and spatial sigma are authored in reference pixels (at 1024px)
+        // and scaled to the actual image so the filter looks the same relative
+        // size at any resolution.
+        let (width, height) = data.dimensions();
+        let radius = scale_to_resolution(radius.max(1) as f32, width, height).round().max(1.0) as i32;
+        let spatial_sigma = scale_to_resolution(spatial_sigma.max(1e-4), width, height);
         let range_sigma = range_sigma.max(1e-4);
 
         // precompute weight divisors once — weights are exp(-d^2 / (2 * sigma^2))
         let spatial_denom = 2.0 * spatial_sigma * spatial_sigma;
         let range_denom = 2.0 * range_sigma * range_sigma;
 
-        let (width, height) = data.dimensions();
         let ch = data.channels() as usize;
         // for RGBA or gray+alpha, exclude alpha from the range-weight color difference
         let has_alpha = ch == 2 || ch == 4;

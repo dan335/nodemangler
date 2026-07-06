@@ -19,7 +19,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -48,7 +48,7 @@ impl OpImageAdjustmentHalftone {
                 .with_description("Source image whose luminance drives the halftone dot sizes."),
             // Grid period in pixels — size of each halftone cell
             Input::new("cell size".to_string(), Value::Integer(8), Some(InputSettings::Slider { range: (2.0, 64.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Size of each halftone cell in pixels; larger values yield bigger dots."),
+                .with_description("Size of each halftone cell, in pixels at a 1024px reference (scales with image size); larger values yield bigger dots."),
             // Screen rotation in degrees
             Input::new("angle".to_string(), Value::Decimal(45.0), Some(InputSettings::Slider { range: (0.0, 180.0), step_by: Some(1.0), clamp_to_range: true }), None)
                 .with_description("Screen rotation in degrees; 45 is the classic halftone angle."),
@@ -78,11 +78,13 @@ impl OpImageAdjustmentHalftone {
         let Value::Integer(cell_size) = cell_converted.unwrap() else { unreachable!() };
         let Value::Decimal(angle_deg) = angle_converted.unwrap() else { unreachable!() };
 
-        let cell = cell_size.max(2) as f32;
+        let (width, height) = data.dimensions();
+        // Cell size is authored in reference pixels (at 1024px) and scaled to
+        // the actual image, so dot pitch is the same relative size at any resolution.
+        let cell = scale_to_resolution(cell_size.max(2) as f32, width, height).round().max(1.0);
         let angle = angle_deg.to_radians();
         let (sin_a, cos_a) = angle.sin_cos();
 
-        let (width, height) = data.dimensions();
         let ch = data.channels() as usize;
 
         // Helper: sample luminance at a floating-point position using the

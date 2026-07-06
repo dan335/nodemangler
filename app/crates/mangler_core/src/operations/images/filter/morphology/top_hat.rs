@@ -7,7 +7,7 @@
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::operations::images::filter::morphology::erode::separable_morphology;
 use crate::output::Output;
 use crate::value::{Value, ValueType};
@@ -36,7 +36,7 @@ impl OpImageAdjustmentTopHat {
             Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
                 .with_description("Source image to extract bright details from."),
             Input::new("radius".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Half-size of the square window; features larger than this are removed."),
+                .with_description("Half-size of the square window, in pixels at a 1024px reference (scales with image size, so the effect is the same at any resolution); features larger than this are removed."),
         ]
     }
 
@@ -60,9 +60,11 @@ impl OpImageAdjustmentTopHat {
 
         let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
-        let radius = radius.max(1);
 
+        // Radius is authored in reference pixels (at 1024px) and scaled to the
+        // actual image so the top-hat is the same relative size at any resolution.
         let (w, h) = data.dimensions();
+        let radius = scale_to_resolution(radius.max(1) as f32, w, h).round().max(1.0) as i32;
         // Opening = erode then dilate.
         let eroded = separable_morphology(&data, radius, |a, b| a.min(b));
         let opened = separable_morphology(&eroded, radius, |a, b| a.max(b));

@@ -10,7 +10,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -28,7 +28,7 @@ impl OpImageAdjustmentSlopeBlur {
         NodeSettings {
             name: "slope blur".to_string(),
             description: "Blurs along directions determined by a grayscale slope map.".to_string(),
-            help: "At each pixel, computes the 2D gradient of the slope map via central finite differences (first channel used as height), normalises it, and then blurs the source along that unit direction using bilinear samples spaced over +/- intensity pixels. Flat regions of the slope map (gradient near zero) leave pixels untouched.\n\nThe slope map is resized to match the source if needed. The effect resembles wet paint running downhill when the slope map is a heightfield, and is a staple for weathering, drip, and anisotropic smear effects. Parallelised across rows via rayon.".to_string(),
+            help: "At each pixel, computes the 2D gradient of the slope map via central finite differences (first channel used as height), normalises it, and then blurs the source along that unit direction using bilinear samples spaced over +/- intensity pixels. Flat regions of the slope map (gradient near zero) leave pixels untouched.\n\nThe slope map is resized to match the source if needed. The effect resembles wet paint running downhill when the slope map is a heightfield, and is a staple for weathering, drip, and anisotropic smear effects. Parallelised across rows via rayon. Intensity is measured in pixels at a 1024px reference and scales with the image, so the effect looks the same at any resolution.".to_string(),
         }
     }
 
@@ -41,7 +41,7 @@ impl OpImageAdjustmentSlopeBlur {
             Input::new("slope map".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
                 .with_description("Grayscale heightfield; its gradient gives the blur direction per pixel."),
             Input::new("intensity".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 100.0), step_by: Some(0.5), clamp_to_range: true }), None)
-                .with_description("Half-length in pixels of the line sampled along each gradient."),
+                .with_description("Half-length in pixels at a 1024px reference (scales with image size, so the effect looks the same at any resolution) of the line sampled along each gradient."),
             Input::new("samples".to_string(), Value::Integer(10), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 100.0)) }), None)
                 .with_description("Number of taps averaged along the gradient direction."),
         ]
@@ -78,9 +78,12 @@ impl OpImageAdjustmentSlopeBlur {
 
         // run node
         let samples = samples.max(1) as u32;
-        let intensity = intensity.max(0.0);
-
         let (width, height) = data.dimensions();
+        // Intensity is authored in reference pixels (at 1024px) and scaled to the
+        // actual image, so the same value smears the same amount relative to the
+        // content at any resolution.
+        let intensity = scale_to_resolution(intensity.max(0.0), width, height);
+
         let ch = data.channels() as usize;
 
         // Resize slope map to match source dimensions if needed

@@ -45,7 +45,9 @@ async fn large_cell_averages_whole_image() {
     }
     let mut inputs = vec![
         Input::new("image".into(), Value::Image { data: Arc::new(img), change_id: get_id() }, None, None),
-        Input::new("cell size".into(), Value::Integer(100), None, None),
+        // cell size is reference-px (at 1024); 1024 → 4px effective on this 4x4
+        // image, i.e. one block covering the whole image.
+        Input::new("cell size".into(), Value::Integer(1024), None, None),
     ];
     let r = OpImageAdjustmentPixelate::run(&mut inputs).await.unwrap();
     let Value::Image { data, .. } = &r.responses[0].value else { panic!() };
@@ -68,7 +70,8 @@ async fn block_has_uniform_colour_inside() {
     }
     let mut inputs = vec![
         Input::new("image".into(), Value::Image { data: Arc::new(img), change_id: get_id() }, None, None),
-        Input::new("cell size".into(), Value::Integer(3), None, None),
+        // cell size is reference-px (at 1024); 512 → 3px effective on this 6x6 image.
+        Input::new("cell size".into(), Value::Integer(512), None, None),
     ];
     let r = OpImageAdjustmentPixelate::run(&mut inputs).await.unwrap();
     let Value::Image { data, .. } = &r.responses[0].value else { panic!() };

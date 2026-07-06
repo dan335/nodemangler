@@ -11,7 +11,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use rayon::prelude::*;
@@ -40,7 +40,7 @@ impl OpImageAdjustmentErode {
                 .with_description("Source image or mask to erode."),
             // radius of the structuring element (square)
             Input::new("radius".to_string(), Value::Integer(1), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
-                .with_description("Half-size of the square window in pixels; larger values shrink bright regions more."),
+                .with_description("Half-size of the square window, in pixels at a 1024px reference (scales with image size, so erosion looks the same at any resolution); larger values shrink bright regions more."),
         ]
     }
 
@@ -65,7 +65,10 @@ impl OpImageAdjustmentErode {
         let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
 
-        let radius = radius.max(1);
+        // Radius is authored in reference pixels (at 1024px) and scaled to the
+        // actual image so the erosion is the same relative size at any resolution.
+        let (rw, rh) = data.dimensions();
+        let radius = scale_to_resolution(radius.max(1) as f32, rw, rh).round().max(1.0) as i32;
 
         // Separable min-filter: horizontal pass then vertical pass. A square
         // min kernel factors into 1D min ops, reducing cost from O(r²) to O(r).
