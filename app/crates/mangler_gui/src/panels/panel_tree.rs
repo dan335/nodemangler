@@ -145,7 +145,6 @@ impl PanelTree {
 
     /// Give every leaf a fresh id from the counter. Used when loading a saved
     /// layout so ids never collide with live ones.
-    #[allow(dead_code)] // used by config layout loading in Phase 4
     pub fn reassign_ids(&mut self, next_id: &mut LeafId) {
         fn walk(node: &mut PanelNode, next_id: &mut LeafId) {
             match node {

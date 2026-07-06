@@ -5,12 +5,18 @@
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
+use crate::panels::panel_tree::PanelNode;
+
 /// Top-level application configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     /// The theme name to restore on startup (e.g. "dark_green").
     #[serde(default)]
     pub theme: Option<String>,
+    /// The user's saved panel layout for the main window, set via "set panel
+    /// layout as default". `None` means fall back to `PanelTree::system_default`.
+    #[serde(default)]
+    pub default_layout: Option<PanelNode>,
 }
 
 impl AppConfig {

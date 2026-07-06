@@ -78,10 +78,18 @@ impl eframe::App for App {
             let work_rect =
                 Rect::from_min_max(pos2(content_rect.left(), APP_MENU_HEIGHT), content_rect.max);
 
-            // Lazy tree init: the system default needs the work width.
+            // Lazy tree init: the system default needs the work width. Prefer
+            // a user-saved layout from config, falling back to system default.
             if self.main_tree.is_none() {
-                self.main_tree =
-                    Some(PanelTree::system_default(work_rect.width(), &mut self.next_leaf_id));
+                let config = AppConfig::load();
+                self.main_tree = Some(match config.default_layout {
+                    Some(root) => {
+                        let mut tree = PanelTree { root };
+                        tree.reassign_ids(&mut self.next_leaf_id);
+                        tree
+                    }
+                    None => PanelTree::system_default(work_rect.width(), &mut self.next_leaf_id),
+                });
             }
 
             if let Some(action) = bar_response.panel_action {
@@ -219,7 +227,9 @@ impl App {
                 }
             }
             PanelAction::SaveLayoutAsDefault => {
-                // TODO(panel-system Phase 4): persist the layout to config.
+                let mut config = AppConfig::load();
+                config.default_layout = Some(tree.root.clone());
+                config.save();
             }
             PanelAction::ResetLayout => {
                 *tree = PanelTree::system_default(work_rect.width(), &mut self.next_leaf_id);
