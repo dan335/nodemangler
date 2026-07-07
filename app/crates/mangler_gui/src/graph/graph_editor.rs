@@ -10,7 +10,10 @@ use eframe::{
 };
 use egui::epaint::CubicBezierShape;
 use egui::Pos2;
-use mangler_core::{input::Input, node_settings::NodeSettings, output::Output, value::ValueType, AddNodeType};
+use mangler_core::{
+    input::Input, node_settings::NodeSettings, operations::Operation, output::Output, value::ValueType,
+    AddNodeType,
+};
 use std::{collections::{HashMap, HashSet}, time::Instant};
 
 pub struct GraphEditor {
@@ -258,9 +261,23 @@ impl GraphEditor {
             }
 
             // right click on node
-            // view node
+            // view node — unless it's a material export node, in which case the
+            // right-click instead binds all of its input connections onto the 3D
+            // preview panels' material channels (see view_material_node below).
             if graph_node_response.is_right_click {
-                graph_editor_response.viewing_node_id_index = Some((graph_node_id.clone(), 0));
+                // node_type can be None on some load paths (e.g. subgraph inner
+                // nodes reconstructed without their AddNodeType), so also fall
+                // back to matching on the node's display name.
+                let is_material_node = matches!(
+                    &graph_node.node_type,
+                    Some(AddNodeType::Operation(Operation::OpImageOutputMaterial))
+                ) || graph_node.settings.name == "material";
+
+                if is_material_node {
+                    graph_editor_response.view_material_node = Some(graph_node_id.clone());
+                } else {
+                    graph_editor_response.viewing_node_id_index = Some((graph_node_id.clone(), 0));
+                }
             }
         }
 
@@ -818,6 +835,10 @@ pub struct GraphEditorResponse {
     /// Positions of all nodes that moved this frame (node_id, new_position).
     pub new_node_positions: Vec<(String, Pos2)>,
     pub dropped_connection: Option<TempConnection>,
+    /// Set when the user right-clicks a material export node; carries the
+    /// node id so Program can bind the 3D panels' channels from its input
+    /// connections.
+    pub view_material_node: Option<String>,
 }
 
 impl GraphEditorResponse {
@@ -833,6 +854,7 @@ impl GraphEditorResponse {
             clear_viewing_node: false,
             new_node_positions: Vec::new(),
             dropped_connection: None,
+            view_material_node: None,
         }
     }
 }

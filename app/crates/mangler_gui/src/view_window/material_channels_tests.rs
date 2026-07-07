@@ -157,6 +157,26 @@ fn all_includes_emissive() {
 }
 
 #[test]
+fn material_input_channel_matches_frozen_input_order() {
+    // The material export node's inputs 0..=7 are the eight PBR maps in a
+    // frozen order (see OpImageOutputMaterial::create_inputs); this asserts
+    // material_input_channel's mapping tracks that contract exactly, plus a
+    // few indices past the maps (preset/file name/folder/... and out of range)
+    // that must all come back None.
+    assert_eq!(material_input_channel(0), Some(MaterialChannel::Albedo));
+    assert_eq!(material_input_channel(1), None); // opacity — no GUI channel
+    assert_eq!(material_input_channel(2), Some(MaterialChannel::Normal));
+    assert_eq!(material_input_channel(3), Some(MaterialChannel::Roughness));
+    assert_eq!(material_input_channel(4), Some(MaterialChannel::Metallic));
+    assert_eq!(material_input_channel(5), Some(MaterialChannel::AmbientOcclusion));
+    assert_eq!(material_input_channel(6), Some(MaterialChannel::Height));
+    assert_eq!(material_input_channel(7), Some(MaterialChannel::Emissive));
+    assert_eq!(material_input_channel(8), None);
+    assert_eq!(material_input_channel(9), None);
+    assert_eq!(material_input_channel(31), None);
+}
+
+#[test]
 fn resolve_material_resolves_emissive() {
     // An Emissive assignment must land in MaterialData::emissive (not any other
     // channel), and unbound channels stay None.

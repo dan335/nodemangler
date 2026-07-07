@@ -29,6 +29,7 @@ use crate::{
     view_to_graph_space_pos2,
     view_window::{
         image_viewer::ImageViewer,
+        material_channels::{material_input_channel, MaterialAssignment, MaterialChannel},
         preview_2d,
         preview_3d::{self, Preview3dPanel},
     },
@@ -709,6 +710,12 @@ impl Program {
             self.view_node(viewing_node_id, viewing_output_index);
         }
 
+        // Right-clicked a material export node: bind the 3D preview panels'
+        // channels from its input connections instead of viewing an output.
+        if let Some(node_id) = graph_editor_response.view_material_node {
+            self.bind_material_node_to_3d(&node_id);
+        }
+
         if graph_editor_response.clear_editing_node {
             self.editing_node_id = None;
         }
@@ -1142,6 +1149,65 @@ impl Program {
             ));
         }
         //self.needs_to_save = true;
+    }
+
+    /// Binds all of the 3D preview panels' material channels from a material
+    /// export node's input connections (right-click on the node in the graph).
+    ///
+    /// There's no "focused panel" concept for the 3D viewers — the default
+    /// layout has a single 3D panel anyway — so this deliberately applies the
+    /// binding to every open 3D panel rather than picking one.
+    ///
+    /// Purely a GUI-side state change: no engine messages are sent. The
+    /// channels are resolved from live node data next frame by the existing
+    /// `resolve_material` (called from the 3D panel's own show code).
+    fn bind_material_node_to_3d(&mut self, node_id: &str) {
+        let Some(node) = self.graph_editor.graph_nodes.get(node_id) else {
+            // Node vanished (e.g. deleted the same frame) — nothing to bind.
+            return;
+        };
+
+        // Collect (channel, upstream connection) pairs first so the immutable
+        // borrow of graph_nodes ends before we mutate self.viewers_3d below.
+        let bindings: Vec<(MaterialChannel, Option<(String, usize)>)> = (0..=7)
+            .filter_map(|input_index| {
+                let channel = material_input_channel(input_index)?;
+                let connection = node
+                    .inputs
+                    .get(input_index)
+                    .and_then(|input| input.connection.clone());
+                Some((channel, connection))
+            })
+            .collect();
+
+        for panel in self.viewers_3d.values_mut() {
+            for (channel, connection) in &bindings {
+                match connection {
+                    Some((upstream_node_id, output_index)) => {
+                        panel.assignments.set(
+                            *channel,
+                            MaterialAssignment {
+                                node_id: upstream_node_id.clone(),
+                                output_index: *output_index,
+                            },
+                        );
+                    }
+                    None => panel.assignments.clear(*channel),
+                }
+            }
+        }
+
+        self.status_message = Some(if self.viewers_3d.is_empty() {
+            (
+                "no 3D preview panel open — use a panel's corner menu to add one".to_string(),
+                std::time::Instant::now(),
+            )
+        } else {
+            (
+                "material bound to 3D view".to_string(),
+                std::time::Instant::now(),
+            )
+        });
     }
 
     pub fn edit_node(&mut self, node_id: String) {

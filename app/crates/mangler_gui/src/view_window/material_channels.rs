@@ -138,6 +138,31 @@ fn resolve_image(
     }
 }
 
+/// Maps a `material` export node's input index (see
+/// `mangler_core::operations::images::outputs::material::OpImageOutputMaterial::create_inputs`)
+/// to the 3D-preview `MaterialChannel` it feeds, for the right-click
+/// "bind material node to 3D view" action.
+///
+/// The material node's input order is a frozen contract (documented on
+/// `create_inputs`): 0..=7 are the eight PBR maps, 8..=31 are engine
+/// preset/file/folder/format/custom-slot inputs that don't correspond to a
+/// GUI material channel. Index 1 (opacity) also has no home here — the GUI's
+/// `MaterialChannel` enum has no Opacity variant — so it maps to `None` like
+/// the non-map inputs.
+pub fn material_input_channel(input_index: usize) -> Option<MaterialChannel> {
+    match input_index {
+        0 => Some(MaterialChannel::Albedo),
+        1 => None, // opacity — no GUI channel for it
+        2 => Some(MaterialChannel::Normal),
+        3 => Some(MaterialChannel::Roughness),
+        4 => Some(MaterialChannel::Metallic),
+        5 => Some(MaterialChannel::AmbientOcclusion),
+        6 => Some(MaterialChannel::Height),
+        7 => Some(MaterialChannel::Emissive),
+        _ => None, // preset/file name/folder/format/custom slots
+    }
+}
+
 /// Collect all image-type outputs across all graph nodes.
 /// Returns (node_id, output_index, display_label) for each.
 pub fn list_image_outputs(graph_nodes: &HashMap<String, GraphNode>) -> Vec<(String, usize, String)> {
