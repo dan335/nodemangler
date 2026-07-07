@@ -3,7 +3,7 @@ use epaint::{vec2, Color32};
 use image::imageops::FilterType;
 use mangler_core::{
     input::{Input, InputSettings},
-    value::{ColorFormat, EdgeMode, Value, TextHAlign, TextVAlign},
+    value::{ColorFormat, EdgeMode, ExportPreset, Value, TextHAlign, TextVAlign},
     ChangeNodeMessage,
     operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction,
     color::{color_spaces::ColorSpace, blend::BlendMode},
@@ -204,6 +204,12 @@ pub fn show(
         if let Value::EdgeMode(m) = &i.value { Some(*m) } else { None }
     });
 
+    // The material node's `texture N ...` slot inputs only apply when its
+    // `preset` is Custom; used below to hide them for the builtin presets.
+    let sibling_export_preset = node.inputs.iter().find_map(|i| {
+        if let Value::ExportPreset(p) = &i.value { Some(*p) } else { None }
+    });
+
     // Auto-correct: if the current color format is incompatible with the
     // selected image format, switch to a sensible default.
     if let Some(ref img_fmt) = sibling_image_format {
@@ -257,6 +263,17 @@ pub fn show(
                 // Connected/exposed inputs stay visible so they can be managed.
                 if input.name == "fill color"
                     && matches!(sibling_edge_mode, Some(m) if m != EdgeMode::Fill)
+                    && input.connection.is_none()
+                    && !input.is_exposed
+                {
+                    continue;
+                }
+
+                // Hide `texture N ...` slot inputs unless the sibling `preset`
+                // is Custom. Connected/exposed inputs stay visible so they can
+                // be managed.
+                if input.name.starts_with("texture ")
+                    && matches!(sibling_export_preset, Some(p) if p != ExportPreset::Custom)
                     && input.connection.is_none()
                     && !input.is_exposed
                 {
@@ -505,6 +522,7 @@ fn output_value(ui: &mut egui::Ui, value: &Value) {
         Value::EdgeMode(v) => { ui.add(Label::new(format!("{:?}", v))); }
         Value::TextHAlign(v) => { ui.add(Label::new(format!("{:?}", v))); }
         Value::TextVAlign(v) => { ui.add(Label::new(format!("{:?}", v))); }
+        Value::ExportPreset(v) => { ui.add(Label::new(format!("{:?}", v))); }
     }
 }
 
@@ -824,6 +842,19 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                     |v| format!("{:?}", v),
                     input, input_index, node_id, tx_change_node,
                     |v| Value::EdgeMode(*v),
+                );
+            }
+        }
+        Value::ExportPreset(a) => {
+            if input.connection.is_some() {
+                ui.label(format!("{:?}", a));
+            } else {
+                let variants = ExportPreset::types();
+                show_enum_combo(
+                    ui, "export preset", a, &variants,
+                    |v| format!("{:?}", v),
+                    input, input_index, node_id, tx_change_node,
+                    |v| Value::ExportPreset(*v),
                 );
             }
         }

@@ -350,6 +350,7 @@ operations! {
 
     OpImageOutputClipboard(crate::operations::images::outputs::clipboard::OpImageOutputClipboard),
     OpImageOutputFile(crate::operations::images::outputs::file::OpImageOutputFile),
+    OpImageOutputMaterial(crate::operations::images::outputs::material::OpImageOutputMaterial),
 
     OpImageCombineBlit(crate::operations::images::combine::blit::OpImageCombineBlit),
     OpImageCombineBlend(crate::operations::images::combine::blend::OpImageCombineBlend),
@@ -851,6 +852,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
             OperationListItem::Category { name: "output".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageOutputFile },
                 OperationListItem::Operation { operation: Operation::OpImageOutputClipboard },
+                OperationListItem::Operation { operation: Operation::OpImageOutputMaterial },
             ]},
             OperationListItem::Category { name: "combine".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageCombineBlit },

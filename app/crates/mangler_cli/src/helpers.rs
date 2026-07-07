@@ -195,6 +195,7 @@ pub(crate) fn value_type_name(vt: &ValueType) -> &'static str {
         ValueType::NoiseWorleyDistanceFunction => "worleydistance",
         ValueType::TextHAlign => "texthalign",
         ValueType::TextVAlign => "textvalign",
+        ValueType::ExportPreset => "exportpreset",
     }
 }
 
@@ -204,7 +205,7 @@ pub(crate) fn value_type_name(vt: &ValueType) -> &'static str {
 /// Canonical lowercase enum type names shown in output.
 pub(crate) const ENUM_TYPE_NAMES: &[&str] = &[
     "blendmode", "edgemode", "colorspace", "filtertype", "imagetype",
-    "colorformat", "worleydistance", "texthalign", "textvalign",
+    "colorformat", "worleydistance", "texthalign", "textvalign", "exportpreset",
 ];
 
 /// Legacy PascalCase aliases accepted as input prefixes (mapped to canonical names).
@@ -218,6 +219,7 @@ pub(crate) const ENUM_TYPE_ALIASES: &[(&str, &str)] = &[
     ("NoiseWorleyDistanceFunction", "worleydistance"),
     ("TextHAlign", "texthalign"),
     ("TextVAlign", "textvalign"),
+    ("ExportPreset", "exportpreset"),
 ];
 
 /// Return the valid variant names for an enum-like value type, or None if unknown.
@@ -248,6 +250,7 @@ pub(crate) fn enum_variants(type_name: &str) -> Option<Vec<&'static str>> {
         "edgemode" => Some(vec!["Fill", "Wrap", "Extend", "Mirror"]),
         "texthalign" => Some(vec!["Left", "Center", "Right"]),
         "textvalign" => Some(vec!["Top", "Middle", "Bottom"]),
+        "exportpreset" => Some(vec!["Godot", "Unity", "Unreal", "Custom"]),
         _ => None,
     }
 }
@@ -264,6 +267,7 @@ pub(crate) fn value_type_enum_name(vt: &ValueType) -> Option<&'static str> {
         ValueType::NoiseWorleyDistanceFunction => Some("worleydistance"),
         ValueType::TextHAlign => Some("texthalign"),
         ValueType::TextVAlign => Some("textvalign"),
+        ValueType::ExportPreset => Some("exportpreset"),
         _ => None,
     }
 }
