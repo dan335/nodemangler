@@ -14,6 +14,7 @@ pub fn draw_graph_output(
     output_value_name: &String,
     output_position: Pos2,
     input_rect: Rect,
+    release_rect: Rect,
     index: usize,
     _rect: Rect,
     ui: &mut egui::Ui,
@@ -21,6 +22,7 @@ pub fn draw_graph_output(
     temp_connection: Option<&TempConnection>,
     theme: &Theme,
     graph_zoom: f32,
+    cursor_position: Pos2,
 ) -> InputOutputResponse {
     puffin::profile_scope!("graph node.draw_graph_output()");
     let mut response = InputOutputResponse::new();
@@ -51,15 +53,27 @@ pub fn draw_graph_output(
         response.view_output = Some(index);
     }
 
+    // While a connection is being dragged out of an INPUT, this output is a live
+    // drop target if the cursor sits anywhere inside its enlarged, reaches-right
+    // `release_rect`. Tested via cursor geometry (not `hovered()`) because egui
+    // keeps hover on the dragged source dot for the whole drag.
+    let is_drop_target = matches!(
+        temp_connection,
+        Some(t) if t.from_connection_type == ConnectionType::Input
+    ) && !response.is_disabled
+        && release_rect.contains(cursor_position);
+
     // highlight when hovering
     if response.is_disabled {
         color = theme.get().grid_connection_dot_disabled;
-    } else if output_response.hovered() {
+    } else if output_response.hovered() || is_drop_target {
         color = theme.get().grid_connection_dot_hover;
     }
 
-    // draw bg
-    let shape = Shape::circle_filled(output_position, graph_to_view_space(graph_zoom, 5.0), color);
+    // draw bg — grow the dot while it is the active drop target so the user can
+    // see which output the connection will land on before releasing.
+    let dot_radius = if is_drop_target { 8.0 } else { 5.0 };
+    let shape = Shape::circle_filled(output_position, graph_to_view_space(graph_zoom, dot_radius), color);
     response.is_cursor_over = output_response.hovered();
     ui.painter().add(shape);
 
@@ -87,13 +101,17 @@ pub fn draw_graph_output(
     }
 
     // show name and type when hovering
-    if show_type || response.is_cursor_over {
+    if show_type || response.is_cursor_over || is_drop_target {
         puffin::profile_scope!("graph node.show type when hovering");
 
         let txt = format!("{} ({})", output.name, output_value_name);
         let font_id = egui::FontId::proportional(crate::graph_to_view_space(graph_zoom, 12.0));
         let color = theme.get().override_text_color;
-        let pos = Pos2::new(output_position.x + graph_to_view_space(graph_zoom, 10.0), output_position.y);
+        // Offset the label from the dot by its radius + a fixed 5px gap, so the
+        // gap stays constant even when the dot grows to a drop target (radius 8).
+        // A flat 10px offset would let the enlarged dot crowd the name.
+        let label_offset = dot_radius + 5.0;
+        let pos = Pos2::new(output_position.x + graph_to_view_space(graph_zoom, label_offset), output_position.y);
 
         let galley = ui.painter().layout_no_wrap(txt.clone(), font_id.clone(), color);
         

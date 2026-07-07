@@ -291,45 +291,85 @@ impl GraphEditor {
         // find if it stopped on a connection
         if has_stopped_creating_connection {
             if let Some(temp_connection) = &self.temp_connection {
-                // find node with connection at this position
+                // Find the dot to connect to. The release zones are large and
+                // asymmetric (they reach out into the gutter beside the node),
+                // so more than one can contain the cursor at once — pick the one
+                // whose dot is nearest the cursor. Only valid targets (different
+                // node, compatible type) are considered, so the roomy zones can
+                // never land a connection the dot coloring says is illegal.
+                let mut best: Option<(f32, NewConnection)> = None;
                 for (_, other_graph_node) in self.graph_nodes.iter() {
-                    let other_node = &self.graph_nodes[&other_graph_node.id];
+                    // A node can never connect to itself.
+                    if other_graph_node.id == temp_connection.from_node_id {
+                        continue;
+                    }
                     let other_node_rect = other_graph_node.get_rect(camera.position, camera.zoom);
 
                     match temp_connection.from_connection_type {
+                        // Dragging from an input → looking for a compatible output.
                         ConnectionType::Input => {
-                            for output_index in 0..other_node.outputs.len() {
+                            for (output_index, output) in other_graph_node.outputs.iter().enumerate() {
+                                let compatible = temp_connection.from_accepts_any_type
+                                    || temp_connection
+                                        .from_value_type
+                                        .valid_conversions()
+                                        .contains(&output.value.value_type());
+                                if !compatible {
+                                    continue;
+                                }
+                                let dot = other_graph_node
+                                    .get_output_position(output_index, other_node_rect, camera.zoom);
                                 if other_graph_node
-                                    .get_output_rect(output_index, other_node_rect, camera.zoom)
+                                    .get_output_release_rect(output_index, other_node_rect, camera.zoom)
                                     .contains(cursor_position)
                                 {
-                                    graph_editor_response.new_connection =
-                                        Some(NewConnection::new(
+                                    let dist = dot.distance_sq(cursor_position);
+                                    if best.as_ref().map_or(true, |(d, _)| dist < *d) {
+                                        best = Some((dist, NewConnection::new(
                                             temp_connection.from_node_id.clone(),
                                             temp_connection.from_connection_index,
-                                            other_node.id.clone(),
+                                            other_graph_node.id.clone(),
                                             output_index,
-                                        ));
+                                        )));
+                                    }
                                 }
                             }
                         }
+                        // Dragging from an output → looking for a compatible input.
                         ConnectionType::Output => {
-                            for input_index in 0..other_node.inputs.len() {
+                            for (input_index, input) in other_graph_node.inputs.iter().enumerate() {
+                                let compatible = input.accepts_any_type
+                                    || temp_connection
+                                        .from_value_type
+                                        .valid_conversions()
+                                        .contains(&input.value.value_type());
+                                if !compatible {
+                                    continue;
+                                }
+                                let dot = other_graph_node
+                                    .get_input_position(input_index, other_node_rect, camera.zoom);
                                 if other_graph_node
-                                    .get_input_rect(input_index, other_node_rect, camera.zoom)
+                                    .get_input_release_rect(input_index, other_node_rect, camera.zoom)
                                     .contains(cursor_position)
                                 {
-                                    graph_editor_response.new_connection = Some(NewConnection {
-                                        input_node_id: other_node.id.clone(),
-                                        input_connection_index: input_index,
-                                        output_node_id: temp_connection.from_node_id.clone(),
-                                        output_connection_index: temp_connection
-                                            .from_connection_index,
-                                    })
+                                    let dist = dot.distance_sq(cursor_position);
+                                    if best.as_ref().map_or(true, |(d, _)| dist < *d) {
+                                        best = Some((dist, NewConnection {
+                                            input_node_id: other_graph_node.id.clone(),
+                                            input_connection_index: input_index,
+                                            output_node_id: temp_connection.from_node_id.clone(),
+                                            output_connection_index: temp_connection
+                                                .from_connection_index,
+                                        }));
+                                    }
                                 }
                             }
                         }
                     }
+                }
+
+                if let Some((_, connection)) = best {
+                    graph_editor_response.new_connection = Some(connection);
                 }
             }
         }

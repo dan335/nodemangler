@@ -213,6 +213,7 @@ impl GraphNode {
                 input,
                 self.get_input_position(index, node_rect, graph_zoom),
                 self.get_input_rect(index, node_rect, graph_zoom),
+                self.get_input_release_rect(index, node_rect, graph_zoom),
                 index,
                 node_rect,
                 ui,
@@ -220,6 +221,7 @@ impl GraphNode {
                 temp_connection.as_ref(),
                 theme,
                 graph_zoom,
+                panel_cursor_position,
             );
 
             if input_output_response.has_started_creating_connection {
@@ -255,6 +257,7 @@ impl GraphNode {
                 &output.value.value_type().value_name(),
                 self.get_output_position(index, node_rect, graph_zoom),
                 self.get_output_rect(index, node_rect, graph_zoom),
+                self.get_output_release_rect(index, node_rect, graph_zoom),
                 index,
                 node_rect,
                 ui,
@@ -262,6 +265,7 @@ impl GraphNode {
                 temp_connection.as_ref(),
                 theme,
                 graph_zoom,
+                panel_cursor_position,
             );
 
             if let Some(view_output_index) = input_output_response.view_output {
@@ -352,6 +356,39 @@ impl GraphNode {
         Rect::from_center_size(
             self.get_output_position(index, node_rect, graph_zoom),
             Vec2::new(12.0, 12.0),
+        )
+    }
+
+    /// Forgiving drop zone for an input dot. Reaches out to the *left* of the
+    /// dot (away from the node) so a connection can be released anywhere in the
+    /// gutter to the input's left and still land here — the dots stay small but
+    /// the target you can release on is much larger. Vertically it spans half
+    /// the row spacing on each side so adjacent inputs tile with no gaps or
+    /// overlap, and it is zoom-scaled so the zone tracks the on-screen layout.
+    pub fn get_input_release_rect(&self, index: usize, node_rect: Rect, graph_zoom: f32) -> Rect {
+        let pos = self.get_input_position(index, node_rect, graph_zoom);
+        let half_row = graph_to_view_space(graph_zoom, 10.0);
+        // How far left of the dot the zone reaches, and how far it extends back
+        // toward the node (the dot sits 14px left of the node edge, so 14 here
+        // lines the inner edge up with the node's left side).
+        let reach = graph_to_view_space(graph_zoom, 45.0);
+        let inward = graph_to_view_space(graph_zoom, 14.0);
+        Rect::from_min_max(
+            Pos2::new(pos.x - reach, pos.y - half_row),
+            Pos2::new(pos.x + inward, pos.y + half_row),
+        )
+    }
+
+    /// Forgiving drop zone for an output dot — mirror of
+    /// [`get_input_release_rect`], reaching out to the *right* of the dot.
+    pub fn get_output_release_rect(&self, index: usize, node_rect: Rect, graph_zoom: f32) -> Rect {
+        let pos = self.get_output_position(index, node_rect, graph_zoom);
+        let half_row = graph_to_view_space(graph_zoom, 10.0);
+        let reach = graph_to_view_space(graph_zoom, 45.0);
+        let inward = graph_to_view_space(graph_zoom, 14.0);
+        Rect::from_min_max(
+            Pos2::new(pos.x - inward, pos.y - half_row),
+            Pos2::new(pos.x + reach, pos.y + half_row),
         )
     }
 

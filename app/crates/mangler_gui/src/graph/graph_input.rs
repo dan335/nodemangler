@@ -13,6 +13,7 @@ pub fn draw_graph_input(
     input: &Input,
     input_position: Pos2,
     input_rect: Rect,
+    release_rect: Rect,
     index: usize,
     _node_rect: Rect,
     ui: &mut egui::Ui,
@@ -20,6 +21,7 @@ pub fn draw_graph_input(
     temp_connection: Option<&TempConnection>,
     theme: &Theme,
     graph_zoom: f32,
+    cursor_position: Pos2,
 ) -> InputOutputResponse {
     let mut response = InputOutputResponse::new();
     let mut color = theme.get().grid_connection_dot;
@@ -47,15 +49,30 @@ pub fn draw_graph_input(
 
     response.is_cursor_over = input_response.hovered();
 
+    // While a connection is being dragged out of an OUTPUT, this input is a live
+    // drop target if the cursor sits anywhere inside its enlarged, reaches-left
+    // `release_rect`. We test cursor geometry directly rather than `hovered()`
+    // because egui keeps hover routed to the dragged source dot for the whole
+    // drag, so the target dot never reports hover. Only valid (non-disabled)
+    // targets light up, matching what a release will actually connect to.
+    let is_drop_target = matches!(
+        temp_connection,
+        Some(t) if t.from_connection_type == ConnectionType::Output
+    ) && !response.is_disabled
+        && release_rect.contains(cursor_position);
+
     if input.is_error {
         color = theme.get().grid_connection_dot_error;
     } else if response.is_disabled {
         color = theme.get().grid_connection_dot_disabled;
-    } else if input_response.hovered() {
+    } else if input_response.hovered() || is_drop_target {
         color = theme.get().grid_connection_dot_hover;
     }
 
-    let shape = Shape::circle_filled(input_position, graph_to_view_space(graph_zoom, 5.0), color);
+    // Grow the dot while it is the active drop target so the user can see, before
+    // releasing, exactly which input the connection will land on.
+    let dot_radius = if is_drop_target { 8.0 } else { 5.0 };
+    let shape = Shape::circle_filled(input_position, graph_to_view_space(graph_zoom, dot_radius), color);
     ui.painter().add(shape);
 
     // Outline indicates this input is exposed for subgraph composition.
@@ -80,11 +97,15 @@ pub fn draw_graph_input(
         response.connection_to_position = input_position;
     }
 
-    let pos = Pos2::new(input_position.x - graph_to_view_space(graph_zoom, 10.0), input_position.y);
+    // Offset the label from the dot by its radius + a fixed 5px gap, so the gap
+    // stays constant even when the dot grows to a drop target (radius 8). With a
+    // flat 10px offset the enlarged dot would crowd the name (only ~2px clear).
+    let label_offset = dot_radius + 5.0;
+    let pos = Pos2::new(input_position.x - graph_to_view_space(graph_zoom, label_offset), input_position.y);
     let font_id = egui::FontId::proportional(graph_to_view_space(graph_zoom, 12.0));
     let color = theme.get().override_text_color;
 
-    if show_names || response.is_cursor_over {
+    if show_names || response.is_cursor_over || is_drop_target {
         let galley = ui.painter().layout_no_wrap(input.name.clone(), font_id.clone(), color);
         
         // bg
