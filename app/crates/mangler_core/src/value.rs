@@ -94,6 +94,8 @@ pub enum Value {
     TextHAlign(TextHAlign),
     /// Vertical alignment for text rendering.
     TextVAlign(TextVAlign),
+    /// Target-engine convention for the material export node's packed textures.
+    ExportPreset(ExportPreset),
 }
 
 impl Default for Value {
@@ -138,6 +140,7 @@ impl Value {
             Value::EdgeMode(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::TextHAlign(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::TextVAlign(value) => Some(Thumbnail::Text(format!("{:?}", value))),
+            Value::ExportPreset(value) => Some(Thumbnail::Text(format!("{:?}", value))),
         }
     }
 
@@ -178,6 +181,7 @@ impl Value {
             Value::EdgeMode(v) => std::mem::discriminant(v).hash(&mut h),
             Value::TextHAlign(v) => std::mem::discriminant(v).hash(&mut h),
             Value::TextVAlign(v) => std::mem::discriminant(v).hash(&mut h),
+            Value::ExportPreset(v) => std::mem::discriminant(v).hash(&mut h),
         }
         h.finish()
     }
@@ -206,6 +210,7 @@ impl Value {
             Value::EdgeMode(_) => ValueType::EdgeMode,
             Value::TextHAlign(_) => ValueType::TextHAlign,
             Value::TextVAlign(_) => ValueType::TextVAlign,
+            Value::ExportPreset(_) => ValueType::ExportPreset,
         }
     }
 
@@ -396,6 +401,10 @@ impl Value {
                 ValueType::TextVAlign => Ok(Value::TextVAlign(*a)),
                 _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
             },
+            Value::ExportPreset(a) => match other {
+                ValueType::ExportPreset => Ok(Value::ExportPreset(*a)),
+                _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
+            },
             Value::Text(a) => match other {
                 ValueType::Text => Ok(Value::Text(a.clone())),
                 ValueType::Path => Ok(Value::Path(PathBuf::from(a))),
@@ -476,6 +485,8 @@ pub enum ValueType {
     TextHAlign,
     /// Vertical text alignment type.
     TextVAlign,
+    /// Target-engine convention type for the material export node.
+    ExportPreset,
 }
 
 impl ValueType {
@@ -522,6 +533,7 @@ impl ValueType {
             ValueType::EdgeMode => Value::EdgeMode(EdgeMode::Fill),
             ValueType::TextHAlign => Value::TextHAlign(TextHAlign::Center),
             ValueType::TextVAlign => Value::TextVAlign(TextVAlign::Middle),
+            ValueType::ExportPreset => Value::ExportPreset(ExportPreset::Godot),
         }
     }
 
@@ -545,6 +557,7 @@ impl ValueType {
             ValueType::EdgeMode => "edge mode".to_string(),
             ValueType::TextHAlign => "text h-align".to_string(),
             ValueType::TextVAlign => "text v-align".to_string(),
+            ValueType::ExportPreset => "export preset".to_string(),
         }
     }
 
@@ -637,6 +650,7 @@ impl ValueType {
             ValueType::EdgeMode => vec![ValueType::EdgeMode, ValueType::Trigger],
             ValueType::TextHAlign => vec![ValueType::TextHAlign, ValueType::Trigger],
             ValueType::TextVAlign => vec![ValueType::TextVAlign, ValueType::Trigger],
+            ValueType::ExportPreset => vec![ValueType::ExportPreset, ValueType::Trigger],
         }
     }
 
@@ -860,6 +874,31 @@ impl EdgeMode {
     /// Returns all edge modes in display order (matches dropdown ordering).
     pub fn types() -> [EdgeMode; 4] {
         [EdgeMode::Fill, EdgeMode::Wrap, EdgeMode::Extend, EdgeMode::Mirror]
+    }
+}
+
+/// Target-engine convention for the material export node's packed textures.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum ExportPreset {
+    /// Godot's glTF-style packing (ORM, OpenGL-space normals).
+    Godot,
+    /// Unity's standard shader packing (metallic-smoothness, OpenGL-space normals).
+    Unity,
+    /// Unreal Engine's packing (ORM, DirectX-space normals).
+    Unreal,
+    /// User-defined texture slots with per-channel source selection.
+    Custom,
+}
+
+impl ExportPreset {
+    /// Returns all export presets in display order (matches dropdown ordering).
+    pub fn types() -> [ExportPreset; 4] {
+        [
+            ExportPreset::Godot,
+            ExportPreset::Unity,
+            ExportPreset::Unreal,
+            ExportPreset::Custom,
+        ]
     }
 }
 

@@ -10,7 +10,7 @@ Claude.
 
 ## Features
 
-- **381 nodes** across images, colors, numbers, logic, and text — see the full
+- **382 nodes** across images, colors, numbers, logic, and text — see the full
   [Node Reference](#node-reference) below.
 - **Procedural generation** — 45 noise generators.
 - **14 color spaces** with conversion between them: sRGB, Linear RGB, HSL, HSV, HWB,
@@ -63,7 +63,7 @@ Each crate README goes into detail on that component.
 ## Node Reference
 
 Every node in the graph editor's Add Node menu, by category and subcategory
-(307 operation nodes, plus subgraph nodes for composing whole pipelines).
+(308 operation nodes, plus subgraph nodes for composing whole pipelines).
 
 ### Numbers (98)
 
@@ -88,10 +88,10 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Harmony:** Analogous, Complementary, Double Split Comp, Monochromatic, Tetradic, Triadic
 - **Manipulation:** Adjust HSV, Blend, Clamp, Grayscale, Invert, Set Alpha
 
-### Images (172)
+### Images (173)
 
 - **Input:** Constant, From Clipboard, From Color, From File, From Gradient, From Text, From URL
-- **Output:** To Clipboard, To File
+- **Output:** Material, To Clipboard, To File
 - **Adjustments:** Auto Levels, Brighten, Color Balance, Color Match, Color To Mask, Contrast, Curves, Dither, Frequency Split, Gradient Dynamic, Gradient Map, Grayscale, Histogram Range, Histogram Scan, Histogram Select, HSL, Hue Shift, Invert, Levels, Posterize, Replace Color, Saturation, Selective Color, Threshold, Vignette, White Balance
 - **Blur:** Blur, Directional Blur, Non-Uniform Blur, Radial Blur, Slope Blur
 - **Cast:** To Image

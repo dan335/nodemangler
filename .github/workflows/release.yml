@@ -1,6 +1,8 @@
 # Builds Windows, Linux, and macOS executables and publishes them to GitHub
 # Releases whenever a vX.Y.Z tag is pushed (normally by scripts/release.sh or
-# scripts\release.bat).
+# scripts\release.bat). Also pushes the same builds to itch.io if the
+# ITCH_TARGET repository variable ("user/game") and BUTLER_API_KEY secret
+# are configured; see scripts/README.md.
 name: Release
 
 on:
@@ -105,3 +107,38 @@ jobs:
             --repo "${{ github.repository }}" \
             --title "NodeMangler ${{ github.ref_name }}" \
             --generate-notes
+
+  itch:
+    needs: build
+    runs-on: ubuntu-latest
+    # Skipped until the ITCH_TARGET repository variable is set, so releases
+    # work before the itch.io page exists.
+    if: vars.ITCH_TARGET != ''
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+      - name: Install butler
+        run: |
+          curl -fL -o butler.zip "https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default"
+          unzip butler.zip butler
+          chmod +x butler
+          ./butler -V
+      - name: Push builds to itch.io
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          STAGE_PREFIX="nodemangler-${GITHUB_REF_NAME}"
+          for archive in "$STAGE_PREFIX"-*.tar.gz; do
+            tar xzf "$archive"
+          done
+          unzip -q "$STAGE_PREFIX-windows-x86_64.zip"
+          push() {
+            ./butler push "$STAGE_PREFIX-$1" "${{ vars.ITCH_TARGET }}:$2" \
+              --userversion "$VERSION"
+          }
+          push windows-x86_64 windows
+          push linux-x86_64  linux
+          push macos-aarch64 mac-arm64
+          push macos-x86_64  mac-x86_64

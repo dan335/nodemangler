@@ -75,7 +75,7 @@ fn test_convert_from_float_matches_reference() {
             };
         }
         for format in &formats {
-            let got = OpImageOutputFile::convert_from_float(&img, format);
+            let got = convert_from_float(&img, format);
             let want = reference_convert(&img, format);
             assert_eq!(got.color(), want.color(), "layout mismatch for {:?} from {}ch", format, ch);
             assert_eq!(got.as_bytes(), want.as_bytes(), "bytes mismatch for {:?} from {}ch", format, ch);

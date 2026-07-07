@@ -1156,6 +1156,15 @@ fn test_fingerprint_enum_variants() {
         Value::NoiseWorleyDistanceFunction(NoiseWorleyDistanceFunction::Euclidean).fingerprint(),
         Value::NoiseWorleyDistanceFunction(NoiseWorleyDistanceFunction::Manhattan).fingerprint()
     );
+
+    assert_eq!(
+        Value::ExportPreset(ExportPreset::Godot).fingerprint(),
+        Value::ExportPreset(ExportPreset::Godot).fingerprint()
+    );
+    assert_ne!(
+        Value::ExportPreset(ExportPreset::Godot).fingerprint(),
+        Value::ExportPreset(ExportPreset::Unity).fingerprint()
+    );
 }
 
 // valid_conversions tests
@@ -1204,6 +1213,7 @@ fn test_default_value_matches_type() {
         ValueType::NoiseWorleyDistanceFunction,
         ValueType::ColorSpace,
         ValueType::BlendMode,
+        ValueType::ExportPreset,
     ];
     for vt in &all_types {
         let val = vt.default_value();

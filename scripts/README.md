@@ -27,6 +27,21 @@ as:
 
 The workflow refuses to run if the tag doesn't match the Cargo.toml version.
 
+## itch.io
+
+The same tag push also uploads the four builds to itch.io (via
+[butler](https://itch.io/docs/butler/)) as channels `windows`, `linux`,
+`mac-arm64`, and `mac-x86_64`, with the version number attached. The job is
+skipped until these are configured in the GitHub repo
+(**Settings → Secrets and variables → Actions**):
+
+1. Create the project page on itch.io first (a draft is fine) — butler can't
+   push to a game that doesn't exist.
+2. Repository **variable** `ITCH_TARGET`: the itch.io target as `user/game`,
+   e.g. `danphi/nodemangler` (the game part is the page's URL slug).
+3. Repository **secret** `BUTLER_API_KEY`: an API key generated at
+   <https://itch.io/user/settings/api-keys>.
+
 ## Version number
 
 The single source of truth is `[workspace.package] version` in `app/Cargo.toml`;
