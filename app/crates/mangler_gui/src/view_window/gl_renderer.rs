@@ -17,6 +17,16 @@ const FRAGMENT_SHADER: &str = include_str!("fragment.glsl");
 /// height-displaced geometry as the main pass (that's what lets it self-shadow).
 const DEPTH_FRAGMENT_SHADER: &str = include_str!("depth_fragment.glsl");
 
+// --- SSAO pass shaders ---
+// The G-buffer pass has its own vertex shader (emits VIEW-space position+normal,
+// with displacement matching vertex.glsl); the SSAO and blur passes are
+// fullscreen and reuse the attribute-less SKY_VERTEX_SHADER (its `v_ndc` output
+// gives them the sampling UV). See each file's header for the algorithm.
+const SSAO_GBUFFER_VERTEX_SHADER: &str = include_str!("ssao_gbuffer_vertex.glsl");
+const SSAO_GBUFFER_FRAGMENT_SHADER: &str = include_str!("ssao_gbuffer_fragment.glsl");
+const SSAO_FRAGMENT_SHADER: &str = include_str!("ssao_fragment.glsl");
+const SSAO_BLUR_FRAGMENT_SHADER: &str = include_str!("ssao_blur_fragment.glsl");
+
 /// Resolution of the square directional shadow-map depth texture. 2048² is a
 /// good balance for a single-object preview: sharp enough to resolve fine
 /// height relief without the memory/fill cost of 4k.
@@ -26,6 +36,20 @@ const SHADOW_MAP_SIZE: i32 = 2048;
 /// map sits at 9 — still well within GL 3.3's guaranteed 16 units. See the
 /// texture-unit budget note by IRRADIANCE_TEX_UNIT/SPECULAR_TEX_UNIT.
 const SHADOW_TEX_UNIT: u32 = 9;
+
+/// Texture unit the blurred SSAO occlusion field is bound to in the main pass.
+/// Sits just above the shadow map (unit 9), so the full budget is now 7 material
+/// (0-6) + 2 LUT (7-8) + 1 shadow (9) + 1 SSAO (10) = 11 of GL 3.3's guaranteed
+/// 16 units. The SSAO *generation* passes rebind units 0-2 for their own inputs,
+/// but that happens in separate programs before the main pass rebinds them.
+const SSAO_AO_TEX_UNIT: u32 = SHADOW_TEX_UNIT + 1;
+/// Number of hemisphere samples the SSAO pass marches per pixel. MUST match the
+/// `KERNEL_SIZE` `#define` in `ssao_fragment.glsl` — the CPU generates exactly
+/// this many samples in `generate_ssao_kernel` and uploads them to `u_kernel`.
+const SSAO_KERNEL_SIZE: usize = 32;
+/// Edge length of the square tiled SSAO noise texture (4x4 rotation vectors).
+/// The blur pass averages over a matching 4x4 window to cancel the dither.
+const SSAO_NOISE_SIZE: i32 = 4;
 
 // --- Shared sky / tone-map GLSL ---
 //
@@ -376,6 +400,16 @@ pub struct RenderParams {
     /// use) and the mesh shader shadows its direct term. When false the depth
     /// pass is skipped and the shader's `u_shadows_enabled` is set to 0.
     pub shadows: bool,
+    /// Screen-space ambient occlusion. When true, `render()` runs a G-buffer +
+    /// hemisphere-sampling + blur chain (building the SSAO resources lazily and
+    /// resizing them to the viewport) before the main pass, and the mesh shader
+    /// darkens its ambient term by the resulting occlusion field. When false the
+    /// chain is skipped and `u_ssao_enabled` is set to 0.
+    pub ssao: bool,
+    /// SSAO hemisphere radius in view-space units (fed to `u_radius`).
+    pub ssao_radius: f32,
+    /// SSAO strength (fed to `u_ssao_intensity`; 0 = off, 1 = full).
+    pub ssao_intensity: f32,
 }
 
 struct TextureSlot {
@@ -417,6 +451,60 @@ struct ShadowResources {
     u_uv_tiling: Option<glow::UniformLocation>,
 }
 
+/// Size-INDEPENDENT SSAO GL resources: the three programs, the tiled noise
+/// texture and the CPU-generated hemisphere kernel. Built lazily on the first
+/// SSAO-enabled frame (like the shadow caster) and kept for the renderer's
+/// lifetime. The size-DEPENDENT render targets live in [`SsaoResources`] so a
+/// viewport resize rebuilds only the textures, never the programs.
+struct SsaoPipeline {
+    /// G-buffer program (`ssao_gbuffer_vertex/fragment.glsl`): view pos+normal.
+    gbuffer_program: glow::Program,
+    gb_u_model: Option<glow::UniformLocation>,
+    gb_u_view: Option<glow::UniformLocation>,
+    gb_u_projection: Option<glow::UniformLocation>,
+    gb_u_height_tex: Option<glow::UniformLocation>,
+    gb_u_has_height: Option<glow::UniformLocation>,
+    gb_u_height_scale: Option<glow::UniformLocation>,
+    gb_u_uv_tiling: Option<glow::UniformLocation>,
+    /// Occlusion program (`ssao_fragment.glsl`, fullscreen).
+    ssao_program: glow::Program,
+    ss_u_g_position: Option<glow::UniformLocation>,
+    ss_u_g_normal: Option<glow::UniformLocation>,
+    ss_u_noise: Option<glow::UniformLocation>,
+    ss_u_kernel: Option<glow::UniformLocation>,
+    ss_u_projection: Option<glow::UniformLocation>,
+    ss_u_noise_scale: Option<glow::UniformLocation>,
+    ss_u_radius: Option<glow::UniformLocation>,
+    ss_u_bias: Option<glow::UniformLocation>,
+    /// Blur program (`ssao_blur_fragment.glsl`, fullscreen).
+    blur_program: glow::Program,
+    bl_u_ssao: Option<glow::UniformLocation>,
+    /// 4x4 tiled rotation-vector noise (RGBA16F, NEAREST, REPEAT).
+    noise_tex: glow::Texture,
+    /// Hemisphere sample offsets, flattened `[x,y,z, x,y,z, …]` (len 3*KERNEL).
+    kernel: Vec<f32>,
+}
+
+/// Size-DEPENDENT SSAO render targets, (re)built by `ensure_ssao` whenever the
+/// viewport dimensions change. The G-buffer holds view-space position+normal in
+/// two RGBA16F attachments (plus a depth renderbuffer); the SSAO and blur FBOs
+/// each hold a single RGBA16F occlusion texture (value in `.r`).
+struct SsaoResources {
+    /// Viewport size these targets were allocated for; a mismatch triggers a
+    /// rebuild in `ensure_ssao`.
+    width: i32,
+    height: i32,
+    g_fbo: glow::Framebuffer,
+    g_position: glow::Texture,
+    g_normal: glow::Texture,
+    g_depth: glow::Renderbuffer,
+    ssao_fbo: glow::Framebuffer,
+    ssao_tex: glow::Texture,
+    blur_fbo: glow::Framebuffer,
+    /// Final blurred occlusion field, sampled by the main pass (LINEAR).
+    blur_tex: glow::Texture,
+}
+
 pub struct GlRenderer {
     program: glow::Program,
     /// Lazy cache of uploaded meshes keyed by `(kind, resolution)`. Built on
@@ -450,9 +538,22 @@ pub struct GlRenderer {
     u_shadow_map: Option<glow::UniformLocation>,
     u_shadows_enabled: Option<glow::UniformLocation>,
     u_light_space: Option<glow::UniformLocation>,
+    // SSAO uniforms (mesh program): the occlusion sampler, the on/off flag, the
+    // viewport rect used to map gl_FragCoord → the full-viewport AO texture, and
+    // the strength multiplier.
+    u_ssao_tex: Option<glow::UniformLocation>,
+    u_ssao_enabled: Option<glow::UniformLocation>,
+    u_viewport: Option<glow::UniformLocation>,
+    u_ssao_intensity: Option<glow::UniformLocation>,
     /// Lazily-built directional shadow-map resources (None until the first
     /// shadows-enabled frame). See [`ShadowResources`].
     shadow: Option<ShadowResources>,
+    /// Lazily-built SSAO programs + noise + kernel (None until the first
+    /// SSAO-enabled frame). See [`SsaoPipeline`].
+    ssao_pipeline: Option<SsaoPipeline>,
+    /// Lazily-built, viewport-sized SSAO render targets. Rebuilt on resize;
+    /// None until the first SSAO-enabled frame. See [`SsaoResources`].
+    ssao_targets: Option<SsaoResources>,
     /// CPU-prefiltered diffuse irradiance LUT (64×1 RGBA32F), built once at init.
     irradiance_tex: glow::Texture,
     /// CPU-prefiltered specular LUT (64×64 RGBA32F over (R.y, roughness)).
@@ -498,6 +599,11 @@ impl GlRenderer {
             let u_shadow_map = gl.get_uniform_location(program, "u_shadow_map");
             let u_shadows_enabled = gl.get_uniform_location(program, "u_shadows_enabled");
             let u_light_space = gl.get_uniform_location(program, "u_light_space");
+            // SSAO uniforms in the mesh program.
+            let u_ssao_tex = gl.get_uniform_location(program, "u_ssao_tex");
+            let u_ssao_enabled = gl.get_uniform_location(program, "u_ssao_enabled");
+            let u_viewport = gl.get_uniform_location(program, "u_viewport");
+            let u_ssao_intensity = gl.get_uniform_location(program, "u_ssao_intensity");
 
             // One entry per TextureChannel (order MUST match the enum discriminants).
             let sampler_names = [
@@ -572,7 +678,13 @@ impl GlRenderer {
                 u_shadow_map,
                 u_shadows_enabled,
                 u_light_space,
+                u_ssao_tex,
+                u_ssao_enabled,
+                u_viewport,
+                u_ssao_intensity,
                 shadow: None,
+                ssao_pipeline: None,
+                ssao_targets: None,
                 irradiance_tex,
                 specular_tex,
                 sky_program,
@@ -773,6 +885,31 @@ impl GlRenderer {
                 gl.bind_framebuffer(glow::FRAMEBUFFER, prev);
             }
 
+            // Camera matrices, computed once and shared by the SSAO geometry pass
+            // and the main pass (hoisted up from the main pass so SSAO renders the
+            // mesh from the exact same viewpoint the user sees).
+            let aspect = vp_w as f32 / vp_h as f32;
+            let view = camera.view_matrix();
+            let projection = camera.projection_matrix(aspect);
+
+            // --- SSAO passes ------------------------------------------------
+            // Build the occlusion field (G-buffer → hemisphere sampling → blur)
+            // into off-screen viewport-sized targets BEFORE the main pass, which
+            // samples the blurred result. Like the shadow pass, the helper leaves
+            // egui's framebuffer restored. Skipped entirely when SSAO is off.
+            if params.ssao {
+                self.run_ssao_passes(
+                    gl,
+                    mesh_vao,
+                    mesh_index_count,
+                    &view,
+                    &projection,
+                    params,
+                    vp_w,
+                    vp_h,
+                );
+            }
+
             // Set 3D rendering state
             gl.viewport(vp_x, vp_y, vp_w, vp_h);
             gl.enable(glow::DEPTH_TEST);
@@ -793,11 +930,8 @@ impl GlRenderer {
 
             gl.use_program(Some(self.program));
 
-            // Matrices
+            // Matrices (view/projection computed above, shared with the SSAO pass).
             let model = glam::Mat4::IDENTITY;
-            let aspect = vp_w as f32 / vp_h as f32;
-            let view = camera.view_matrix();
-            let projection = camera.projection_matrix(aspect);
 
             gl.uniform_matrix_4_f32_slice(self.u_model.as_ref(), false, &model.to_cols_array());
             gl.uniform_matrix_4_f32_slice(self.u_view.as_ref(), false, &view.to_cols_array());
@@ -873,6 +1007,35 @@ impl GlRenderer {
                 }
             } else {
                 gl.uniform_1_i32(self.u_shadows_enabled.as_ref(), 0);
+            }
+
+            // SSAO: always point the sampler at unit 10 (keeps it off unit 0,
+            // where a sampler2D sharing with the sampler2DShadow would be dodgy on
+            // some drivers) and bind whatever occlusion field exists there. The
+            // `u_ssao_enabled` flag — only 1 when SSAO is on AND targets exist —
+            // is what actually gates sampling in the shader; the viewport rect
+            // lets it map gl_FragCoord into the full-viewport AO texture.
+            gl.active_texture(glow::TEXTURE0 + SSAO_AO_TEX_UNIT);
+            gl.uniform_1_i32(self.u_ssao_tex.as_ref(), SSAO_AO_TEX_UNIT as i32);
+            if params.ssao {
+                if let Some(targets) = self.ssao_targets.as_ref() {
+                    gl.bind_texture(glow::TEXTURE_2D, Some(targets.blur_tex));
+                    gl.uniform_1_i32(self.u_ssao_enabled.as_ref(), 1);
+                    gl.uniform_4_f32(
+                        self.u_viewport.as_ref(),
+                        vp_x as f32,
+                        vp_y as f32,
+                        vp_w as f32,
+                        vp_h as f32,
+                    );
+                    gl.uniform_1_f32(self.u_ssao_intensity.as_ref(), params.ssao_intensity);
+                } else {
+                    gl.bind_texture(glow::TEXTURE_2D, None);
+                    gl.uniform_1_i32(self.u_ssao_enabled.as_ref(), 0);
+                }
+            } else {
+                gl.bind_texture(glow::TEXTURE_2D, None);
+                gl.uniform_1_i32(self.u_ssao_enabled.as_ref(), 0);
             }
 
             // Draw the mesh. It was already fetched/uploaded via `ensure_mesh`
@@ -962,6 +1125,9 @@ impl GlRenderer {
             gl.bind_texture(glow::TEXTURE_2D, None);
             // And the shadow-map unit (9), same reasoning as the LUT units.
             gl.active_texture(glow::TEXTURE0 + SHADOW_TEX_UNIT);
+            gl.bind_texture(glow::TEXTURE_2D, None);
+            // And the SSAO occlusion unit (10).
+            gl.active_texture(glow::TEXTURE0 + SSAO_AO_TEX_UNIT);
             gl.bind_texture(glow::TEXTURE_2D, None);
             gl.active_texture(glow::TEXTURE0);
             gl.disable(glow::DEPTH_TEST);
@@ -1109,6 +1275,163 @@ impl GlRenderer {
             });
         }
     }
+
+    /// Build the SSAO programs/noise/kernel (once) and (re)allocate the
+    /// viewport-sized render targets whenever the size changes. Mirrors the lazy
+    /// mesh/shadow caches: everything here needs the live GL context.
+    unsafe fn ensure_ssao(&mut self, gl: &glow::Context, width: i32, height: i32) {
+        if self.ssao_pipeline.is_none() {
+            self.ssao_pipeline = Some(build_ssao_pipeline(gl));
+        }
+
+        let needs_rebuild = match &self.ssao_targets {
+            Some(t) => t.width != width || t.height != height,
+            None => true,
+        };
+        if needs_rebuild {
+            // Free the old targets before allocating the new size (a resize would
+            // otherwise leak a full set of viewport-sized float textures/FBOs).
+            if let Some(old) = self.ssao_targets.take() {
+                gl.delete_framebuffer(old.g_fbo);
+                gl.delete_texture(old.g_position);
+                gl.delete_texture(old.g_normal);
+                gl.delete_renderbuffer(old.g_depth);
+                gl.delete_framebuffer(old.ssao_fbo);
+                gl.delete_texture(old.ssao_tex);
+                gl.delete_framebuffer(old.blur_fbo);
+                gl.delete_texture(old.blur_tex);
+            }
+            self.ssao_targets = Some(build_ssao_targets(gl, width, height));
+        }
+    }
+
+    /// Run the three SSAO generation passes into the off-screen targets, leaving
+    /// egui's framebuffer bound afterward. Mirrors the shadow depth pass's
+    /// framebuffer save/restore discipline (a stray FBO bind blacks out the UI).
+    ///
+    /// 1. G-buffer — draw the mesh into view-space position + normal targets.
+    /// 2. SSAO — fullscreen hemisphere sampling → raw occlusion.
+    /// 3. Blur — 4x4 box blur → the field the main pass multiplies into ambient.
+    unsafe fn run_ssao_passes(
+        &mut self,
+        gl: &glow::Context,
+        mesh_vao: glow::VertexArray,
+        mesh_index_count: i32,
+        view: &glam::Mat4,
+        projection: &glam::Mat4,
+        params: &RenderParams,
+        vp_w: i32,
+        vp_h: i32,
+    ) {
+        self.ensure_ssao(gl, vp_w, vp_h);
+        let pipeline = self.ssao_pipeline.as_ref().unwrap();
+        let targets = self.ssao_targets.as_ref().unwrap();
+
+        // Capture egui's framebuffer so the whole chain can restore it at the end.
+        let prev_fbo = gl.get_parameter_i32(glow::FRAMEBUFFER_BINDING);
+
+        // --- 1. G-buffer pass: view-space position + normal ---
+        gl.bind_framebuffer(glow::FRAMEBUFFER, Some(targets.g_fbo));
+        gl.viewport(0, 0, vp_w, vp_h);
+        // The offscreen targets fill their whole extent — no sub-region scissor.
+        gl.disable(glow::SCISSOR_TEST);
+        gl.enable(glow::DEPTH_TEST);
+        gl.depth_func(glow::LESS);
+        gl.depth_mask(true);
+        gl.enable(glow::CULL_FACE);
+        gl.cull_face(glow::BACK);
+        gl.front_face(glow::CCW);
+        // Clear to zero: a zero-length normal is the background sentinel the SSAO
+        // shader tests to emit "fully open" for empty pixels.
+        gl.clear_color(0.0, 0.0, 0.0, 0.0);
+        gl.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
+
+        gl.use_program(Some(pipeline.gbuffer_program));
+        gl.uniform_matrix_4_f32_slice(
+            pipeline.gb_u_model.as_ref(),
+            false,
+            &glam::Mat4::IDENTITY.to_cols_array(),
+        );
+        gl.uniform_matrix_4_f32_slice(pipeline.gb_u_view.as_ref(), false, &view.to_cols_array());
+        gl.uniform_matrix_4_f32_slice(
+            pipeline.gb_u_projection.as_ref(),
+            false,
+            &projection.to_cols_array(),
+        );
+        // Height displacement MUST match the main pass so the AO lines up with the
+        // displaced silhouette.
+        gl.uniform_1_f32(pipeline.gb_u_height_scale.as_ref(), params.height_scale);
+        gl.uniform_1_f32(pipeline.gb_u_uv_tiling.as_ref(), params.uv_tiling);
+        let height_idx = TextureChannel::Height as usize;
+        gl.active_texture(glow::TEXTURE0 + height_idx as u32);
+        let has_height = if let Some(tex) = self.slots[height_idx].texture {
+            gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+            1
+        } else {
+            gl.bind_texture(glow::TEXTURE_2D, None);
+            0
+        };
+        gl.uniform_1_i32(pipeline.gb_u_height_tex.as_ref(), height_idx as i32);
+        gl.uniform_1_i32(pipeline.gb_u_has_height.as_ref(), has_height);
+
+        gl.bind_vertex_array(Some(mesh_vao));
+        gl.draw_elements(glow::TRIANGLES, mesh_index_count, glow::UNSIGNED_INT, 0);
+
+        // --- 2. SSAO pass: hemisphere sampling → raw occlusion ---
+        gl.bind_framebuffer(glow::FRAMEBUFFER, Some(targets.ssao_fbo));
+        gl.viewport(0, 0, vp_w, vp_h);
+        gl.disable(glow::DEPTH_TEST);
+        gl.disable(glow::CULL_FACE);
+        gl.use_program(Some(pipeline.ssao_program));
+        // Bind the G-buffer + noise on units 0/1/2 (this program samples nothing
+        // else; the main pass rebinds these units for its material textures).
+        gl.active_texture(glow::TEXTURE0);
+        gl.bind_texture(glow::TEXTURE_2D, Some(targets.g_position));
+        gl.active_texture(glow::TEXTURE1);
+        gl.bind_texture(glow::TEXTURE_2D, Some(targets.g_normal));
+        gl.active_texture(glow::TEXTURE2);
+        gl.bind_texture(glow::TEXTURE_2D, Some(pipeline.noise_tex));
+        gl.uniform_1_i32(pipeline.ss_u_g_position.as_ref(), 0);
+        gl.uniform_1_i32(pipeline.ss_u_g_normal.as_ref(), 1);
+        gl.uniform_1_i32(pipeline.ss_u_noise.as_ref(), 2);
+        gl.uniform_3_f32_slice(pipeline.ss_u_kernel.as_ref(), &pipeline.kernel);
+        gl.uniform_matrix_4_f32_slice(
+            pipeline.ss_u_projection.as_ref(),
+            false,
+            &projection.to_cols_array(),
+        );
+        // The 4x4 noise tiles 1:1 across the viewport.
+        gl.uniform_2_f32(
+            pipeline.ss_u_noise_scale.as_ref(),
+            vp_w as f32 / SSAO_NOISE_SIZE as f32,
+            vp_h as f32 / SSAO_NOISE_SIZE as f32,
+        );
+        gl.uniform_1_f32(pipeline.ss_u_radius.as_ref(), params.ssao_radius);
+        // Small constant depth bias to keep flat surfaces from self-occluding.
+        gl.uniform_1_f32(pipeline.ss_u_bias.as_ref(), 0.025);
+        gl.bind_vertex_array(Some(self.sky_vao)); // empty VAO (attribute-less draw)
+        gl.draw_arrays(glow::TRIANGLES, 0, 3);
+
+        // --- 3. Blur pass: 4x4 box blur → final occlusion field ---
+        gl.bind_framebuffer(glow::FRAMEBUFFER, Some(targets.blur_fbo));
+        gl.viewport(0, 0, vp_w, vp_h);
+        gl.use_program(Some(pipeline.blur_program));
+        gl.active_texture(glow::TEXTURE0);
+        gl.bind_texture(glow::TEXTURE_2D, Some(targets.ssao_tex));
+        gl.uniform_1_i32(pipeline.bl_u_ssao.as_ref(), 0);
+        gl.bind_vertex_array(Some(self.sky_vao));
+        gl.draw_arrays(glow::TRIANGLES, 0, 3);
+
+        // Unbind the SSAO input units so they don't leak into the main pass /
+        // egui, then restore egui's framebuffer (see the prev_fbo note above).
+        for unit in 0..3u32 {
+            gl.active_texture(glow::TEXTURE0 + unit);
+            gl.bind_texture(glow::TEXTURE_2D, None);
+        }
+        gl.active_texture(glow::TEXTURE0);
+        let prev = std::num::NonZeroU32::new(prev_fbo as u32).map(glow::NativeFramebuffer);
+        gl.bind_framebuffer(glow::FRAMEBUFFER, prev);
+    }
 }
 
 // --- Helpers ---
@@ -1148,6 +1471,259 @@ pub fn light_space_matrices(light_dir: glam::Vec3) -> (glam::Mat4, glam::Mat4) {
     // roughly R..3R, so [0.1, 4R] leaves margin without wasting precision).
     let proj = glam::Mat4::orthographic_rh_gl(-R, R, -R, R, 0.1, 4.0 * R);
     (view, proj)
+}
+
+/// Minimal deterministic linear-congruential generator returning `f32` in
+/// `[0, 1)`. Used to build the SSAO hemisphere kernel and rotation-noise texture
+/// without a `rand` dependency, and — like the crate's noise generators — it is
+/// fully reproducible so the SSAO pattern is stable between runs (the workflow
+/// sandbox aside, `Date`/`rand` entropy would make the preview non-deterministic).
+struct Lcg(u32);
+
+impl Lcg {
+    fn next(&mut self) -> f32 {
+        // Numerical Recipes LCG constants; take the top bits for better spread.
+        self.0 = self.0.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        (self.0 >> 8) as f32 / ((1u32 << 24) as f32)
+    }
+}
+
+/// Generate the SSAO hemisphere sample kernel: `SSAO_KERNEL_SIZE` tangent-space
+/// offsets in the `+Z` hemisphere, flattened to `[x,y,z, …]`. Magnitudes are
+/// biased toward the origin (`lerp(0.1, 1.0, t²)`) so most samples probe close to
+/// the fragment for crisp contact occlusion, with a few reaching out for the
+/// broader cavity term — the standard LearnOpenGL distribution.
+fn generate_ssao_kernel() -> Vec<f32> {
+    let mut rng = Lcg(0x9E37_79B9);
+    let mut kernel = Vec::with_capacity(SSAO_KERNEL_SIZE * 3);
+    for i in 0..SSAO_KERNEL_SIZE {
+        // Random direction in the +Z hemisphere.
+        let x = rng.next() * 2.0 - 1.0;
+        let y = rng.next() * 2.0 - 1.0;
+        let z = rng.next(); // [0,1) keeps the sample in the +Z hemisphere
+        let len = (x * x + y * y + z * z).sqrt().max(1e-6);
+        let mag = rng.next();
+        let t = i as f32 / SSAO_KERNEL_SIZE as f32;
+        let scale = 0.1 + 0.9 * t * t; // accelerate toward the origin
+        let s = mag * scale / len;
+        kernel.push(x * s);
+        kernel.push(y * s);
+        kernel.push(z * s);
+    }
+    kernel
+}
+
+/// Build the 4x4 tiled SSAO rotation-noise texture: each texel is an in-plane
+/// (`z = 0`) random vector used to rotate the sample kernel per pixel. NEAREST +
+/// REPEAT so it tiles crisply across the viewport (the blur pass then cancels the
+/// dither over a matching 4x4 window). RGBA16F to match the other SSAO targets.
+unsafe fn upload_ssao_noise_texture(gl: &glow::Context) -> glow::Texture {
+    let mut rng = Lcg(0x1234_5678);
+    let count = (SSAO_NOISE_SIZE * SSAO_NOISE_SIZE) as usize;
+    let mut data = Vec::with_capacity(count * 4);
+    for _ in 0..count {
+        data.push(rng.next() * 2.0 - 1.0); // x
+        data.push(rng.next() * 2.0 - 1.0); // y
+        data.push(0.0); // z: rotation is about the view normal → in-plane
+        data.push(0.0); // a: unused
+    }
+
+    let tex = gl.create_texture().unwrap();
+    gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+    gl.tex_image_2d(
+        glow::TEXTURE_2D,
+        0,
+        glow::RGBA16F as i32,
+        SSAO_NOISE_SIZE,
+        SSAO_NOISE_SIZE,
+        0,
+        glow::RGBA,
+        glow::FLOAT,
+        glow::PixelUnpackData::Slice(Some(cast_slice_to_bytes(&data))),
+    );
+    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::NEAREST as i32);
+    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::NEAREST as i32);
+    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::REPEAT as i32);
+    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::REPEAT as i32);
+    gl.bind_texture(glow::TEXTURE_2D, None);
+    tex
+}
+
+/// Allocate an RGBA16F viewport-sized off-screen render target for the SSAO
+/// chain. `filter` is `glow::NEAREST` (G-buffer / raw occlusion, exact texel
+/// reads) or `glow::LINEAR` (the final blurred field, smoothly upsampled by the
+/// main pass). CLAMP_TO_EDGE on both axes; storage only (no upload).
+unsafe fn create_screen_target(gl: &glow::Context, width: i32, height: i32, filter: i32) -> glow::Texture {
+    let tex = gl.create_texture().unwrap();
+    gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+    gl.tex_image_2d(
+        glow::TEXTURE_2D,
+        0,
+        glow::RGBA16F as i32,
+        width,
+        height,
+        0,
+        glow::RGBA,
+        glow::FLOAT,
+        glow::PixelUnpackData::Slice(None),
+    );
+    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, filter);
+    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, filter);
+    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE as i32);
+    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE as i32);
+    gl.bind_texture(glow::TEXTURE_2D, None);
+    tex
+}
+
+/// Compile the three SSAO programs and build the size-independent noise texture
+/// and kernel. The G-buffer program pairs its own vertex shader with the depth
+/// data fragment shader; the SSAO and blur programs reuse the attribute-less
+/// fullscreen `SKY_VERTEX_SHADER`.
+unsafe fn build_ssao_pipeline(gl: &glow::Context) -> SsaoPipeline {
+    let gbuffer_program =
+        create_program(gl, SSAO_GBUFFER_VERTEX_SHADER, SSAO_GBUFFER_FRAGMENT_SHADER);
+    let gb_u_model = gl.get_uniform_location(gbuffer_program, "u_model");
+    let gb_u_view = gl.get_uniform_location(gbuffer_program, "u_view");
+    let gb_u_projection = gl.get_uniform_location(gbuffer_program, "u_projection");
+    let gb_u_height_tex = gl.get_uniform_location(gbuffer_program, "u_height_tex");
+    let gb_u_has_height = gl.get_uniform_location(gbuffer_program, "u_has_height");
+    let gb_u_height_scale = gl.get_uniform_location(gbuffer_program, "u_height_scale");
+    let gb_u_uv_tiling = gl.get_uniform_location(gbuffer_program, "u_uv_tiling");
+
+    let ssao_program = create_program(gl, SKY_VERTEX_SHADER, SSAO_FRAGMENT_SHADER);
+    let ss_u_g_position = gl.get_uniform_location(ssao_program, "u_g_position");
+    let ss_u_g_normal = gl.get_uniform_location(ssao_program, "u_g_normal");
+    let ss_u_noise = gl.get_uniform_location(ssao_program, "u_noise");
+    // Array uniform: query the [0] element location (the base the slice writes from).
+    let ss_u_kernel = gl.get_uniform_location(ssao_program, "u_kernel[0]");
+    let ss_u_projection = gl.get_uniform_location(ssao_program, "u_projection");
+    let ss_u_noise_scale = gl.get_uniform_location(ssao_program, "u_noise_scale");
+    let ss_u_radius = gl.get_uniform_location(ssao_program, "u_radius");
+    let ss_u_bias = gl.get_uniform_location(ssao_program, "u_bias");
+
+    let blur_program = create_program(gl, SKY_VERTEX_SHADER, SSAO_BLUR_FRAGMENT_SHADER);
+    let bl_u_ssao = gl.get_uniform_location(blur_program, "u_ssao");
+
+    let noise_tex = upload_ssao_noise_texture(gl);
+    let kernel = generate_ssao_kernel();
+
+    SsaoPipeline {
+        gbuffer_program,
+        gb_u_model,
+        gb_u_view,
+        gb_u_projection,
+        gb_u_height_tex,
+        gb_u_has_height,
+        gb_u_height_scale,
+        gb_u_uv_tiling,
+        ssao_program,
+        ss_u_g_position,
+        ss_u_g_normal,
+        ss_u_noise,
+        ss_u_kernel,
+        ss_u_projection,
+        ss_u_noise_scale,
+        ss_u_radius,
+        ss_u_bias,
+        blur_program,
+        bl_u_ssao,
+        noise_tex,
+        kernel,
+    }
+}
+
+/// Allocate the viewport-sized SSAO render targets: a two-attachment
+/// (position+normal) G-buffer with a depth renderbuffer, plus single-attachment
+/// SSAO and blur FBOs. Captures/restores egui's framebuffer around setup (a
+/// stray bind blacks out the UI) and panics on an incomplete FBO.
+unsafe fn build_ssao_targets(gl: &glow::Context, width: i32, height: i32) -> SsaoResources {
+    let prev_fbo = gl.get_parameter_i32(glow::FRAMEBUFFER_BINDING);
+
+    // --- G-buffer: view-space position + normal, plus a depth renderbuffer ---
+    let g_position = create_screen_target(gl, width, height, glow::NEAREST as i32);
+    let g_normal = create_screen_target(gl, width, height, glow::NEAREST as i32);
+    let g_depth = gl.create_renderbuffer().unwrap();
+    gl.bind_renderbuffer(glow::RENDERBUFFER, Some(g_depth));
+    gl.renderbuffer_storage(glow::RENDERBUFFER, glow::DEPTH_COMPONENT24, width, height);
+    gl.bind_renderbuffer(glow::RENDERBUFFER, None);
+
+    let g_fbo = gl.create_framebuffer().unwrap();
+    gl.bind_framebuffer(glow::FRAMEBUFFER, Some(g_fbo));
+    gl.framebuffer_texture_2d(
+        glow::FRAMEBUFFER,
+        glow::COLOR_ATTACHMENT0,
+        glow::TEXTURE_2D,
+        Some(g_position),
+        0,
+    );
+    gl.framebuffer_texture_2d(
+        glow::FRAMEBUFFER,
+        glow::COLOR_ATTACHMENT1,
+        glow::TEXTURE_2D,
+        Some(g_normal),
+        0,
+    );
+    gl.framebuffer_renderbuffer(
+        glow::FRAMEBUFFER,
+        glow::DEPTH_ATTACHMENT,
+        glow::RENDERBUFFER,
+        Some(g_depth),
+    );
+    gl.draw_buffers(&[glow::COLOR_ATTACHMENT0, glow::COLOR_ATTACHMENT1]);
+    let status = gl.check_framebuffer_status(glow::FRAMEBUFFER);
+    if status != glow::FRAMEBUFFER_COMPLETE {
+        panic!("SSAO G-buffer framebuffer incomplete: status 0x{:X}", status);
+    }
+
+    // --- SSAO FBO: single-channel occlusion (in .r of RGBA16F) ---
+    let ssao_tex = create_screen_target(gl, width, height, glow::NEAREST as i32);
+    let ssao_fbo = gl.create_framebuffer().unwrap();
+    gl.bind_framebuffer(glow::FRAMEBUFFER, Some(ssao_fbo));
+    gl.framebuffer_texture_2d(
+        glow::FRAMEBUFFER,
+        glow::COLOR_ATTACHMENT0,
+        glow::TEXTURE_2D,
+        Some(ssao_tex),
+        0,
+    );
+    gl.draw_buffers(&[glow::COLOR_ATTACHMENT0]);
+    let status = gl.check_framebuffer_status(glow::FRAMEBUFFER);
+    if status != glow::FRAMEBUFFER_COMPLETE {
+        panic!("SSAO framebuffer incomplete: status 0x{:X}", status);
+    }
+
+    // --- Blur FBO: LINEAR-sampled final occlusion field ---
+    let blur_tex = create_screen_target(gl, width, height, glow::LINEAR as i32);
+    let blur_fbo = gl.create_framebuffer().unwrap();
+    gl.bind_framebuffer(glow::FRAMEBUFFER, Some(blur_fbo));
+    gl.framebuffer_texture_2d(
+        glow::FRAMEBUFFER,
+        glow::COLOR_ATTACHMENT0,
+        glow::TEXTURE_2D,
+        Some(blur_tex),
+        0,
+    );
+    gl.draw_buffers(&[glow::COLOR_ATTACHMENT0]);
+    let status = gl.check_framebuffer_status(glow::FRAMEBUFFER);
+    if status != glow::FRAMEBUFFER_COMPLETE {
+        panic!("SSAO blur framebuffer incomplete: status 0x{:X}", status);
+    }
+
+    let prev = std::num::NonZeroU32::new(prev_fbo as u32).map(glow::NativeFramebuffer);
+    gl.bind_framebuffer(glow::FRAMEBUFFER, prev);
+
+    SsaoResources {
+        width,
+        height,
+        g_fbo,
+        g_position,
+        g_normal,
+        g_depth,
+        ssao_fbo,
+        ssao_tex,
+        blur_fbo,
+        blur_tex,
+    }
 }
 
 unsafe fn create_program(gl: &glow::Context, vert_src: &str, frag_src: &str) -> glow::Program {

@@ -270,6 +270,23 @@ fn light_menu(panel: &mut Preview3dPanel, ui: &mut egui::Ui) {
                 ui.label("Shadows");
                 ui.checkbox(&mut settings.shadows, "");
                 ui.end_row();
+
+                // Screen-space ambient occlusion: darkens the ambient (IBL) term
+                // in creases and contact points via an off-screen G-buffer +
+                // hemisphere-sampling + blur chain. Reads best on height-displaced
+                // or concave meshes. The radius/strength sliders only matter when
+                // the checkbox is on.
+                ui.label("Ambient Occl.");
+                ui.checkbox(&mut settings.ssao, "");
+                ui.end_row();
+
+                ui.label("AO Radius");
+                ui.add(egui::Slider::new(&mut settings.ssao_radius, 0.05..=1.5));
+                ui.end_row();
+
+                ui.label("AO Strength");
+                ui.add(egui::Slider::new(&mut settings.ssao_intensity, 0.0..=1.0));
+                ui.end_row();
             });
 
         ui.separator();

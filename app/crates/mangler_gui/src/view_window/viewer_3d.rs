@@ -152,6 +152,9 @@ impl Viewer3d {
             tone_map: settings.tone_map,
             wireframe: settings.wireframe,
             shadows: settings.shadows,
+            ssao: settings.ssao,
+            ssao_radius: settings.ssao_radius,
+            ssao_intensity: settings.ssao_intensity,
             // Wireframe line color comes from the active theme (grid_lines is a
             // contrasty line color present in every theme) — never hardcoded.
             // Gamma-space RGBA to match the shader's post-gamma framebuffer write.

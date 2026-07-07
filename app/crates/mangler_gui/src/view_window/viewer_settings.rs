@@ -106,6 +106,19 @@ pub struct Viewer3dSettings {
     /// emissive stay lit). Default `true` — shadows read as the expected look for
     /// a lit material preview; turn off to skip the extra depth pass.
     pub shadows: bool,
+    /// Screen-space ambient occlusion. When on, the renderer runs a G-buffer +
+    /// hemisphere-sampling + blur chain before the main pass and darkens the
+    /// ambient (IBL) term in creases and contact points. Adds three off-screen
+    /// passes; on by default (the contact shading reads as the expected lit-preview
+    /// look). Reads best on height-displaced or concave meshes.
+    pub ssao: bool,
+    /// SSAO sampling radius in view-space units (meshes span ~2 units). Larger
+    /// values darken broader cavities; smaller values keep occlusion tight to
+    /// fine relief.
+    pub ssao_radius: f32,
+    /// SSAO strength multiplier (0 = no darkening, 1 = full occlusion). Blends
+    /// the raw occlusion term toward 1.0 in the shader.
+    pub ssao_intensity: f32,
 }
 
 impl Default for Viewer3dSettings {
@@ -140,6 +153,14 @@ impl Default for Viewer3dSettings {
             wireframe: false,
             // Directional shadows on by default (the expected lit-preview look).
             shadows: true,
+            // SSAO on by default (three extra passes, but the contact shading
+            // reads as the expected look for a lit material preview).
+            ssao: true,
+            // A radius around a quarter of the mesh extent reads well for both
+            // displacement relief and concave-mesh contact shadows.
+            ssao_radius: 0.5,
+            // Full-strength occlusion by default when enabled.
+            ssao_intensity: 1.0,
         }
     }
 }

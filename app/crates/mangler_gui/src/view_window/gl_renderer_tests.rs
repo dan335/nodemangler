@@ -672,3 +672,40 @@ fn cast_slice_to_bytes_roundtrip() {
         assert_eq!(*ptr.add(2), 3.0);
     }
 }
+
+#[test]
+fn ssao_kernel_has_expected_shape() {
+    let kernel = generate_ssao_kernel();
+    // One vec3 per sample, flattened.
+    assert_eq!(kernel.len(), SSAO_KERNEL_SIZE * 3);
+
+    for s in 0..SSAO_KERNEL_SIZE {
+        let x = kernel[s * 3];
+        let y = kernel[s * 3 + 1];
+        let z = kernel[s * 3 + 2];
+        // Samples live in the +Z tangent-space hemisphere.
+        assert!(z >= 0.0, "sample {} has negative z ({})", s, z);
+        // Magnitude is biased into the unit sphere (mag*scale, both <= 1).
+        let mag = (x * x + y * y + z * z).sqrt();
+        assert!(
+            mag <= 1.0 + 1e-4,
+            "sample {} magnitude {} exceeds unit radius",
+            s,
+            mag
+        );
+        assert!(x.is_finite() && y.is_finite() && z.is_finite());
+    }
+}
+
+#[test]
+fn ssao_kernel_is_deterministic() {
+    // The generator is seeded (no rand/Date entropy) so the preview is stable.
+    assert_eq!(generate_ssao_kernel(), generate_ssao_kernel());
+}
+
+#[test]
+fn ssao_kernel_size_matches_shader_define() {
+    // KERNEL_SIZE in ssao_fragment.glsl must match SSAO_KERNEL_SIZE — the CPU
+    // uploads exactly this many samples to the u_kernel array uniform.
+    assert!(SSAO_FRAGMENT_SHADER.contains(&format!("#define KERNEL_SIZE {}", SSAO_KERNEL_SIZE)));
+}

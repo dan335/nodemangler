@@ -60,6 +60,20 @@ uniform sampler2DShadow u_shadow_map;
 uniform int u_shadows_enabled;
 uniform mat4 u_light_space;
 
+// Screen-space ambient occlusion. `u_ssao_tex` is the blurred [0,1] occlusion
+// field produced by the SSAO passes (ssao_fragment.glsl → ssao_blur_fragment.glsl),
+// sized to this panel's viewport. `u_ssao_enabled` is 0 when SSAO is off (no
+// texture bound). Because the mesh renders into a SUB-REGION of egui's window
+// framebuffer while the SSAO field is a full-viewport texture, we recover the
+// AO lookup UV from gl_FragCoord and `u_viewport` (x,y,w,h in physical pixels,
+// bottom-left origin — matching gl_FragCoord). `u_ssao_intensity` scales the
+// effect (0 = none, 1 = full). SSAO darkens only the ambient/IBL term, never the
+// direct light — same convention as the material AO map.
+uniform sampler2D u_ssao_tex;
+uniform int u_ssao_enabled;
+uniform vec4 u_viewport;
+uniform float u_ssao_intensity;
+
 out vec4 frag_color;
 
 // --- PBR functions ---
@@ -224,7 +238,18 @@ void main() {
     float a004 = min(r4.x * r4.x, exp2(-9.28 * max(dot(N, V), 0.0))) * r4.x + r4.y;
     vec2 ab = vec2(-1.04, 1.04) * a004 + r4.zw;
     vec3 kD_ambient = (1.0 - fresnel_schlick_roughness(max(dot(N, V), 0.0), F0, roughness)) * (1.0 - metallic);
-    vec3 ambient = (kD_ambient * albedo * irradiance + prefiltered * (F0 * ab.x + ab.y)) * ao * u_env_intensity;
+
+    // Screen-space ambient occlusion, combined with the material AO map. Recover
+    // the full-viewport AO UV from the window-space fragment coord (see the
+    // u_ssao_* uniform block above for why this indirection is needed).
+    float ssao = 1.0;
+    if (u_ssao_enabled != 0) {
+        vec2 ssao_uv = (gl_FragCoord.xy - u_viewport.xy) / u_viewport.zw;
+        float raw = texture(u_ssao_tex, ssao_uv).r;
+        ssao = mix(1.0, raw, u_ssao_intensity);
+    }
+
+    vec3 ambient = (kD_ambient * albedo * irradiance + prefiltered * (F0 * ab.x + ab.y)) * ao * ssao * u_env_intensity;
 
     // Emissive: self-illumination added on top of the lit result, PRE-tonemap
     // (de-gamma'd from sRGB like albedo). No texture → no emission.
