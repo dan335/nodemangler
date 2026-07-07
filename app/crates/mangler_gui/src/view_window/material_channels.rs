@@ -12,16 +12,18 @@ pub enum MaterialChannel {
     Metallic,
     Height,
     AmbientOcclusion,
+    Emissive,
 }
 
 impl MaterialChannel {
-    pub const ALL: [MaterialChannel; 6] = [
+    pub const ALL: [MaterialChannel; 7] = [
         MaterialChannel::Albedo,
         MaterialChannel::Normal,
         MaterialChannel::Roughness,
         MaterialChannel::Metallic,
         MaterialChannel::Height,
         MaterialChannel::AmbientOcclusion,
+        MaterialChannel::Emissive,
     ];
 
     pub fn label(&self) -> &'static str {
@@ -32,6 +34,7 @@ impl MaterialChannel {
             MaterialChannel::Metallic => "Metallic",
             MaterialChannel::Height => "Height",
             MaterialChannel::AmbientOcclusion => "AO",
+            MaterialChannel::Emissive => "Emissive",
         }
     }
 
@@ -78,6 +81,7 @@ pub struct MaterialData {
     pub metallic: Option<(FloatImage, String)>,
     pub height: Option<(FloatImage, String)>,
     pub ao: Option<(FloatImage, String)>,
+    pub emissive: Option<(FloatImage, String)>,
 }
 
 impl MaterialData {
@@ -89,6 +93,7 @@ impl MaterialData {
             metallic: None,
             height: None,
             ao: None,
+            emissive: None,
         }
     }
 }
@@ -110,6 +115,7 @@ pub fn resolve_material(
                     MaterialChannel::Metallic => data.metallic = Some(image_data),
                     MaterialChannel::Height => data.height = Some(image_data),
                     MaterialChannel::AmbientOcclusion => data.ao = Some(image_data),
+                    MaterialChannel::Emissive => data.emissive = Some(image_data),
                 }
             }
         }

@@ -108,18 +108,6 @@ impl AppMenu {
                                     bar_response.panel_action = Some(PanelAction::NewWindow);
                                     ui.close();
                                 }
-                                if ui.button("split horizontal").clicked() {
-                                    bar_response.panel_action = Some(PanelAction::SplitHorizontal);
-                                    ui.close();
-                                }
-                                if ui.button("split vertical").clicked() {
-                                    bar_response.panel_action = Some(PanelAction::SplitVertical);
-                                    ui.close();
-                                }
-                                if ui.button("close panel").clicked() {
-                                    bar_response.panel_action = Some(PanelAction::ClosePanel);
-                                    ui.close();
-                                }
 
                                 ui.separator();
 

@@ -293,17 +293,6 @@ impl PanelTree {
         out
     }
 
-    /// The first leaf in-order — the fallback target when no panel is focused.
-    pub fn first_leaf(&self) -> LeafId {
-        let mut node = &self.root;
-        loop {
-            match node {
-                PanelNode::Leaf { id, .. } => return *id,
-                PanelNode::Split { children, .. } => node = &children[0],
-            }
-        }
-    }
-
     /// Set the fraction of the `Split` node reached by following `path`
     /// (child indices from the root), clamped to keep both children visible.
     /// No-op if the path does not resolve to a split. Retained for tests and

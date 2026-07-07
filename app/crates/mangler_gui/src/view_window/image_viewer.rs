@@ -2,19 +2,19 @@ use eframe::egui::{self};
 use epaint::{TextureHandle, Pos2, CornerRadius, Rect, Stroke, Color32};
 use mangler_core::float_image::FloatImage;
 
-use crate::{view_to_graph_space, graph_to_view_space, themes::theme::Theme, view_to_graph_space_pos2, graph_to_view_space_pos2};
-
-const ZOOM_MULTIPLIER: f32 = 0.001;
-const ZOOM_BOUNDS: [f32; 2] = [0.15, 5.0];
+use crate::{
+    graph_to_view_space, graph_to_view_space_pos2,
+    pan_zoom::{self, PanZoomController},
+    themes::theme::Theme,
+};
 
 pub struct ImageViewer {
     image_texture_handle: Option<egui::TextureHandle>,
     image_id_index: Option<(String, usize, String)>,  // node id, output index, change_id
     pub position: Pos2,
     pub zoom: f32,
-    is_dragging: bool,
-    last_drag_position: Option<Pos2>,
-    previous_cursor_primary_down: Option<bool>,
+    /// Shared drag-to-pan state machine (same controller as the graph editor).
+    pan_zoom: PanZoomController,
 }
 
 impl ImageViewer {
@@ -24,15 +24,13 @@ impl ImageViewer {
             image_id_index: None,
             position: Pos2::ZERO,
             zoom: 1.0,
-            is_dragging: false,
-            last_drag_position: None,
-            previous_cursor_primary_down: None,
+            pan_zoom: PanZoomController::new(),
         }
     }
 
     /// Renders the image viewer panel with pan/zoom controls.
-    pub fn show(&mut self, ui: &mut egui::Ui, node_id: String, output_index: usize, change_id: String, float_image: &FloatImage, cursor_position: Pos2, theme: &Theme) {
-        
+    pub fn show(&mut self, ui: &mut egui::Ui, node_id: String, output_index: usize, change_id: String, float_image: &FloatImage, theme: &Theme) {
+
         let view_rect = Rect::from_min_size(
             ui.cursor().left_top(),
             ui.available_size()
@@ -54,89 +52,35 @@ impl ImageViewer {
         let view_rect_response = ui.allocate_rect(view_rect, egui::Sense::drag().union(egui::Sense::hover()));
 
         if view_rect_response.drag_started_by(egui::PointerButton::Primary) {
-            self.start_dragging();
+            self.pan_zoom.start_dragging();
         } else if view_rect_response.drag_stopped_by(egui::PointerButton::Primary) {
-            self.stop_dragging();
+            self.pan_zoom.stop_dragging();
         }
-        
 
+        // Pointer state from this ui's own (per-viewport) input, so previews
+        // hosted in secondary OS windows track their window's pointer rather
+        // than the main window's.
+        let cursor_position = pan_zoom::viewport_cursor(ui);
         let cursor_primary_down: bool = ui.ctx().input(|i| i.pointer.primary_down());
-
 
         // Fit image to view on F key
         if ui.ctx().input(|i| i.key_pressed(egui::Key::F)) {
             self.fit_to_view(view_rect, float_image.width() as f32, float_image.height() as f32);
         }
 
-        if ui.rect_contains_pointer(view_rect) {
-            ui.ctx().input(|input_state| {
-                // let mouse_x = cursor_position.x - editor_rect.min.x;
-                // let mouse_y = cursor_position.y - editor_rect.min.y;
-                //println!("{} {}, {:?}", mouse_x, mouse_y, self.position);
-                let new_zoom = (self.zoom * (1.0 + input_state.smooth_scroll_delta.y * ZOOM_MULTIPLIER))
-                    .min(ZOOM_BOUNDS[1])
-                    .max(ZOOM_BOUNDS[0]);
-    
-                let old_x = view_to_graph_space(self.zoom, view_rect.max.x - view_rect.min.x);
-                let new_x = view_to_graph_space(new_zoom, view_rect.max.x - view_rect.min.x);
-                let old_y = view_to_graph_space(self.zoom, view_rect.max.y - view_rect.min.y);
-                let new_y = view_to_graph_space(new_zoom, view_rect.max.y - view_rect.min.y);
-    
-                let mouse_percent_x = cursor_position.x / (view_rect.max.x - view_rect.min.x);
-                let mouse_percent_y = cursor_position.y / (view_rect.max.y - view_rect.min.y);
-    
-                self.position.x += view_to_graph_space(
-                    new_zoom,
-                    mouse_percent_x * graph_to_view_space(new_zoom, new_x - old_x),
-                );
-                self.position.y += view_to_graph_space(
-                    new_zoom,
-                    mouse_percent_y * graph_to_view_space(new_zoom, new_y - old_y),
-                );
-    
-                self.zoom = new_zoom;
-            });
-        }
-        
-
-        
-
-        let cursor_inside = view_rect.contains(cursor_position);
-
-        //let mut cursor_primary_went_down = false; // did mouse button go down this frame
-        let mut cursor_primary_went_up = false; // did mous button go up this rame
-
-        if let Some(previous_cursor_primary_down) = self.previous_cursor_primary_down {
-            if previous_cursor_primary_down && !cursor_primary_down {
-                cursor_primary_went_up = true;
-            }
-            // if !previous_cursor_primary_down && cursor_primary_down {
-            //     cursor_primary_went_down = true;
-            // }
+        // Scroll-to-zoom about the cursor (shared with the graph editor).
+        if view_rect.contains(cursor_position) {
+            pan_zoom::zoom_about_cursor(ui, &mut self.position, &mut self.zoom, cursor_position);
         }
 
-        // mouse
-        if cursor_primary_went_up {
-            self.stop_dragging();
-        }
-
-        if self.is_dragging && !cursor_inside {
-            self.stop_dragging();
-        }
-
-        if self.is_dragging {
-            if let Some(last_drag_position) = self.last_drag_position {
-                //self.position += (cursor_position - last_drag_position) *(1.0 / self.zoom);
-
-                self.position += view_to_graph_space_pos2(
-                    self.zoom,
-                    cursor_position - last_drag_position.to_vec2(),
-                )
-                .to_vec2();
-            }
-
-            self.last_drag_position = Some(cursor_position);
-        }
+        // Drag-to-pan (shared state machine with the graph editor).
+        self.pan_zoom.update(
+            &mut self.position,
+            self.zoom,
+            cursor_position,
+            view_rect.contains(cursor_position),
+            cursor_primary_down,
+        );
     }
 
     /// Draws the image on the canvas, uploading a new GPU texture when the image changes.
@@ -201,7 +145,9 @@ impl ImageViewer {
 
         // Larger zoom = smaller on screen (graph_to_view_space divides by zoom),
         // so pick the axis where the image is most oversized relative to the view.
-        let zoom = (img_width / view_width).max(img_height / view_height).max(ZOOM_BOUNDS[0]).min(ZOOM_BOUNDS[1]);
+        let zoom = (img_width / view_width)
+            .max(img_height / view_height)
+            .clamp(pan_zoom::ZOOM_BOUNDS[0], pan_zoom::ZOOM_BOUNDS[1]);
 
         // Center the image: screen center = (graph_position + position) / zoom
         // graph_position used in draw_image = (view_rect.left() + w/2, view_rect.top() + h/2)
@@ -210,15 +156,6 @@ impl ImageViewer {
 
         self.zoom = zoom;
         self.position = Pos2::new(center_x, center_y);
-    }
-
-    fn start_dragging(&mut self) {
-        self.is_dragging = true;
-    }
-
-    fn stop_dragging(&mut self) {
-        self.is_dragging = false;
-        self.last_drag_position = None;
     }
 
     pub fn get_rect(&self, graph_position: Pos2, graph_zoom: f32, width: f32, height: f32) -> Rect {

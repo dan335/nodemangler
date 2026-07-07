@@ -8,7 +8,7 @@ use epaint::CornerRadius;
 use crate::{
     panels::{
         panel_tree::PanelTree,
-        panel_view::{self, PanelFocus, PanelWindowId},
+        panel_view::{self, PanelAction, PanelWindowId},
     },
     program::Program,
     themes::theme::Theme,
@@ -33,19 +33,22 @@ impl SecondaryWindow {
 
 /// Render one secondary window's panel tree into its own OS viewport.
 ///
-/// Overlays (Tab-search, ghost node, status message) render only in the main
-/// window; graph panels here still support pan/zoom/select/connect via
-/// `GraphEditor`'s own input handling, but node-drop-from-list and Tab-search
-/// only target main-window graph rects. Acceptable for v1.
+/// Graph panels here support pan/zoom/select/connect and node-drop-from-list
+/// like the main window's do — all pointer input is read per-viewport.
+/// Tab-search and the status message still render only in the main window.
+/// Acceptable for v1.
+///
+/// Returns any split/close command raised by a panel's corner button this
+/// frame, for the app to apply after rendering.
 pub fn show_secondary_window(
     ctx: &egui::Context,
     win: &mut SecondaryWindow,
-    focused: &mut Option<PanelFocus>,
     program: &mut Program,
     theme: &Theme,
-) {
+) -> Option<PanelAction> {
     let window = PanelWindowId::Secondary(win.id);
     let viewport_id = win.viewport_id();
+    let mut panel_action = None;
 
     ctx.show_viewport_immediate(
         viewport_id,
@@ -66,17 +69,20 @@ pub fn show_secondary_window(
                     theme.get().panel_fill,
                 ));
 
-                // Overlays/status render only in the main window; ignore the
-                // returned graph rects here.
-                let _ = panel_view::render_tree(
+                let resp = panel_view::render_tree(
                     ui,
                     &mut win.tree,
                     work_rect,
                     window,
-                    focused,
                     program,
                     theme,
                 );
+                panel_action = resp.panel_action;
+
+                // Node-list drag handling for this window: drop into this
+                // window's graph panels, ghost node under this window's
+                // pointer. (Tab-search/status overlays stay main-window-only.)
+                program.show_menu_drag(ui, &resp.graph_rects, theme);
             });
 
             if ctx.input(|i| i.viewport().close_requested()) {
@@ -84,4 +90,6 @@ pub fn show_secondary_window(
             }
         },
     );
+
+    panel_action
 }

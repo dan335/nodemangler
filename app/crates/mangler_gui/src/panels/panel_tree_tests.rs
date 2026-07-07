@@ -116,7 +116,7 @@ fn close_unknown_id_is_err_not_found() {
 }
 
 #[test]
-fn leaves_are_in_order_and_first_leaf_matches() {
+fn leaves_are_in_order() {
     let tree = three_leaf_tree();
     assert_eq!(
         tree.leaves(),
@@ -126,7 +126,6 @@ fn leaves_are_in_order_and_first_leaf_matches() {
             (3, PanelKind::NodeList),
         ]
     );
-    assert_eq!(tree.first_leaf(), 1);
     assert!(tree.contains(2));
     assert!(!tree.contains(42));
 }

@@ -137,7 +137,11 @@ impl GraphNode {
         puffin::profile_scope!("graph node.show()");
         let mut graph_node_response = GraphNodeResponse::default();
 
-        if self.is_dragging {
+        // Only the viewport that actually has the pointer may move the node:
+        // the same node can render in several panels/windows per frame, and a
+        // window without the pointer sees a far-offscreen fallback cursor that
+        // would otherwise yank the node away.
+        if self.is_dragging && ui.ctx().pointer_latest_pos().is_some() {
             if let Some(last_drag_position) = self.last_drag_position {
                 let delta = view_to_graph_space_pos2(
                     graph_zoom,

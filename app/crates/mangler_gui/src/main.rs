@@ -9,6 +9,7 @@ mod config;
 mod graph;
 mod node_menu;
 mod panels;
+mod pan_zoom;
 mod program;
 mod settings;
 mod themes;
@@ -32,6 +33,12 @@ async fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         // 4x MSAA on the main framebuffer so the 3D viewer gets geometry AA.
         multisampling: 4,
+        // The 3D viewer (view_window/gl_renderer.rs) enables GL_DEPTH_TEST and
+        // relies on a real depth buffer to sort mesh triangles. eframe's default
+        // is 0 depth bits; without this the depth test only "worked" because the
+        // Windows GL driver happened to pick a depth-capable framebuffer config.
+        // Request 24-bit explicitly so behavior doesn't depend on driver defaults.
+        depth_buffer: 24,
         viewport: egui::ViewportBuilder::default()
             .with_maximized(true)
             .with_resizable(true)

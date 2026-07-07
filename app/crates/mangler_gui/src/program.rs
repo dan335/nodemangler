@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     graph::{
-        graph_editor::{GraphEditor, GraphEditorResponse, TempConnection},
+        graph_editor::{GraphCamera, GraphEditor, GraphEditorResponse, TempConnection},
         graph_node::ConnectionType,
         graph_node::GraphNode,
         graph_node_thumbnail::GraphNodeThumbnail,
@@ -60,6 +60,27 @@ pub struct Program {
     viewers_2d: HashMap<LeafId, ImageViewer>,
     /// Per-leaf 3D preview state (arcball camera + material channel bindings).
     viewers_3d: HashMap<LeafId, Preview3dPanel>,
+    /// Per-leaf graph pan/zoom camera, keyed by panel leaf id — mirrors
+    /// `viewers_2d`/`viewers_3d` so every Graph-kind panel pans and zooms
+    /// independently instead of sharing one camera.
+    graph_cameras: HashMap<LeafId, GraphCamera>,
+    /// Which graph panel the node-search popup was opened over; its camera
+    /// converts the popup position to graph space.
+    popup_graph_leaf: Option<LeafId>,
+    /// Last frame's main-window graph panel rects, kept for pointer→graph
+    /// conversions that run before panels render (paste, dropped files).
+    main_graph_rects: Vec<(LeafId, Rect)>,
+    /// Screen-space registry of every graph panel across all OS windows:
+    /// leaf → (rect in screen points, its window's content origin in screen
+    /// points). Refreshed by each window's `show_menu_drag` pass and pruned
+    /// with the viewers. Needed because a cross-window drag delivers all
+    /// pointer events to the *source* window (OS mouse capture) in that
+    /// window's local coordinates — screen space is the common frame.
+    graph_rects_screen: HashMap<LeafId, (Rect, Pos2)>,
+    /// Pointer position in screen points while a node-list drag is active,
+    /// published by the window holding the mouse capture so every window can
+    /// hit-test and draw the ghost node.
+    menu_drag_pointer_screen: Option<Pos2>,
 }
 
 impl Program {
@@ -97,6 +118,11 @@ impl Program {
                 has_preview_2d_panel: false,
                 viewers_2d: HashMap::new(),
                 viewers_3d: HashMap::new(),
+                graph_cameras: HashMap::new(),
+                popup_graph_leaf: None,
+                main_graph_rects: Vec::new(),
+                graph_rects_screen: HashMap::new(),
+                menu_drag_pointer_screen: None,
             }),
             Err(error) => Err(NewGraphError(format!(
                 "Error creating program. {:?}",
@@ -473,7 +499,8 @@ impl Program {
                                                 let random_size = app_rect.width().min(app_rect.height()) * 0.3;
                                                 let x = app_rect.center().x + fastrand::f32() * random_size - random_size * 0.5;
                                                 let y = app_rect.center().y + fastrand::f32() * random_size - random_size * 0.5;
-                                                let pos = view_to_graph_space_pos2(self.graph_editor.zoom, Pos2::new(x, y)) - self.graph_editor.position.to_vec2();
+                                                let (zoom, position) = self.camera_at(Pos2::new(x, y));
+                                                let pos = view_to_graph_space_pos2(zoom, Pos2::new(x, y)) - position.to_vec2();
                                                 if let Ok(node_id) = self.add_node(AddNodeType::Operation(mangler_core::operations::Operation::OpImageInputFile), pos, true, None, Vec::new()) {
 
                                                     let message = ChangeNodeMessage::SetInput { node_id, input_index: 0, value: Value::Path(path.clone()) };
@@ -522,7 +549,7 @@ impl Program {
         match kind {
             PanelKind::NodeList => self.show_node_list_panel(ui, theme),
             PanelKind::Settings => self.show_settings_panel(ui, theme),
-            PanelKind::Graph => self.show_graph_panel(ui, theme),
+            PanelKind::Graph => self.show_graph_panel(ui, leaf_id, theme),
             PanelKind::Preview2D => self.show_preview_2d_panel(ui, leaf_id, theme),
             PanelKind::Preview3D => self.show_preview_3d_panel(ui, leaf_id, theme),
         }
@@ -629,19 +656,29 @@ impl Program {
         });
     }
 
-    fn show_graph_panel(&mut self, ui: &mut egui::Ui, theme: &Theme) {
+    fn show_graph_panel(&mut self, ui: &mut egui::Ui, leaf_id: LeafId, theme: &Theme) {
         puffin::profile_scope!("graph panel");
 
-        let cursor_primary_down: bool = ui.ctx().input(|i| i.pointer.primary_down());
+        // Destructure so the per-leaf camera and the graph editor can be
+        // borrowed simultaneously (disjoint fields), same pattern as
+        // `show_preview_2d_panel`.
+        let Self {
+            graph_cameras,
+            graph_editor,
+            editing_node_id,
+            viewing_node_id_index,
+            node_search_popup,
+            ..
+        } = self;
+        let camera = graph_cameras.entry(leaf_id).or_insert_with(GraphCamera::new);
 
-        let graph_editor_response: GraphEditorResponse = self.graph_editor.show(
+        let graph_editor_response: GraphEditorResponse = graph_editor.show(
             ui,
-            self.pointer_position,
-            cursor_primary_down,
-            &self.editing_node_id,
-            &self.viewing_node_id_index,
+            camera,
+            &*editing_node_id,
+            &*viewing_node_id_index,
             theme,
-            self.node_search_popup.is_open,
+            node_search_popup.is_open,
         );
 
         for (node_id, pos) in graph_editor_response.new_node_positions {
@@ -701,6 +738,36 @@ impl Program {
         if let Some(dropped) = graph_editor_response.dropped_connection {
             self.node_search_popup
                 .open(self.pointer_position, Some(dropped));
+            self.popup_graph_leaf = Some(leaf_id);
+        }
+
+        // Graph run timing and interaction help live inside the graph panel —
+        // they describe the graph, not the whole app — anchored to this
+        // panel's corners (the clip rect keeps them from spilling out).
+        let panel_rect = ui.max_rect();
+        {
+            let graph_ms = self.graph_run_time.as_secs_f64() * 1000.0;
+            let status_txt = format!("graph: {:.1}ms", graph_ms);
+            let pos = Pos2::new(panel_rect.right() - 10.0, panel_rect.bottom() - 10.0);
+            ui.painter().text(
+                pos,
+                egui::Align2::RIGHT_BOTTOM,
+                status_txt,
+                egui::FontId::monospace(10.0),
+                egui::Color32::from(theme.get().text_faint),
+            );
+        }
+        {
+            let pos = Pos2::new(panel_rect.left() + 10.0, panel_rect.bottom() - 10.0);
+            let txt =
+                "left click: edit      right click: view      ctrl + left click: delete      delete/backspace: delete selected      shift + click: multi-select      ctrl+c: copy      ctrl+v: paste".to_string();
+            ui.painter().text(
+                pos,
+                egui::Align2::LEFT_BOTTOM,
+                txt,
+                egui::FontId::proportional(12.0),
+                egui::Color32::from(theme.get().text_faint),
+            );
         }
     }
 
@@ -711,7 +778,6 @@ impl Program {
             viewers_2d,
             graph_editor,
             viewing_node_id_index,
-            pointer_position,
             ..
         } = self;
 
@@ -719,14 +785,7 @@ impl Program {
 
         if let Some((viewing_node_id, output_index)) = viewing_node_id_index.as_ref() {
             if let Some(graph_node) = graph_editor.graph_nodes.get(viewing_node_id) {
-                preview_2d::show(
-                    ui,
-                    viewer,
-                    graph_node,
-                    *output_index,
-                    *pointer_position,
-                    theme,
-                );
+                preview_2d::show(ui, viewer, graph_node, *output_index, theme);
                 return;
             }
         }
@@ -750,32 +809,66 @@ impl Program {
     pub fn prune_viewers(&mut self, live: &HashSet<LeafId>) {
         self.viewers_2d.retain(|id, _| live.contains(id));
         self.viewers_3d.retain(|id, _| live.contains(id));
+        self.graph_cameras.retain(|id, _| live.contains(id));
+        self.graph_rects_screen.retain(|id, _| live.contains(id));
     }
 
-    /// Full-window overlays drawn on top of every panel: Tab-to-search,
-    /// delete-key handling, the node-search popup, drag-from-menu release,
-    /// the ghost drag node, status message, graph timing, and help text.
+    /// zoom + position of the camera for `leaf`, falling back to an identity
+    /// transform (zoom 1, no pan) when the panel has no camera yet.
+    fn camera_transform(&self, leaf: Option<LeafId>) -> (f32, Pos2) {
+        leaf.and_then(|id| self.graph_cameras.get(&id))
+            .map(|camera| (camera.zoom, camera.position))
+            .unwrap_or((1.0, Pos2::ZERO))
+    }
+
+    /// Camera (zoom, position) for the main-window graph panel under `pos`,
+    /// falling back to the first main-window graph panel (if any), then to
+    /// an identity transform. Used for pointer→graph conversions that run
+    /// before panels render this frame (paste, dropped files), when we only
+    /// have last frame's `main_graph_rects` to go on.
+    fn camera_at(&self, pos: Pos2) -> (f32, Pos2) {
+        let leaf = self
+            .main_graph_rects
+            .iter()
+            .find(|(_, r)| r.contains(pos))
+            .or_else(|| self.main_graph_rects.first())
+            .map(|(id, _)| *id);
+        self.camera_transform(leaf)
+    }
+
+    /// Main-window overlays drawn on top of every panel: Tab-to-search,
+    /// delete-key handling, the node-search popup, the main window's
+    /// menu-drag handling (see [`Self::show_menu_drag`]), and the status
+    /// message. Graph timing and help text render inside each graph panel.
     ///
-    /// `graph_rects` are the on-screen rects of every graph panel (used for
-    /// hover/hit-tests); `work_rect` is the area below the menu bar used to
-    /// anchor the corner overlays.
+    /// `graph_rects` are the on-screen rects of the main window's graph panels
+    /// (used for hover/hit-tests); `work_rect` is the area below the menu bar
+    /// used to anchor the status message.
     pub fn show_overlays(
         &mut self,
         ctx: &egui::Context,
         ui: &mut egui::Ui,
         theme: &Theme,
-        graph_rects: &[Rect],
+        graph_rects: &[(LeafId, Rect)],
         work_rect: Rect,
     ) {
-        let cursor_inside = ctx.content_rect().contains(self.pointer_position);
+        // Keep the main-window graph rects around for pointer→graph
+        // conversions that run before panels render this frame (paste,
+        // dropped files) — see `camera_at`.
+        self.main_graph_rects = graph_rects.to_vec();
 
         // Open search popup on Tab key (only when popup isn't already open)
-        if !self.node_search_popup.is_open
-            && graph_rects.iter().any(|r| r.contains(self.pointer_position))
-        {
-            let tab_pressed = ctx.input(|i| i.key_pressed(egui::Key::Tab));
-            if tab_pressed {
-                self.node_search_popup.open(self.pointer_position, None);
+        if !self.node_search_popup.is_open {
+            let hovered_leaf = graph_rects
+                .iter()
+                .find(|(_, r)| r.contains(self.pointer_position))
+                .map(|(id, _)| *id);
+            if let Some(leaf) = hovered_leaf {
+                let tab_pressed = ctx.input(|i| i.key_pressed(egui::Key::Tab));
+                if tab_pressed {
+                    self.node_search_popup.open(self.pointer_position, None);
+                    self.popup_graph_leaf = Some(leaf);
+                }
             }
         }
 
@@ -803,10 +896,11 @@ impl Program {
             let popup_response = self.node_search_popup.show(ctx, theme);
 
             if let Some(operation) = popup_response.selected_operation {
+                let (zoom, position) = self.camera_transform(self.popup_graph_leaf);
                 let graph_pos = view_to_graph_space_pos2(
-                    self.graph_editor.zoom,
+                    zoom,
                     self.node_search_popup.position,
-                ) - self.graph_editor.position.to_vec2();
+                ) - position.to_vec2();
 
                 // Store connection info before closing popup
                 let from_connection = self.node_search_popup.from_connection.clone();
@@ -828,82 +922,157 @@ impl Program {
             }
         }
 
-        // dragging from menu
-        // mouse leaves app
-        // stop dragging
-        if !cursor_inside {
-            self.dragging_menu_button.operation_being_created = None;
-            self.dragging_menu_button.subgraph_being_created = false;
+        // Menu-drag release + ghost node for the main window. Secondary
+        // windows make the same call with their own graph rects. (There is
+        // deliberately no "cursor left the window → cancel" check: during a
+        // cross-window drag the cursor legitimately leaves the source window;
+        // the drag always ends on button release instead.)
+        self.show_menu_drag(ui, graph_rects, theme);
+
+        self.show_status_message(ui, work_rect);
+    }
+
+    /// Menu-drag handling for one window: while a node-list drag is active,
+    /// paint the ghost node under the drag pointer, and on primary release
+    /// over any graph panel (in any window) create the dragged node there.
+    ///
+    /// Cross-window detail: the OS gives the *source* window mouse capture
+    /// for the whole drag, so only that window receives pointer/release
+    /// events — in its own local coordinates, even when the cursor is
+    /// physically over another window. The capturing window therefore
+    /// publishes the pointer in *screen* points (`menu_drag_pointer_screen`),
+    /// every window registers its graph rects in screen points
+    /// (`graph_rects_screen`), and hit-tests/ghost drawing happen in that
+    /// shared frame.
+    pub fn show_menu_drag(&mut self, ui: &mut egui::Ui, graph_rects: &[(LeafId, Rect)], theme: &Theme) {
+        // This window's content origin in screen points; unavailable e.g.
+        // while minimized, in which case it can't participate this frame.
+        let Some(origin) = ui
+            .ctx()
+            .input(|i| i.viewport().inner_rect)
+            .map(|r| r.min)
+        else {
+            return;
+        };
+
+        // Keep the screen-space registry fresh even while no drag is active,
+        // so it is correct the moment one starts.
+        for (leaf, rect) in graph_rects {
+            self.graph_rects_screen
+                .insert(*leaf, (rect.translate(origin.to_vec2()), origin));
         }
 
-        // release mouse button after dragging menu button
-        ui.input(|i| {
-            if i.pointer.primary_released() {
-                if let Some(operation) = &self.dragging_menu_button.operation_being_created {
-                    if graph_rects.iter().any(|r| r.contains(self.pointer_position)) {
-                        //let node_position_view_space = Pos2::new(cursor_position.x - bottom_panel_rect.min.x, cursor_position.y - bottom_panel_rect.min.y);
-                        if let Ok(node_id) = self.add_node(
-                            AddNodeType::Operation(operation.clone()),
-                            view_to_graph_space_pos2(self.graph_editor.zoom, self.pointer_position)
-                                - self.graph_editor.position.to_vec2(),
-                            true,
-                            None,
-                            Vec::new(),
-                        ) {
-                            self.edit_node(node_id);
-                        }
-                    }
-                } else if self.dragging_menu_button.subgraph_being_created {
-                    if graph_rects.iter().any(|r| r.contains(self.pointer_position)) {
-                        if let Ok(node_id) = self.add_node(
-                            AddNodeType::Subgraph,
-                            view_to_graph_space_pos2(self.graph_editor.zoom, self.pointer_position)
-                                - self.graph_editor.position.to_vec2(),
-                            true,
-                            None,
-                            Vec::new(),
-                        ) {
-                            self.edit_node(node_id);
-                        }
-                    }
-                }
+        if !self.dragging_menu_button.subgraph_being_created
+            && self.dragging_menu_button.operation_being_created.is_none()
+        {
+            return;
+        }
 
-                self.dragging_menu_button = MenuItemsResult::default();
-            }
+        let (primary_down, primary_released, local_pointer) = ui.ctx().input(|i| {
+            (
+                i.pointer.primary_down(),
+                i.pointer.primary_released(),
+                i.pointer.latest_pos(),
+            )
         });
+
+        // Only the capturing window holds the button during the drag, so this
+        // updates from exactly one window per frame — with live coordinates
+        // even when the cursor is outside its bounds.
+        if primary_down || primary_released {
+            if let Some(local) = local_pointer {
+                self.menu_drag_pointer_screen = Some(origin + local.to_vec2());
+            }
+        }
+
+        let Some(pointer_screen) = self.menu_drag_pointer_screen else {
+            return;
+        };
+
+        // release mouse button after dragging menu button — delivered to the
+        // capturing window only; the drop target may be any window's panel.
+        if primary_released {
+            let target = self
+                .graph_rects_screen
+                .iter()
+                .find(|(_, (screen_rect, _))| screen_rect.contains(pointer_screen))
+                .map(|(leaf, (_, target_origin))| (*leaf, *target_origin));
+            if let Some((leaf, target_origin)) = target {
+                let node_type =
+                    if let Some(operation) = &self.dragging_menu_button.operation_being_created {
+                        AddNodeType::Operation(operation.clone())
+                    } else {
+                        AddNodeType::Subgraph
+                    };
+                // Graph-space position from the target window's local coords
+                // and the target panel's camera.
+                let local = pointer_screen - target_origin.to_vec2();
+                let (zoom, position) = self.camera_transform(Some(leaf));
+                //let node_position_view_space = Pos2::new(cursor_position.x - bottom_panel_rect.min.x, cursor_position.y - bottom_panel_rect.min.y);
+                if let Ok(node_id) = self.add_node(
+                    node_type,
+                    view_to_graph_space_pos2(zoom, local) - position.to_vec2(),
+                    true,
+                    None,
+                    Vec::new(),
+                ) {
+                    self.edit_node(node_id);
+                }
+            }
+
+            self.dragging_menu_button = MenuItemsResult::default();
+            self.menu_drag_pointer_screen = None;
+            return;
+        }
+
+        // Ghost node: drawn by whichever window the drag pointer is currently
+        // over (converted from screen points to this window's local coords).
+        let pointer = pointer_screen - origin.to_vec2();
+        if !ui.ctx().content_rect().contains(pointer) {
+            return;
+        }
 
         // dragging node from menu
         // draw shape behind mouse being dragged
-        if self.dragging_menu_button.subgraph_being_created
-            || self.dragging_menu_button.operation_being_created.is_some()
-        {
-            let mut name = "".to_string();
+        let mut name = "".to_string();
 
-            if let Some(op) = &self.dragging_menu_button.operation_being_created {
-                name = op.settings().name.clone();
-            } else if self.dragging_menu_button.subgraph_being_created {
-                name = "subgraph".to_string();
-            }
-
-            let drag_rect = Rect::from_center_size(self.pointer_position, NODE_SIZE);
-
-            ui.painter().add(egui::Shape::rect_filled(
-                drag_rect,
-                CornerRadius::ZERO,
-                theme.get().node_header_bg,
-            ));
-
-            // node name
-            ui.painter().text(
-                drag_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                name,
-                //egui::style::Style::text_styles(),
-                egui::FontId::proportional(graph_to_view_space(self.graph_editor.zoom, 14.0)),
-                Color32::from(theme.get().override_text_color),
-            );
+        if let Some(op) = &self.dragging_menu_button.operation_being_created {
+            name = op.settings().name.clone();
+        } else if self.dragging_menu_button.subgraph_being_created {
+            name = "subgraph".to_string();
         }
 
+        let drag_rect = Rect::from_center_size(pointer, NODE_SIZE);
+
+        ui.painter().add(egui::Shape::rect_filled(
+            drag_rect,
+            CornerRadius::ZERO,
+            theme.get().node_header_bg,
+        ));
+
+        // Ghost node font size follows the zoom of whichever graph panel the
+        // pointer is currently over, falling back to zoom 1.0 when it isn't
+        // over any graph panel.
+        let hovered_zoom = graph_rects
+            .iter()
+            .find(|(_, r)| r.contains(pointer))
+            .map(|(id, _)| self.camera_transform(Some(*id)).0)
+            .unwrap_or(1.0);
+
+        // node name
+        ui.painter().text(
+            drag_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            name,
+            //egui::style::Style::text_styles(),
+            egui::FontId::proportional(graph_to_view_space(hovered_zoom, 14.0)),
+            Color32::from(theme.get().override_text_color),
+        );
+    }
+
+    /// Fading status message (copy/paste feedback etc.), centered near the
+    /// bottom of the main window's work area.
+    fn show_status_message(&mut self, ui: &mut egui::Ui, work_rect: Rect) {
         // show status message (copy/paste feedback)
         if let Some((msg, created)) = &self.status_message {
             let elapsed = created.elapsed();
@@ -926,36 +1095,6 @@ impl Program {
                 self.status_message = None;
             }
         }
-
-        // show graph run timing in bottom right corner
-        {
-            let graph_ms = self.graph_run_time.as_secs_f64() * 1000.0;
-            let status_txt = format!("graph: {:.1}ms", graph_ms);
-            let pos = Pos2::new(work_rect.right() - 10.0, work_rect.bottom() - 10.0);
-            ui.painter().text(
-                pos,
-                egui::Align2::RIGHT_BOTTOM,
-                status_txt,
-                egui::FontId::monospace(10.0),
-                egui::Color32::from(theme.get().text_faint),
-            );
-        }
-
-        // show help in bottom left
-        let help_left = graph_rects
-            .first()
-            .map(|r| r.left())
-            .unwrap_or(work_rect.left());
-        let pos = Pos2::new(help_left + 20.0, work_rect.bottom() - 10.0);
-        let txt =
-            "left click: edit      right click: view      ctrl + left click: delete      delete/backspace: delete selected      shift + click: multi-select      ctrl+c: copy      ctrl+v: paste".to_string();
-        ui.painter().text(
-            pos,
-            egui::Align2::LEFT_BOTTOM,
-            txt,
-            egui::FontId::proportional(12.0),
-            egui::Color32::from(theme.get().text_faint),
-        );
     }
 
     pub fn add_node(
@@ -1054,12 +1193,15 @@ impl Program {
     /// Creates new nodes at positions offset from the cursor, restores input values
     /// and internal connections, then selects all newly pasted nodes.
     fn paste_clipboard(&mut self, cb: &Clipboard) {
-        // Compute paste offset: center the pasted nodes on the current pointer position.
+        // Compute paste offset: center the pasted nodes on the current pointer position,
+        // using the camera of the main-window graph panel under the pointer (falling
+        // back to the first main-window graph panel, then identity).
         let centroid = cb.centroid();
+        let (zoom, position) = self.camera_at(self.pointer_position);
         let paste_target = view_to_graph_space_pos2(
-            self.graph_editor.zoom,
+            zoom,
             self.pointer_position,
-        ) - self.graph_editor.position.to_vec2();
+        ) - position.to_vec2();
         let offset = egui::Vec2::new(
             paste_target.x - centroid.x,
             paste_target.y - centroid.y,

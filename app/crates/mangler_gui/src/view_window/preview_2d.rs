@@ -4,20 +4,20 @@
 //! [`ImageViewer`] pan/zoom state. The value-dispatch logic mirrors the
 //! non-tab content path of the old `ViewPanel::show_content`.
 
-use eframe::egui::{self, Pos2, RichText};
+use eframe::egui::{self, RichText};
 
 use crate::{graph::graph_node::GraphNode, themes::theme::Theme};
 
 use super::{color_viewer::ColorViewer, image_viewer::ImageViewer, text_viewer::TextViewer};
 
 /// Render the given node output into `ui` using the supplied per-leaf image
-/// viewer for pan/zoom state.
+/// viewer for pan/zoom state. Pointer input is read from `ui`'s own context,
+/// so this works identically in secondary OS windows.
 pub fn show(
     ui: &mut egui::Ui,
     viewer: &mut ImageViewer,
     graph_node: &GraphNode,
     output_index: usize,
-    cursor_position: Pos2,
     theme: &Theme,
 ) {
     let Some(output) = graph_node.outputs.get(output_index) else {
@@ -34,7 +34,6 @@ pub fn show(
             output_index,
             change_id.clone(),
             data,
-            cursor_position,
             theme,
         );
         return;

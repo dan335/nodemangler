@@ -1,7 +1,8 @@
 use super::graph_node::ConnectionType;
 use crate::{
-    graph::graph_node::GraphNode, graph_to_view_space, view_to_graph_space,
-    view_to_graph_space_pos2, program::NewConnection, themes::theme::Theme,
+    graph::graph_node::GraphNode, graph_to_view_space,
+    pan_zoom::{self, PanZoomController},
+    program::NewConnection, themes::theme::Theme, view_to_graph_space,
 };
 use eframe::{
     egui,
@@ -12,17 +13,9 @@ use egui::Pos2;
 use mangler_core::{input::Input, node_settings::NodeSettings, output::Output, value::ValueType, AddNodeType};
 use std::{collections::{HashMap, HashSet}, time::Instant};
 
-const ZOOM_MULTIPLIER: f32 = 0.001;
-const ZOOM_BOUNDS: [f32; 2] = [0.15, 5.0];
-
 pub struct GraphEditor {
-    pub position: Pos2,
-    pub zoom: f32,
-    is_dragging: bool,
-    last_drag_position: Option<Pos2>,
     pub graph_nodes: HashMap<String, GraphNode>,
     temp_connection: Option<TempConnection>,
-    previous_cursor_primary_down: Option<bool>,
 
     // if a node was clicked on when was it clicked and what is it's node_id
     // used to check for click or double click
@@ -30,32 +23,45 @@ pub struct GraphEditor {
 
     /// Set of currently selected node IDs (for multi-selection and copy/paste).
     pub selected_node_ids: HashSet<String>,
+}
 
-    /// When true, center the view on (0,0) on the next frame.
-    needs_center: bool,
+/// Per-panel view transform for a graph panel: every Graph-kind panel leaf
+/// owns one, so panels pan/zoom independently while sharing the graph itself.
+pub struct GraphCamera {
+    /// Pan offset in graph space (view = (graph + position) / zoom).
+    pub position: Pos2,
+    pub zoom: f32,
+    /// Drag-to-pan state machine (shared implementation with the 2D preview).
+    pub pan_zoom: PanZoomController,
+    /// When true, center the view on graph origin (0,0) on the next frame.
+    pub needs_center: bool,
+}
+
+impl GraphCamera {
+    pub fn new() -> GraphCamera {
+        GraphCamera {
+            position: Pos2::ZERO,
+            zoom: 1.0,
+            pan_zoom: PanZoomController::new(),
+            needs_center: true,
+        }
+    }
 }
 
 impl GraphEditor {
     pub fn new() -> GraphEditor {
         GraphEditor {
-            position: Pos2::ZERO,
-            zoom: 1.0,
-            is_dragging: false,
-            last_drag_position: None,
             graph_nodes: HashMap::default(),
             temp_connection: None,
             last_node_click: None,
-            previous_cursor_primary_down: None,
             selected_node_ids: HashSet::new(),
-            needs_center: true,
         }
     }
 
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
-        cursor_position: Pos2,
-        cursor_primary_down: bool,
+        camera: &mut GraphCamera,
         editing_node_id: &Option<String>,
         viewing_node_id_index: &Option<(String, usize)>,
         theme: &Theme,
@@ -66,48 +72,29 @@ impl GraphEditor {
 
         let editor_rect = ui.max_rect();
 
+        // Pointer state from this ui's own (per-viewport) input, so graph
+        // panels hosted in secondary OS windows track their window's pointer
+        // rather than the main window's.
+        let cursor_position = pan_zoom::viewport_cursor(ui);
+        let cursor_primary_down: bool = ui.ctx().input(|i| i.pointer.primary_down());
+
         // Center the view on graph origin (0,0) on the first frame.
-        if self.needs_center {
+        if camera.needs_center {
             let center = editor_rect.center();
-            self.position = Pos2::new(
-                view_to_graph_space(self.zoom, center.x),
-                view_to_graph_space(self.zoom, center.y),
+            camera.position = Pos2::new(
+                view_to_graph_space(camera.zoom, center.x),
+                view_to_graph_space(camera.zoom, center.y),
             );
-            self.needs_center = false;
+            camera.needs_center = false;
         }
 
         let editor_bg_response =
             ui.allocate_rect(editor_rect, egui::Sense::click().union(egui::Sense::drag()).union(egui::Sense::hover()));
         //let panel_cursor_position = Pos2::new(cursor_position.x - editor_rect.min.x, cursor_position.y - editor_rect.min.y);
 
+        // Scroll-to-zoom about the cursor (shared with the 2D preview).
         if editor_rect.contains(cursor_position) && !is_popup_open {
-            ui.ctx().input(|input_state| {
-                // let mouse_x = cursor_position.x - editor_rect.min.x;
-                // let mouse_y = cursor_position.y - editor_rect.min.y;
-                //println!("{} {}, {:?}", mouse_x, mouse_y, self.position);
-                let new_zoom = (self.zoom * (1.0 + input_state.smooth_scroll_delta.y * ZOOM_MULTIPLIER))
-                    .min(ZOOM_BOUNDS[1])
-                    .max(ZOOM_BOUNDS[0]);
-
-                let old_x = view_to_graph_space(self.zoom, editor_rect.max.x - editor_rect.min.x);
-                let new_x = view_to_graph_space(new_zoom, editor_rect.max.x - editor_rect.min.x);
-                let old_y = view_to_graph_space(self.zoom, editor_rect.max.y - editor_rect.min.y);
-                let new_y = view_to_graph_space(new_zoom, editor_rect.max.y - editor_rect.min.y);
-
-                let mouse_percent_x = cursor_position.x / (editor_rect.max.x - editor_rect.min.x);
-                let mouse_percent_y = cursor_position.y / (editor_rect.max.y - editor_rect.min.y);
-
-                self.position.x += view_to_graph_space(
-                    new_zoom,
-                    mouse_percent_x * graph_to_view_space(new_zoom, new_x - old_x),
-                );
-                self.position.y += view_to_graph_space(
-                    new_zoom,
-                    mouse_percent_y * graph_to_view_space(new_zoom, new_y - old_y),
-                );
-
-                self.zoom = new_zoom;
-            });
+            pan_zoom::zoom_about_cursor(ui, &mut camera.position, &mut camera.zoom, cursor_position);
         }
 
 
@@ -120,45 +107,22 @@ impl GraphEditor {
             theme.get().grid_bg,
         ));
 
-        self.draw_background_grid(ui, editor_rect, self.position, theme);
+        self.draw_background_grid(ui, editor_rect, camera.position, camera.zoom, theme);
 
         let cursor_inside = editor_rect.contains(cursor_position);
 
-        let mut cursor_primary_went_down = false; // did mouse button go down this frame
-        let mut cursor_primary_went_up = false; // did mous button go up this rame
         let mut is_cursor_over_node = false;
 
-        if let Some(previous_cursor_primary_down) = self.previous_cursor_primary_down {
-            if previous_cursor_primary_down && !cursor_primary_down {
-                cursor_primary_went_up = true;
-            }
-            if !previous_cursor_primary_down && cursor_primary_down {
-                cursor_primary_went_down = true;
-            }
-        }
-
-        // mouse
-        if cursor_primary_went_up {
-            self.stop_dragging();
-        }
-
-        if self.is_dragging && !cursor_inside {
-            self.stop_dragging();
-        }
-
-        if self.is_dragging {
-            if let Some(last_drag_position) = self.last_drag_position {
-                //self.position += (cursor_position - last_drag_position) *(1.0 / self.zoom);
-
-                self.position += view_to_graph_space_pos2(
-                    self.zoom,
-                    cursor_position - last_drag_position.to_vec2(),
-                )
-                .to_vec2();
-            }
-
-            self.last_drag_position = Some(cursor_position);
-        }
+        // Drag-to-pan (shared state machine with the 2D preview); starts via
+        // the background response further down, once node hits are known.
+        let pointer_events = camera.pan_zoom.update(
+            &mut camera.position,
+            camera.zoom,
+            cursor_position,
+            cursor_inside,
+            cursor_primary_down,
+        );
+        let cursor_primary_went_down = pointer_events.primary_went_down;
 
         // clicking on nodes
         // check if click is less than DOUBLE_CLICK_DURATION
@@ -187,18 +151,18 @@ impl GraphEditor {
                     if let Some(input_graph_node) = &self.graph_nodes.get(node_id) {
                         if let Some(output_graph_node) = &self.graph_nodes.get(output_node_id) {
                             let input_node_rect =
-                                input_graph_node.get_rect(self.position, self.zoom);
+                                input_graph_node.get_rect(camera.position, camera.zoom);
                             let output_node_rect =
-                                output_graph_node.get_rect(self.position, self.zoom);
+                                output_graph_node.get_rect(camera.position, camera.zoom);
 
                             let curve = self.draw_connection_line(
                                 ui,
                                 output_graph_node.get_output_position(
                                     *output_connection_index,
                                     output_node_rect,
-                                    self.zoom,
+                                    camera.zoom,
                                 ),
-                                input_graph_node.get_input_position(input_index, input_node_rect, self.zoom),
+                                input_graph_node.get_input_position(input_index, input_node_rect, camera.zoom),
                                 theme,
                                 input.is_error,
                             );
@@ -228,8 +192,8 @@ impl GraphEditor {
             // draw node (highlight if editing or selected)
             let graph_node_response = graph_node.show(
                 ui,
-                self.position,
-                self.zoom,
+                camera.position,
+                camera.zoom,
                 cursor_position,
                 is_editing || is_selected,
                 is_viewing,
@@ -313,13 +277,13 @@ impl GraphEditor {
                 // find node with connection at this position
                 for (_, other_graph_node) in self.graph_nodes.iter() {
                     let other_node = &self.graph_nodes[&other_graph_node.id];
-                    let other_node_rect = other_graph_node.get_rect(self.position, self.zoom);
+                    let other_node_rect = other_graph_node.get_rect(camera.position, camera.zoom);
 
                     match temp_connection.from_connection_type {
                         ConnectionType::Input => {
                             for output_index in 0..other_node.outputs.len() {
                                 if other_graph_node
-                                    .get_output_rect(output_index, other_node_rect, self.zoom)
+                                    .get_output_rect(output_index, other_node_rect, camera.zoom)
                                     .contains(cursor_position)
                                 {
                                     graph_editor_response.new_connection =
@@ -335,7 +299,7 @@ impl GraphEditor {
                         ConnectionType::Output => {
                             for input_index in 0..other_node.inputs.len() {
                                 if other_graph_node
-                                    .get_input_rect(input_index, other_node_rect, self.zoom)
+                                    .get_input_rect(input_index, other_node_rect, camera.zoom)
                                     .contains(cursor_position)
                                 {
                                     graph_editor_response.new_connection = Some(NewConnection {
@@ -353,7 +317,12 @@ impl GraphEditor {
             }
         }
 
-        if self.temp_connection.is_some() && !cursor_primary_down {
+        // Only the viewport holding the pointer may decide the connection was
+        // dropped: a window without the pointer sees `primary_down == false`
+        // for a drag happening in another window and would drop it (and open
+        // the search popup) spuriously.
+        let viewport_has_pointer = ui.ctx().pointer_latest_pos().is_some();
+        if self.temp_connection.is_some() && !cursor_primary_down && viewport_has_pointer {
             // If no new connection was made, signal that the connection was dropped
             if graph_editor_response.new_connection.is_none() {
                 graph_editor_response.dropped_connection = self.temp_connection.clone();
@@ -361,8 +330,10 @@ impl GraphEditor {
             self.temp_connection = None;
         }
 
-        // temp connection being created
-        if let Some(temp_connection) = &self.temp_connection {
+        // temp connection being created — drawn only in the window the cursor
+        // is in (other windows would draw a line to their offscreen fallback
+        // cursor).
+        if let Some(temp_connection) = self.temp_connection.as_ref().filter(|_| viewport_has_pointer) {
             match temp_connection.from_connection_type {
                 ConnectionType::Input => {
                     self.draw_connection_line(ui, cursor_position, temp_connection.from_position, theme, false)
@@ -386,9 +357,9 @@ impl GraphEditor {
         } else if editor_bg_response.drag_started_by(egui::PointerButton::Primary)
             && !is_cursor_over_node
         {
-            self.start_dragging();
+            camera.pan_zoom.start_dragging();
         } else if editor_bg_response.drag_stopped_by(egui::PointerButton::Primary) {
-            self.stop_dragging();
+            camera.pan_zoom.stop_dragging();
         }
 
         // if cursor_primary_went_down && !is_cursor_over_node {
@@ -418,8 +389,6 @@ impl GraphEditor {
 
         //self.draw_top_border(ui, editor_rect, theme);
 
-        self.previous_cursor_primary_down = Some(cursor_primary_down);
-
         graph_editor_response
     }
 
@@ -435,19 +404,19 @@ impl GraphEditor {
     //     ui.painter().add(egui::Shape::line(points, stroke));
     // }
 
-    pub fn draw_background_grid(&self, ui: &mut egui::Ui, editor_rect: Rect, graph_position: Pos2, theme: &Theme) {
+    pub fn draw_background_grid(&self, ui: &mut egui::Ui, editor_rect: Rect, graph_position: Pos2, zoom: f32, theme: &Theme) {
         let stroke = Stroke::new(1.0, theme.get().grid_lines);
         let grid_size: f32 = 50.0;
 
-        let mut x = graph_to_view_space(self.zoom, graph_position.x % grid_size);
-        let mut y = graph_to_view_space(self.zoom, graph_position.y % grid_size);
+        let mut x = graph_to_view_space(zoom, graph_position.x % grid_size);
+        let mut y = graph_to_view_space(zoom, graph_position.y % grid_size);
 
         while x <= editor_rect.max.x {
             ui.painter().line_segment(
                 [Pos2::new(x, editor_rect.min.y), Pos2::new(x, editor_rect.max.y)],
                 stroke,
             );
-            x += graph_to_view_space(self.zoom, grid_size);
+            x += graph_to_view_space(zoom, grid_size);
         }
 
         while y <= editor_rect.max.y {
@@ -455,7 +424,7 @@ impl GraphEditor {
                 [Pos2::new(editor_rect.min.x, y), Pos2::new(editor_rect.max.x, y)],
                 stroke,
             );
-            y += graph_to_view_space(self.zoom, grid_size);
+            y += graph_to_view_space(zoom, grid_size);
         }
     }
 
@@ -498,15 +467,6 @@ impl GraphEditor {
         ui.painter().add(egui::Shape::CubicBezier(curve_shape.clone()));
 
         curve_shape
-    }
-
-    fn start_dragging(&mut self) {
-        self.is_dragging = true;
-    }
-
-    fn stop_dragging(&mut self) {
-        self.is_dragging = false;
-        self.last_drag_position = None;
     }
 
     /// Apply a drag delta to all selected nodes except the one already dragged.

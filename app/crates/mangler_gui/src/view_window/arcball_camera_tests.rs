@@ -91,6 +91,77 @@ fn zoom_clamping() {
 }
 
 #[test]
+fn pan_moves_target_perpendicular_to_view() {
+    let mut cam = ArcballCamera::new();
+    let before = cam.target;
+    // View direction from eye to target.
+    let view_dir = (cam.target - cam.eye_position()).normalize();
+
+    cam.pan(egui::Vec2::new(20.0, -10.0), 600.0);
+
+    // Target actually moved.
+    let moved = cam.target - before;
+    assert!(moved.length() > 1e-6, "target should move, moved={:?}", moved);
+    // The pan slides in the screen plane, so the motion is perpendicular to the
+    // view direction (no component along the eye→target axis).
+    assert!(
+        moved.dot(view_dir).abs() < 1e-4,
+        "pan should be perpendicular to view dir, dot={}",
+        moved.dot(view_dir)
+    );
+}
+
+#[test]
+fn pan_right_moves_target_left() {
+    // Dragging right should move the *content* right, i.e. the target moves in
+    // the camera's -right direction. Verify the sign of the right-axis component.
+    let mut cam = ArcballCamera::new();
+    let forward = (cam.target - cam.eye_position()).normalize();
+    let right = forward.cross(glam::Vec3::Y).normalize();
+
+    cam.pan(egui::Vec2::new(20.0, 0.0), 600.0);
+
+    assert!(
+        cam.target.dot(right) < 0.0,
+        "rightward drag should push target along -right, got {}",
+        cam.target.dot(right)
+    );
+}
+
+#[test]
+fn pan_clamps_target_offset() {
+    let mut cam = ArcballCamera::new();
+    // A huge drag would move the target far past the clamp radius (3.0).
+    cam.pan(egui::Vec2::new(100000.0, 100000.0), 100.0);
+    assert!(
+        cam.target.length() <= 3.0 + 1e-4,
+        "target length should clamp to 3.0, got {}",
+        cam.target.length()
+    );
+}
+
+#[test]
+fn reset_restores_defaults_but_keeps_fov() {
+    let mut cam = ArcballCamera::new();
+    // Perturb every field, including a non-default FOV.
+    cam.yaw = 2.0;
+    cam.pitch = 0.5;
+    cam.distance = 12.0;
+    cam.target = glam::Vec3::new(1.0, 1.0, 0.0);
+    cam.fov_y = 70.0_f32.to_radians();
+
+    cam.reset();
+
+    let default = ArcballCamera::new();
+    assert!((cam.yaw - default.yaw).abs() < 1e-6);
+    assert!((cam.pitch - default.pitch).abs() < 1e-6);
+    assert!((cam.distance - default.distance).abs() < 1e-6);
+    assert_eq!(cam.target, default.target);
+    // FOV is preserved, not reset to the default.
+    assert!((cam.fov_y - 70.0_f32.to_radians()).abs() < 1e-6);
+}
+
+#[test]
 fn eye_position_pitch_up() {
     let mut cam = ArcballCamera::new();
     cam.yaw = 0.0;

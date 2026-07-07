@@ -139,4 +139,39 @@ fn channel_labels() {
     assert_eq!(MaterialChannel::Albedo.label(), "Albedo");
     assert_eq!(MaterialChannel::AmbientOcclusion.label(), "AO");
     assert_eq!(MaterialChannel::Normal.label(), "Normal");
+    assert_eq!(MaterialChannel::Emissive.label(), "Emissive");
+}
+
+#[test]
+fn all_includes_emissive() {
+    // Phase 4 bumped the channel count to 7; the combo UI is driven by ALL, so
+    // the Emissive row only appears if ALL lists it exactly once.
+    assert_eq!(MaterialChannel::ALL.len(), 7);
+    assert_eq!(
+        MaterialChannel::ALL
+            .iter()
+            .filter(|c| **c == MaterialChannel::Emissive)
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn resolve_material_resolves_emissive() {
+    // An Emissive assignment must land in MaterialData::emissive (not any other
+    // channel), and unbound channels stay None.
+    let graph = make_graph_with_named_outputs(vec![("n1", "Gen", "Glow")]);
+
+    let mut assignments = MaterialChannelAssignments::new();
+    assignments.set(
+        MaterialChannel::Emissive,
+        MaterialAssignment {
+            node_id: "n1".to_string(),
+            output_index: 0,
+        },
+    );
+
+    let material = resolve_material(&assignments, &graph);
+    assert!(material.emissive.is_some());
+    assert!(material.albedo.is_none());
 }

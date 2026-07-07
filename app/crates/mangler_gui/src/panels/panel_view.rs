@@ -1,10 +1,10 @@
 //! egui renderer for a [`PanelTree`]: draws the draggable splitters, each
-//! leaf's content (via `Program::show_panel`), the corner kind-switcher chrome,
-//! and the focus highlight. Every color comes from the active [`Theme`] so all
-//! four themes stay consistent when switched at runtime.
+//! leaf's content (via `Program::show_panel`), and the corner kind-switcher
+//! chrome. Every color comes from the active [`Theme`] so all four themes
+//! stay consistent when switched at runtime.
 
 use eframe::egui::{self, Sense, UiBuilder};
-use epaint::{pos2, vec2, CornerRadius, Rect, Stroke, StrokeKind};
+use epaint::{pos2, vec2, CornerRadius, Rect};
 
 use crate::{
     panels::{
@@ -23,41 +23,41 @@ pub enum PanelWindowId {
     Secondary(u64),
 }
 
-/// The last-focused (hovered/clicked) panel — the target for split/close.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct PanelFocus {
-    pub window: PanelWindowId,
-    pub leaf: LeafId,
-}
-
-/// A panel-management command raised by the app settings menu this frame.
+/// A panel-management command raised by the app settings menu or a panel's
+/// corner-button menu this frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PanelAction {
     NewWindow,
-    SplitHorizontal,
-    SplitVertical,
-    ClosePanel,
+    SplitHorizontal { window: PanelWindowId, leaf: LeafId },
+    SplitVertical { window: PanelWindowId, leaf: LeafId },
+    ClosePanel { window: PanelWindowId, leaf: LeafId },
     SaveLayoutAsDefault,
     ResetLayout,
 }
 
 /// What [`render_tree`] produced this frame.
 pub struct TreeRenderResponse {
-    /// On-screen rects of every Graph-kind leaf, for overlay hit-tests.
-    pub graph_rects: Vec<Rect>,
+    /// On-screen rects of every Graph-kind leaf, for overlay hit-tests. Paired
+    /// with each leaf's id so a hit-test can map back to that panel's own
+    /// [`crate::graph::graph_editor::GraphCamera`].
+    pub graph_rects: Vec<(LeafId, Rect)>,
+    /// A split/close command raised from a panel's corner button this frame.
+    /// The action already carries its own target window/leaf, so the app can
+    /// route it through the same `handle_panel_action` path as the settings
+    /// menu without any extra lookup.
+    pub panel_action: Option<PanelAction>,
 }
 
 /// Render one panel tree into `ui`, filling `work_rect`.
 ///
 /// Splitters are interactive (drag to resize), each leaf renders its content
-/// clipped to its rect, and a corner button switches the leaf's kind. `focused`
-/// is updated (sticky) to the panel under the pointer.
+/// clipped to its rect, and a corner button switches the leaf's kind or raises
+/// a split/close [`PanelAction`] targeting that leaf.
 pub fn render_tree(
     ui: &mut egui::Ui,
     tree: &mut PanelTree,
     work_rect: Rect,
     window: PanelWindowId,
-    focused: &mut Option<PanelFocus>,
     program: &mut Program,
     theme: &Theme,
 ) -> TreeRenderResponse {
@@ -112,11 +112,13 @@ pub fn render_tree(
 
     // --- leaves ------------------------------------------------------------
     let mut graph_rects = Vec::new();
-    let hover_pos = ui.ctx().pointer_hover_pos();
+    // Split/close raised from a corner button this frame (targets the panel the
+    // button belongs to).
+    let mut panel_action: Option<PanelAction> = None;
 
     for &(id, kind, rect) in &layout.leaves {
         if kind == PanelKind::Graph {
-            graph_rects.push(rect);
+            graph_rects.push((id, rect));
         }
 
         // Panel content. `push_id` is mandatory: duplicate Settings/NodeList
@@ -128,19 +130,14 @@ pub fn render_tree(
             });
         });
 
-        // Sticky focus: hovering a panel focuses it; nothing clears focus here.
-        if let Some(pos) = hover_pos {
-            if rect.contains(pos) {
-                *focused = Some(PanelFocus { window, leaf: id });
-            }
-        }
-
         // Corner kind-switcher, drawn after the content so it wins the pointer.
         let btn_rect = Rect::from_min_size(
             pos2(rect.right() - 26.0, rect.top() + 4.0),
             vec2(20.0, 20.0),
         );
         let mut selected_kind: Option<PanelKind> = None;
+        // Split/close chosen from this panel's popup, applied after the closure.
+        let mut chosen_action: Option<PanelAction> = None;
         ui.push_id((id, "panel_chrome"), |ui| {
             let resp = ui.put(btn_rect, egui::Button::new(kind.icon()).small().frame(false));
             egui::Popup::menu(&resp).show(|ui| {
@@ -149,23 +146,31 @@ pub fn render_tree(
                         selected_kind = Some(k);
                     }
                 }
+                ui.separator();
+                // Panel management for this specific panel; the payload
+                // carries this panel's own window/leaf as the target.
+                if ui.button("split horizontal").clicked() {
+                    chosen_action = Some(PanelAction::SplitHorizontal { window, leaf: id });
+                }
+                if ui.button("split vertical").clicked() {
+                    chosen_action = Some(PanelAction::SplitVertical { window, leaf: id });
+                }
+                if ui.button("close panel").clicked() {
+                    chosen_action = Some(PanelAction::ClosePanel { window, leaf: id });
+                }
             });
         });
         if let Some(k) = selected_kind {
             tree.set_kind(id, k);
         }
-
-        // Focus highlight: a subtle 1px inside stroke on the focused leaf.
-        if *focused == Some(PanelFocus { window, leaf: id }) {
-            let color = colors.menu_bar_button_selected.gamma_multiply(0.6);
-            ui.painter().rect_stroke(
-                rect.shrink(1.0),
-                CornerRadius::ZERO,
-                Stroke::new(1.0, color),
-                StrokeKind::Inside,
-            );
+        if let Some(action) = chosen_action {
+            // Raise the command for the app to apply after rendering.
+            panel_action = Some(action);
         }
     }
 
-    TreeRenderResponse { graph_rects }
+    TreeRenderResponse {
+        graph_rects,
+        panel_action,
+    }
 }
