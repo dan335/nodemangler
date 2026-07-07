@@ -12,6 +12,20 @@ use super::environment::{
 
 const VERTEX_SHADER: &str = include_str!("vertex.glsl");
 const FRAGMENT_SHADER: &str = include_str!("fragment.glsl");
+/// Fragment shader for the shadow-map caster pass: depth-only, writes nothing.
+/// Paired with the UNCHANGED `vertex.glsl` so the light "sees" the same
+/// height-displaced geometry as the main pass (that's what lets it self-shadow).
+const DEPTH_FRAGMENT_SHADER: &str = include_str!("depth_fragment.glsl");
+
+/// Resolution of the square directional shadow-map depth texture. 2048² is a
+/// good balance for a single-object preview: sharp enough to resolve fine
+/// height relief without the memory/fill cost of 4k.
+const SHADOW_MAP_SIZE: i32 = 2048;
+/// Texture unit the shadow depth map is bound to in the main pass. Material
+/// channels occupy units 0..7 and the two IBL LUTs take 7 and 8, so the shadow
+/// map sits at 9 — still well within GL 3.3's guaranteed 16 units. See the
+/// texture-unit budget note by IRRADIANCE_TEX_UNIT/SPECULAR_TEX_UNIT.
+const SHADOW_TEX_UNIT: u32 = 9;
 
 // --- Shared sky / tone-map GLSL ---
 //
@@ -312,8 +326,9 @@ const CHANNEL_COUNT: usize = 7;
 
 /// Texture unit for the diffuse irradiance LUT. Derived from `CHANNEL_COUNT` so
 /// it always sits just above the material channels (units `0..CHANNEL_COUNT`);
-/// adding the Emissive channel shifted these up automatically. After Phase 4
-/// the budget is 7 material + 2 LUT = 9 of GL 3.3's guaranteed 16.
+/// adding the Emissive channel shifted these up automatically. The full budget
+/// is now 7 material (0-6) + 2 LUT (7-8) + 1 shadow map (9, `SHADOW_TEX_UNIT`)
+/// = 10 of GL 3.3's guaranteed 16 units.
 const IRRADIANCE_TEX_UNIT: u32 = CHANNEL_COUNT as u32;
 /// Texture unit for the prefiltered specular LUT.
 const SPECULAR_TEX_UNIT: u32 = CHANNEL_COUNT as u32 + 1;
@@ -356,6 +371,11 @@ pub struct RenderParams {
     /// Wireframe line color as gamma-space RGBA (from the active theme — never
     /// hardcoded). Ignored when `wireframe` is false.
     pub wire_color: [f32; 4],
+    /// Cast directional shadows. When true, `render()` runs an extra depth pass
+    /// from the light's viewpoint (building the shadow resources lazily on first
+    /// use) and the mesh shader shadows its direct term. When false the depth
+    /// pass is skipped and the shader's `u_shadows_enabled` is set to 0.
+    pub shadows: bool,
 }
 
 struct TextureSlot {
@@ -370,6 +390,31 @@ struct Mesh {
     _vbo: glow::Buffer,
     _ebo: glow::Buffer,
     index_count: i32,
+}
+
+/// GL resources for the directional shadow map, built lazily on the first
+/// shadows-enabled frame (mirroring the lazy mesh cache: FBO/texture creation
+/// and shader compilation all need a live GL context, which only exists inside
+/// the paint callback). Once built they persist for the renderer's lifetime.
+struct ShadowResources {
+    /// Off-screen framebuffer whose only attachment is `depth_tex`.
+    fbo: glow::Framebuffer,
+    /// `SHADOW_MAP_SIZE²` DEPTH_COMPONENT24 texture. Configured as a
+    /// `sampler2DShadow` (COMPARE_REF_TO_TEXTURE + LEQUAL) so the fragment
+    /// shader gets hardware depth-compare + bilinear PCF in a single tap.
+    depth_tex: glow::Texture,
+    /// Depth-only caster program (`vertex.glsl` + `depth_fragment.glsl`).
+    caster_program: glow::Program,
+    // Caster uniform locations, mirroring the subset of vertex.glsl the depth
+    // pass drives. Height displacement MUST be bound identically to the main
+    // pass so displaced geometry casts a matching shadow (self-shadowing).
+    u_model: Option<glow::UniformLocation>,
+    u_view: Option<glow::UniformLocation>,
+    u_projection: Option<glow::UniformLocation>,
+    u_height_tex: Option<glow::UniformLocation>,
+    u_has_height: Option<glow::UniformLocation>,
+    u_height_scale: Option<glow::UniformLocation>,
+    u_uv_tiling: Option<glow::UniformLocation>,
 }
 
 pub struct GlRenderer {
@@ -400,6 +445,14 @@ pub struct GlRenderer {
     u_irradiance_lut: Option<glow::UniformLocation>,
     u_specular_lut: Option<glow::UniformLocation>,
     u_env_intensity: Option<glow::UniformLocation>,
+    // Shadow uniforms (mesh program): the depth-map sampler, the on/off flag,
+    // and the world→light-clip matrix used to project into the map.
+    u_shadow_map: Option<glow::UniformLocation>,
+    u_shadows_enabled: Option<glow::UniformLocation>,
+    u_light_space: Option<glow::UniformLocation>,
+    /// Lazily-built directional shadow-map resources (None until the first
+    /// shadows-enabled frame). See [`ShadowResources`].
+    shadow: Option<ShadowResources>,
     /// CPU-prefiltered diffuse irradiance LUT (64×1 RGBA32F), built once at init.
     irradiance_tex: glow::Texture,
     /// CPU-prefiltered specular LUT (64×64 RGBA32F over (R.y, roughness)).
@@ -441,6 +494,10 @@ impl GlRenderer {
             let u_irradiance_lut = gl.get_uniform_location(program, "u_irradiance_lut");
             let u_specular_lut = gl.get_uniform_location(program, "u_specular_lut");
             let u_env_intensity = gl.get_uniform_location(program, "u_env_intensity");
+            // Shadow uniforms in the mesh program (Phase 4).
+            let u_shadow_map = gl.get_uniform_location(program, "u_shadow_map");
+            let u_shadows_enabled = gl.get_uniform_location(program, "u_shadows_enabled");
+            let u_light_space = gl.get_uniform_location(program, "u_light_space");
 
             // One entry per TextureChannel (order MUST match the enum discriminants).
             let sampler_names = [
@@ -512,6 +569,10 @@ impl GlRenderer {
                 u_irradiance_lut,
                 u_specular_lut,
                 u_env_intensity,
+                u_shadow_map,
+                u_shadows_enabled,
+                u_light_space,
+                shadow: None,
                 irradiance_tex,
                 specular_tex,
                 sky_program,
@@ -623,7 +684,95 @@ impl GlRenderer {
             return;
         }
 
+        // Fetch (or lazily build) the mesh once. Both the shadow depth pass and
+        // the main pass draw it, so pull the VAO + index count out here (both
+        // Copy) rather than re-fetching — avoids holding a borrow on `self`
+        // across the two passes.
+        let (mesh_vao, mesh_index_count) =
+            self.ensure_mesh(gl, mesh_kind, params.mesh_resolution);
+
+        // Directional light-space matrices for the shadow map. Cheap pure math,
+        // computed every frame regardless of whether shadows are enabled; only
+        // the depth pass and the `u_light_space` upload below actually use them.
+        let (light_view, light_ortho) = light_space_matrices(params.light_dir);
+        let light_space = light_ortho * light_view;
+
         unsafe {
+            // --- Shadow depth pass ------------------------------------------
+            // Render the mesh from the light's viewpoint into the shadow map's
+            // depth buffer, before the main pass so the depth texture is ready
+            // when the mesh shader samples it. Skipped entirely when shadows off.
+            if params.shadows {
+                self.ensure_shadow_resources(gl);
+                let shadow = self.shadow.as_ref().unwrap();
+
+                // egui_glow may have a non-default framebuffer bound; capture it
+                // and restore it EXACTLY after the pass. This is the top
+                // correctness risk: leave our depth FBO bound and every
+                // subsequent egui draw targets it, blacking out the whole UI.
+                let prev_fbo = gl.get_parameter_i32(glow::FRAMEBUFFER_BINDING);
+                gl.bind_framebuffer(glow::FRAMEBUFFER, Some(shadow.fbo));
+
+                gl.viewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+                // Scissor is enabled by the main pass for its sub-region; the
+                // shadow FBO must fill its whole 2048² extent, so keep it off.
+                gl.disable(glow::SCISSOR_TEST);
+                gl.enable(glow::DEPTH_TEST);
+                gl.depth_func(glow::LESS);
+                gl.depth_mask(true);
+                // Keep NORMAL back-face culling — do NOT front-cull. Front-face
+                // culling is the usual shadow-acne trick for closed solids, but
+                // the Plane mesh is a single flat sheet of front faces only;
+                // front-culling would cull it entirely so it would cast nothing.
+                gl.enable(glow::CULL_FACE);
+                gl.cull_face(glow::BACK);
+                gl.front_face(glow::CCW);
+                gl.clear(glow::DEPTH_BUFFER_BIT);
+
+                gl.use_program(Some(shadow.caster_program));
+                // u_model = identity (matches the main pass's model matrix).
+                gl.uniform_matrix_4_f32_slice(
+                    shadow.u_model.as_ref(),
+                    false,
+                    &glam::Mat4::IDENTITY.to_cols_array(),
+                );
+                gl.uniform_matrix_4_f32_slice(
+                    shadow.u_view.as_ref(),
+                    false,
+                    &light_view.to_cols_array(),
+                );
+                gl.uniform_matrix_4_f32_slice(
+                    shadow.u_projection.as_ref(),
+                    false,
+                    &light_ortho.to_cols_array(),
+                );
+                // Height displacement MUST match the main pass exactly so the
+                // displaced silhouette casts a matching shadow (self-shadowing).
+                gl.uniform_1_f32(shadow.u_height_scale.as_ref(), params.height_scale);
+                gl.uniform_1_f32(shadow.u_uv_tiling.as_ref(), params.uv_tiling);
+                // Bind the height texture on its material unit (slot 4) exactly
+                // like the main pass; u_has_height gates whether it displaces.
+                let height_idx = TextureChannel::Height as usize;
+                gl.active_texture(glow::TEXTURE0 + height_idx as u32);
+                let has_height = if let Some(tex) = self.slots[height_idx].texture {
+                    gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+                    1
+                } else {
+                    gl.bind_texture(glow::TEXTURE_2D, None);
+                    0
+                };
+                gl.uniform_1_i32(shadow.u_height_tex.as_ref(), height_idx as i32);
+                gl.uniform_1_i32(shadow.u_has_height.as_ref(), has_height);
+
+                gl.bind_vertex_array(Some(mesh_vao));
+                gl.draw_elements(glow::TRIANGLES, mesh_index_count, glow::UNSIGNED_INT, 0);
+
+                // Restore egui's framebuffer (see the prev_fbo note above).
+                let prev =
+                    std::num::NonZeroU32::new(prev_fbo as u32).map(glow::NativeFramebuffer);
+                gl.bind_framebuffer(glow::FRAMEBUFFER, prev);
+            }
+
             // Set 3D rendering state
             gl.viewport(vp_x, vp_y, vp_w, vp_h);
             gl.enable(glow::DEPTH_TEST);
@@ -704,36 +853,33 @@ impl GlRenderer {
             gl.uniform_1_i32(self.u_specular_lut.as_ref(), SPECULAR_TEX_UNIT as i32);
             gl.uniform_1_f32(self.u_env_intensity.as_ref(), params.env_intensity);
 
-            // Fetch (or lazily build) the mesh for this kind+resolution. Mesh
-            // generation and buffer upload both happen here, where the GL
-            // context is live.
-            let key = (mesh_kind, params.mesh_resolution);
-            if !self.meshes.contains_key(&key) {
-                let data = match mesh_kind {
-                    MeshKind::Plane => generate_plane(params.mesh_resolution.plane_subdiv()),
-                    MeshKind::Sphere => {
-                        let (slices, stacks) = params.mesh_resolution.sphere_slices_stacks();
-                        generate_sphere(slices, stacks)
-                    }
-                    MeshKind::Cube => generate_cube(params.mesh_resolution.cube_subdiv()),
-                    MeshKind::RoundedCube => {
-                        generate_rounded_cube(params.mesh_resolution.cube_subdiv())
-                    }
-                    MeshKind::Cylinder => {
-                        let (segments, rings) = params.mesh_resolution.cylinder_segments_rings();
-                        generate_cylinder(segments, rings)
-                    }
-                    MeshKind::Torus => {
-                        let (major, minor) = params.mesh_resolution.torus_major_minor();
-                        generate_torus(major, minor)
-                    }
-                };
-                let mesh = upload_mesh(gl, &data);
-                self.meshes.insert(key, mesh);
+            // Shadow map: when enabled, bind the depth texture on unit 9 and hand
+            // the shader the world→light-clip matrix. When disabled we skip the
+            // depth pass entirely, so just tell the shader not to sample (and
+            // guard the bind — no shadow resources may exist yet).
+            if params.shadows {
+                if let Some(shadow) = self.shadow.as_ref() {
+                    gl.active_texture(glow::TEXTURE0 + SHADOW_TEX_UNIT);
+                    gl.bind_texture(glow::TEXTURE_2D, Some(shadow.depth_tex));
+                    gl.uniform_1_i32(self.u_shadow_map.as_ref(), SHADOW_TEX_UNIT as i32);
+                    gl.uniform_matrix_4_f32_slice(
+                        self.u_light_space.as_ref(),
+                        false,
+                        &light_space.to_cols_array(),
+                    );
+                    gl.uniform_1_i32(self.u_shadows_enabled.as_ref(), 1);
+                } else {
+                    gl.uniform_1_i32(self.u_shadows_enabled.as_ref(), 0);
+                }
+            } else {
+                gl.uniform_1_i32(self.u_shadows_enabled.as_ref(), 0);
             }
-            let mesh = self.meshes.get(&key).unwrap();
-            gl.bind_vertex_array(Some(mesh.vao));
-            gl.draw_elements(glow::TRIANGLES, mesh.index_count, glow::UNSIGNED_INT, 0);
+
+            // Draw the mesh. It was already fetched/uploaded via `ensure_mesh`
+            // at the top of `render()` (shared with the shadow depth pass), so
+            // here we just bind its cached VAO and issue the indexed draw.
+            gl.bind_vertex_array(Some(mesh_vao));
+            gl.draw_elements(glow::TRIANGLES, mesh_index_count, glow::UNSIGNED_INT, 0);
 
             // Wireframe overlay: redraw the same mesh in line polygon mode with a
             // flat theme color. `polygon_offset(-1,-1)` pulls the lines slightly
@@ -750,7 +896,7 @@ impl GlRenderer {
                 gl.polygon_mode(glow::FRONT_AND_BACK, glow::LINE);
                 gl.enable(glow::POLYGON_OFFSET_LINE);
                 gl.polygon_offset(-1.0, -1.0);
-                gl.draw_elements(glow::TRIANGLES, mesh.index_count, glow::UNSIGNED_INT, 0);
+                gl.draw_elements(glow::TRIANGLES, mesh_index_count, glow::UNSIGNED_INT, 0);
                 // Restore fill rasterization + disable the offset before the
                 // skybox and egui draw, and turn the flat-color path back off.
                 gl.polygon_mode(glow::FRONT_AND_BACK, glow::FILL);
@@ -814,6 +960,9 @@ impl GlRenderer {
             gl.bind_texture(glow::TEXTURE_2D, None);
             gl.active_texture(glow::TEXTURE0 + SPECULAR_TEX_UNIT);
             gl.bind_texture(glow::TEXTURE_2D, None);
+            // And the shadow-map unit (9), same reasoning as the LUT units.
+            gl.active_texture(glow::TEXTURE0 + SHADOW_TEX_UNIT);
+            gl.bind_texture(glow::TEXTURE_2D, None);
             gl.active_texture(glow::TEXTURE0);
             gl.disable(glow::DEPTH_TEST);
             gl.disable(glow::CULL_FACE);
@@ -821,9 +970,185 @@ impl GlRenderer {
         }
     }
 
+    /// Fetch the mesh for `(kind, resolution)`, generating + uploading it into
+    /// the cache on first use (both steps need the live GL context, which
+    /// `render()` has). Returns the VAO and index count — both `Copy`, so the
+    /// caller can draw the mesh across multiple passes without holding a borrow
+    /// on `self.meshes`. Factored out of `render()` so the shadow depth pass and
+    /// the main pass share one lazy fetch.
+    fn ensure_mesh(
+        &mut self,
+        gl: &glow::Context,
+        kind: MeshKind,
+        resolution: MeshResolution,
+    ) -> (glow::VertexArray, i32) {
+        let key = (kind, resolution);
+        if !self.meshes.contains_key(&key) {
+            let data = match kind {
+                MeshKind::Plane => generate_plane(resolution.plane_subdiv()),
+                MeshKind::Sphere => {
+                    let (slices, stacks) = resolution.sphere_slices_stacks();
+                    generate_sphere(slices, stacks)
+                }
+                MeshKind::Cube => generate_cube(resolution.cube_subdiv()),
+                MeshKind::RoundedCube => generate_rounded_cube(resolution.cube_subdiv()),
+                MeshKind::Cylinder => {
+                    let (segments, rings) = resolution.cylinder_segments_rings();
+                    generate_cylinder(segments, rings)
+                }
+                MeshKind::Torus => {
+                    let (major, minor) = resolution.torus_major_minor();
+                    generate_torus(major, minor)
+                }
+            };
+            let mesh = unsafe { upload_mesh(gl, &data) };
+            self.meshes.insert(key, mesh);
+        }
+        let mesh = self.meshes.get(&key).unwrap();
+        (mesh.vao, mesh.index_count)
+    }
+
+    /// Build the directional shadow-map resources (depth texture + FBO + caster
+    /// program) on the first shadows-enabled frame, mirroring the lazy mesh
+    /// cache. A no-op once `self.shadow` is populated.
+    fn ensure_shadow_resources(&mut self, gl: &glow::Context) {
+        if self.shadow.is_some() {
+            return;
+        }
+        unsafe {
+            // --- Depth texture ---
+            // DEPTH_COMPONENT24, configured as a sampler2DShadow: LINEAR filtering
+            // + COMPARE_REF_TO_TEXTURE/LEQUAL make each `texture()` tap a hardware
+            // depth-compare that also bilinearly blends a 2x2, giving cheap PCF.
+            // CLAMP_TO_EDGE so lookups just outside the map don't wrap.
+            let depth_tex = gl.create_texture().unwrap();
+            gl.bind_texture(glow::TEXTURE_2D, Some(depth_tex));
+            gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::DEPTH_COMPONENT24 as i32,
+                SHADOW_MAP_SIZE,
+                SHADOW_MAP_SIZE,
+                0,
+                glow::DEPTH_COMPONENT,
+                glow::FLOAT,
+                glow::PixelUnpackData::Slice(None), // allocate storage, no upload
+            );
+            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::LINEAR as i32);
+            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_WRAP_S,
+                glow::CLAMP_TO_EDGE as i32,
+            );
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_WRAP_T,
+                glow::CLAMP_TO_EDGE as i32,
+            );
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_COMPARE_MODE,
+                glow::COMPARE_REF_TO_TEXTURE as i32,
+            );
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_COMPARE_FUNC,
+                glow::LEQUAL as i32,
+            );
+            gl.bind_texture(glow::TEXTURE_2D, None);
+
+            // --- FBO (depth-only) ---
+            // Capture and restore egui's framebuffer around setup, same risk as
+            // in `render()`'s depth pass (a stray bind blacks out the UI).
+            let prev_fbo = gl.get_parameter_i32(glow::FRAMEBUFFER_BINDING);
+            let fbo = gl.create_framebuffer().unwrap();
+            gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
+            gl.framebuffer_texture_2d(
+                glow::FRAMEBUFFER,
+                glow::DEPTH_ATTACHMENT,
+                glow::TEXTURE_2D,
+                Some(depth_tex),
+                0,
+            );
+            // No color buffer: a depth-only FBO is incomplete unless we declare
+            // there is no color to draw to / read from.
+            gl.draw_buffers(&[glow::NONE]);
+            gl.read_buffer(glow::NONE);
+            let status = gl.check_framebuffer_status(glow::FRAMEBUFFER);
+            if status != glow::FRAMEBUFFER_COMPLETE {
+                panic!("Shadow-map framebuffer incomplete: status 0x{:X}", status);
+            }
+            let prev =
+                std::num::NonZeroU32::new(prev_fbo as u32).map(glow::NativeFramebuffer);
+            gl.bind_framebuffer(glow::FRAMEBUFFER, prev);
+
+            // --- Caster program ---
+            // Reuses vertex.glsl unchanged (so the light sees the same displaced
+            // geometry as the main pass) + the depth-only fragment shader.
+            let caster_program = create_program(gl, VERTEX_SHADER, DEPTH_FRAGMENT_SHADER);
+            let u_model = gl.get_uniform_location(caster_program, "u_model");
+            let u_view = gl.get_uniform_location(caster_program, "u_view");
+            let u_projection = gl.get_uniform_location(caster_program, "u_projection");
+            let u_height_tex = gl.get_uniform_location(caster_program, "u_height_tex");
+            let u_has_height = gl.get_uniform_location(caster_program, "u_has_height");
+            let u_height_scale = gl.get_uniform_location(caster_program, "u_height_scale");
+            let u_uv_tiling = gl.get_uniform_location(caster_program, "u_uv_tiling");
+
+            self.shadow = Some(ShadowResources {
+                fbo,
+                depth_tex,
+                caster_program,
+                u_model,
+                u_view,
+                u_projection,
+                u_height_tex,
+                u_has_height,
+                u_height_scale,
+                u_uv_tiling,
+            });
+        }
+    }
 }
 
 // --- Helpers ---
+
+/// Compute the (view, orthographic projection) matrix pair that fits the whole
+/// scene into the directional light's shadow map.
+///
+/// The preview meshes span ~2 world units at the origin and height displacement
+/// adds at most ~0.5, so the scene fits inside a bounding sphere of radius
+/// `R = 2.0` centered at the origin. We place an orthographic "camera" at the
+/// light, looking at the origin, with a symmetric `[-R, R]` frustum and a depth
+/// range that safely brackets the sphere — this maximizes shadow-map texel
+/// density on the visible object.
+///
+/// `light_dir` points TOWARD the light (the same convention as the shader's
+/// `u_light_dir` and `viewer_settings::light_direction`), so the light's eye
+/// sits along `+light_dir` and looks back at the origin.
+pub fn light_space_matrices(light_dir: glam::Vec3) -> (glam::Mat4, glam::Mat4) {
+    // Scene bounding-sphere radius (meshes ~2 units across + ≤0.5 displacement).
+    const R: f32 = 2.0;
+
+    let dir = light_dir.normalize();
+    // Eye at twice the radius along the light direction so the whole sphere is
+    // in front of the near plane; target the origin.
+    let eye = dir * (2.0 * R);
+    // look_at degeneracy guard: when the light is nearly straight up/down, the
+    // default +Y up is (anti)parallel to the view direction and the basis is
+    // undefined — switch to +Z up in that case.
+    let up = if dir.y.abs() > 0.99 {
+        glam::Vec3::Z
+    } else {
+        glam::Vec3::Y
+    };
+    let view = glam::Mat4::look_at_rh(eye, glam::Vec3::ZERO, up);
+    // Symmetric ortho box tightly enclosing the sphere; near/far bracket the
+    // sphere along the view axis (eye is 2R away, sphere radius R → depth
+    // roughly R..3R, so [0.1, 4R] leaves margin without wasting precision).
+    let proj = glam::Mat4::orthographic_rh_gl(-R, R, -R, R, 0.1, 4.0 * R);
+    (view, proj)
+}
 
 unsafe fn create_program(gl: &glow::Context, vert_src: &str, frag_src: &str) -> glow::Program {
     let program = gl.create_program().unwrap();

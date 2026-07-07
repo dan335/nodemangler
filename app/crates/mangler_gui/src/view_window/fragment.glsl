@@ -50,6 +50,16 @@ uniform int u_tone_map;
 uniform int u_use_flat_color;
 uniform vec4 u_flat_color;
 
+// Directional shadow mapping. `u_shadow_map` is the light's-eye depth buffer
+// (a sampler2DShadow so the hardware does the depth compare + bilinear PCF in
+// one tap); `u_light_space` transforms a world position into the light's clip
+// space to look up into it. `u_shadows_enabled` is 0 when shadows are off (the
+// depth pass is skipped and no shadow texture is bound), in which case
+// shadow_factor() early-outs to fully-lit.
+uniform sampler2DShadow u_shadow_map;
+uniform int u_shadows_enabled;
+uniform mat4 u_light_space;
+
 out vec4 frag_color;
 
 // --- PBR functions ---
@@ -86,6 +96,37 @@ vec3 fresnel_schlick(float cos_theta, vec3 F0) {
 // Fresnel-Schlick with roughness for ambient
 vec3 fresnel_schlick_roughness(float cos_theta, vec3 F0, float roughness) {
     return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
+}
+
+// Percentage-closer-filtered shadow test for the directional light. Returns a
+// [0,1] visibility factor: 1.0 = fully lit, 0.0 = fully shadowed. Applied ONLY
+// to the direct Cook-Torrance term so ambient/emissive keep filling shadowed
+// pixels (a pure-black shadow reads wrong against IBL lighting).
+//
+// `NdotL` drives a slope-scaled depth bias: surfaces near-parallel to the light
+// (grazing angles, small NdotL) span more depth per shadow texel and need a
+// larger bias to avoid "shadow acne" self-shadowing, while front-facing
+// surfaces use a tight bias to keep contact shadows crisp. Too much bias would
+// instead cause "peter-panning" (shadows detaching from their caster), so the
+// range is deliberately small (0.0005..~0.002).
+float shadow_factor(vec3 world_pos, float NdotL) {
+    if (u_shadows_enabled == 0) return 1.0;
+    // World → light clip space, then perspective divide to NDC and remap the
+    // ortho projection's [-1,1] to the [0,1] texture/depth range.
+    vec4 lp = u_light_space * vec4(world_pos, 1.0);
+    vec3 p = lp.xyz / lp.w * 0.5 + 0.5;
+    // Anything past the far plane or outside the map's XY footprint is untracked
+    // by the shadow map, so treat it as lit rather than guessing.
+    if (p.z > 1.0 || p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0) return 1.0;
+    float bias = max(0.0005, 0.002 * (1.0 - NdotL)); // slope-scaled (see above)
+    vec2 texel = 1.0 / vec2(textureSize(u_shadow_map, 0));
+    // 3x3 PCF: each hardware-compare tap already bilinearly blends a 2x2, so the
+    // 9 taps give smooth penumbra edges rather than hard stair-stepped shadows.
+    float sum = 0.0;
+    for (int y = -1; y <= 1; ++y)
+        for (int x = -1; x <= 1; ++x)
+            sum += texture(u_shadow_map, vec3(p.xy + vec2(x, y) * texel, p.z - bias));
+    return sum / 9.0;
 }
 
 // Shared tone-map GLSL (apply_tone_map / hable_partial) is spliced in here at
@@ -167,7 +208,9 @@ void main() {
     vec3 kD = (1.0 - kS) * (1.0 - metallic);
 
     float NdotL = max(dot(N, L), 0.0);
-    vec3 Lo = (kD * albedo / PI + specular) * u_light_color * NdotL; // radiance from uniform
+    // Direct radiance, shadowed by the PCF factor. Only THIS term is darkened by
+    // shadows; the ambient (IBL) and emissive terms below stay unshadowed.
+    vec3 Lo = (kD * albedo / PI + specular) * u_light_color * NdotL * shadow_factor(v_world_pos, NdotL);
 
     // Ambient: image-based lighting from the CPU-prefiltered sky LUTs.
     // The sky is yaw-symmetric, so N.y / R.y fully index the convolutions.

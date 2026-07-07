@@ -151,6 +151,7 @@ impl Viewer3d {
             uv_tiling: settings.uv_tiling,
             tone_map: settings.tone_map,
             wireframe: settings.wireframe,
+            shadows: settings.shadows,
             // Wireframe line color comes from the active theme (grid_lines is a
             // contrasty line color present in every theme) — never hardcoded.
             // Gamma-space RGBA to match the shader's post-gamma framebuffer write.

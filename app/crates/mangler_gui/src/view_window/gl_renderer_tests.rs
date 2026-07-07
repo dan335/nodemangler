@@ -587,6 +587,79 @@ fn mesh_kind_all_and_labels() {
     }
 }
 
+// --- Directional shadow light-space fitting ---
+
+/// Transform all 8 corners of the scene AABB (x,z ∈ [-1,1], y ∈ [-1.5,1.5] to
+/// cover the ~0.5 height-displacement headroom) through `proj * view`,
+/// perspective-divide, and assert every NDC component is finite and within the
+/// clip cube [-1,1] (up to `NDC_TOL`). This proves the ortho box essentially
+/// contains the scene for the given light direction — nothing meaningful gets
+/// clipped out of the shadow map.
+///
+/// `NDC_TOL` is intentionally loose (0.05, not an epsilon): the AABB's extreme
+/// corners sit at radius √(1+1.5²+1) ≈ 2.062, marginally OUTSIDE the documented
+/// R = 2.0 bounding sphere the ortho box is sized to. So a light aimed such that
+/// one of those corners lands nearly perpendicular to its view axis pushes it to
+/// NDC ≈ 1.03. Those corners correspond only to heavily height-displaced cube
+/// corners that may clip slightly in the shadow map — a known, accepted
+/// limitation (same spirit as the non-watertight cube seam caveat), not a fit
+/// bug. The tolerance keeps the test meaningful (catches gross mis-fits and
+/// non-finite output) without over-fitting to that 3% corner overshoot.
+fn assert_scene_fits(light_dir: glam::Vec3) {
+    const NDC_TOL: f32 = 0.05;
+    let (view, proj) = light_space_matrices(light_dir);
+    let vp = proj * view;
+    for &x in &[-1.0f32, 1.0] {
+        for &y in &[-1.5f32, 1.5] {
+            for &z in &[-1.0f32, 1.0] {
+                let clip = vp * glam::Vec4::new(x, y, z, 1.0);
+                assert!(clip.w.abs() > 1e-6, "degenerate w for corner ({x},{y},{z})");
+                let ndc = clip.truncate() / clip.w;
+                for (name, c) in [("x", ndc.x), ("y", ndc.y), ("z", ndc.z)] {
+                    assert!(c.is_finite(), "NDC {name} not finite for dir {light_dir:?}");
+                    assert!(
+                        c >= -1.0 - NDC_TOL && c <= 1.0 + NDC_TOL,
+                        "NDC {name}={c} out of [-1,1] for corner ({x},{y},{z}), dir {light_dir:?}",
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn light_space_fits_default_direction() {
+    // The viewer's default light dir (azimuth/elevation defaults resolve to
+    // roughly (0.8, 1.0, 0.6).normalize()).
+    assert_scene_fits(glam::Vec3::new(0.8, 1.0, 0.6).normalize());
+}
+
+#[test]
+fn light_space_fits_grazing_direction() {
+    // A near-horizontal (grazing) light: small +y component.
+    assert_scene_fits(glam::Vec3::new(1.0, 0.05, 0.2).normalize());
+}
+
+#[test]
+fn light_space_fits_straight_up() {
+    // Straight up +Y exercises the look_at up-vector degeneracy guard.
+    let dir = glam::Vec3::Y;
+    assert_scene_fits(dir);
+
+    // The resulting matrices must be finite and the combined transform
+    // invertible (non-zero determinant) — i.e. the degeneracy guard produced a
+    // valid, non-collapsed basis.
+    let (view, proj) = light_space_matrices(dir);
+    let vp = proj * view;
+    for c in vp.to_cols_array() {
+        assert!(c.is_finite(), "light-space matrix has non-finite entry");
+    }
+    assert!(
+        vp.determinant().abs() > 1e-6,
+        "light-space matrix not invertible (det ~ 0)"
+    );
+}
+
 #[test]
 fn cast_slice_to_bytes_roundtrip() {
     let data: Vec<f32> = vec![1.0, 2.0, 3.0];

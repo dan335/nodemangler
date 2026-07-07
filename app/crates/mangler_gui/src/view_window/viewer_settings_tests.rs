@@ -75,6 +75,13 @@ fn phase4_defaults() {
     assert!(!settings.wireframe);
 }
 
+/// Directional shadows default on (the expected lit-preview look).
+#[test]
+fn shadows_default_on() {
+    let settings = Viewer3dSettings::default();
+    assert!(settings.shadows, "shadows should default to true");
+}
+
 /// ToneMap ALL lists every variant once with distinct labels, and to_int matches
 /// the shader branch numbering (0=None, 1=Reinhard, 2=ACES, 3=Filmic).
 #[test]

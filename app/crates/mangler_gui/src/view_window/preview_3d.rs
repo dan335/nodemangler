@@ -263,6 +263,13 @@ fn light_menu(panel: &mut Preview3dPanel, ui: &mut egui::Ui) {
                 ui.label("Skybox");
                 ui.checkbox(&mut settings.show_skybox, "");
                 ui.end_row();
+
+                // Cast directional shadows from the sun (shadow-mapped depth
+                // pass). Only the direct light term is shadowed; IBL ambient
+                // and emissive stay lit.
+                ui.label("Shadows");
+                ui.checkbox(&mut settings.shadows, "");
+                ui.end_row();
             });
 
         ui.separator();

@@ -100,6 +100,12 @@ pub struct Viewer3dSettings {
     pub tone_map: ToneMap,
     /// Draw the mesh as a wireframe overlay on top of the shaded fill.
     pub wireframe: bool,
+    /// Cast directional shadows from the sun light. When on, an off-screen depth
+    /// pass from the light's viewpoint feeds a percentage-closer-filtered shadow
+    /// test that darkens only the *direct* Cook-Torrance term (IBL ambient and
+    /// emissive stay lit). Default `true` — shadows read as the expected look for
+    /// a lit material preview; turn off to skip the extra depth pass.
+    pub shadows: bool,
 }
 
 impl Default for Viewer3dSettings {
@@ -132,6 +138,8 @@ impl Default for Viewer3dSettings {
             tone_map: ToneMap::default(),
             // Wireframe overlay off by default.
             wireframe: false,
+            // Directional shadows on by default (the expected lit-preview look).
+            shadows: true,
         }
     }
 }
