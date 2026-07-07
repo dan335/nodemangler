@@ -22,6 +22,7 @@ use crate::{
         node_search_popup::NodeSearchPopup,
     },
     graph_to_view_space,
+    libraries::libraries_state::LibrariesState,
     node_menu::{menu_item::MenuItemsResult, menu_panel::MenuPanel},
     panels::{panel_kind::PanelKind, panel_tree::LeafId},
     settings::{graph_settings_panel, node_settings_panel},
@@ -134,6 +135,29 @@ impl Program {
 
     pub fn close(self) {
         self.app.thread_handle.abort();
+    }
+
+    /// Points this program's graph at a save path + name in one step. Used by
+    /// the Libraries panel when creating a graph inside a library folder and
+    /// when re-targeting a tab after its file was renamed on disk. Mirrors
+    /// the graph-settings panel's flow: update the GUI-side copies, then tell
+    /// the engine, which auto-saves to the new path ~1s later.
+    pub fn set_save_location(&mut self, path: PathBuf, name: String) {
+        self.app.name = name.clone();
+        self.app.save_path = Some(path.clone());
+
+        if let Err(err) = self
+            .tx_change_graph
+            .try_send(ChangeGraphMessage::SetGraphName(name))
+        {
+            println!("Error sending graph_message: {:?}", err);
+        }
+        if let Err(err) = self
+            .tx_change_graph
+            .try_send(ChangeGraphMessage::SetSavePath(path))
+        {
+            println!("Error sending graph_message: {:?}", err);
+        }
     }
 
     /// Once-per-frame logic that must run before any panel rendering: pointer
@@ -546,6 +570,7 @@ impl Program {
         leaf_id: LeafId,
         kind: PanelKind,
         theme: &Theme,
+        libraries: &mut LibrariesState,
     ) {
         match kind {
             PanelKind::NodeList => self.show_node_list_panel(ui, theme),
@@ -553,6 +578,16 @@ impl Program {
             PanelKind::Graph => self.show_graph_panel(ui, leaf_id, theme),
             PanelKind::Preview2D => self.show_preview_2d_panel(ui, leaf_id, theme),
             PanelKind::Preview3D => self.show_preview_3d_panel(ui, leaf_id, theme),
+            // Libraries state is app-global (one browser shared by every
+            // program tab), so the panel renders it rather than `self`. This
+            // program is the focused one, so its save path tells the panel
+            // which graph row to highlight as "currently open".
+            PanelKind::Libraries => crate::libraries::libraries_panel::show(
+                ui,
+                libraries,
+                theme,
+                self.app.save_path.as_deref(),
+            ),
         }
     }
 

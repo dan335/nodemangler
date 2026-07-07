@@ -7,6 +7,7 @@ use eframe::egui::{self, Sense, UiBuilder};
 use epaint::{pos2, vec2, CornerRadius, Rect};
 
 use crate::{
+    libraries::libraries_state::LibrariesState,
     panels::{
         panel_kind::PanelKind,
         panel_tree::{LeafId, PanelTree, SplitDirection},
@@ -59,6 +60,7 @@ pub fn render_tree(
     work_rect: Rect,
     window: PanelWindowId,
     program: &mut Program,
+    libraries: &mut LibrariesState,
     theme: &Theme,
 ) -> TreeRenderResponse {
     let colors = theme.get();
@@ -126,7 +128,7 @@ pub fn render_tree(
         ui.push_id(id, |ui| {
             ui.scope_builder(UiBuilder::new().max_rect(rect), |ui| {
                 ui.set_clip_rect(rect);
-                program.show_panel(ui, id, kind, theme);
+                program.show_panel(ui, id, kind, theme, libraries);
             });
         });
 

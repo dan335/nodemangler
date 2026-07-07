@@ -1,6 +1,7 @@
 use crate::{
     app_menu::app_menu::AppMenu,
     config::AppConfig,
+    libraries::libraries_state::LibrariesState,
     panels::{
         panel_kind::PanelKind,
         panel_tree::{CloseError, LeafId, PanelTree, SplitDirection},
@@ -35,6 +36,9 @@ pub struct App {
     secondary_windows: Vec<SecondaryWindow>,
     /// Monotonic allocator for secondary window ids.
     next_window_id: u64,
+    /// App-global Libraries panel state (linked libraries + folder scanner).
+    /// Shared by every program tab and window; persisted in `AppConfig`.
+    libraries: LibrariesState,
 }
 
 impl eframe::App for App {
@@ -116,6 +120,7 @@ impl eframe::App for App {
                         work_rect,
                         PanelWindowId::Main,
                         program,
+                        &mut self.libraries,
                         &self.theme,
                     );
                     panel_actions.extend(resp.panel_action);
@@ -129,6 +134,7 @@ impl eframe::App for App {
                             &ctx,
                             win,
                             program,
+                            &mut self.libraries,
                             &self.theme,
                         );
                         panel_actions.extend(resp);
@@ -136,10 +142,38 @@ impl eframe::App for App {
                 }
             }
 
+            // With no graphs open, the panel tree has nothing to render (all
+            // its panels show the current program). Fall back to a lone
+            // Libraries panel filling the work area — rendered directly, so
+            // no splitters and no kind-switcher corner button — from which
+            // the user can open or create a graph.
+            let has_open_program = self
+                .current_program
+                .as_ref()
+                .is_some_and(|id| self.programs.contains_key(id));
+            if !has_open_program {
+                ui.scope_builder(egui::UiBuilder::new().max_rect(work_rect), |ui| {
+                    ui.set_clip_rect(work_rect);
+                    crate::libraries::libraries_panel::show(
+                        ui,
+                        &mut self.libraries,
+                        &self.theme,
+                        None,
+                    );
+                });
+            }
+
             // Apply corner-button split/close commands. Each carries its own
             // target window/leaf, so `handle_panel_action` acts on it directly.
             for action in panel_actions {
                 self.handle_panel_action(action, work_rect);
+            }
+
+            // Perform requests raised by the Libraries panel this frame.
+            // Deferred to here (like panel_actions) because they mutate the
+            // programs map, which was borrowed during rendering.
+            for action in self.libraries.take_pending() {
+                self.handle_library_action(action);
             }
 
             // Reap secondary windows whose titlebar close button was pressed.
@@ -216,6 +250,56 @@ impl App {
             next_leaf_id: 0,
             secondary_windows: Vec::new(),
             next_window_id: 0,
+            // Spawns the background library scanner and points it at the
+            // libraries persisted in config.
+            libraries: LibrariesState::new(cc.egui_ctx.clone(), config.libraries.clone()),
+        }
+    }
+
+    /// Perform a request raised by the Libraries panel. These need the
+    /// programs map (open/create a graph = a new tab; a rename must
+    /// re-target open tabs), which the panel itself can't touch.
+    fn handle_library_action(&mut self, action: crate::libraries::libraries_state::LibraryAction) {
+        use crate::libraries::libraries_state::LibraryAction;
+        match action {
+            LibraryAction::OpenGraph { path } => {
+                // If a tab is already editing this file, focus it instead of
+                // opening a second engine on the same path (two engines
+                // auto-saving one file would clobber each other).
+                let already_open = self
+                    .programs
+                    .iter()
+                    .find(|(_, p)| p.app.save_path.as_deref() == Some(path.as_path()))
+                    .map(|(id, _)| id.clone());
+                if let Some(id) = already_open {
+                    self.current_program = Some(id);
+                } else if let Ok(program) = Program::new(None, Some(path)) {
+                    let id = program.app.id.clone();
+                    self.programs.insert(id.clone(), program);
+                    self.current_program = Some(id);
+                }
+            }
+            LibraryAction::CreateGraph { path, name } => {
+                // A blank tab pointed at the target path: the engine's
+                // auto-save writes the file ~1s later, and the library
+                // scanner picks it up on its next pass.
+                if let Ok(mut program) = Program::new(None, None) {
+                    program.set_save_location(path, name);
+                    let id = program.app.id.clone();
+                    self.programs.insert(id.clone(), program);
+                    self.current_program = Some(id);
+                }
+            }
+            LibraryAction::PathRenamed { from, to } => {
+                // Any open tab still auto-saving to the old path follows the
+                // file, otherwise its next save would resurrect the old name.
+                for program in self.programs.values_mut() {
+                    if program.app.save_path.as_deref() == Some(from.as_path()) {
+                        let name = program.app.name.clone();
+                        program.set_save_location(to.clone(), name);
+                    }
+                }
+            }
         }
     }
 

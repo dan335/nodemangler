@@ -17,6 +17,10 @@ pub struct AppConfig {
     /// layout as default". `None` means fall back to `PanelTree::system_default`.
     #[serde(default)]
     pub default_layout: Option<PanelNode>,
+    /// Linked libraries (name + folder). Only the link is stored; content is
+    /// rescanned from disk each session.
+    #[serde(default)]
+    pub libraries: Vec<crate::libraries::library::LibraryConfig>,
 }
 
 impl AppConfig {

@@ -30,6 +30,9 @@ fastrand = "2.0"
 egui_extras = "0.34"
 dirs = "6"
 rayon = "1"
+# Library-panel deletes go to the OS recycle bin (recoverable), never
+# straight to permanent removal.
+trash = "5"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.9", features = ["winuser", "windef"] }

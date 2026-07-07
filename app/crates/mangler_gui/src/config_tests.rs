@@ -1,4 +1,5 @@
 use super::*;
+use crate::libraries::library::{LibraryConfig, LibrarySource};
 use crate::panels::{
     panel_kind::PanelKind,
     panel_tree::{PanelNode, SplitDirection},
@@ -10,6 +11,7 @@ fn test_default_config() {
     let config = AppConfig::default();
     assert!(config.theme.is_none());
     assert!(config.default_layout.is_none());
+    assert!(config.libraries.is_empty());
 }
 
 /// Config survives a JSON serialize/deserialize round-trip.
@@ -18,12 +20,33 @@ fn test_serialize_deserialize_roundtrip() {
     let config = AppConfig {
         theme: Some("dark_green".to_string()),
         default_layout: None,
+        libraries: Vec::new(),
     };
 
     let json = serde_json::to_string(&config).unwrap();
     let restored: AppConfig = serde_json::from_str(&json).unwrap();
 
     assert_eq!(restored.theme.as_deref(), Some("dark_green"));
+}
+
+/// Config with a `libraries` entry survives a JSON round-trip.
+#[test]
+fn test_serialize_deserialize_roundtrip_with_libraries() {
+    let config = AppConfig {
+        theme: Some("dark_green".to_string()),
+        default_layout: None,
+        libraries: vec![LibraryConfig {
+            name: "My Textures".to_string(),
+            source: LibrarySource::Local {
+                path: std::path::PathBuf::from("D:/textures"),
+            },
+        }],
+    };
+
+    let json = serde_json::to_string(&config).unwrap();
+    let restored: AppConfig = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(restored.libraries, config.libraries);
 }
 
 /// Config with a nested `default_layout` survives a JSON round-trip.
@@ -56,6 +79,7 @@ fn test_serialize_deserialize_roundtrip_with_layout() {
     let config = AppConfig {
         theme: Some("dark_green".to_string()),
         default_layout: Some(layout.clone()),
+        libraries: Vec::new(),
     };
 
     let json = serde_json::to_string(&config).unwrap();
@@ -73,6 +97,7 @@ fn test_theme_only_json_back_compat() {
     let config: AppConfig = serde_json::from_str(json).unwrap();
     assert_eq!(config.theme.as_deref(), Some("dark_green"));
     assert!(config.default_layout.is_none());
+    assert!(config.libraries.is_empty());
 }
 
 /// An empty JSON object parses to an all-default config.
@@ -81,6 +106,7 @@ fn test_empty_json_object() {
     let config: AppConfig = serde_json::from_str("{}").unwrap();
     assert!(config.theme.is_none());
     assert!(config.default_layout.is_none());
+    assert!(config.libraries.is_empty());
 }
 
 /// Invalid JSON returns default config.
@@ -113,6 +139,7 @@ fn test_save_and_load_roundtrip() {
     let config = AppConfig {
         theme: Some("light_blue".to_string()),
         default_layout: None,
+        libraries: Vec::new(),
     };
 
     let json = serde_json::to_string_pretty(&config).unwrap();

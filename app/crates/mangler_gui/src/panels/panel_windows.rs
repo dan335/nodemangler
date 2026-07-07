@@ -6,6 +6,7 @@ use eframe::egui::{self, ViewportBuilder, ViewportId};
 use epaint::CornerRadius;
 
 use crate::{
+    libraries::libraries_state::LibrariesState,
     panels::{
         panel_tree::PanelTree,
         panel_view::{self, PanelAction, PanelWindowId},
@@ -44,6 +45,7 @@ pub fn show_secondary_window(
     ctx: &egui::Context,
     win: &mut SecondaryWindow,
     program: &mut Program,
+    libraries: &mut LibrariesState,
     theme: &Theme,
 ) -> Option<PanelAction> {
     let window = PanelWindowId::Secondary(win.id);
@@ -75,6 +77,7 @@ pub fn show_secondary_window(
                     work_rect,
                     window,
                     program,
+                    libraries,
                     theme,
                 );
                 panel_action = resp.panel_action;

@@ -95,12 +95,14 @@ impl PanelTree {
         }
     }
 
-    /// The system default layout: node list (250px) | center stack | settings
+    /// The system default layout: a left column | center stack | settings
     /// (300px), built from nested splits with fractions derived from
-    /// `work_width`. The center stack is itself a `Column`: the graph editor
-    /// on top, and a bottom `Row` of the 2D and 3D previews side by side —
-    /// i.e. `Row(NodeList, Row(Column(Graph, Row(Preview2D, Preview3D)),
-    /// Settings))`.
+    /// `work_width`. The left column is itself a `Column`: the node list on
+    /// top and the libraries panel below it. The center stack is also a
+    /// `Column`: the graph editor on top, and a bottom `Row` of the 2D and 3D
+    /// previews side by side — i.e.
+    /// `Row(Column(NodeList, Libraries),
+    ///      Row(Column(Graph, Row(Preview2D, Preview3D)), Settings))`.
     pub fn system_default(work_width: f32, next_id: &mut LeafId) -> Self {
         let mut alloc = || {
             let id = *next_id;
@@ -110,6 +112,10 @@ impl PanelTree {
         // Allocation order is also `leaves()` traversal order (in-order over
         // the tree built below), so callers/tests can zip ids to kinds.
         let node_list_id = alloc();
+        // Allocated immediately after `node_list_id` because the libraries leaf
+        // is the node list's sibling in the left column and therefore the very
+        // next leaf visited by the in-order `leaves()` traversal.
+        let libraries_id = alloc();
         let graph_id = alloc();
         let preview_2d_id = alloc();
         let preview_3d_id = alloc();
@@ -120,25 +126,42 @@ impl PanelTree {
         let remaining = (work_width - crate::NODE_MENU_WIDTH).max(1.0);
         let inner_fraction = (1.0 - crate::SETTINGS_PANEL_WIDTH / remaining)
             .clamp(*FRACTION_RANGE.start(), *FRACTION_RANGE.end());
-        // Center-stack split: graph gets slightly more than half the vertical
+        // Center-stack split: graph gets roughly two thirds of the vertical
         // space, since it's the primary editing surface and the previews
         // below it are secondary/supplementary.
-        const CENTER_STACK_FRACTION: f32 = 0.55;
+        const CENTER_STACK_FRACTION: f32 = 0.65;
         // Bottom row of the center stack: 2D and 3D previews split evenly.
         const PREVIEW_ROW_FRACTION: f32 = 0.5;
+        // Left column split: the node list gets slightly more than half, since
+        // browsing operations to place is the more frequent activity; the
+        // libraries browser below it is a secondary navigation surface.
+        const LEFT_STACK_FRACTION: f32 = 0.55;
         let center_stack_fraction =
             CENTER_STACK_FRACTION.clamp(*FRACTION_RANGE.start(), *FRACTION_RANGE.end());
         let preview_row_fraction =
             PREVIEW_ROW_FRACTION.clamp(*FRACTION_RANGE.start(), *FRACTION_RANGE.end());
+        let left_stack_fraction =
+            LEFT_STACK_FRACTION.clamp(*FRACTION_RANGE.start(), *FRACTION_RANGE.end());
 
         Self {
             root: PanelNode::Split {
                 direction: SplitDirection::Row,
                 fraction: outer_fraction,
                 children: [
-                    Box::new(PanelNode::Leaf {
-                        id: node_list_id,
-                        kind: PanelKind::NodeList,
+                    // Left column: node list stacked over the libraries browser.
+                    Box::new(PanelNode::Split {
+                        direction: SplitDirection::Column,
+                        fraction: left_stack_fraction,
+                        children: [
+                            Box::new(PanelNode::Leaf {
+                                id: node_list_id,
+                                kind: PanelKind::NodeList,
+                            }),
+                            Box::new(PanelNode::Leaf {
+                                id: libraries_id,
+                                kind: PanelKind::Libraries,
+                            }),
+                        ],
                     }),
                     Box::new(PanelNode::Split {
                         direction: SplitDirection::Row,

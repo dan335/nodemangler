@@ -298,14 +298,15 @@ fn system_default_has_expected_shape_and_widths() {
     let mut next_id: LeafId = 1;
     let work_width = 1280.0;
     let tree = PanelTree::system_default(work_width, &mut next_id);
-    assert_eq!(next_id, 6, "five leaf ids allocated");
+    assert_eq!(next_id, 7, "six leaf ids allocated");
 
     let leaves = tree.leaves();
-    assert_eq!(leaves.len(), 5);
+    assert_eq!(leaves.len(), 6);
     assert_eq!(
         leaves.iter().map(|(_, k)| *k).collect::<Vec<_>>(),
         vec![
             PanelKind::NodeList,
+            PanelKind::Libraries,
             PanelKind::Graph,
             PanelKind::Preview2D,
             PanelKind::Preview3D,
@@ -315,7 +316,7 @@ fn system_default_has_expected_shape_and_widths() {
     // Ids are unique.
     let mut ids: Vec<LeafId> = leaves.iter().map(|(id, _)| *id).collect();
     ids.dedup();
-    assert_eq!(ids.len(), 5);
+    assert_eq!(ids.len(), 6);
 
     let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(work_width, 720.0));
     let layout = tree.layout(rect);
@@ -324,10 +325,11 @@ fn system_default_has_expected_shape_and_widths() {
     // Look leaves up by id (allocated in `leaves()`/traversal order above)
     // rather than assuming fixed index positions in `layout.leaves`.
     let node_list_id = leaves[0].0;
-    let graph_id = leaves[1].0;
-    let preview_2d_id = leaves[2].0;
-    let preview_3d_id = leaves[3].0;
-    let settings_id = leaves[4].0;
+    let libraries_id = leaves[1].0;
+    let graph_id = leaves[2].0;
+    let preview_2d_id = leaves[3].0;
+    let preview_3d_id = leaves[4].0;
+    let settings_id = leaves[5].0;
 
     let find_rect = |id: LeafId| {
         layout
@@ -338,16 +340,21 @@ fn system_default_has_expected_shape_and_widths() {
             .unwrap_or_else(|| panic!("no leaf {id}"))
     };
     let node_list_rect = find_rect(node_list_id);
+    let libraries_rect = find_rect(libraries_id);
     let graph_rect = find_rect(graph_id);
     let preview_2d_rect = find_rect(preview_2d_id);
     let preview_3d_rect = find_rect(preview_3d_id);
     let settings_rect = find_rect(settings_id);
 
-    // Overall left-to-right ordering: node list | center stack | settings.
+    // Overall left-to-right ordering: left column | center stack | settings.
     assert!(node_list_rect.max.x <= graph_rect.min.x);
+    assert!(libraries_rect.max.x <= graph_rect.min.x);
     assert!(graph_rect.max.x <= settings_rect.min.x);
     assert!(node_list_rect.max.x <= preview_2d_rect.min.x);
     assert!(preview_2d_rect.max.x <= settings_rect.min.x);
+
+    // Left column: node list stacked above the libraries panel.
+    assert!(node_list_rect.max.y <= libraries_rect.min.y);
 
     // Center stack: graph sits above the preview row.
     assert!(graph_rect.max.y <= preview_2d_rect.min.y);
@@ -359,6 +366,12 @@ fn system_default_has_expected_shape_and_widths() {
         (node_list_rect.width() - crate::NODE_MENU_WIDTH).abs() <= tolerance,
         "node list width {} != ~{}",
         node_list_rect.width(),
+        crate::NODE_MENU_WIDTH
+    );
+    assert!(
+        (libraries_rect.width() - crate::NODE_MENU_WIDTH).abs() <= tolerance,
+        "libraries width {} != ~{}",
+        libraries_rect.width(),
         crate::NODE_MENU_WIDTH
     );
     assert!(
@@ -589,7 +602,7 @@ fn system_default_survives_tiny_work_width() {
     let mut next_id: LeafId = 1;
     for width in [0.0, 10.0, 100.0] {
         let tree = PanelTree::system_default(width, &mut next_id);
-        assert_eq!(tree.leaves().len(), 5);
+        assert_eq!(tree.leaves().len(), 6);
         // All fractions stay in the clamped range.
         fn check(node: &PanelNode) {
             if let PanelNode::Split {
