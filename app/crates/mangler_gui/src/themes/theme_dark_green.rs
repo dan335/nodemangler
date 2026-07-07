@@ -46,6 +46,13 @@ pub fn theme_dark_green() -> ThemeValues {
     )
     .into(); // rgb(24, 140, 159)
     let teal_interactive: Color32 = Hsva::new(0.522, 0.85, 0.32, 1.0).into();
+    // Resting fill for "strong" controls (checkbox boxes, slider troughs). Kept
+    // noticeably lighter than both `window_fill` (the menu-popup background) and
+    // `panel_fill`, so these controls stay legible against either — previously
+    // they used `darkest_teal`, which matched the menu background and made the
+    // checkbox outline / slider bar disappear. Buttons use the *weak* fill and
+    // are deliberately left on `darkest_teal`.
+    let control_surface: Color32 = Hsva::new(0.522, 0.30, 0.075, 1.0).into();
 
     ThemeValues {
         panel_fill: dark_teal,
@@ -106,7 +113,7 @@ pub fn theme_dark_green() -> ThemeValues {
         widgets_noninteractive_fg_stroke: (0.0, light_teal_text),
         widgets_noninteractive_expansion: 0.0,
 
-        widgets_interactive_bg_fill: darkest_teal,
+        widgets_interactive_bg_fill: control_surface,
         widgets_interactive_weak_bg_fill: darkest_teal,
         widgets_interactive_bg_stroke: (0.0, Color32::WHITE),
         widgets_interactive_rounding: 1.0,

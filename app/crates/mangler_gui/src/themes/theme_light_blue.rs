@@ -8,6 +8,10 @@ pub fn theme_light_blue() -> ThemeValues
     let pink_accent: Color32 = Hsva::new(0.95, 0.69, 0.97, 1.0).into();
     let blue_bright: Color32 = Hsva::new(0.565, 0.81, 0.97, 1.0).into();
     let blue_light: Color32 = Hsva::new(0.565, 0.15, 0.9, 1.0).into();
+    // Resting fill for "strong" controls (checkbox boxes, slider troughs), darker
+    // than both the menu popup (`window_fill`) and `panel_fill` so they stay
+    // legible against either surface. Buttons use the weak fill (`menu_bar`).
+    let control_surface: Color32 = Hsva::new(0.565, 0.30, 0.72, 1.0).into();
 
     ThemeValues {
         panel_fill: Hsva::new(0.0, 0.0, 0.95, 1.0).into(),
@@ -51,7 +55,7 @@ pub fn theme_light_blue() -> ThemeValues
         widgets_noninteractive_fg_stroke: (0.0, blue_light),
         widgets_noninteractive_expansion: 0.0,
 
-        widgets_interactive_bg_fill: menu_bar,
+        widgets_interactive_bg_fill: control_surface,
         widgets_interactive_weak_bg_fill: menu_bar,
         widgets_interactive_bg_stroke: (0.0, Color32::WHITE),
         widgets_interactive_rounding: 1.0,

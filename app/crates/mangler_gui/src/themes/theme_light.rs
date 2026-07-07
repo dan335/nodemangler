@@ -7,6 +7,11 @@ pub fn theme_light() -> ThemeValues
 
     // Reusable palette colors
     let menu: Color32 = Hsva::new(0.565, 0.0, 0.75, 1.0).into();
+    // Resting fill for "strong" controls (checkbox boxes, slider troughs), a shade
+    // darker than both the menu popup (`window_fill`) and `panel_fill` so they read
+    // as inset controls instead of vanishing into the surface. Buttons use the weak
+    // fill (`menu`) and keep their flat look.
+    let control_surface: Color32 = Hsva::new(0.565, 0.0, 0.58, 1.0).into();
     let blue_accent: Color32 = Hsva::new(0.555, 0.79, 0.97, 1.0).into();
     let gray_connection: Color32 = Hsva::new(0.555, 0.0, 0.5, 1.0).into();
     let light_teal_text: Color32 = Hsva::new(0.5206857447508191, 0.25316729618415346, 0.665387298282272, 1.0).into();   // rgb(187, 210, 213)
@@ -53,7 +58,7 @@ pub fn theme_light() -> ThemeValues
         widgets_noninteractive_fg_stroke: (0.0, light_teal_text),
         widgets_noninteractive_expansion: 0.0,
 
-        widgets_interactive_bg_fill: menu,
+        widgets_interactive_bg_fill: control_surface,
         widgets_interactive_weak_bg_fill: menu,
         widgets_interactive_bg_stroke: (0.0, Color32::WHITE),
         widgets_interactive_rounding: 1.0,
