@@ -39,6 +39,12 @@ pub struct App {
     /// App-global Libraries panel state (linked libraries + folder scanner).
     /// Shared by every program tab and window; persisted in `AppConfig`.
     libraries: LibrariesState,
+    /// Error text awaiting user acknowledgement, rendered as a modal with an
+    /// OK button. Set wherever creating/loading a `Program` fails (menu bar
+    /// new/load, Libraries open/create, startup) — with tolerant graph
+    /// loading in core, these are now only real IO or top-level JSON
+    /// corruption failures, which used to be silently swallowed.
+    error_modal: Option<String>,
 }
 
 impl eframe::App for App {
@@ -64,6 +70,13 @@ impl eframe::App for App {
                 let program_id = new_program.app.id.clone();
                 self.programs.insert(new_program.app.id.clone(), new_program);
                 self.current_program = Some(program_id);
+            }
+
+            // A menu-bar new/load failed (real IO or top-level JSON
+            // corruption — tolerant loading in core absorbs everything
+            // else). Surface it in the error modal below.
+            if let Some(error) = bar_response.error {
+                self.error_modal = Some(error);
             }
 
             if let Some(current_program) = bar_response.current_program {
@@ -195,6 +208,12 @@ impl eframe::App for App {
                     }
                 }
             }
+
+            // Error modal: any failed Program creation/open this frame (menu
+            // bar, Libraries panel, startup) lands here. OK (or Esc/outside
+            // click) dismisses — unlike the file-conflict modal, there is
+            // nothing to decide, just something to acknowledge.
+            self.show_error_modal(ui);
         });
     }
 
@@ -235,10 +254,20 @@ impl App {
 
         let mut programs = HashMap::new();
         let mut current_program: Option<String> = None;
+        let mut error_modal: Option<String> = None;
 
-        if let Ok(program) = Program::new(None, None) {
-            current_program = Some(program.app.id.clone());
-            programs.insert(program.app.id.clone(), program);
+        // The initial empty tab. Creating a fresh Program has no file IO, so
+        // this failing means something is deeply wrong (e.g. the engine task
+        // couldn't spawn) — surface it instead of silently starting with no
+        // tab and no explanation.
+        match Program::new(None, None) {
+            Ok(program) => {
+                current_program = Some(program.app.id.clone());
+                programs.insert(program.app.id.clone(), program);
+            }
+            Err(error) => {
+                error_modal = Some(format!("Failed to create a new graph: {}", error.0));
+            }
         }
 
         Self {
@@ -253,6 +282,34 @@ impl App {
             // Spawns the background library scanner and points it at the
             // libraries persisted in config.
             libraries: LibrariesState::new(cc.egui_ctx.clone(), config.libraries.clone()),
+            error_modal,
+        }
+    }
+
+    /// Renders the pending error modal (if any). Same `egui::Modal` pattern
+    /// as the Libraries panel dialogs; colors come from the theme via the
+    /// global visuals that `set_theme` installed, so no hardcoded chrome.
+    fn show_error_modal(&mut self, ui: &mut egui::Ui) {
+        let Some(message) = self.error_modal.clone() else {
+            return;
+        };
+
+        let mut dismissed = false;
+        let modal = egui::Modal::new(egui::Id::new("app_error_modal")).show(ui.ctx(), |ui| {
+            ui.set_width(320.0);
+            ui.heading("error");
+            ui.add_space(8.0);
+            ui.label(message);
+            ui.add_space(12.0);
+            if ui.button("ok").clicked() {
+                dismissed = true;
+            }
+        });
+
+        // Esc or clicking outside also dismisses — an error notice needs
+        // acknowledging, not deciding.
+        if dismissed || modal.should_close() {
+            self.error_modal = None;
         }
     }
 
@@ -273,21 +330,43 @@ impl App {
                     .map(|(id, _)| id.clone());
                 if let Some(id) = already_open {
                     self.current_program = Some(id);
-                } else if let Ok(program) = Program::new(None, Some(path)) {
-                    let id = program.app.id.clone();
-                    self.programs.insert(id.clone(), program);
-                    self.current_program = Some(id);
+                } else {
+                    // With tolerant loading in core, failure here means real
+                    // IO/JSON corruption — tell the user instead of the old
+                    // silent "double-click does nothing".
+                    match Program::new(None, Some(path.clone())) {
+                        Ok(program) => {
+                            let id = program.app.id.clone();
+                            self.programs.insert(id.clone(), program);
+                            self.current_program = Some(id);
+                        }
+                        Err(error) => {
+                            self.error_modal = Some(format!(
+                                "Failed to open '{}': {}",
+                                path.display(),
+                                error.0
+                            ));
+                        }
+                    }
                 }
             }
             LibraryAction::CreateGraph { path, name } => {
                 // A blank tab pointed at the target path: the engine's
                 // auto-save writes the file ~1s later, and the library
                 // scanner picks it up on its next pass.
-                if let Ok(mut program) = Program::new(None, None) {
-                    program.set_save_location(path, name);
-                    let id = program.app.id.clone();
-                    self.programs.insert(id.clone(), program);
-                    self.current_program = Some(id);
+                match Program::new(None, None) {
+                    Ok(mut program) => {
+                        program.set_save_location(path, name);
+                        let id = program.app.id.clone();
+                        self.programs.insert(id.clone(), program);
+                        self.current_program = Some(id);
+                    }
+                    Err(error) => {
+                        self.error_modal = Some(format!(
+                            "Failed to create graph '{}': {}",
+                            name, error.0
+                        ));
+                    }
                 }
             }
             LibraryAction::PathRenamed { from, to } => {

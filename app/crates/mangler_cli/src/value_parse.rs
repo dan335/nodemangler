@@ -18,7 +18,7 @@ use crate::helpers::{enum_variants, resolve_enum_type_name};
 /// Type prefixes (case-insensitive for simple types, case-insensitive for enum types):
 ///   `bool`, `int`, `decimal`, `text`, `color` (r,g,b,a), `path`,
 ///   `blendmode`, `colorspace`, `filtertype`, `imagetype`, `colorformat`,
-///   `worleydistance`, `texthalign`, `textvalign`, `exportpreset`.
+///   `worleydistance`, `edgemode`, `texthalign`, `textvalign`, `exportpreset`.
 pub(crate) fn parse_typed_value(s: &str) -> Result<Value, String> {
     // Try Type:value format — split on first colon.
     if let Some(colon_pos) = s.find(':') {

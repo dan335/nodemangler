@@ -35,6 +35,8 @@ pub mod app;
 pub mod float_image;
 pub mod float_image_serde;
 pub mod color;
+pub mod version;
+pub mod saved_nodes;
 mod tests;
 
 /// Generate a unique identifier using nanoid.
@@ -270,6 +272,17 @@ pub enum ChangeGraphMessage {
     SetSavePath(PathBuf),
     /// Set the human-readable name for the graph.
     SetGraphName(String),
+    /// Resolve a detected external-modification conflict (see
+    /// [`GraphChangedMessage::FileConflict`]): the save file was rewritten
+    /// by someone else while local edits were pending.
+    ResolveFileConflict {
+        /// `true` to overwrite the file with the in-memory graph (discarding
+        /// the external edit); `false` to discard local edits and reload the
+        /// file from disk instead. This is a resolution action, not itself
+        /// an edit — the engine loop does not treat it as one for auto-save
+        /// debounce purposes.
+        keep_ours: bool,
+    },
 }
 
 /// Messages sent from the engine to the UI when graph structure changes.
@@ -324,6 +337,39 @@ pub enum GraphChangedMessage {
         /// Index of the disconnected input.
         input_index: usize,
     },
+    /// Sent once, immediately after a top-level graph finishes loading from
+    /// disk — *before* any [`GraphChangedMessage::LoadedNode`] for that same
+    /// load — when the load found something the user should know about: the
+    /// file was written by a newer NodeMangler, and/or it contained one or
+    /// more nodes that failed to parse and were replaced by placeholders
+    /// (see [`crate::saved_nodes`]). Never sent for subgraph children (their
+    /// `Graph::load` is always called with `tx_graph_changed: None`).
+    LoadWarnings {
+        /// The `version` string stamped in the loaded file (empty string for
+        /// pre-versioning saves).
+        file_version: String,
+        /// Whether `file_version` is newer than this build's
+        /// [`APP_VERSION`] — see [`crate::version::is_newer_than_app`].
+        is_newer_than_app: bool,
+        /// Display names of nodes that were replaced with placeholders.
+        unknown_nodes: Vec<String>,
+    },
+    /// The graph's save file was modified externally (another tab, another
+    /// machine on a network share, ...) while local edits were pending.
+    /// Auto-save pauses — the write that would have happened is skipped —
+    /// until the user resolves the conflict via
+    /// [`ChangeGraphMessage::ResolveFileConflict`]. Sent at most once per
+    /// conflict (the engine loop guards re-sending while unresolved).
+    FileConflict {
+        /// Path to the save file that was modified externally.
+        path: PathBuf,
+    },
+    /// The UI should discard all current graph-editor state (nodes,
+    /// selection, in-progress connection) because the graph is about to be
+    /// replaced wholesale. Sent immediately before a fresh
+    /// [`GraphChangedMessage::LoadedNode`] stream, e.g. when resolving a
+    /// [`ChangeGraphMessage::ResolveFileConflict`] with `keep_ours: false`.
+    GraphCleared,
 }
 
 /// Specifies what kind of node to create when adding to a graph.
@@ -339,15 +385,50 @@ pub enum AddNodeType {
 #[derive(Debug)]
 pub struct NewGraphError(pub String);
 
+/// The application version, inherited from `[workspace.package] version` in
+/// `app/Cargo.toml`. Stamped into every saved graph file.
+pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// Serializable snapshot of a graph for saving to and loading from JSON files.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GraphSaveData {
+    /// NodeMangler version that wrote this file (see [`APP_VERSION`]).
+    /// Empty string for files saved before versioning was added.
+    #[serde(default)]
+    pub version: String,
     /// Unique identifier for this graph.
     pub id: String,
     /// Human-readable name for this graph.
     pub name: String,
-    /// All nodes in the graph, keyed by node ID.
+    /// All nodes in the graph, keyed by node ID. Deserialized/serialized
+    /// tolerantly through [`saved_nodes`] so that a node type this build
+    /// doesn't recognize (e.g. saved by a newer NodeMangler) becomes a
+    /// placeholder instead of failing the whole graph load.
+    #[serde(with = "crate::saved_nodes")]
     pub nodes: HashMap<String, Node>,
+}
+
+/// Summary of anomalies detected while loading a saved graph — used to warn
+/// the user (see [`GraphChangedMessage::LoadWarnings`]) and to decide
+/// whether auto-save should be held until the user makes an edit (see the
+/// engine loop's `hold_saves` flag in `app.rs`).
+///
+/// [`crate::graph::Graph::load`] always populates this (as `Some`) for a
+/// real file load, even when nothing anomalous was found — `None` on
+/// [`crate::graph::Graph`] means "this graph was never loaded from a file"
+/// (e.g. a brand-new graph from [`crate::graph::Graph::new`]).
+#[derive(Debug, Clone)]
+pub struct LoadReport {
+    /// The `version` string stamped in the loaded file (empty string for
+    /// pre-versioning saves).
+    pub file_version: String,
+    /// Whether `file_version` is newer than this build's [`APP_VERSION`] —
+    /// see [`version::is_newer_than_app`].
+    pub is_newer_than_app: bool,
+    /// Display names of any nodes that failed to parse as a known node type
+    /// and were replaced with placeholders (see [`saved_nodes`] /
+    /// [`node::Node::placeholder_from_raw`]).
+    pub unknown_node_names: Vec<String>,
 }
 
 

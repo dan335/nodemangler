@@ -19,6 +19,7 @@ mod roundtrip {
     #[test]
     fn test_graph_save_data_roundtrip_empty() {
         let data = GraphSaveData {
+            version: crate::APP_VERSION.to_string(),
             id: "test-id".to_string(),
             name: "test graph".to_string(),
             nodes: HashMap::new(),
@@ -27,9 +28,21 @@ mod roundtrip {
         let json = serde_json::to_string(&data).unwrap();
         let loaded: GraphSaveData = serde_json::from_str(&json).unwrap();
 
+        assert_eq!(loaded.version, crate::APP_VERSION);
         assert_eq!(loaded.id, "test-id");
         assert_eq!(loaded.name, "test graph");
         assert!(loaded.nodes.is_empty());
+    }
+
+    // Files saved before the `version` field existed must still load; the
+    // missing field deserializes to an empty string via #[serde(default)].
+    #[test]
+    fn test_graph_save_data_missing_version_defaults_to_empty() {
+        let json = r#"{"id":"old-id","name":"old graph","nodes":{}}"#;
+        let loaded: GraphSaveData = serde_json::from_str(json).unwrap();
+
+        assert_eq!(loaded.version, "");
+        assert_eq!(loaded.id, "old-id");
     }
 
     #[test]
@@ -45,6 +58,7 @@ mod roundtrip {
         nodes.insert(node_id.clone(), node);
 
         let data = GraphSaveData {
+            version: crate::APP_VERSION.to_string(),
             id: "graph-1".to_string(),
             name: "my graph".to_string(),
             nodes,
@@ -239,6 +253,7 @@ mod roundtrip {
         nodes.insert("node-3".to_string(), add_node);
 
         let data = GraphSaveData {
+            version: crate::APP_VERSION.to_string(),
             id: "graph-multi".to_string(),
             name: "multi-node graph".to_string(),
             nodes,
@@ -251,6 +266,60 @@ mod roundtrip {
         assert_eq!(loaded.nodes.get("node-1").unwrap().settings.name, "decimal");
         assert_eq!(loaded.nodes.get("node-2").unwrap().settings.name, "integer");
         assert_eq!(loaded.nodes.get("node-3").unwrap().settings.name, "add");
+    }
+
+    // GraphSaveData's `nodes` field is deserialized/serialized tolerantly
+    // through `crate::saved_nodes` (see version.rs / node_type.rs /
+    // saved_nodes.rs): a node whose type this build doesn't recognize
+    // becomes a placeholder instead of aborting the whole parse, and it
+    // round-trips through a re-serialize without losing anything.
+    #[test]
+    fn test_graph_save_data_mixed_known_and_unknown_nodes_round_trips_json() {
+        let known = Node::new(
+            get_id(),
+            AddNodeType::Operation(Operation::OpNumberMathAdd),
+            glam::Vec2::new(10.0, 20.0),
+        );
+        let known_id = known.id.clone();
+        let mut nodes = HashMap::new();
+        nodes.insert(known_id.clone(), known);
+
+        let data = GraphSaveData {
+            version: crate::APP_VERSION.to_string(),
+            id: "mixed-graph".to_string(),
+            name: "mixed".to_string(),
+            nodes,
+        };
+        let mut json = serde_json::to_value(&data).unwrap();
+
+        // Splice in a hand-crafted node whose operation string this build
+        // doesn't recognize — simulating a node saved by a newer NodeMangler.
+        let unknown_id = get_id();
+        let template = Node::new(
+            get_id(),
+            AddNodeType::Operation(Operation::OpNumberMathAdd),
+            glam::Vec2::new(1.0, 1.0),
+        );
+        let mut unknown_raw = serde_json::to_value(&template).unwrap();
+        unknown_raw["node_type"]["Operation"]["operation"] = serde_json::json!("OpFromTheFuture");
+        json["nodes"][unknown_id.as_str()] = unknown_raw.clone();
+
+        // Deserialize: the tolerant path folds the unknown node into a placeholder.
+        let loaded: GraphSaveData = serde_json::from_value(json).unwrap();
+        assert_eq!(loaded.nodes.len(), 2);
+        assert!(matches!(
+            loaded.nodes.get(&unknown_id).unwrap().node_type,
+            crate::node_type::NodeType::Unknown { .. }
+        ));
+
+        // Serialize it straight back out. With no edits in between, the
+        // unknown node's JSON must equal the original raw exactly.
+        let reserialized = serde_json::to_value(&loaded).unwrap();
+        assert_eq!(
+            reserialized["nodes"][unknown_id.as_str()], unknown_raw,
+            "an unrecognized node must round-trip byte-for-byte with no live edits"
+        );
+        assert_eq!(reserialized["nodes"][known_id.as_str()]["settings"]["name"], "add");
     }
 
     #[test]

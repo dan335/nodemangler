@@ -61,6 +61,18 @@ impl GraphEditor {
         }
     }
 
+    /// Wipe all editor state: nodes, selection, any in-progress (drag)
+    /// connection, and click tracking. Used when the engine replaces the
+    /// graph wholesale (`GraphChangedMessage::GraphCleared`, e.g. resolving
+    /// a file conflict by reloading from disk) — the fresh `LoadedNode`
+    /// stream that follows assumes a clean slate.
+    pub fn clear(&mut self) {
+        self.graph_nodes.clear();
+        self.temp_connection = None;
+        self.last_node_click = None;
+        self.selected_node_ids.clear();
+    }
+
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,

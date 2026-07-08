@@ -64,8 +64,18 @@ impl AppMenu {
 
                         egui::Frame::NONE.inner_margin(8.0).show(ui, |ui| {
                             if ui.button("new").clicked() {
-                                if let Ok(new_program) = Program::new(None, None) {
-                                    bar_response.new_program = Some(new_program);
+                                // Failures surface through the bar response;
+                                // App turns them into its error modal.
+                                match Program::new(None, None) {
+                                    Ok(new_program) => {
+                                        bar_response.new_program = Some(new_program);
+                                    }
+                                    Err(error) => {
+                                        bar_response.error = Some(format!(
+                                            "Failed to create a new graph: {}",
+                                            error.0
+                                        ));
+                                    }
                                 }
                             }
 
@@ -76,8 +86,21 @@ impl AppMenu {
                                     .add_filter("mangler", &["mangle.json", "json"])
                                     .pick_file()
                                 {
-                                    if let Ok(new_program) = Program::new(None, Some(save_path)) {
-                                        bar_response.new_program = Some(new_program);
+                                    // With tolerant loading in core, this only
+                                    // fails on real IO / top-level JSON
+                                    // corruption — worth telling the user
+                                    // about instead of a click doing nothing.
+                                    match Program::new(None, Some(save_path.clone())) {
+                                        Ok(new_program) => {
+                                            bar_response.new_program = Some(new_program);
+                                        }
+                                        Err(error) => {
+                                            bar_response.error = Some(format!(
+                                                "Failed to open '{}': {}",
+                                                save_path.display(),
+                                                error.0
+                                            ));
+                                        }
                                     }
                                 }
                             }
@@ -263,6 +286,10 @@ pub struct BarResponse {
     pub program_to_close: Option<String>,
     pub theme_changed_to: Option<Theme>,
     pub panel_action: Option<PanelAction>,
+    /// A new/load action failed this frame; the App shows this text in its
+    /// error modal. (IO or top-level JSON corruption — tolerant graph
+    /// loading in core absorbs unknown-node failures before they get here.)
+    pub error: Option<String>,
 }
 
 impl BarResponse {
@@ -273,6 +300,7 @@ impl BarResponse {
             program_to_close: None,
             theme_changed_to: None,
             panel_action: None,
+            error: None,
         }
     }
 }

@@ -70,10 +70,10 @@ Run `./mangle-video.sh --help` for the same list.
  src/frame_000001.png, frame_000002.png, …
      │  for each frame:                         (2) run the graph
      │    mangler_cli graph set-input  --node input --input 0 --value path:<frame>
-     │    mangler_cli graph show-output --node fx    --save <out.bmp>
+     │    mangler_cli graph show-output --node fx    --save <out.png>
      ▼
- out/frame_000001.bmp, frame_000002.bmp, …
-     │  ffmpeg -framerate <fps> -i out/frame_*.bmp   (3) reassemble
+ out/frame_000001.png, frame_000002.png, …
+     │  ffmpeg -framerate <fps> -i out/frame_*.png   (3) reassemble
      │         -i source -map 0:v -map 1:a?          (    + copy audio)
      ▼
  output.mp4
@@ -110,14 +110,13 @@ with `--fps`) and its **audio track** (re-encoded to AAC). The video stream is
 normalized to **H.264 / yuv420p** for broad playback compatibility. Resolution
 follows the frames — it stays the same unless your graph resizes them.
 
-### Why BMP for the intermediate frames?
+### Why PNG for the intermediate frames?
 
-NodeMangler images are 32-bit float internally. `mangler_cli --save` writes color
-frames through that float representation, and PNG can't encode 32-bit-float color
-(you'd get *"the encoder for Png does not support Rgb32F"*). BMP is 8-bit,
-lossless, handles 1–4 channels, and `ffmpeg` reads it natively, so the script
-uses `.bmp` for the processed frames. (Input frames extracted from the video are
-plain PNGs.)
+NodeMangler images are 32-bit float internally, but `mangler_cli --save` picks an
+encoder-compatible 8-bit color format automatically (matching the "to file"
+node's defaults), so PNG round-trips 1–4 channel frames losslessly and
+`ffmpeg` reads it natively — no separate container needed for input vs.
+processed frames.
 
 ## Using your own graph
 
@@ -158,7 +157,7 @@ automatically if you delete it).
 - **`graph produced no output for frame …`** — a node in the graph errored on
   that frame. Run the graph on one frame directly to see the message:
   `mangler_cli <graph> set-input --node input --input 0 --value path:<frame>.png`
-  then `mangler_cli <graph> show-output --node <id> --save /tmp/test.bmp`.
+  then `mangler_cli <graph> show-output --node <id> --save /tmp/test.png`.
 - **Slow** — the debug binary is used if that's all that's built. A release build
   is much faster: `(cd ../../app && cargo build --release -p mangler_cli)`.
 - **Inspect the frames** — add `--keep` (and optionally `--workdir ./frames`) to

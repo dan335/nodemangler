@@ -13,10 +13,25 @@ use mangler_core::{
 
 /// Save an image to a file, inferring the format from the file extension.
 ///
-/// Converts the FloatImage to a DynamicImage for file I/O.
+/// Picks a color format compatible with the target format via
+/// `ColorFormat::default_for_image_format` (same defaults the "to file" node
+/// falls back to) and encodes through `mangler_core`'s shared save path. A
+/// bare `FloatImage::to_dynamic()` + `DynamicImage::save()` would produce
+/// Rgb32F/Rgba32F for 3/4-channel images, which most encoders (PNG, JPEG,
+/// GIF, BMP, ...) reject outright — this is what makes `--save out.png` work
+/// for ordinary color images instead of only for f32-native formats like EXR.
 pub(crate) fn save_image_to_file(img: &mangler_core::float_image::FloatImage, path: &PathBuf) -> Result<(), String> {
-    let dynamic = img.to_dynamic();
-    dynamic.save(path).map_err(|e| format!("failed to save image: {}", e))
+    let image_format = image::ImageFormat::from_path(path)
+        .map_err(|e| format!("failed to determine image format from '{}': {e}", path.display()))?;
+    let color_format = mangler_core::value::ColorFormat::default_for_image_format(&image_format);
+    mangler_core::operations::images::outputs::save_image(
+        path,
+        img,
+        &color_format,
+        image_format,
+        85,
+        image::codecs::png::CompressionType::Fast,
+    )
 }
 
 /// Save a non-image value to a file as pretty-printed JSON.
@@ -88,8 +103,36 @@ pub(crate) fn output_conversions(vt: &ValueType) -> Vec<String> {
 // ── Graph load/save helpers ───────────────────────────────────────────────────
 
 /// Load a graph from a JSON file with no UI channels.
+///
+/// Load anomalies (file saved by a newer NodeMangler, unknown nodes replaced
+/// with placeholders — see `mangler_core::saved_nodes`) go to stderr: a
+/// headless run has no banner to show, and silently computing defaults for
+/// placeholder nodes would be worse than a warning.
 pub(crate) fn load_graph(path: &PathBuf) -> Result<Graph, String> {
-    Graph::load(path.clone(), None, None, false).map_err(|e| e.0)
+    let graph = Graph::load(path.clone(), None, None, false).map_err(|e| e.0)?;
+
+    if let Some(report) = &graph.load_report {
+        if report.is_newer_than_app {
+            eprintln!(
+                "warning: {} was saved with NodeMangler {} (this is {}); \
+                 any save will restamp it with this version",
+                path.display(),
+                report.file_version,
+                mangler_core::APP_VERSION,
+            );
+        }
+        if !report.unknown_node_names.is_empty() {
+            eprintln!(
+                "warning: {} contains {} unknown node(s) preserved as placeholders \
+                 (they will not run): {}",
+                path.display(),
+                report.unknown_node_names.len(),
+                report.unknown_node_names.join(", "),
+            );
+        }
+    }
+
+    Ok(graph)
 }
 
 /// Serialize a graph and write it to a JSON file.
@@ -232,13 +275,14 @@ pub(crate) fn enum_variants(type_name: &str) -> Option<Vec<&'static str>> {
         ]),
         "colorspace" => Some(vec![
             "Srgb", "RgbLinear", "Hsl", "Hsv", "Lch", "Xyz", "Lab", "Yuv", "Cmyk",
+            "Oklab", "Oklch", "Hwb", "Ycbcr", "Xyy",
         ]),
         "filtertype" => Some(vec![
             "catmullrom", "gaussian", "lanczos3", "nearest", "triangle",
         ]),
         "imagetype" => Some(vec![
             "png", "jpg", "gif", "webp", "pnm", "tiff", "tga",
-            "bmp", "ico", "hdr", "exr", "ff", "qoi",
+            "bmp", "ico", "hdr", "exr", "ff", "avif", "qoi",
         ]),
         "colorformat" => Some(vec![
             "Rgba32F", "Rgb32F", "Rgba16", "Rgb16", "GrayA16", "Gray16",

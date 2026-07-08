@@ -148,6 +148,96 @@ impl Node {
         }
     }
 
+    /// Build a placeholder `Node` from a node's raw JSON when it failed to
+    /// deserialize as a normal `Node` — typically because it was saved by a
+    /// newer NodeMangler that introduced an `Operation` variant (or other
+    /// node shape) this build doesn't recognize. Called from
+    /// `saved_nodes::deserialize`; see [`crate::saved_nodes`] for the full
+    /// tolerant-load story.
+    ///
+    /// The placeholder carries `raw` verbatim on its `node_type` so it can be
+    /// written back out almost byte-for-byte on the next save (only position
+    /// and connections get patched — see `saved_nodes::serialize`). Sockets
+    /// (inputs/outputs) are recovered best-effort: forward-compat breakage is
+    /// almost always just the operation string changing, so the surrounding
+    /// input/output JSON usually still parses and wires/values render
+    /// normally even though the node itself can't run. When they don't
+    /// parse, the node simply comes back with no sockets rather than
+    /// aborting the whole graph load.
+    pub fn placeholder_from_raw(id: String, raw: serde_json::Value) -> Node {
+        // Recover the canvas position if present and well-formed; otherwise
+        // default to the origin so the node still renders somewhere.
+        let position = raw
+            .get("position")
+            .and_then(|p| serde_json::from_value::<Vec2>(p.clone()).ok())
+            .unwrap_or(Vec2::ZERO);
+
+        // Best-effort label: prefer the (now-unrecognized) operation variant
+        // name so the user can see what the node used to be. `operation` can
+        // serialize either as a bare string ("OpFoo", for unit variants) or
+        // as `{"OpFoo": {...}}` (variants with fields) — handle both. Fall
+        // back to whatever settings.name survived, if anything did.
+        let op_name = raw
+            .get("node_type")
+            .and_then(|nt| nt.get("Operation"))
+            .and_then(|o| o.get("operation"))
+            .and_then(|op| match op {
+                serde_json::Value::String(s) => Some(s.clone()),
+                serde_json::Value::Object(map) => map.keys().next().cloned(),
+                _ => None,
+            })
+            .or_else(|| {
+                raw.get("settings")
+                    .and_then(|s| s.get("name"))
+                    .and_then(|n| n.as_str())
+                    .map(|s| s.to_string())
+            });
+
+        let name = match op_name {
+            Some(op) => format!("unknown: {op}"),
+            None => "unknown node".to_string(),
+        };
+
+        // Best-effort socket recovery: if the inputs/outputs JSON no longer
+        // matches Input/Output's shape, fall back to empty rather than
+        // letting the failure propagate — an empty-socket placeholder is far
+        // better than losing the whole graph load.
+        let inputs: Vec<Input> = raw
+            .get("inputs")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+        let outputs: Vec<Output> = raw
+            .get("outputs")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+
+        Node {
+            id,
+            settings: NodeSettings {
+                name,
+                description: "This node's type was not recognized — likely saved by a newer \
+                    version of NodeMangler. It will not run, but its position, values, and \
+                    connections are preserved and will be written back out unchanged."
+                    .to_string(),
+                help: String::new(),
+            },
+            inputs,
+            outputs,
+            time: None,
+            // Dirty so the graph runs it once (and reports the error via
+            // `Node::run`'s Unknown arm); the input-hash cache then prevents
+            // re-run spam on subsequent ticks.
+            is_dirty: true,
+            position,
+            node_type: NodeType::Unknown { raw },
+            is_error: true,
+            error_message: Some("Unknown node type — saved with a newer NodeMangler?".to_string()),
+            cached_input_hash: None,
+            is_enabled: true,
+            custom_name: None,
+        }
+    }
+
     /// Get a reference to the input at the given index.
     ///
     /// # Panics
@@ -483,6 +573,28 @@ impl Node {
                             try_send_node_changed(&tx, "OutputChanged", message);
                         }
                     }
+                }
+            }
+
+            // A placeholder standing in for a node type this build doesn't
+            // recognize (see `Node::placeholder_from_raw`). It cannot run —
+            // there's no operation or subgraph behind it — so just re-affirm
+            // the persistent error so the UI (and anyone driving the engine
+            // headlessly) knows why this node's outputs never update. No
+            // outputs are produced; any downstream node keeps whatever stale
+            // value it last received.
+            NodeType::Unknown { .. } => {
+                self.is_error = true;
+                self.error_message =
+                    Some("Unknown node type — saved with a newer NodeMangler?".to_string());
+
+                if let Some(tx) = tx_node_changed {
+                    let message = NodeChangedMessage::Error {
+                        node_id: self.id.clone(),
+                        is_error: true,
+                        message: self.error_message.clone(),
+                    };
+                    try_send_node_changed(&tx, "Error", message);
                 }
             }
         };

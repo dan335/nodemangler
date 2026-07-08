@@ -539,18 +539,27 @@ fn format_show_types_human_unknown_shows_available() {
 
 // ── format_show_values JSON ──────────────────────────────────────────────
 
-/// JSON show-values contains all expected type keys.
+/// JSON show-values contains all expected simple-type keys plus every
+/// enum type in `ENUM_TYPE_NAMES` — guards against a new enum value type
+/// (like edgemode/exportpreset) being added without a show-values entry.
 #[test]
 fn format_show_values_json_contains_all_keys() {
+    use crate::helpers::ENUM_TYPE_NAMES;
+
     let val = format_show_values_json();
     let obj = val.as_object().unwrap();
-    let expected_keys = [
-        "bool", "int", "decimal", "text", "color", "path",
-        "filtertype", "imagetype", "colorformat", "blendmode",
-        "colorspace", "worleydistance", "texthalign", "textvalign",
-    ];
-    for key in &expected_keys {
+    let simple_keys = ["bool", "int", "decimal", "text", "color", "path"];
+    for key in simple_keys.iter().chain(ENUM_TYPE_NAMES) {
         assert!(obj.contains_key(*key), "missing key '{key}' in show-values JSON");
+    }
+}
+
+/// Human show-values text mentions every enum type in `ENUM_TYPE_NAMES`.
+#[test]
+fn show_values_text_contains_all_enum_types() {
+    let text = show_values_text();
+    for name in crate::helpers::ENUM_TYPE_NAMES {
+        assert!(text.contains(&format!("{name}:")), "show-values text missing '{name}:' example");
     }
 }
 

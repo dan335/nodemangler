@@ -234,7 +234,7 @@ process_frame() {
 i=0
 for f in "${frames[@]}"; do
     base="$(basename "${f%.png}")"
-    out="$OUT_FRAMES/$base.bmp"        # 8-bit BMP: compact, lossless, ffmpeg-native
+    out="$OUT_FRAMES/$base.png"        # lossless, compact, ffmpeg-native
     process_frame "$f" "$out"
     i=$((i + 1))
     printf "\r  frame %d/%d" "$i" "$total"
@@ -247,7 +247,7 @@ echo "encoding → $OUTPUT"
 # the audio, if any, straight from the source. Video is normalized to H.264 /
 # yuv420p for broad playback; frame rate and audio come from the source.
 ffmpeg -y -loglevel error \
-    -framerate "$FPS" -pattern_type glob -i "$OUT_FRAMES/frame_*.bmp" \
+    -framerate "$FPS" -pattern_type glob -i "$OUT_FRAMES/frame_*.png" \
     -i "$SOURCE" \
     -map 0:v:0 -map "1:a:0?" \
     -c:v libx264 -pix_fmt yuv420p -r "$FPS" \

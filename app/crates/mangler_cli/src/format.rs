@@ -136,6 +136,7 @@ pub(crate) fn format_info_human(graph: &Graph, filter_node: Option<&str>, compac
             mangler_core::node_type::NodeType::Subgraph { path, .. } => {
                 format!("subgraph({})", path.display())
             }
+            mangler_core::node_type::NodeType::Unknown { .. } => "unknown".to_string(),
         };
 
         let disabled_tag = if !node.is_enabled { " [DISABLED]" } else { "" };
@@ -260,6 +261,7 @@ pub(crate) fn format_info_json(graph: &Graph, filter_node: Option<&str>) -> Resu
             mangler_core::node_type::NodeType::Subgraph { path, .. } => {
                 format!("subgraph({})", path.display())
             }
+            mangler_core::node_type::NodeType::Unknown { .. } => "unknown".to_string(),
         };
 
         let inputs: Vec<serde_json::Value> = node.inputs.iter().enumerate().map(|(i, input)| {
@@ -698,8 +700,10 @@ pub(crate) fn show_values_text() -> &'static str {
         "  imagetype:png                         (run `show-types imagetype` for values)\n",
         "  colorformat:Rgba8                     (run `show-types colorformat` for values)\n",
         "  worleydistance:Euclidean              (run `show-types worleydistance` for values)\n",
+        "  edgemode:Wrap                         (run `show-types edgemode` for values)\n",
         "  texthalign:Left                       (run `show-types texthalign` for values)\n",
         "  textvalign:Top                        (run `show-types textvalign` for values)\n",
+        "  exportpreset:Godot                    (run `show-types exportpreset` for values)\n",
         "\n",
         "  Legacy JSON also works: {\"Decimal\":3.14}, {\"Color\":{\"r\":1,\"g\":0,\"b\":0,\"a\":1}}\n",
     )
@@ -721,8 +725,10 @@ pub(crate) fn format_show_values_json() -> serde_json::Value {
         "blendmode": {"typed": "blendmode:Multiply", "see": "show-types blendmode"},
         "colorspace": {"typed": "colorspace:Srgb", "see": "show-types colorspace"},
         "worleydistance": {"typed": "worleydistance:Euclidean", "see": "show-types worleydistance"},
+        "edgemode": {"typed": "edgemode:Wrap", "see": "show-types edgemode"},
         "texthalign": {"typed": "texthalign:Left", "see": "show-types texthalign"},
         "textvalign": {"typed": "textvalign:Top", "see": "show-types textvalign"},
+        "exportpreset": {"typed": "exportpreset:Godot", "see": "show-types exportpreset"},
     })
 }
 

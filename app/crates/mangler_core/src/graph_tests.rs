@@ -642,6 +642,25 @@ async fn test_save_and_load_round_trip() {
     let _ = std::fs::remove_file(tmp_path);
 }
 
+// save_to_file serializes through a borrowing mirror of GraphSaveData
+// (GraphSaveRef); this guards the mirror staying in sync by checking the
+// written JSON carries the app version stamp.
+#[tokio::test]
+async fn test_save_to_file_stamps_app_version() {
+    let mut graph = create_test_graph();
+
+    let tmp_path = std::env::temp_dir().join(format!("test_version_{}.mangle.json", get_id()));
+    graph.set_save_path(tmp_path.clone());
+    graph.save_to_file();
+
+    let raw = std::fs::read_to_string(&tmp_path).unwrap();
+    let saved: crate::GraphSaveData = serde_json::from_str(&raw).unwrap();
+    assert_eq!(saved.version, crate::APP_VERSION);
+
+    // Clean up
+    let _ = std::fs::remove_file(tmp_path);
+}
+
 #[tokio::test]
 async fn test_save_to_file_subgraph_is_noop() {
     let (tx_gc, _) = mpsc::channel::<GraphChangedMessage>(32);
@@ -658,7 +677,7 @@ async fn test_save_to_file_subgraph_is_noop() {
 
 #[tokio::test]
 async fn test_save_to_file_no_path_is_noop() {
-    let graph = create_test_graph();
+    let mut graph = create_test_graph();
     assert!(graph.save_path.is_none());
     // Should be a no-op, not panic
     graph.save_to_file();
@@ -1122,6 +1141,7 @@ async fn test_subgraph_propagates_value_end_to_end() {
     let tmp_path = std::env::temp_dir()
         .join(format!("mangler_subgraph_int_test_{}.mangle.json", get_id()));
     let save_data = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
         name: child.name.clone(),
         nodes: child.nodes.clone(),
@@ -1250,6 +1270,7 @@ async fn test_subgraph_many_nodes_exposed_output_not_dropped() {
     let tmp_path = std::env::temp_dir()
         .join(format!("mangler_subgraph_overflow_test_{}.mangle.json", get_id()));
     let save_data = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
         name: child.name.clone(),
         nodes: child.nodes.clone(),
@@ -1336,6 +1357,7 @@ async fn test_detached_snapshot_executes_subgraph() {
     let tmp_path = std::env::temp_dir()
         .join(format!("mangler_subgraph_detached_test_{}.mangle.json", get_id()));
     let save_data = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
         name: child.name.clone(),
         nodes: child.nodes.clone(),
@@ -1409,6 +1431,7 @@ async fn test_load_restores_typed_input_and_output_defaults() {
     let tmp_path = std::env::temp_dir()
         .join(format!("mangler_load_defaults_test_{}.mangle.json", get_id()));
     let save_data = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
         id: graph.id.clone(),
         name: graph.name.clone(),
         nodes: graph.nodes.clone(),
@@ -1468,6 +1491,7 @@ async fn test_load_graph_with_saved_subgraph_node_auto_reloads() {
     let child_path = std::env::temp_dir()
         .join(format!("mangler_autoreload_child_{}.mangle.json", get_id()));
     let child_save = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
         name: child.name.clone(),
         nodes: child.nodes.clone(),
@@ -1488,6 +1512,7 @@ async fn test_load_graph_with_saved_subgraph_node_auto_reloads() {
     let parent_path = std::env::temp_dir()
         .join(format!("mangler_autoreload_parent_{}.mangle.json", get_id()));
     let parent_save = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
         id: parent.id.clone(),
         name: parent.name.clone(),
         nodes: parent.nodes.clone(),
@@ -1565,6 +1590,7 @@ async fn test_subgraph_image_output_in_memory_flow() {
     let child_path = std::env::temp_dir()
         .join(format!("mangler_subgraph_image_inmem_child_{}.mangle.json", get_id()));
     let child_save = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
         name: child.name.clone(),
         nodes: child.nodes.clone(),
@@ -1624,6 +1650,7 @@ async fn test_subgraph_emits_output_changed_with_real_image_through_channel() {
     let child_path = std::env::temp_dir()
         .join(format!("mangler_subgraph_channel_child_{}.mangle.json", get_id()));
     let child_save = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
         name: child.name.clone(),
         nodes: child.nodes.clone(),
@@ -1700,6 +1727,7 @@ async fn test_subgraph_image_output_propagates_real_image() {
     let child_path = std::env::temp_dir()
         .join(format!("mangler_subgraph_image_child_{}.mangle.json", get_id()));
     let child_save = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
         name: child.name.clone(),
         nodes: child.nodes.clone(),
@@ -1716,6 +1744,7 @@ async fn test_subgraph_image_output_propagates_real_image() {
     let parent_path = std::env::temp_dir()
         .join(format!("mangler_subgraph_image_parent_{}.mangle.json", get_id()));
     let parent_save = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
         id: parent.id.clone(),
         name: parent.name.clone(),
         nodes: parent.nodes.clone(),
@@ -1784,6 +1813,7 @@ async fn write_child_with_color(color: crate::color::Color, label: &str) -> std:
     let path = std::env::temp_dir()
         .join(format!("mangler_hotreload_{}_{}.mangle.json", label, get_id()));
     let save = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
         name: child.name.clone(),
         nodes: child.nodes.clone(),
@@ -2246,6 +2276,7 @@ async fn write_child_with_exposed_inputs(exposed_inputs: usize, label: &str) -> 
     let path = std::env::temp_dir()
         .join(format!("mangler_prune_child_{}_{}.mangle.json", label, get_id()));
     let save = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
         name: child.name.clone(),
         nodes: child.nodes.clone(),
@@ -2442,4 +2473,395 @@ async fn test_no_trigger_fire_downstream_nodes_stay_cached() {
         graph.nodes.get(&add2_id).unwrap().time.is_none(),
         "2-hop downstream node must stay cached when nothing changed and no trigger fired"
     );
+}
+
+// ── tolerant load / unknown-node placeholders (saved-graph version compat) ─
+
+/// Build the raw JSON for a normal add node, then corrupt its operation
+/// string to something this build cannot recognize — simulating a node
+/// saved by a newer NodeMangler.
+fn add_node_json_with_unknown_operation(position: glam::Vec2) -> serde_json::Value {
+    let template = crate::node::Node::new(
+        get_id(),
+        AddNodeType::Operation(Operation::OpNumberMathAdd),
+        position,
+    );
+    let mut raw = serde_json::to_value(&template).unwrap();
+    raw["node_type"]["Operation"]["operation"] = serde_json::json!("OpFromTheFuture");
+    raw
+}
+
+#[test]
+fn test_tolerant_load_preserves_other_nodes_and_emits_load_warnings_first() {
+    use std::fs;
+    use crate::GraphSaveData;
+    use crate::node_type::NodeType;
+
+    // A normal decimal node plus a hand-crafted unknown-op node.
+    let node_a = crate::node::Node::new(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO);
+    let node_a_id = node_a.id.clone();
+    let mut nodes = std::collections::HashMap::new();
+    nodes.insert(node_a_id.clone(), node_a);
+
+    let unknown_id = get_id();
+    let unknown_raw = add_node_json_with_unknown_operation(glam::Vec2::new(50.0, 60.0));
+
+    let save_data = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
+        id: "tolerant-load-graph".to_string(),
+        name: "tolerant load test".to_string(),
+        nodes,
+    };
+    let mut json = serde_json::to_value(&save_data).unwrap();
+    json["nodes"][unknown_id.as_str()] = unknown_raw;
+
+    let tmp_path = std::env::temp_dir().join(format!("mangler_tolerant_load_{}.mangle.json", get_id()));
+    fs::write(&tmp_path, serde_json::to_string(&json).unwrap()).unwrap();
+
+    let (tx_nc, _rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
+    let (tx_gc, mut rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let loaded = Graph::load(tmp_path.clone(), Some(tx_nc), Some(tx_gc), false)
+        .expect("tolerant load should succeed despite the unknown node");
+
+    // Both nodes present; the good one loaded normally, the bad one is a
+    // placeholder.
+    assert_eq!(loaded.nodes.len(), 2);
+    let good = loaded.nodes.get(&node_a_id).expect("known node should load normally");
+    assert!(matches!(good.node_type, NodeType::Operation { .. }));
+    let bad = loaded.nodes.get(&unknown_id).expect("unknown node should still be present as a placeholder");
+    assert!(matches!(bad.node_type, NodeType::Unknown { .. }));
+    assert!(bad.is_error);
+
+    // LoadWarnings must arrive before any LoadedNode.
+    let first = rx_gc.try_recv().expect("a message should have been sent");
+    assert!(matches!(first, GraphChangedMessage::LoadWarnings { .. }), "expected LoadWarnings first, got {:?}", first);
+
+    let mut loaded_node_count = 0;
+    while let Ok(msg) = rx_gc.try_recv() {
+        if matches!(msg, GraphChangedMessage::LoadedNode { .. }) {
+            loaded_node_count += 1;
+        }
+    }
+    assert_eq!(loaded_node_count, 2, "both nodes should still be echoed to the UI");
+
+    let _ = fs::remove_file(&tmp_path);
+}
+
+#[tokio::test]
+async fn test_save_to_file_round_trips_unknown_node_verbatim() {
+    use std::fs;
+    use crate::GraphSaveData;
+    use crate::node_type::NodeType;
+
+    let known = crate::node::Node::new(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(1.0, 2.0));
+    let known_id = known.id.clone();
+    let mut nodes = std::collections::HashMap::new();
+    nodes.insert(known_id.clone(), known);
+
+    let unknown_id = get_id();
+    let mut unknown_raw = add_node_json_with_unknown_operation(glam::Vec2::new(3.0, 4.0));
+    unknown_raw["future_only_field"] = serde_json::json!(42);
+
+    let save_data = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
+        id: get_id(),
+        name: "round trip test".to_string(),
+        nodes,
+    };
+    let mut json = serde_json::to_value(&save_data).unwrap();
+    json["nodes"][unknown_id.as_str()] = unknown_raw.clone();
+
+    let tmp_path = std::env::temp_dir().join(format!("mangler_unknown_roundtrip_{}.mangle.json", get_id()));
+    fs::write(&tmp_path, serde_json::to_string(&json).unwrap()).unwrap();
+
+    // Load (tolerant) and immediately save back out via save_to_file (the
+    // GraphSaveRef mirror path — this is what guards the mirror staying in
+    // sync with GraphSaveData's tolerant `#[serde(with)]` attribute).
+    let mut loaded = Graph::load(tmp_path.clone(), None, None, false).unwrap();
+    assert!(matches!(loaded.nodes.get(&unknown_id).unwrap().node_type, NodeType::Unknown { .. }));
+    loaded.save_to_file();
+
+    let raw_after = fs::read_to_string(&tmp_path).unwrap();
+    let after: serde_json::Value = serde_json::from_str(&raw_after).unwrap();
+    let node_after = &after["nodes"][unknown_id.as_str()];
+
+    // A field this build never parsed must survive untouched.
+    assert_eq!(node_after["future_only_field"], serde_json::json!(42));
+    // Position (untouched by any edit) matches the original.
+    assert_eq!(node_after["position"], unknown_raw["position"]);
+
+    let _ = fs::remove_file(&tmp_path);
+}
+
+#[tokio::test]
+async fn test_placeholder_node_move_persists_through_save_and_load() {
+    use std::fs;
+    use crate::GraphSaveData;
+    use crate::node_type::NodeType;
+
+    let unknown_id = get_id();
+    let unknown_raw = add_node_json_with_unknown_operation(glam::Vec2::ZERO);
+
+    let save_data = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
+        id: get_id(),
+        name: "move test".to_string(),
+        nodes: std::collections::HashMap::new(),
+    };
+    let mut json = serde_json::to_value(&save_data).unwrap();
+    json["nodes"][unknown_id.as_str()] = unknown_raw;
+
+    let tmp_path = std::env::temp_dir().join(format!("mangler_placeholder_move_{}.mangle.json", get_id()));
+    fs::write(&tmp_path, serde_json::to_string(&json).unwrap()).unwrap();
+
+    let mut graph = Graph::load(tmp_path.clone(), None, None, false).unwrap();
+    graph.set_node_position(unknown_id.clone(), glam::Vec2::new(321.0, 654.0));
+    graph.save_to_file();
+
+    let reloaded = Graph::load(tmp_path.clone(), None, None, false).unwrap();
+    let node = reloaded.nodes.get(&unknown_id).unwrap();
+    assert!(matches!(node.node_type, NodeType::Unknown { .. }));
+    assert_eq!(node.position, glam::Vec2::new(321.0, 654.0));
+
+    let _ = fs::remove_file(&tmp_path);
+}
+
+#[tokio::test]
+async fn test_connection_into_placeholder_persists_in_raw() {
+    use std::fs;
+    use crate::GraphSaveData;
+    use crate::node_type::NodeType;
+
+    let unknown_id = get_id();
+    let unknown_raw = add_node_json_with_unknown_operation(glam::Vec2::ZERO);
+
+    let save_data = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
+        id: get_id(),
+        name: "connection persist test".to_string(),
+        nodes: std::collections::HashMap::new(),
+    };
+    let mut json = serde_json::to_value(&save_data).unwrap();
+    json["nodes"][unknown_id.as_str()] = unknown_raw;
+
+    let tmp_path = std::env::temp_dir().join(format!("mangler_placeholder_conn_{}.mangle.json", get_id()));
+    fs::write(&tmp_path, serde_json::to_string(&json).unwrap()).unwrap();
+
+    let mut graph = Graph::load(tmp_path.clone(), None, None, false).unwrap();
+    assert!(matches!(graph.nodes.get(&unknown_id).unwrap().node_type, NodeType::Unknown { .. }));
+    assert_eq!(graph.nodes.get(&unknown_id).unwrap().inputs.len(), 2, "add's sockets should have parsed");
+
+    let source_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::new(-100.0, 0.0), true, None, Vec::new())
+        .await;
+
+    graph.add_connection(unknown_id.clone(), 0, source_id.clone(), 0).await;
+    assert!(
+        graph.nodes.get(&unknown_id).unwrap().inputs[0].connection.is_some(),
+        "a connection into a placeholder's parsed socket should be accepted like any other node"
+    );
+
+    graph.save_to_file();
+    let reloaded = Graph::load(tmp_path.clone(), None, None, false).unwrap();
+    let node = reloaded.nodes.get(&unknown_id).unwrap();
+    assert!(matches!(node.node_type, NodeType::Unknown { .. }));
+    let (conn_id, conn_idx) = node.inputs[0].connection.as_ref()
+        .expect("connection into a placeholder must survive save + reload");
+    assert_eq!(conn_id, &source_id);
+    assert_eq!(*conn_idx, 0);
+
+    let _ = fs::remove_file(&tmp_path);
+}
+
+#[tokio::test]
+async fn test_run_with_placeholder_node_emits_error_and_does_not_panic() {
+    use crate::node_type::NodeType;
+
+    let (tx_nc, mut rx_nc) = mpsc::channel::<NodeChangedMessage>(256);
+    let (tx_gc, _rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut graph = Graph::new(get_id(), tx_nc, tx_gc, false).unwrap();
+
+    let raw = add_node_json_with_unknown_operation(glam::Vec2::ZERO);
+    let placeholder_id = get_id();
+    let placeholder = crate::node::Node::placeholder_from_raw(placeholder_id.clone(), raw);
+    graph.nodes.insert(placeholder_id.clone(), placeholder);
+    graph.nodes.get_mut(&placeholder_id).unwrap().is_dirty = true;
+
+    // Must not panic.
+    graph.run().await;
+
+    let mut saw_error = false;
+    while let Ok(msg) = rx_nc.try_recv() {
+        if let NodeChangedMessage::Error { node_id, is_error: true, .. } = msg {
+            if node_id == placeholder_id {
+                saw_error = true;
+            }
+        }
+    }
+    assert!(saw_error, "running a placeholder node should emit a persistent Error message");
+    assert!(matches!(graph.nodes.get(&placeholder_id).unwrap().node_type, NodeType::Unknown { .. }));
+}
+
+#[tokio::test]
+async fn test_load_report_detects_newer_version() {
+    use std::fs;
+    use crate::GraphSaveData;
+
+    let save_data = GraphSaveData {
+        version: "999.0.0".to_string(),
+        id: get_id(),
+        name: "newer version test".to_string(),
+        nodes: std::collections::HashMap::new(),
+    };
+    let tmp_path = std::env::temp_dir().join(format!("mangler_newer_version_{}.mangle.json", get_id()));
+    fs::write(&tmp_path, serde_json::to_string(&save_data).unwrap()).unwrap();
+
+    let loaded = Graph::load(tmp_path.clone(), None, None, false).unwrap();
+    let report = loaded.load_report.expect("load_report should be populated by a real load");
+    assert!(report.is_newer_than_app);
+    assert_eq!(report.file_version, "999.0.0");
+
+    let _ = fs::remove_file(&tmp_path);
+}
+
+#[tokio::test]
+async fn test_load_report_missing_version_is_not_newer() {
+    use std::fs;
+
+    // Pre-versioning save: no "version" field at all.
+    let tmp_path = std::env::temp_dir().join(format!("mangler_missing_version_{}.mangle.json", get_id()));
+    let json = serde_json::json!({
+        "id": "old-graph",
+        "name": "pre-versioning graph",
+        "nodes": {}
+    });
+    fs::write(&tmp_path, serde_json::to_string(&json).unwrap()).unwrap();
+
+    let loaded = Graph::load(tmp_path.clone(), None, None, false).unwrap();
+    let report = loaded.load_report.expect("load_report should always be populated by a real load");
+    assert!(!report.is_newer_than_app);
+    assert_eq!(report.file_version, "");
+
+    let _ = fs::remove_file(&tmp_path);
+}
+
+#[tokio::test]
+async fn test_save_to_file_updates_last_synced_mtime() {
+    let mut graph = create_test_graph();
+    let tmp_path = std::env::temp_dir().join(format!("mangler_mtime_save_{}.mangle.json", get_id()));
+    graph.set_save_path(tmp_path.clone());
+
+    assert!(graph.last_synced_mtime.is_none(), "no sync has happened yet");
+    graph.save_to_file();
+    assert!(graph.last_synced_mtime.is_some(), "save_to_file should record the file's new mtime");
+
+    let _ = std::fs::remove_file(tmp_path);
+}
+
+#[tokio::test]
+async fn test_disk_is_newer_detects_external_rewrite() {
+    let mut graph = create_test_graph();
+    let tmp_path = std::env::temp_dir().join(format!("mangler_disk_newer_{}.mangle.json", get_id()));
+    graph.set_save_path(tmp_path.clone());
+    graph.save_to_file();
+
+    assert!(!graph.disk_is_newer(), "no external edit has happened yet");
+
+    // mtime granularity can be 1s on some filesystems; sleep across it so the
+    // external rewrite is guaranteed to produce a strictly later mtime.
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    std::fs::write(&tmp_path, "{}").unwrap();
+
+    assert!(graph.disk_is_newer(), "an external rewrite after our last sync should be detected");
+
+    let _ = std::fs::remove_file(tmp_path);
+}
+
+#[test]
+fn test_disk_is_newer_false_when_no_save_path() {
+    let (tx_gc, _) = mpsc::channel::<GraphChangedMessage>(32);
+    let (tx_nc, _) = mpsc::channel::<NodeChangedMessage>(32);
+    let graph = Graph::new(get_id(), tx_nc, tx_gc, false).unwrap();
+    assert!(!graph.disk_is_newer());
+}
+
+#[tokio::test]
+async fn test_subgraph_with_unknown_child_node_surfaces_error_on_parent() {
+    use std::fs;
+    use crate::GraphSaveData;
+
+    // Child graph with one normal node plus a hand-crafted unknown-op node.
+    let normal = crate::node::Node::new(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO);
+    let normal_id = normal.id.clone();
+    let mut child_nodes = std::collections::HashMap::new();
+    child_nodes.insert(normal_id.clone(), normal);
+
+    let unknown_id = get_id();
+    let unknown_raw = add_node_json_with_unknown_operation(glam::Vec2::ZERO);
+
+    let child_save = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
+        id: get_id(),
+        name: "child with unknown node".to_string(),
+        nodes: child_nodes,
+    };
+    let mut child_json = serde_json::to_value(&child_save).unwrap();
+    child_json["nodes"][unknown_id.as_str()] = unknown_raw;
+
+    let child_path = std::env::temp_dir()
+        .join(format!("mangler_child_unknown_{}.mangle.json", get_id()));
+    fs::write(&child_path, serde_json::to_string(&child_json).unwrap()).unwrap();
+
+    // Parent with a subgraph node, kept on a channel we can inspect.
+    let (tx_nc, mut rx_nc) = mpsc::channel::<NodeChangedMessage>(256);
+    let (tx_gc, _rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut parent = Graph::new(get_id(), tx_nc, tx_gc, false).unwrap();
+    let subgraph_node_id = parent
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+
+    // Drain the AddedNode-adjacent chatter from add_node before checking for
+    // the subgraph-load error.
+    while rx_nc.try_recv().is_ok() {}
+
+    parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
+
+    let mut saw_unknown_error = false;
+    while let Ok(msg) = rx_nc.try_recv() {
+        if let NodeChangedMessage::Error { node_id, is_error: true, message: Some(text) } = msg {
+            if node_id == subgraph_node_id && text.contains("unknown") {
+                saw_unknown_error = true;
+            }
+        }
+    }
+    assert!(saw_unknown_error, "parent subgraph node should report the child's unknown node");
+
+    let _ = fs::remove_file(&child_path);
+}
+
+#[tokio::test]
+async fn test_subgraph_bogus_path_emits_error_message_not_just_println() {
+    let (tx_nc, mut rx_nc) = mpsc::channel::<NodeChangedMessage>(256);
+    let (tx_gc, _rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut parent = Graph::new(get_id(), tx_nc, tx_gc, false).unwrap();
+    let subgraph_node_id = parent
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+
+    while rx_nc.try_recv().is_ok() {}
+
+    parent.set_subgraph_path(
+        subgraph_node_id.clone(),
+        std::path::PathBuf::from("/definitely/does/not/exist.mangle.json"),
+    );
+
+    let mut saw_error = false;
+    while let Ok(msg) = rx_nc.try_recv() {
+        if let NodeChangedMessage::Error { node_id, is_error: true, message: Some(text) } = msg {
+            if node_id == subgraph_node_id && text.contains("failed to load subgraph") {
+                saw_error = true;
+            }
+        }
+    }
+    assert!(saw_error, "a bogus subgraph path should surface an Error message on the node, not just a println");
 }

@@ -426,7 +426,10 @@ fn parse_typed_value_all_blend_mode_variants() {
 /// All color space variants parse correctly.
 #[test]
 fn parse_typed_value_all_color_space_variants() {
-    let variants = ["Srgb", "RgbLinear", "Hsl", "Hsv", "Lch", "Xyz", "Lab", "Yuv", "Cmyk"];
+    let variants = [
+        "Srgb", "RgbLinear", "Hsl", "Hsv", "Lch", "Xyz", "Lab", "Yuv", "Cmyk",
+        "Oklab", "Oklch", "Hwb", "Ycbcr", "Xyy",
+    ];
     for v in &variants {
         let input = format!("colorspace:{v}");
         assert!(parse_typed_value(&input).is_ok(), "colorspace:{v} should parse");
@@ -446,9 +449,10 @@ fn parse_typed_value_all_filter_type_variants() {
 /// Image type variants that the library can round-trip parse correctly.
 #[test]
 fn parse_typed_value_all_image_type_variants() {
-    // Test the variants that image::ImageFormat::from_extension supports.
-    // Some variants (pnm, ff, qoi) may not have matching extension lookups.
-    let variants = ["png", "jpg", "gif", "webp", "tiff", "tga", "bmp", "ico", "hdr", "exr"];
+    let variants = [
+        "png", "jpg", "gif", "webp", "pnm", "tiff", "tga", "bmp", "ico", "hdr", "exr", "ff",
+        "avif", "qoi",
+    ];
     for v in &variants {
         let input = format!("imagetype:{v}");
         assert!(parse_typed_value(&input).is_ok(), "imagetype:{v} should parse");

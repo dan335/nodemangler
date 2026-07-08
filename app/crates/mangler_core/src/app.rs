@@ -53,6 +53,23 @@ impl App {
                 // syscall traffic on the engine task. Poll at 500 ms instead.
                 let mut last_subgraph_check = Instant::now();
                 const SUBGRAPH_CHECK_INTERVAL: Duration = Duration::from_millis(500);
+                // A file loaded from a *newer* NodeMangler must not be
+                // silently downgraded by the next auto-save before the user
+                // has even looked at it. Seeded from the load itself; any
+                // subsequent edit (see the two message-drain loops below)
+                // releases the hold, since at that point re-saving is an
+                // intentional user action, not an unattended background
+                // write. `graph.load_report` is `None` for a brand-new graph
+                // (nothing to hold).
+                let mut hold_saves = graph
+                    .load_report
+                    .as_ref()
+                    .is_some_and(|r| r.is_newer_than_app);
+                // Set once an external modification to the save file is
+                // detected mid-edit (see the auto-save block below). Guards
+                // against re-sending `FileConflict` every tick while the user
+                // decides; cleared when `ResolveFileConflict` is handled.
+                let mut conflict_pending = false;
 
                 // Main engine loop: drain messages, execute graph, auto-save
                 let thread_handle = tokio::spawn(async move {
@@ -69,6 +86,14 @@ impl App {
 
                         // Process graph-level changes (add/remove nodes, connections, save path)
                         while let Ok(change_graph_message) = rx_change_graph.try_recv() {
+                            // Any graph-structure message means the user (or
+                            // a paste/duplicate/auto-layout action) touched
+                            // the graph — release the "newer file" auto-save
+                            // hold so subsequent saves proceed normally.
+                            // `ResolveFileConflict` re-derives its own value
+                            // for `hold_saves` below when it reloads, so
+                            // clearing it here first is harmless.
+                            hold_saves = false;
                             match change_graph_message {
                                 ChangeGraphMessage::AddNode {
                                     node_id,
@@ -116,11 +141,71 @@ impl App {
                                     graph.name = graph_name;
                                     needs_to_save = true;
                                 }
+                                ChangeGraphMessage::ResolveFileConflict { keep_ours } => {
+                                    // A resolution action, not an edit in its
+                                    // own right — it must not set
+                                    // `needs_to_save` (that would immediately
+                                    // re-trigger the very conflict check
+                                    // we're in the middle of resolving).
+                                    if keep_ours {
+                                        // Overwrite: write our in-memory graph.
+                                        // save_to_file() refreshes
+                                        // last_synced_mtime, so the next
+                                        // disk_is_newer check has a fresh
+                                        // baseline.
+                                        graph.save_to_file();
+                                    } else {
+                                        // Reload: discard local edits and take
+                                        // the disk copy. Tell the UI to wipe
+                                        // its node list first — the
+                                        // LoadedNode stream that follows
+                                        // assumes a clean slate.
+                                        if let Some(tx) = &graph.tx_graph_changed {
+                                            if let Err(err) = tx.try_send(GraphChangedMessage::GraphCleared) {
+                                                println!("Error sending GraphCleared: {:?}", err);
+                                            }
+                                        }
+                                        if let Some(reload_path) = graph.save_path.clone() {
+                                            match Graph::load(
+                                                reload_path,
+                                                graph.tx_node_changed.clone(),
+                                                graph.tx_graph_changed.clone(),
+                                                graph.is_subgraph,
+                                            ) {
+                                                Ok(fresh_graph) => {
+                                                    hold_saves = fresh_graph
+                                                        .load_report
+                                                        .as_ref()
+                                                        .is_some_and(|r| r.is_newer_than_app);
+                                                    graph = fresh_graph;
+                                                }
+                                                Err(_) => {
+                                                    // The file became unreadable between
+                                                    // conflict detection and resolution
+                                                    // (e.g. deleted, or mid-write by
+                                                    // whoever we're racing). Keep the
+                                                    // existing in-memory graph, but
+                                                    // re-emit it so the UI — which we
+                                                    // just told to clear — resyncs. The
+                                                    // conflict re-detects on the next
+                                                    // save attempt.
+                                                    graph.emit_loaded_nodes();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    needs_to_save = false;
+                                    conflict_pending = false;
+                                }
                             }
                         }
 
                         // Process node-level changes (input values, positions, expose toggles)
                         while let Ok(change_node_message) = rx_change_node.try_recv() {
+                            // See the identical note in the graph-message
+                            // loop above: any node-level edit releases the
+                            // "newer file" auto-save hold.
+                            hold_saves = false;
                             match change_node_message {
                                 ChangeNodeMessage::SetInput {
                                     node_id,
@@ -202,10 +287,34 @@ impl App {
                         // one write and a continuous stream of messages can
                         // never postpone the pending save for more than one
                         // interval — the final save is never lost.
-                        if needs_to_save && last_save.elapsed() >= AUTO_SAVE_INTERVAL {
-                            graph.save_to_file();
-                            last_save = Instant::now();
-                            needs_to_save = false;
+                        //
+                        // `hold_saves` additionally suppresses this entirely
+                        // right after loading a newer-version file, until the
+                        // user makes an edit (see above). `conflict_pending`
+                        // suppresses it once an external modification has
+                        // been detected and reported, until
+                        // `ResolveFileConflict` clears it.
+                        if needs_to_save && !hold_saves && !conflict_pending && last_save.elapsed() >= AUTO_SAVE_INTERVAL {
+                            if graph.disk_is_newer() {
+                                // Someone else — another tab, another machine
+                                // on a network share — has written this file
+                                // since we last read/wrote it. Overwriting
+                                // now would silently discard their change.
+                                // Pause saving and let the user pick a side;
+                                // edits keep accumulating in memory in the
+                                // meantime (needs_to_save stays true).
+                                conflict_pending = true;
+                                if let Some(tx) = &graph.tx_graph_changed {
+                                    let path = graph.save_path.clone().unwrap_or_default();
+                                    if let Err(err) = tx.try_send(GraphChangedMessage::FileConflict { path }) {
+                                        println!("Error sending FileConflict: {:?}", err);
+                                    }
+                                }
+                            } else {
+                                graph.save_to_file();
+                                last_save = Instant::now();
+                                needs_to_save = false;
+                            }
                         }
 
                         // Sleep until next tick, minimum 2 ms to avoid busy-spinning

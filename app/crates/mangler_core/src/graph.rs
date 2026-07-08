@@ -11,7 +11,7 @@ use crate::input::{Input, InputLink};
 use crate::node_type::NodeType;
 use crate::output::{Output, OutputLink};
 use crate::thumbnail_service::ThumbnailService;
-use crate::{AddNodeType, NodeChangedMessage, GraphChangedMessage};
+use crate::{AddNodeType, NodeChangedMessage, GraphChangedMessage, LoadReport};
 use crate::{
     node::Node, value::Value,
     GraphSaveData, NewGraphError,
@@ -21,6 +21,7 @@ use std::fs;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
+    time::SystemTime,
 };
 use tokio::sync::mpsc::Sender;
 use crate::NodeChangedMessage::SubgraphLoaded;
@@ -51,6 +52,18 @@ pub struct Graph {
     /// on detached graphs (which don't emit UI messages). See
     /// [`crate::thumbnail_service`].
     pub thumbnail_service: Option<std::sync::Arc<ThumbnailService>>,
+    /// Anomalies found the last time this graph was loaded from a file (see
+    /// [`LoadReport`]). `None` if this graph was never loaded from disk
+    /// (e.g. created fresh via [`Graph::new`]).
+    pub load_report: Option<LoadReport>,
+    /// Modification time of `save_path`'s file at the moment this graph last
+    /// read (`load`) or wrote (`save_to_file`) it — i.e. the mtime this
+    /// in-memory graph is "in sync" with. Compared against the file's
+    /// current mtime by [`Graph::disk_is_newer`] to detect a concurrent
+    /// external edit before auto-save would blindly overwrite it. `None`
+    /// before any load/save has happened, or if the filesystem didn't report
+    /// an mtime.
+    pub last_synced_mtime: Option<SystemTime>,
 }
 
 impl Graph {
@@ -75,6 +88,9 @@ impl Graph {
             name: "new graph".to_string(),
             is_subgraph,
             thumbnail_service,
+            // A brand-new graph was never loaded from a file.
+            load_report: None,
+            last_synced_mtime: None,
         })
     }
 
@@ -91,10 +107,37 @@ impl Graph {
         match fs::read_to_string(&save_path) {
             Ok(data) => match serde_json::from_str::<GraphSaveData>(&data) {
                 Ok(json) => {
+                    // Stat the file right after reading it so `disk_is_newer`
+                    // has a baseline to compare future external edits
+                    // against. A failed stat (rare — e.g. a filesystem that
+                    // doesn't report mtimes) falls back to `None`, which
+                    // `disk_is_newer` treats as "no evidence of a conflict"
+                    // rather than a false positive.
+                    let load_mtime = std::fs::metadata(&save_path).and_then(|m| m.modified()).ok();
+
                     let thumbnail_service = tx_node_changed
                         .as_ref()
                         .and_then(|tx| ThumbnailService::try_spawn(tx.clone()))
                         .map(std::sync::Arc::new);
+
+                    // Determine whether this load has anything the user
+                    // should be warned about: the file was written by a
+                    // newer NodeMangler, and/or one or more nodes failed to
+                    // parse and were replaced by placeholders (tolerant
+                    // deserialize — see `saved_nodes`).
+                    let is_newer = crate::version::is_newer_than_app(&json.version);
+                    let unknown_node_names: Vec<String> = json
+                        .nodes
+                        .values()
+                        .filter(|node| matches!(node.node_type, NodeType::Unknown { .. }))
+                        .map(|node| node.settings.name.clone())
+                        .collect();
+                    let load_report = LoadReport {
+                        file_version: json.version.clone(),
+                        is_newer_than_app: is_newer,
+                        unknown_node_names: unknown_node_names.clone(),
+                    };
+
                     let mut graph = Graph {
                         tx_node_changed,
                         save_path: Some(save_path),
@@ -104,7 +147,32 @@ impl Graph {
                         tx_graph_changed,
                         is_subgraph,
                         thumbnail_service,
+                        load_report: Some(load_report),
+                        last_synced_mtime: load_mtime,
                     };
+
+                    // Surface load anomalies to the UI *before* the
+                    // LoadedNode stream below, so LoadWarnings can never be
+                    // the message that gets dropped if the (256-slot)
+                    // channel fills up on a large graph. Subgraph children
+                    // are loaded with `tx_graph_changed: None`, so this is
+                    // top-level-only for free.
+                    if is_newer || !unknown_node_names.is_empty() {
+                        if let Some(tx) = &graph.tx_graph_changed {
+                            let message = GraphChangedMessage::LoadWarnings {
+                                file_version: graph
+                                    .load_report
+                                    .as_ref()
+                                    .map(|r| r.file_version.clone())
+                                    .unwrap_or_default(),
+                                is_newer_than_app: is_newer,
+                                unknown_nodes: unknown_node_names,
+                            };
+                            if let Err(err) = tx.try_send(message) {
+                                println!("Error sending LoadWarnings: {:?}", err);
+                            }
+                        }
+                    }
 
                     for (_node_id, node) in graph.nodes.iter_mut() {
                         node.is_dirty = true;
@@ -161,6 +229,7 @@ impl Graph {
     /// Serialize this graph into a [`GraphSaveData`] snapshot for saving to JSON.
     pub fn to_save_data(&self) -> GraphSaveData {
         GraphSaveData {
+            version: crate::APP_VERSION.to_string(),
             id: self.id.clone(),
             name: self.name.clone(),
             nodes: self.nodes.clone(),
@@ -615,10 +684,48 @@ impl Graph {
         let subgraph = match Graph::load(path.clone(), None, None, true) {
             Ok(g) => g,
             Err(error) => {
-                println!("Error loading subgraph. {:#?}", error);
+                // Surface the failure on the subgraph node itself instead of
+                // only logging it — a println is invisible to anyone but a
+                // developer with a console attached; the user just sees a
+                // subgraph node that silently produces nothing.
+                if let Some(tx) = &self.tx_node_changed {
+                    let message = NodeChangedMessage::Error {
+                        node_id: node_id.clone(),
+                        is_error: true,
+                        message: Some(format!("failed to load subgraph: {}", error.0)),
+                    };
+                    if let Err(err) = tx.try_send(message) {
+                        println!("Error sending NodeChangedMessage::Error (subgraph load failure): {:?}", err);
+                    }
+                }
                 return;
             }
         };
+
+        // A child that itself loaded successfully but contains unknown
+        // nodes (saved by a newer NodeMangler — see `saved_nodes`) can't
+        // fully run; surface that on the parent subgraph node so the user
+        // knows to check the child. A newer *version* alone is not flagged
+        // here — the parent never writes the child file, so there's nothing
+        // at risk of being silently downgraded.
+        if let Some(report) = &subgraph.load_report {
+            if !report.unknown_node_names.is_empty() {
+                if let Some(tx) = &self.tx_node_changed {
+                    let message = NodeChangedMessage::Error {
+                        node_id: node_id.clone(),
+                        is_error: true,
+                        message: Some(format!(
+                            "subgraph contains {} unknown node(s) (saved with NodeMangler {})",
+                            report.unknown_node_names.len(),
+                            report.file_version,
+                        )),
+                    };
+                    if let Err(err) = tx.try_send(message) {
+                        println!("Error sending NodeChangedMessage::Error (subgraph unknown nodes): {:?}", err);
+                    }
+                }
+            }
+        }
 
         // Capture the mtime so `check_subgraphs_for_changes` can detect when
         // the child file has been rewritten (e.g. from another tab) and trigger
@@ -825,6 +932,10 @@ impl Graph {
             // No UI channel -> no thumbnail worker. Node::run falls back
             // to inline create_thumbnail when the service is absent.
             thumbnail_service: None,
+            load_report: self.load_report.clone(),
+            // The snapshot's save_path is cleared above, so there is
+            // nothing for disk_is_newer to compare against.
+            last_synced_mtime: None,
         };
         // Cloning the nodes dropped every subgraph node's loaded child graph and
         // readback channel to None (see NodeType::clone), so the snapshot would
@@ -1115,24 +1226,39 @@ impl Graph {
     /// Serialize and write this graph to its save path as JSON.
     ///
     /// No-op if this is a subgraph (subgraphs are saved separately) or if
-    /// no save path has been set.
-    pub fn save_to_file(&self) {
+    /// no save path has been set. On a successful write, records the file's
+    /// new modification time in `last_synced_mtime` — this save *is* the
+    /// most recent sync point — so a later `disk_is_newer` check compares
+    /// against a fresh baseline instead of the one from load time.
+    ///
+    /// `&mut self` (rather than `&self`) purely to store that mtime; this
+    /// does not otherwise mutate graph content. Callers that used to hold a
+    /// plain `&Graph` need a `&mut Graph` now.
+    pub fn save_to_file(&mut self) {
         if self.is_subgraph {
             return;
         }
 
         if let Some(save_path) = &self.save_path {
-            // Borrowing mirror of `GraphSaveData` (same field names, so the
-            // JSON is identical): serializing through it avoids deep-cloning
-            // every node once per auto-save tick.
+            // Borrowing mirror of `GraphSaveData` (same field names and the
+            // same tolerant `saved_nodes` serializer, so the JSON is
+            // identical): serializing through it avoids deep-cloning every
+            // node once per auto-save tick. Keep this in sync with
+            // `GraphSaveData` field-for-field, including the `#[serde(with)]`
+            // attribute — the round-trip test
+            // `test_save_to_file_round_trips_unknown_node_verbatim` guards
+            // against the two drifting apart.
             #[derive(serde::Serialize)]
             struct GraphSaveRef<'a> {
+                version: &'a str,
                 id: &'a str,
                 name: &'a str,
+                #[serde(with = "crate::saved_nodes")]
                 nodes: &'a HashMap<String, Node>,
             }
 
             let data = GraphSaveRef {
+                version: crate::APP_VERSION,
                 id: &self.id,
                 name: &self.name,
                 nodes: &self.nodes,
@@ -1146,6 +1272,9 @@ impl Graph {
                             "Error writing graph save file {:?}: {}",
                             save_path, error
                         );
+                    } else {
+                        self.last_synced_mtime =
+                            std::fs::metadata(save_path).and_then(|m| m.modified()).ok();
                     }
                 }
                 Err(error) => {
@@ -1155,6 +1284,47 @@ impl Graph {
         }
     }
 
+    /// Returns `true` if this graph's `save_path` file has a modification
+    /// time newer than `last_synced_mtime` (the mtime recorded the last time
+    /// this graph read or wrote that file). Used by the engine's auto-save
+    /// loop to detect a concurrent external edit — another tab, or someone
+    /// else's copy of the file on a network share — *before* blindly
+    /// overwriting it.
+    ///
+    /// Returns `false` — "no evidence of a conflict" — if there is no save
+    /// path, the file is missing, its metadata can't be read, or this graph
+    /// has never synced with a file. Missing evidence is deliberately not
+    /// treated as a conflict: this is best-effort detection, not a lock.
+    pub fn disk_is_newer(&self) -> bool {
+        let Some(save_path) = &self.save_path else { return false; };
+        let Some(disk_mtime) = std::fs::metadata(save_path).and_then(|m| m.modified()).ok() else {
+            return false;
+        };
+        match self.last_synced_mtime {
+            Some(known) => disk_mtime > known,
+            None => false,
+        }
+    }
+
+    /// Re-emit `LoadedNode` for every node currently in this graph, without
+    /// otherwise touching graph state.
+    ///
+    /// Used when resolving a [`crate::ChangeGraphMessage::ResolveFileConflict`]
+    /// with `keep_ours: false`: the engine sends
+    /// [`GraphChangedMessage::GraphCleared`] and then attempts to replace the
+    /// in-memory graph with a fresh `Graph::load` from disk. If that reload
+    /// fails (e.g. the file became unreadable between conflict detection and
+    /// resolution), the old in-memory graph is kept — but the UI was already
+    /// told to clear, so it needs the current nodes replayed to resync.
+    pub fn emit_loaded_nodes(&self) {
+        let Some(tx) = &self.tx_graph_changed else { return; };
+        for node in self.nodes.values() {
+            let message = GraphChangedMessage::LoadedNode { node: node.clone() };
+            if let Err(err) = tx.try_send(message) {
+                println!("Error sending LoadedNode (emit_loaded_nodes): {:?}", err);
+            }
+        }
+    }
 
     /// Returns `true` if `to` is reachable from `from` by following output
     /// connections downstream (BFS). `from == to` counts as reachable, which

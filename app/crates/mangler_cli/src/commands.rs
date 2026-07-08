@@ -133,6 +133,7 @@ pub(crate) fn cmd_new(path: PathBuf, json_output: bool) -> Result<(), String> {
         return Err(format!("{} already exists", path.display()));
     }
     let save_data = GraphSaveData {
+        version: mangler_core::APP_VERSION.to_string(),
         id: get_id(),
         name: path
             .file_stem()

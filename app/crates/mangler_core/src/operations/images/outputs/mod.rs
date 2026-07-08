@@ -221,7 +221,13 @@ pub(crate) fn parse_png_compression(text: &str) -> Result<PngCompression, String
 /// `path` in `image_format`. JPEG/PNG/AVIF use explicit encoders so `quality`
 /// (JPEG/AVIF) and `png_compression` (PNG) apply; other formats are saved via
 /// `DynamicImage::save_with_format`, which has no encoder settings.
-pub(crate) fn save_image(
+///
+/// `color_format` must be compatible with `image_format` (see
+/// [`ColorFormat::is_compatible_with_image_format`] /
+/// [`ColorFormat::default_for_image_format`]) — this function does not
+/// validate compatibility itself, matching the "to file" node which checks
+/// before calling in.
+pub fn save_image(
     path: &std::path::Path,
     data: &FloatImage,
     color_format: &ColorFormat,

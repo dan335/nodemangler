@@ -53,6 +53,18 @@ pub struct Program {
     node_search_popup: NodeSearchPopup,
     /// Temporary status message shown on screen (text, expiry time).
     status_message: Option<(String, std::time::Instant)>,
+    /// Persistent, user-dismissible warning about the loaded file (saved by
+    /// a newer NodeMangler, and/or unknown nodes preserved as placeholders —
+    /// see `GraphChangedMessage::LoadWarnings`). Shown as a banner at the
+    /// top-center of the work area until the close button is clicked;
+    /// deliberately NOT the 2-second fading `status_message`, because the
+    /// user needs to actually read this one.
+    load_warning: Option<String>,
+    /// Save file that was modified externally while local edits were pending
+    /// (`GraphChangedMessage::FileConflict`). While set, a blocking modal
+    /// asks the user to reload or overwrite; the engine holds auto-saves in
+    /// the meantime, so leaving the modal open is safe.
+    file_conflict: Option<PathBuf>,
     /// Whether any panel tree (main window or a secondary window) currently
     /// has a Preview2D leaf open. Recomputed by `App` every frame from the
     /// union of trees — `Program` cannot see the panel tree itself — and used
@@ -117,6 +129,8 @@ impl Program {
                 graph_run_time: Duration::ZERO,
                 node_search_popup: NodeSearchPopup::new(),
                 status_message: None,
+                load_warning: None,
+                file_conflict: None,
                 has_preview_2d_panel: false,
                 viewers_2d: HashMap::new(),
                 viewers_3d: HashMap::new(),
@@ -252,6 +266,17 @@ impl Program {
                             };
                             (true, Some(AddNodeType::Subgraph), path_opt)
                         }
+                        NodeType::Unknown { .. } => {
+                            // Placeholder node from a newer-version save (see
+                            // `mangler_core::saved_nodes`). There's no
+                            // `AddNodeType` for it, so it renders with
+                            // `node_type: None` for now (clipboard copy/paste
+                            // already skips nodes with no op — see
+                            // `Clipboard::from_selection`). Full display
+                            // support (error badge, non-runnable styling)
+                            // lands in a later pass.
+                            (false, None, None)
+                        }
                     };
 
                     let mut graph_node = GraphNode::new(
@@ -332,6 +357,49 @@ impl Program {
                     }
 
                     //self.needs_to_save = true;
+                }
+                GraphChangedMessage::LoadWarnings {
+                    file_version,
+                    is_newer_than_app,
+                    unknown_nodes,
+                } => {
+                    // Compose the dismissible banner text. Both conditions
+                    // can be true at once (newer file AND unknown nodes), so
+                    // build the message from parts.
+                    let mut parts: Vec<String> = Vec::new();
+                    if is_newer_than_app {
+                        parts.push(format!(
+                            "Saved with NodeMangler {} — you're on {}. Auto-save paused until you edit.",
+                            file_version,
+                            mangler_core::APP_VERSION,
+                        ));
+                    }
+                    if !unknown_nodes.is_empty() {
+                        parts.push(format!(
+                            "{} unknown node(s) preserved as placeholders.",
+                            unknown_nodes.len(),
+                        ));
+                    }
+                    if !parts.is_empty() {
+                        self.load_warning = Some(parts.join(" "));
+                    }
+                }
+                GraphChangedMessage::FileConflict { path } => {
+                    // Save file rewritten externally while local edits are
+                    // pending — remember the path; show_overlays renders the
+                    // Reload-vs-Overwrite modal while this is set.
+                    self.file_conflict = Some(path);
+                }
+                GraphChangedMessage::GraphCleared => {
+                    // The engine is replacing the graph wholesale (conflict
+                    // resolved with "reload from disk"): drop every node,
+                    // selection, and in-progress connection, and stop
+                    // viewing/editing nodes that are about to vanish. The
+                    // fresh LoadedNode stream that follows repopulates the
+                    // editor.
+                    self.graph_editor.clear();
+                    self.editing_node_id = None;
+                    self.viewing_node_id_index = None;
                 }
             }
         }
@@ -972,6 +1040,120 @@ impl Program {
         self.show_menu_drag(ui, graph_rects, theme);
 
         self.show_status_message(ui, work_rect);
+
+        self.show_load_warning_banner(ui, work_rect, theme);
+        self.show_file_conflict_modal(ui, theme);
+    }
+
+    /// Persistent, dismissible load-warning banner (newer-version file /
+    /// unknown-node placeholders), top-center of the work area. Unlike the
+    /// fading `status_message`, this stays until the user closes it — it
+    /// carries information they need to act on (auto-save is being held).
+    fn show_load_warning_banner(&mut self, ui: &mut egui::Ui, work_rect: Rect, theme: &Theme) {
+        let Some(warning) = self.load_warning.clone() else {
+            return;
+        };
+        let colors = theme.get();
+
+        // An Area gets its own layer above the panels and supports widgets,
+        // which plain painter text can't do (the close button needs to be
+        // clickable).
+        let mut dismissed = false;
+        egui::Area::new(egui::Id::new("load_warning_banner"))
+            .order(egui::Order::Foreground)
+            .pivot(egui::Align2::CENTER_TOP)
+            .fixed_pos(Pos2::new(work_rect.center().x, work_rect.top() + 8.0))
+            .show(ui.ctx(), |ui| {
+                // All chrome colors come from the theme (see CLAUDE.md);
+                // window_* values are what popups/modals already use, so the
+                // banner matches them in every theme.
+                egui::Frame::NONE
+                    .fill(colors.window_fill)
+                    .stroke(colors.window_stroke)
+                    .corner_radius(colors.window_corner_radius)
+                    .inner_margin(egui::Margin::symmetric(12, 8))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(&warning)
+                                    .color(colors.override_text_color),
+                            );
+                            ui.add_space(4.0);
+                            // Small close button; frameless so it reads as a
+                            // dismiss glyph rather than a chunky button.
+                            if ui
+                                .add(egui::Button::new("✕").frame(false))
+                                .on_hover_text("dismiss")
+                                .clicked()
+                            {
+                                dismissed = true;
+                            }
+                        });
+                    });
+            });
+
+        if dismissed {
+            self.load_warning = None;
+        }
+    }
+
+    /// Blocking Reload-vs-Overwrite prompt shown while `file_conflict` is
+    /// set (the save file was rewritten externally with local edits
+    /// pending). Same `egui::Modal` pattern as the Libraries panel dialogs.
+    /// Esc / clicking outside deliberately does NOT close it: there is no
+    /// safe "neither" answer, and the engine holds auto-saves until a
+    /// `ResolveFileConflict` arrives, so staying open loses nothing.
+    fn show_file_conflict_modal(&mut self, ui: &mut egui::Ui, theme: &Theme) {
+        let Some(path) = self.file_conflict.clone() else {
+            return;
+        };
+        let colors = theme.get();
+
+        // None = still deciding; Some(keep_ours) = a button was clicked.
+        let mut choice: Option<bool> = None;
+
+        egui::Modal::new(egui::Id::new("file_conflict_modal")).show(ui.ctx(), |ui| {
+            ui.set_width(320.0);
+
+            // Match the Libraries dialogs: make sure any control surfaces
+            // stay legible against the modal background in every theme.
+            ui.style_mut().visuals.extreme_bg_color = colors.widgets_interactive_bg_fill;
+
+            ui.heading("file changed on disk");
+            ui.add_space(8.0);
+
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.display().to_string());
+            ui.label(format!(
+                "'{}' was modified outside this tab while you have unsaved edits.",
+                name
+            ));
+            ui.label("Auto-save is paused until you choose.");
+
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                if ui.button("reload from disk (discard my changes)").clicked() {
+                    choice = Some(false);
+                }
+                if ui.button("overwrite (keep mine)").clicked() {
+                    choice = Some(true);
+                }
+            });
+        });
+        // Note: `modal.should_close()` (Esc / outside click) is intentionally
+        // ignored — see the doc comment above.
+
+        if let Some(keep_ours) = choice {
+            if let Err(err) = self
+                .tx_change_graph
+                .try_send(ChangeGraphMessage::ResolveFileConflict { keep_ours })
+            {
+                println!("Error sending ResolveFileConflict: {:?}", err);
+            }
+            self.file_conflict = None;
+        }
     }
 
     /// Menu-drag handling for one window: while a node-list drag is active,

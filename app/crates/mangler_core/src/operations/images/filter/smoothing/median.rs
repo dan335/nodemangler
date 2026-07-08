@@ -77,7 +77,6 @@ impl OpImageAdjustmentMedian {
         let (width, height) = data.dimensions();
         let radius = scale_to_resolution(radius.max(1) as f32, width, height).round().max(1.0) as i32;
         let ch = data.channels() as usize;
-        let data_ref = &data;
         let w = width as i32;
         let h = height as i32;
         let window = (2 * radius + 1) as usize * (2 * radius + 1) as usize;

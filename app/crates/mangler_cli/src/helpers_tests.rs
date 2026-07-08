@@ -225,6 +225,29 @@ fn enum_variants_all_types_resolve() {
 #[test]
 fn enum_variants_unknown_returns_none() { assert!(enum_variants("NotAType").is_none()); }
 
+/// Guards against the hand-maintained `enum_variants` lists silently
+/// drifting out of sync with the real enums as variants are added in
+/// `mangler_core` (this happened twice: colorspace was missing 5 of 14
+/// variants, imagetype was missing "avif"). Every enum type that exposes a
+/// `types()` count in core is checked here; filtertype and worleydistance
+/// have no such count to compare against and are covered by
+/// `parse_typed_value_all_*_variants` tests in value_parse_tests.rs instead.
+#[test]
+fn enum_variants_counts_match_core_enum_counts() {
+    use mangler_core::color::blend::BlendMode;
+    use mangler_core::color::color_spaces::ColorSpace;
+    use mangler_core::value::{ColorFormat, EdgeMode, ExportPreset, ImageType, TextHAlign, TextVAlign};
+
+    assert_eq!(enum_variants("blendmode").unwrap().len(), BlendMode::types().len());
+    assert_eq!(enum_variants("colorspace").unwrap().len(), ColorSpace::types().len());
+    assert_eq!(enum_variants("imagetype").unwrap().len(), ImageType::types().len());
+    assert_eq!(enum_variants("colorformat").unwrap().len(), ColorFormat::types().len());
+    assert_eq!(enum_variants("edgemode").unwrap().len(), EdgeMode::types().len());
+    assert_eq!(enum_variants("exportpreset").unwrap().len(), ExportPreset::types().len());
+    assert_eq!(enum_variants("texthalign").unwrap().len(), TextHAlign::types().len());
+    assert_eq!(enum_variants("textvalign").unwrap().len(), TextVAlign::types().len());
+}
+
 #[test]
 fn value_type_enum_name_mappings() {
     assert_eq!(value_type_enum_name(&ValueType::BlendMode), Some("blendmode"));
@@ -558,7 +581,6 @@ fn save_value_to_file_writes_valid_json() {
 #[test]
 fn save_image_to_file_creates_file() {
     use mangler_core::float_image::FloatImage;
-    // Use .exr format which supports f32 RGBA natively.
     let path = std::env::temp_dir().join(format!("mangle_test_saveimg_{}.exr", std::process::id()));
     let _ = std::fs::remove_file(&path);
     let img = FloatImage::from_pixel(4, 4, 4, &[1.0, 0.0, 0.0, 1.0]);
@@ -566,4 +588,32 @@ fn save_image_to_file_creates_file() {
     let meta = std::fs::metadata(&path).unwrap();
     let _ = std::fs::remove_file(&path);
     assert!(meta.len() > 0, "saved image file should be non-empty");
+}
+
+/// Regression test: a bare `FloatImage::to_dynamic()` produces `ImageRgba32F`
+/// / `ImageRgb32F` for 3/4-channel images, which the PNG/JPEG/GIF/BMP
+/// encoders reject outright ("the encoder or decoder for Png does not
+/// support the color type Rgba32F"). `save_image_to_file` must pick a
+/// compatible color format per target instead of saving the raw dynamic
+/// image, for every common channel count and container format.
+#[test]
+fn save_image_to_file_supports_common_formats_for_rgb_and_rgba() {
+    use mangler_core::float_image::FloatImage;
+
+    for ext in ["png", "jpg", "bmp", "gif"] {
+        for channels in [1u32, 2, 3, 4] {
+            let path = std::env::temp_dir().join(format!(
+                "mangle_test_saveimg_{}_{}ch_{}.{}",
+                std::process::id(), channels, ext, ext
+            ));
+            let _ = std::fs::remove_file(&path);
+            let pixel = vec![0.5f32; channels as usize];
+            let img = FloatImage::from_pixel(4, 4, channels, &pixel);
+            save_image_to_file(&img, &path)
+                .unwrap_or_else(|e| panic!("saving {channels}-channel image as .{ext} should succeed: {e}"));
+            let meta = std::fs::metadata(&path).unwrap();
+            let _ = std::fs::remove_file(&path);
+            assert!(meta.len() > 0, "saved .{ext} file should be non-empty ({channels} channels)");
+        }
+    }
 }

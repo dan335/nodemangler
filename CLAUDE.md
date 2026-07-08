@@ -51,7 +51,9 @@ cargo run -p mangler_cli  # Run the CLI tool
 - Color is stored as sRGBA floats with conversions to 14 color spaces: sRGB, Linear RGB, HSL, HSV, HWB, Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YCbCr, YUV
 - BlendMode has 17 modes: Over, Lerp, Multiply, Screen, Overlay, SoftLight, HardLight, ColorDodge, ColorBurn, Darken, Lighten, Difference, Exclusion, LinearBurn, LinearDodge, Divide, Subtract
 - Subgraph support: nodes can contain entire graphs for composition
-- Graphs serialize to JSON via `GraphSaveData`
+- Graphs serialize to JSON via `GraphSaveData`; every save is stamped with the app version (`version` field, from `APP_VERSION` = workspace version). Loading tolerates a missing field (empty string = pre-versioning). `save_to_file` serializes through a borrowing mirror `GraphSaveRef` — keep its fields in sync with `GraphSaveData`, including the `#[serde(with = "saved_nodes")]` attribute on `nodes`
+- **Graceful forward compat** (not migration): nodes that fail to parse (e.g. saved by a newer NodeMangler) become `NodeType::Unknown { raw }` placeholders instead of failing the whole load — the tolerant per-node (de)serializer is the `saved_nodes.rs` serde-with module, which writes `raw` back verbatim on save (patching only position + connections), so unknown future fields round-trip. `Graph::load` fills `Graph.load_report` and emits `GraphChangedMessage::LoadWarnings` (before the `LoadedNode` stream); a newer-version file holds auto-save (`hold_saves` in engine `app.rs`) until the user edits, so opening alone never downgrades the file. Version comparison is hand-rolled in `version.rs`
+- **Concurrent-edit safety**: `Graph.last_synced_mtime` (set on load/save) + `disk_is_newer()` make auto-save detect an external rewrite instead of clobbering it — the engine pauses saving, sends `GraphChangedMessage::FileConflict`, and waits for `ChangeGraphMessage::ResolveFileConflict { keep_ours }` (true = overwrite; false = `GraphCleared` + reload from disk). Subgraph child load failures / unknown child nodes surface as `NodeChangedMessage::Error` on the parent subgraph node
 - **No backwards compatibility for saved graphs.** Field renames, value-type splits, and output-order changes land without migration paths; old graphs re-wire or re-export.
 - **Tests go in a separate `_tests.rs` file**: for a file `foo.rs`, place tests in `foo_tests.rs` in the same directory. Link them from the source file using:
   ```rust
@@ -70,6 +72,8 @@ cargo run -p mangler_cli  # Run the CLI tool
 - `app/crates/mangler_core/src/app.rs` — engine-side `App`: spawns tokio task, processes change messages
 - `app/crates/mangler_core/src/operations/mod.rs` — `operations!` macro, `Operation` enum, operation list
 - `app/crates/mangler_core/src/thumbnail_service.rs` — async thumbnail worker with supersede-by-seq coalescing
+- `app/crates/mangler_core/src/version.rs` — `parse_version` / `is_newer_than_app` (strict `X.Y.Z`, no semver crate)
+- `app/crates/mangler_core/src/saved_nodes.rs` — tolerant serde-with module for `GraphSaveData.nodes`: unknown nodes → placeholders on load, verbatim raw JSON write-back on save
 - `app/crates/mangler_core/src/color/` — `Color` struct and color space conversions
 - `app/crates/mangler_gui/src/main.rs` — entry point, eframe window setup
 - `app/crates/mangler_gui/src/app.rs` — GUI `App`: manages programs, themes, menu bar, panel tree + secondary windows
