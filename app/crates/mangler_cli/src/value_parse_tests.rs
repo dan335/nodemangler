@@ -405,78 +405,32 @@ fn parse_typed_value_unknown_prefix() {
     assert!(parse_typed_value("foo:bar").is_err());
 }
 
-/// All blend mode variants parse correctly.
+/// Every variant of every enum-like value type parses correctly, for whatever
+/// set of variants `enum_variants` currently derives from `mangler_core` —
+/// this stays exhaustive automatically as variants are added, instead of
+/// silently going stale like the hand-copied literal lists it replaced.
 #[test]
-fn parse_typed_value_all_blend_mode_variants() {
-    let variants = [
-        "Over", "Lerp", "Multiply", "Screen", "Overlay", "SoftLight", "HardLight",
-        "ColorDodge", "ColorBurn", "Darken", "Lighten", "Difference", "Exclusion",
-        "LinearBurn", "LinearDodge", "Divide", "Subtract",
-    ];
-    for v in &variants {
-        let input = format!("blendmode:{v}");
-        let result = parse_typed_value(&input);
-        assert!(result.is_ok(), "blendmode:{v} should parse, got: {:?}", result.err());
-        // Verify the JSON contains the variant name.
-        let json = serde_json::to_string(&result.unwrap()).unwrap();
-        assert!(json.contains(v), "JSON should contain '{v}', got: {json}");
+fn parse_typed_value_all_enum_variants_for_every_type() {
+    use crate::helpers::ENUM_TYPE_NAMES;
+
+    for type_name in ENUM_TYPE_NAMES {
+        let variants = crate::helpers::enum_variants(type_name)
+            .unwrap_or_else(|| panic!("enum_variants should resolve '{type_name}'"));
+        assert!(!variants.is_empty(), "{type_name} should have at least one variant");
+        for v in &variants {
+            let input = format!("{type_name}:{v}");
+            let result = parse_typed_value(&input);
+            assert!(result.is_ok(), "{input} should parse, got: {:?}", result.err());
+        }
     }
 }
 
-/// All color space variants parse correctly.
+/// Blend mode values round-trip through JSON with the variant name intact.
 #[test]
-fn parse_typed_value_all_color_space_variants() {
-    let variants = [
-        "Srgb", "RgbLinear", "Hsl", "Hsv", "Lch", "Xyz", "Lab", "Yuv", "Cmyk",
-        "Oklab", "Oklch", "Hwb", "Ycbcr", "Xyy",
-    ];
-    for v in &variants {
-        let input = format!("colorspace:{v}");
-        assert!(parse_typed_value(&input).is_ok(), "colorspace:{v} should parse");
-    }
-}
-
-/// All filter type variants parse correctly.
-#[test]
-fn parse_typed_value_all_filter_type_variants() {
-    let variants = ["catmullrom", "gaussian", "lanczos3", "nearest", "triangle"];
-    for v in &variants {
-        let input = format!("filtertype:{v}");
-        assert!(parse_typed_value(&input).is_ok(), "filtertype:{v} should parse");
-    }
-}
-
-/// Image type variants that the library can round-trip parse correctly.
-#[test]
-fn parse_typed_value_all_image_type_variants() {
-    let variants = [
-        "png", "jpg", "gif", "webp", "pnm", "tiff", "tga", "bmp", "ico", "hdr", "exr", "ff",
-        "avif", "qoi",
-    ];
-    for v in &variants {
-        let input = format!("imagetype:{v}");
-        assert!(parse_typed_value(&input).is_ok(), "imagetype:{v} should parse");
-    }
-}
-
-/// All color format variants parse correctly.
-#[test]
-fn parse_typed_value_all_color_format_variants() {
-    let variants = ["Rgba32F", "Rgb32F", "Rgba16", "Rgb16", "GrayA16", "Gray16", "Rgba8", "Rgb8", "GrayA8", "Gray8"];
-    for v in &variants {
-        let input = format!("colorformat:{v}");
-        assert!(parse_typed_value(&input).is_ok(), "colorformat:{v} should parse");
-    }
-}
-
-/// All worley distance function variants parse correctly.
-#[test]
-fn parse_typed_value_all_worley_distance_variants() {
-    let variants = ["Chebyshev", "Euclidean", "EuclideanSquared", "Manhattan", "Quadratic"];
-    for v in &variants {
-        let input = format!("worleydistance:{v}");
-        assert!(parse_typed_value(&input).is_ok(), "worleydistance:{v} should parse");
-    }
+fn parse_typed_value_blend_mode_variant_in_json() {
+    let result = parse_typed_value("blendmode:Multiply").unwrap();
+    let json = serde_json::to_string(&result).unwrap();
+    assert!(json.contains("Multiply"), "JSON should contain 'Multiply', got: {json}");
 }
 
 // ── JSON fallback edge cases ─────────────────────────────────────────────

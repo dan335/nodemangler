@@ -225,29 +225,6 @@ fn enum_variants_all_types_resolve() {
 #[test]
 fn enum_variants_unknown_returns_none() { assert!(enum_variants("NotAType").is_none()); }
 
-/// Guards against the hand-maintained `enum_variants` lists silently
-/// drifting out of sync with the real enums as variants are added in
-/// `mangler_core` (this happened twice: colorspace was missing 5 of 14
-/// variants, imagetype was missing "avif"). Every enum type that exposes a
-/// `types()` count in core is checked here; filtertype and worleydistance
-/// have no such count to compare against and are covered by
-/// `parse_typed_value_all_*_variants` tests in value_parse_tests.rs instead.
-#[test]
-fn enum_variants_counts_match_core_enum_counts() {
-    use mangler_core::color::blend::BlendMode;
-    use mangler_core::color::color_spaces::ColorSpace;
-    use mangler_core::value::{ColorFormat, EdgeMode, ExportPreset, ImageType, TextHAlign, TextVAlign};
-
-    assert_eq!(enum_variants("blendmode").unwrap().len(), BlendMode::types().len());
-    assert_eq!(enum_variants("colorspace").unwrap().len(), ColorSpace::types().len());
-    assert_eq!(enum_variants("imagetype").unwrap().len(), ImageType::types().len());
-    assert_eq!(enum_variants("colorformat").unwrap().len(), ColorFormat::types().len());
-    assert_eq!(enum_variants("edgemode").unwrap().len(), EdgeMode::types().len());
-    assert_eq!(enum_variants("exportpreset").unwrap().len(), ExportPreset::types().len());
-    assert_eq!(enum_variants("texthalign").unwrap().len(), TextHAlign::types().len());
-    assert_eq!(enum_variants("textvalign").unwrap().len(), TextVAlign::types().len());
-}
-
 #[test]
 fn value_type_enum_name_mappings() {
     assert_eq!(value_type_enum_name(&ValueType::BlendMode), Some("blendmode"));

@@ -265,36 +265,48 @@ pub(crate) const ENUM_TYPE_ALIASES: &[(&str, &str)] = &[
     ("ExportPreset", "exportpreset"),
 ];
 
+/// Extract the serialized variant name from a `Value` that serializes as
+/// `{"Tag": "variant string"}` — true of every enum-like value type, whether
+/// via plain derive (e.g. `{"ColorSpace":"Oklab"}`) or a custom serializer
+/// (e.g. `FilterType`'s `{"FilterType":"lanczos3"}`, `ImageType`'s
+/// `{"ImageType":"avif"}`).
+fn value_variant_name(value: &mangler_core::value::Value) -> String {
+    let json = serde_json::to_value(value).expect("Value always serializes");
+    json.as_object()
+        .and_then(|obj| obj.values().next())
+        .and_then(|v| v.as_str())
+        .expect("enum-wrapped Value serializes as {Tag: string}")
+        .to_string()
+}
+
 /// Return the valid variant names for an enum-like value type, or None if unknown.
-pub(crate) fn enum_variants(type_name: &str) -> Option<Vec<&'static str>> {
+///
+/// Derived from each type's own `types()` (or, for `FilterType` — an external
+/// `image` crate type with no `types()` of its own — `filter_type_variants()`)
+/// rather than hand-copied, so a variant added in `mangler_core` shows up here
+/// automatically instead of silently drifting out of sync (this happened
+/// twice: colorspace was missing 5 of 14 variants, imagetype was missing "avif").
+pub(crate) fn enum_variants(type_name: &str) -> Option<Vec<String>> {
+    use mangler_core::color::blend::BlendMode;
+    use mangler_core::color::color_spaces::ColorSpace;
+    use mangler_core::operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction;
+    use mangler_core::value::{
+        filter_type_variants, ColorFormat, EdgeMode, ExportPreset, ImageType, TextHAlign, TextVAlign, Value,
+    };
+
     match type_name.to_lowercase().as_str() {
-        "blendmode" => Some(vec![
-            "Over", "Lerp", "Multiply", "Screen", "Overlay", "SoftLight", "HardLight",
-            "ColorDodge", "ColorBurn", "Darken", "Lighten", "Difference", "Exclusion",
-            "LinearBurn", "LinearDodge", "Divide", "Subtract",
-        ]),
-        "colorspace" => Some(vec![
-            "Srgb", "RgbLinear", "Hsl", "Hsv", "Lch", "Xyz", "Lab", "Yuv", "Cmyk",
-            "Oklab", "Oklch", "Hwb", "Ycbcr", "Xyy",
-        ]),
-        "filtertype" => Some(vec![
-            "catmullrom", "gaussian", "lanczos3", "nearest", "triangle",
-        ]),
-        "imagetype" => Some(vec![
-            "png", "jpg", "gif", "webp", "pnm", "tiff", "tga",
-            "bmp", "ico", "hdr", "exr", "ff", "avif", "qoi",
-        ]),
-        "colorformat" => Some(vec![
-            "Rgba32F", "Rgb32F", "Rgba16", "Rgb16", "GrayA16", "Gray16",
-            "Rgba8", "Rgb8", "GrayA8", "Gray8",
-        ]),
-        "worleydistance" | "noiseworleydistancefunction" => Some(vec![
-            "Chebyshev", "Euclidean", "EuclideanSquared", "Manhattan", "Quadratic",
-        ]),
-        "edgemode" => Some(vec!["Fill", "Wrap", "Extend", "Mirror"]),
-        "texthalign" => Some(vec!["Left", "Center", "Right"]),
-        "textvalign" => Some(vec!["Top", "Middle", "Bottom"]),
-        "exportpreset" => Some(vec!["Godot", "Unity", "Unreal", "Custom"]),
+        "blendmode" => Some(BlendMode::types().into_iter().map(|v| value_variant_name(&Value::BlendMode(v))).collect()),
+        "colorspace" => Some(ColorSpace::types().into_iter().map(|v| value_variant_name(&Value::ColorSpace(v))).collect()),
+        "filtertype" => Some(filter_type_variants().into_iter().map(|v| value_variant_name(&Value::FilterType(v))).collect()),
+        "imagetype" => Some(ImageType::types().into_iter().map(|t| value_variant_name(&Value::ImageType(t.format()))).collect()),
+        "colorformat" => Some(ColorFormat::types().into_iter().map(|v| value_variant_name(&Value::ColorFormat(v))).collect()),
+        "worleydistance" | "noiseworleydistancefunction" => Some(
+            NoiseWorleyDistanceFunction::types().into_iter().map(|v| value_variant_name(&Value::NoiseWorleyDistanceFunction(v))).collect(),
+        ),
+        "edgemode" => Some(EdgeMode::types().into_iter().map(|v| value_variant_name(&Value::EdgeMode(v))).collect()),
+        "texthalign" => Some(TextHAlign::types().into_iter().map(|v| value_variant_name(&Value::TextHAlign(v))).collect()),
+        "textvalign" => Some(TextVAlign::types().into_iter().map(|v| value_variant_name(&Value::TextVAlign(v))).collect()),
+        "exportpreset" => Some(ExportPreset::types().into_iter().map(|v| value_variant_name(&Value::ExportPreset(v))).collect()),
         _ => None,
     }
 }

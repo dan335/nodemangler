@@ -942,6 +942,19 @@ impl TextVAlign {
     }
 }
 
+/// All five `FilterType` variants, in the same order as `serialize_filter_type`'s names.
+/// `FilterType` is `image::imageops::FilterType` (an external type with no `Serialize`
+/// of its own), so unlike the other enum value types it can't carry its own `types()`.
+pub fn filter_type_variants() -> [FilterType; 5] {
+    [
+        FilterType::CatmullRom,
+        FilterType::Gaussian,
+        FilterType::Lanczos3,
+        FilterType::Nearest,
+        FilterType::Triangle,
+    ]
+}
+
 /// Custom serializer for `FilterType` since it doesn't implement `Serialize`.
 fn serialize_filter_type<S>(value: &FilterType, serializer: S) -> Result<S::Ok, S::Error>
 where
