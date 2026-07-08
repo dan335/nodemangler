@@ -714,7 +714,7 @@ impl Program {
 
             if show_graph_settings {
                 let graph_settings_response =
-                    graph_settings_panel::show(ui, &mut self.app.name, &self.app.save_path);
+                    graph_settings_panel::show(ui, &mut self.app.name, &self.app.save_path, theme);
 
                 // name changed
                 if let Some(new_name) = graph_settings_response.new_name {

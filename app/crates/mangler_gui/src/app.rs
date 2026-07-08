@@ -526,6 +526,32 @@ fn setup_fonts(ctx: &egui::Context) {
         .or_default()
         .insert(0, "manrope-light".to_owned());
 
+    // Semibold weight for panel titles ("bold" per the redesign) — a
+    // dedicated named family rather than swapping the whole Proportional
+    // family, so most text stays on Manrope-Light and only call sites that
+    // opt in via `semibold_family()` get the heavier weight.
+    fonts.font_data.insert(
+        "manrope-semibold".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
+            "../assets/Manrope-SemiBold.ttf"
+        ))),
+    );
+
+    // Clone the (already-finalized) Proportional fallback list so the
+    // semibold family still falls back to phosphor icons and the default
+    // fonts for glyphs Manrope-SemiBold doesn't cover (non-latin scripts,
+    // symbols), same as the regular Proportional family does.
+    let mut semibold_fallbacks = fonts
+        .families
+        .get(&egui::FontFamily::Proportional)
+        .cloned()
+        .unwrap_or_default();
+    semibold_fallbacks.insert(0, "manrope-semibold".to_owned());
+    fonts.families.insert(
+        egui::FontFamily::Name("semibold".into()),
+        semibold_fallbacks,
+    );
+
     // Tell egui to use these fonts:
     ctx.set_fonts(fonts);
 }

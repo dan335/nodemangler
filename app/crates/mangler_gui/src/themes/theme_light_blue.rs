@@ -37,6 +37,16 @@ pub fn theme_light_blue() -> ThemeValues
         override_text_color: Hsva::new(0.565, 0.05, 0.1, 1.0).into(),
         text_faint: Hsva::new(0.565, 0.05, 0.3, 1.0).into(),
 
+        // Settings-panel section hairline: same hue/saturation as
+        // `extreme_bg_color` (0.565, 0.15) but a step darker in value
+        // (0.70 vs 0.8), landing at rgb(203,212,218) — a subtle blue-gray
+        // divider a shade darker than the extreme_bg surface.
+        settings_section_rule: Hsva::new(0.565, 0.15, 0.70, 1.0).into(),
+        // Reuse `blue_bright` (also `grid_connection_line` /
+        // `grid_connection_dot`) as the link accent: it's a distinct hue from
+        // `pink_accent` (selection/error), so a link doesn't read as a warning.
+        text_link: blue_bright,
+
         histogram_bg: Hsva::new(0.565, 0.08, 0.9, 1.0).into(),
         histogram_luminance: Hsva::new(0.565, 0.08, 0.7, 1.0).into(),
         histogram_red: Hsva::new(0.989, 0.763, 0.745, 0.57).into(),

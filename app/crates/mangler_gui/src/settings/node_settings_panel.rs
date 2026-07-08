@@ -10,7 +10,11 @@ use mangler_core::{
 };
 use egui_extras::{TableBuilder, Column};
 use tokio::sync::mpsc::Sender;
-use crate::{graph::graph_node::GraphNode, settings::histogram_widget, themes::theme::Theme};
+use crate::{
+    graph::graph_node::GraphNode,
+    settings::{histogram_widget, section::{section_label, section_rule}},
+    themes::theme::Theme,
+};
 
 /// Send a value change message to the engine and update the local input.
 fn change_value(
@@ -57,6 +61,63 @@ fn show_color_swatch(ui: &mut egui::Ui, color: Color32) {
     if ui.is_rect_visible(rect) {
         ui.painter().rect_filled(rect, 2.0, color);
     }
+}
+
+/// Paint a small solid disclosure triangle inside `rect`: right-pointing when
+/// closed, down-pointing when open — the same affordance as egui's own
+/// `CollapsingHeader` icon. Painted directly with `Shape::convex_polygon`
+/// rather than the U+25B8/U+25BE Unicode triangle glyphs, which aren't
+/// covered by the app's fonts and rendered as replacement-glyph boxes (the
+/// reported "square after help").
+fn paint_disclosure_triangle(ui: &egui::Ui, rect: egui::Rect, open: bool, color: Color32) {
+    if !ui.is_rect_visible(rect) {
+        return;
+    }
+    let c = rect.center();
+    let r = rect.width().min(rect.height()) * 0.5 * 0.7;
+    let points = if open {
+        // Down-pointing triangle.
+        vec![c + vec2(-r, -r * 0.6), c + vec2(r, -r * 0.6), c + vec2(0.0, r * 0.8)]
+    } else {
+        // Right-pointing triangle.
+        vec![c + vec2(-r * 0.6, -r), c + vec2(-r * 0.6, r), c + vec2(r * 0.8, 0.0)]
+    };
+    ui.painter().add(egui::Shape::convex_polygon(points, color, egui::Stroke::NONE));
+}
+
+/// Borderless "✕" close control for the node settings panel header.
+///
+/// Quiet (`text_faint`) at rest, switches to the theme's selected-menu-item
+/// accent (`menu_bar_button_selected` — still the rose accent in dark_green,
+/// even after `widgets_active_bg_fill` stops being rose) on hover, with a
+/// pointing-hand cursor so it still reads as clickable despite having no
+/// button frame. Returns true if clicked this frame.
+///
+/// A plain `ui.add(Label::new(...))` bakes its text color in at layout time,
+/// before we get a chance to know whether the pointer is hovering it. So
+/// this instead lays the glyph out once, allocates+interacts the rect to get
+/// an accurate `hovered()` for *this* frame (egui hit-tests against the live
+/// pointer position as soon as a rect is allocated — no one-frame lag), and
+/// then paints the galley with `galley_with_override_text_color` using
+/// whichever color that hover state resolves to.
+fn close_control(ui: &mut egui::Ui, theme: &Theme) -> bool {
+    let font_id = egui::TextStyle::Body.resolve(ui.style());
+    // The color baked in here doesn't matter — it's replaced below.
+    let galley = ui.painter().layout_no_wrap("✕".to_owned(), font_id, theme.get().text_faint);
+    let (rect, response) = ui.allocate_exact_size(galley.size(), egui::Sense::click());
+    let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+
+    let color = if response.hovered() {
+        theme.get().menu_bar_button_selected
+    } else {
+        theme.get().text_faint
+    };
+
+    if ui.is_rect_visible(rect) {
+        ui.painter().galley_with_override_text_color(rect.min, galley, color);
+    }
+
+    response.clicked()
 }
 
 /// Generic ComboBox for any enum type that has a list of variants.
@@ -120,44 +181,94 @@ pub fn show(
 ) -> NodeSettingsResponse {
     let mut node_settings_response = NodeSettingsResponse::new();
 
-    // Heading: show custom name if set, otherwise operation name.
+    // Title row: "{name} settings" as a small semibold label, plus a
+    // borderless close control right-aligned. Replaces the old 22px
+    // ui.heading() + framed "X" button — this panel is visible constantly
+    // while a node is selected, so the new design keeps its chrome quiet.
     let display_name = node.custom_name.as_deref().unwrap_or(&node.settings.name);
     ui.horizontal(|ui| {
-        ui.heading(format!("{} settings", display_name));
+        // `.strong()` resolves to `widgets.active.fg_stroke`, which is a rose
+        // accent in dark_green — not a weight change. Use the dedicated
+        // semibold font family instead so the title is actually bold, with no
+        // explicit color override (the panel's normal text color is correct).
+        ui.label(RichText::new(format!("{} settings", display_name)).size(15.0).family(crate::themes::theme::semibold_family()));
         ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("X").clicked() {
+            // Leave room for the corner kind-switcher button that panel_view.rs
+            // draws over the panel's top-right corner (rect.right()-26..-6,
+            // top()+4..+24) — without this gap the ✕ lands underneath it.
+            ui.add_space(24.0);
+            if close_control(ui, theme) {
                 node_settings_response.deselect_node = true;
             }
         });
     });
-    ui.label(egui::RichText::new(format!("{}", node.settings.description)).color(theme.get().text_faint));
 
-    // Collapsible long-form help. Only shown when the operation provides help
-    // text so nodes that haven't been documented yet don't get an empty
-    // disclosure triangle. Default-closed — the short description above is
-    // the primary summary, and help is there for users who want more depth.
-    if !node.settings.help.is_empty() {
-        ui.add_space(4.0);
-        egui::CollapsingHeader::new("help")
-            .id_salt("node_help")
-            .default_open(false)
-            .show(ui, |ui| {
-                ui.label(
-                    egui::RichText::new(&node.settings.help)
-                        .color(theme.get().text_faint),
+    // Description, as a plain wrapped label. The "help ▸/▾" toggle used to be
+    // glued to the end of this text via `horizontal_wrapped`, but that made
+    // it possible for the toggle to land mid-line, and it used Unicode
+    // disclosure-triangle glyphs the app's fonts don't cover (rendered as
+    // replacement-glyph boxes — the reported "square after help"). It now
+    // lives on its own line below, with a hand-painted triangle instead.
+    // Keyed by node id so the open/closed state is remembered per node —
+    // without it, opening help on one node would leave it open for whatever
+    // node is selected next in the same panel.
+    let help_open_id = ui.id().with(&node.id).with("node_help_open");
+    let mut help_open = ui.data(|d| d.get_temp::<bool>(help_open_id).unwrap_or(false));
+    let has_help = !node.settings.help.is_empty();
+
+    ui.label(
+        RichText::new(&node.settings.description)
+            .color(theme.get().text_faint)
+            .size(12.0),
+    );
+
+    if has_help {
+        // The "help" label and the disclosure triangle are allocated as
+        // separate responses (a `Label` can't easily share a rect with a
+        // hand-painted shape) but unioned into one response so the whole
+        // row is a single clickable target with one pointing-hand cursor.
+        let toggle_response = ui
+            .horizontal(|ui| {
+                let label_response = ui.add(
+                    Label::new(
+                        RichText::new("help")
+                            .color(theme.get().text_link)
+                            .size(12.0),
+                    )
+                    .sense(egui::Sense::click()),
                 );
-            });
-    }
+                let (icon_rect, icon_response) =
+                    ui.allocate_exact_size(vec2(10.0, 10.0), egui::Sense::click());
+                paint_disclosure_triangle(ui, icon_rect, help_open, theme.get().text_link);
+                label_response.union(icon_response)
+            })
+            .inner
+            .on_hover_cursor(egui::CursorIcon::PointingHand);
 
-    ui.add_space(12.0);
+        if toggle_response.clicked() {
+            help_open = !help_open;
+        }
+
+        // Only persist state for nodes that actually have help text, so temp
+        // memory doesn't accumulate an entry per node for nothing.
+        ui.data_mut(|d| d.insert_temp(help_open_id, help_open));
+        if help_open {
+            ui.add_space(4.0);
+            ui.label(
+                RichText::new(&node.settings.help)
+                    .color(theme.get().text_faint)
+                    .size(12.0),
+            );
+        }
+    }
 
     // Subgraph nodes get a dedicated file picker in place of the old synthetic
     // "file path" input slot. The picker drives NodeType::Subgraph.path via the
     // SetSubgraphPath message; exposed inputs/outputs from the child surface
     // below in the normal inputs table.
     if node.is_subgraph {
-        ui.heading("subgraph");
-        ui.add_space(8.0);
+        section_rule(ui, theme);
+        section_label(ui, "subgraph");
         ui.horizontal(|ui| {
             let label = match &node.subgraph_path {
                 Some(p) => p.file_name()
@@ -182,11 +293,10 @@ pub fn show(
                 }
             }
         });
-        ui.add_space(12.0);
     }
 
-    ui.heading("inputs");
-    ui.add_space(12.0);
+    section_rule(ui, theme);
+    section_label(ui, "inputs");
 
     // Extract sibling image format before the mutable input loop so the
     // ColorFormat dropdown can grey out incompatible formats.
@@ -227,21 +337,19 @@ pub fn show(
     }
 
     ui.push_id("inputs", |ui| {
-        TableBuilder::new(ui).striped(true)
+        // No header row and no striping: the compact design relies on the
+        // "inputs" section label above plus generous row height instead of a
+        // name/value/exp header to explain the columns.
+        // The value column is `.clip(true)`: without it, a long unclipped
+        // value (e.g. a url output, a long text default) inflates the
+        // table's min content width past the panel's available width, which
+        // then pushes every width-derived sibling (histogram, section rules)
+        // off screen too. Clipping bounds the column at its allotted width
+        // regardless of content length.
+        TableBuilder::new(ui)
         .column(Column::auto().at_least(50.0).at_most(130.0).resizable(false))
-        .column(Column::remainder().resizable(false))
+        .column(Column::remainder().clip(true).resizable(false))
         .column(Column::exact(26.0).resizable(false))
-        .header(30.0, |mut header| {
-            header.col(|ui| {
-                ui.label(RichText::new("name").color(theme.get().text_faint));
-            });
-            header.col(|ui| {
-                ui.label(RichText::new("value").color(theme.get().text_faint));
-            });
-            header.col(|ui| {
-                ui.label(RichText::new("exp").color(theme.get().text_faint));
-            });
-        })
         .body(|mut body| {
             for (input_index, input) in node.inputs.iter_mut().enumerate() {
                 // Hide encoder settings that don't apply to the selected image
@@ -280,15 +388,17 @@ pub fn show(
                     continue;
                 }
 
-                body.row(30.0, |mut row| {
+                body.row(24.0, |mut row| {
                     row.col(|ui| {
                         ui.horizontal_centered(|ui| {
                             // Double-clicking the input name resets the value
                             // to the operation's default. `Sense::click()` is
                             // needed because `ui.label` allocates a
                             // hover-only rect that can't detect clicks.
-                            let label_response = ui
-                                .add(Label::new(&input.name).sense(egui::Sense::click()));
+                            let label_response = ui.add(
+                                Label::new(RichText::new(&input.name).color(theme.get().text_faint))
+                                    .sense(egui::Sense::click()),
+                            );
                             // Build a hover tooltip that combines the input's
                             // description (when the operation provides one)
                             // with the "double-click to reset" affordance hint.
@@ -303,7 +413,7 @@ pub fn show(
 
                     row.col(|ui| {
                         ui.horizontal_centered(|ui| {
-                            input_value(ui, input.value.clone(), input, input_index, &node.id, &tx_change_node, sibling_image_format);
+                            input_value(ui, input.value.clone(), input, input_index, &node.id, &tx_change_node, sibling_image_format, theme);
 
                             // Show error indicator if the input has a validation error.
                             if input.is_error {
@@ -316,7 +426,13 @@ pub fn show(
                     row.col(|ui| {
                         ui.horizontal_centered(|ui| {
                             let mut is_exposed = input.is_exposed;
-                            if ui.add(egui::Checkbox::new(&mut is_exposed, "")).changed() {
+                            // The "exp" column header is gone in the compact
+                            // design, so the checkbox now explains itself
+                            // on hover instead.
+                            if ui.add(egui::Checkbox::new(&mut is_exposed, ""))
+                                .on_hover_text("expose on parent subgraph")
+                                .changed()
+                            {
                                 let message = ChangeNodeMessage::SetExposeInput {
                                     node_id: node.id.clone(),
                                     input_index,
@@ -337,32 +453,21 @@ pub fn show(
     });
 
 
-    ui.add_space(40.0);
-    ui.heading("outputs");
-    ui.add_space(12.0);
+    section_rule(ui, theme);
+    section_label(ui, "outputs");
 
     ui.push_id("outputs", |ui| {
-        TableBuilder::new(ui).striped(true)
+        // See the "inputs" table above: no header row, no striping.
+        TableBuilder::new(ui)
             .column(Column::auto().at_least(50.0).at_most(130.0).resizable(false))
-            .column(Column::remainder().resizable(false))
+            .column(Column::remainder().clip(true).resizable(false))
             .column(Column::exact(26.0).resizable(false))
-            .header(30.0, |mut header| {
-                header.col(|ui| {
-                    ui.label(RichText::new("name").color(theme.get().text_faint));
-                });
-                header.col(|ui| {
-                    ui.label(RichText::new("value").color(theme.get().text_faint));
-                });
-                header.col(|ui| {
-                    ui.label(RichText::new("exp").color(theme.get().text_faint));
-                });
-            })
             .body(|mut body| {
                 for (output_index, output) in node.outputs.iter_mut().enumerate() {
-                    body.row(30.0, |mut row| {
+                    body.row(24.0, |mut row| {
                         row.col(|ui| {
                             ui.horizontal_centered(|ui| {
-                                let label = ui.label(&output.name);
+                                let label = ui.label(RichText::new(&output.name).color(theme.get().text_faint));
                                 // Show the per-output description as a tooltip
                                 // when the operation provides one. Outputs have
                                 // no double-click-reset affordance, so empty
@@ -375,14 +480,20 @@ pub fn show(
 
                         row.col(|ui| {
                             ui.horizontal_centered(|ui| {
-                                output_value(ui, &output.value);
+                                output_value(ui, &output.value, theme);
                             });
                         });
 
                         row.col(|ui| {
                             ui.horizontal_centered(|ui| {
                                 let mut is_exposed = output.is_exposed;
-                                if ui.add(egui::Checkbox::new(&mut is_exposed, "")).changed() {
+                                // The "exp" column header is gone in the compact
+                                // design, so the checkbox now explains itself
+                                // on hover instead.
+                                if ui.add(egui::Checkbox::new(&mut is_exposed, ""))
+                                    .on_hover_text("expose on parent subgraph")
+                                    .changed()
+                                {
                                     let message = ChangeNodeMessage::SetExposeOutput {
                                         node_id: node.id.clone(),
                                         output_index,
@@ -406,9 +517,8 @@ pub fn show(
     // Show for nodes that have at least one image output.
     let first_image_output_index = node.outputs.iter().position(|o| matches!(&o.value, Value::Image { .. }));
     if let Some(output_index) = first_image_output_index {
-        ui.add_space(40.0);
-        ui.heading("visualizations");
-        ui.add_space(12.0);
+        section_rule(ui, theme);
+        section_label(ui, "visualizations");
 
         // Collapsible histogram of the first image output
         egui::CollapsingHeader::new("histogram")
@@ -421,28 +531,23 @@ pub fn show(
             });
     }
 
-    ui.add_space(40.0);
-    ui.heading("settings");
-    ui.add_space(12.0);
+    // Renamed from "settings" (which collided with the panel's own name) to
+    // "node" — this section holds node-level (not operation-level) settings:
+    // the custom display name and the enabled toggle.
+    section_rule(ui, theme);
+    section_label(ui, "node");
 
-    ui.push_id("settings", |ui| {
-        TableBuilder::new(ui).striped(true)
+    ui.push_id("node_settings", |ui| {
+        // See the "inputs" table above: no header row, no striping.
+        TableBuilder::new(ui)
             .column(Column::auto().at_least(50.0).at_most(130.0).resizable(false))
-            .column(Column::remainder().resizable(false))
-            .header(30.0, |mut header| {
-                header.col(|ui| {
-                    ui.label(RichText::new("name").color(theme.get().text_faint));
-                });
-                header.col(|ui| {
-                    ui.label(RichText::new("value").color(theme.get().text_faint));
-                });
-            })
+            .column(Column::remainder().clip(true).resizable(false))
             .body(|mut body| {
                 // Custom name row
-                body.row(30.0, |mut row| {
+                body.row(24.0, |mut row| {
                     row.col(|ui| {
                         ui.horizontal_centered(|ui| {
-                            ui.label("name");
+                            ui.label(RichText::new("name").color(theme.get().text_faint));
                         });
                     });
                     row.col(|ui| {
@@ -463,10 +568,10 @@ pub fn show(
                 });
 
                 // Enabled row
-                body.row(30.0, |mut row| {
+                body.row(24.0, |mut row| {
                     row.col(|ui| {
                         ui.horizontal_centered(|ui| {
-                            ui.label("enabled");
+                            ui.label(RichText::new("enabled").color(theme.get().text_faint));
                         });
                     });
                     row.col(|ui| {
@@ -497,47 +602,70 @@ pub fn show(
 
 
 /// Display a read-only output value. Shows all Value types with appropriate formatting.
-fn output_value(ui: &mut egui::Ui, value: &Value) {
+///
+/// Everything except the color swatch renders as monospace `text_faint` —
+/// these are read-only data values, not editable settings, so they're kept
+/// visually quiet and use a fixed-width font that suits numbers/dimensions.
+fn output_value(ui: &mut egui::Ui, value: &Value, theme: &Theme) {
+    let faint = theme.get().text_faint;
+    // Small helper so each arm below is a single call instead of repeating
+    // `RichText::new(...).monospace().color(faint)` at every match arm.
+    let mono = |ui: &mut egui::Ui, text: String| {
+        ui.add(Label::new(RichText::new(text).monospace().color(faint)));
+    };
+    // Same, but for value kinds that can be arbitrarily long (urls, paths):
+    // `.truncate()` ellipsizes instead of letting the label's natural width
+    // inflate the (now-clipped) table column back open past the panel edge.
+    let mono_truncate = |ui: &mut egui::Ui, text: String| {
+        ui.add(Label::new(RichText::new(text).monospace().color(faint)).truncate());
+    };
+
     match value {
-        Value::Bool(v) => { ui.add(Label::new(v.to_string())); }
-        Value::Integer(v) => { ui.add(Label::new(v.to_string())); }
-        Value::Decimal(v) => { ui.add(Label::new(format!("{:.4}", v))); }
-        Value::Text(v) => { ui.add(Label::new(v.to_string())); }
+        Value::Bool(v) => mono(ui, v.to_string()),
+        Value::Integer(v) => mono(ui, v.to_string()),
+        Value::Decimal(v) => mono(ui, format!("{:.4}", v)),
+        Value::Text(v) => mono_truncate(ui, v.to_string()),
         Value::Color(v) => {
             let rgba = v.to_srgb_u8();
             let color = Color32::from_rgba_unmultiplied(rgba.0, rgba.1, rgba.2, rgba.3);
             show_color_swatch(ui, color);
         }
         Value::Image { data, change_id: _ } => {
-            ui.add(Label::new(format!("{}x{} ({}ch)", data.width(), data.height(), data.channels())));
+            // "×" and "·" instead of "x"/parentheses — reads less like a
+            // math expression and more like a compact data readout.
+            mono(ui, format!("{}×{} · {}ch", data.width(), data.height(), data.channels()));
         }
-        Value::Path(p) => { ui.add(Label::new(p.display().to_string())); }
-        Value::FilterType(ft) => { ui.add(Label::new(filter_type_display_name(ft))); }
-        Value::ColorFormat(cf) => { ui.add(Label::new(format!("{:?}", cf))); }
-        Value::ImageType(it) => { ui.add(Label::new(format!("{:?}", it))); }
-        Value::Trigger => { ui.add(Label::new("trigger")); }
-        Value::NoiseWorleyDistanceFunction(v) => { ui.add(Label::new(format!("{:?}", v))); }
-        Value::ColorSpace(v) => { ui.add(Label::new(format!("{:?}", v))); }
-        Value::BlendMode(v) => { ui.add(Label::new(format!("{:?}", v))); }
-        Value::EdgeMode(v) => { ui.add(Label::new(format!("{:?}", v))); }
-        Value::TextHAlign(v) => { ui.add(Label::new(format!("{:?}", v))); }
-        Value::TextVAlign(v) => { ui.add(Label::new(format!("{:?}", v))); }
-        Value::ExportPreset(v) => { ui.add(Label::new(format!("{:?}", v))); }
+        Value::Path(p) => mono_truncate(ui, p.display().to_string()),
+        Value::FilterType(ft) => mono(ui, filter_type_display_name(ft)),
+        Value::ColorFormat(cf) => mono(ui, format!("{:?}", cf)),
+        Value::ImageType(it) => mono(ui, format!("{:?}", it)),
+        Value::Trigger => mono(ui, "trigger".to_string()),
+        Value::NoiseWorleyDistanceFunction(v) => mono(ui, format!("{:?}", v)),
+        Value::ColorSpace(v) => mono(ui, format!("{:?}", v)),
+        Value::BlendMode(v) => mono(ui, format!("{:?}", v)),
+        Value::EdgeMode(v) => mono(ui, format!("{:?}", v)),
+        Value::TextHAlign(v) => mono(ui, format!("{:?}", v)),
+        Value::TextVAlign(v) => mono(ui, format!("{:?}", v)),
+        Value::ExportPreset(v) => mono(ui, format!("{:?}", v)),
     }
 }
 
 
 /// Render an interactive input widget appropriate for the value type.
 /// Connected inputs show a read-only label; disconnected inputs show the full editor.
-fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: usize, node_id: &str, tx_change_node: &Sender<ChangeNodeMessage>, sibling_image_format: Option<image::ImageFormat>) {
-    // Size interactive widgets to the available column width, but clamp them:
-    // in egui_extras tables `Column::remainder()` can report a very large
-    // `available_width` for unconstrained parent layouts, which would push
-    // widgets past the visible panel. An off-screen slider track also captures
-    // stray pointer events, so the value appears to drift on its own and the
-    // knob ends up out of sight.
-    ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(80.0, 140.0);
-    let text_width = (ui.available_width() - 10.0).clamp(60.0, 140.0);
+fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: usize, node_id: &str, tx_change_node: &Sender<ChangeNodeMessage>, sibling_image_format: Option<image::ImageFormat>, theme: &Theme) {
+    // Size interactive widgets to the available column width. This used to
+    // also clamp with a 140px cap: before the value column was
+    // `.clip(true)` (see the input/output tables above), egui_extras'
+    // `Column::remainder()` could report an unbounded `available_width` for
+    // unconstrained parent layouts, which would push widgets past the
+    // visible panel — an off-screen slider track also captures stray
+    // pointer events, so the value appeared to drift on its own with the
+    // knob out of sight. Clipping now bounds the column properly, so these
+    // just need a floor (never shrink below usable) and can otherwise fill
+    // the row up to the expose checkbox.
+    ui.spacing_mut().slider_width = (ui.available_width() - 80.0).max(80.0);
+    let text_width = (ui.available_width() - 10.0).max(60.0);
 
     match value {
         Value::Bool(a) => {
@@ -632,7 +760,10 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
         }
         Value::Text(a) => {
             if input.connection.is_some() {
-                ui.label(a);
+                // Truncate: a connected text value can be arbitrarily long
+                // (e.g. a template result), and the clipped value column
+                // needs the label to ellipsize rather than force it open.
+                ui.add(Label::new(a).truncate());
             } else if let Some(InputSettings::Dropdown { options }) = &input.settings {
                 // Dropdown selector for predefined text options.
                 let options = options.clone();
@@ -730,11 +861,26 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
             }
         }
         Value::Image{data:_, change_id:_} => {
-
+            // Image inputs have no inline editor (there's nothing to type —
+            // the value only ever arrives via a connection), but a connected
+            // socket used to render nothing at all here, leaving the value
+            // column blank. Show a quiet presence indicator instead so it's
+            // clear the socket is wired up.
+            if input.connection.is_some() {
+                // Even fainter than `text_faint` (~60% alpha) since this is
+                // just a presence indicator, not a value worth reading —
+                // matches the design's contrast between its "connected" gray
+                // (#414D4E) and its "value" gray (#528086, ~= text_faint).
+                let faint = theme.get().text_faint.gamma_multiply(0.6);
+                ui.label(RichText::new("connected").color(faint));
+            }
         }
         Value::Path(path) => {
             if input.connection.is_some() {
-                ui.label(path.into_os_string().into_string().unwrap());
+                // Truncate: a connected path can be long, and the clipped
+                // value column needs the label to ellipsize rather than
+                // force it open.
+                ui.add(Label::new(path.into_os_string().into_string().unwrap()).truncate());
             } else {
                 // Leave room for the sibling folder-picker button.
                 let path_width = (text_width - 30.0).max(40.0);

@@ -39,6 +39,17 @@ pub fn theme_light() -> ThemeValues
 
         text_faint: desaturate(other.text_faint),
 
+        // Settings-panel section hairline: a step darker than `extreme_bg_color`
+        // (rgb(231,231,231)) continuing the same panel_fill -> extreme_bg ->
+        // rule gradient, landing at rgb(221,221,221) — still light, but a
+        // visible divider against the near-white panel background.
+        settings_section_rule: Hsva::new(0.565, 0.0, 0.72, 1.0).into(),
+        // This theme is otherwise neutral gray apart from `blue_accent`
+        // (used for menu_bar_button_selected / grid_connection_dot_error), so
+        // it's the only existing on-palette accent available to mark an
+        // inline link as clickable.
+        text_link: blue_accent,
+
         // Histogram: neutral light grays, slightly muted RGB
         histogram_bg: Hsva::new(0.0, 0.0, 0.882, 1.0).into(),
         histogram_luminance: Hsva::new(0.0, 0.0, 0.667, 1.0).into(),

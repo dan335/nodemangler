@@ -33,6 +33,16 @@ pub struct ThemeValues {
     pub node_header_selected_border: Color32,
     pub text_faint: Color32,
 
+    /// Full-width hairline rule drawn between settings-panel sections (node
+    /// settings and graph settings panels). Deliberately a touch darker than
+    /// `extreme_bg_color` so it reads as a quiet structural divider rather
+    /// than another panel surface.
+    pub settings_section_rule: Color32,
+    /// Accent color for inline text links in panel chrome (currently just the
+    /// "help ▸/▾" toggle in the node settings panel). Distinct from the
+    /// theme's selection/error accent so a link doesn't read as a warning.
+    pub text_link: Color32,
+
     // Histogram visualization colors
     /// Background color for the histogram chart area.
     pub histogram_bg: Color32,
@@ -243,6 +253,13 @@ pub fn set_theme(ctx: &egui::Context, theme: Theme) {
         },
         ..old
     });
+}
+
+/// The named font family registered in `setup_fonts` (see `app.rs`) for
+/// Manrope-SemiBold. Centralizing the family name here avoids repeating the
+/// same string (and typo risk) at every panel-title call site.
+pub fn semibold_family() -> egui::FontFamily {
+    egui::FontFamily::Name("semibold".into())
 }
 
 pub fn desaturate(color: Color32) -> Color32 {

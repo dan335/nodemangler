@@ -31,6 +31,19 @@ pub fn theme_dark() -> ThemeValues
 
         text_faint: desaturate(dark_green.text_faint),
 
+        // Mirror dark_green's settings-panel hairline through the same
+        // desaturation this whole theme is built from (rgb(20,26,27) ->
+        // rgb(27,27,27) once grayed out) — stays darker than both
+        // `extreme_bg_color` and `panel_fill`.
+        settings_section_rule: desaturate(dark_green.settings_section_rule),
+        // Reuse `light_teal_text` (already defined above, used for widget fg
+        // strokes) rather than dark_green's teal_cyan or rose_accent: this
+        // theme desaturates almost everything, and rose_accent is reserved
+        // for selection/error, so a rose link would read as a warning.
+        // light_teal_text keeps a distinct, already-on-palette color for
+        // "this is clickable" without that collision.
+        text_link: light_teal_text,
+
         // Histogram: neutral grays for bg/luminance, slightly muted RGB
         histogram_bg: Hsva::new(0.0, 0.0, 0.086, 1.0).into(),
         histogram_luminance: Hsva::new(0.0, 0.0, 0.243, 1.0).into(),
