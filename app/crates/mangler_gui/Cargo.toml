@@ -11,10 +11,10 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-eframe = { version = "0.34", default-features = false, features = ["glow", "default_fonts", "wayland", "x11", "accesskit"] }
-egui_glow = "0.34"
-epaint = "0.34"
-glow = "0.17"
+eframe = { version = "0.35", default-features = false, features = ["glow", "default_fonts", "wayland", "x11", "accesskit"] }
+egui_glow = "0.35"
+epaint = "0.35"
+glow = "0.17"  # egui_glow 0.35 still requires glow ^0.17 (not 0.18)
 image = "0.25"
 mangler_core = { path = "../mangler_core" }
 serde = { version = "1.0", features = ["derive"] }
@@ -25,9 +25,11 @@ sanitize-filename = "0.6"
 time = "0.3"
 glam = "0.32"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-egui-phosphor = "0.12"
+# egui-phosphor 0.12 (crates.io) pins egui = "0.34"; use the egui-0.35 fork (upstream PR #41)
+# until a 0.35-compatible release lands on crates.io, then switch back to a version number.
+egui-phosphor = { git = "https://github.com/crumblingstatue/egui-phosphor", rev = "5a0075f68a463f6b316d39776fff519a2762b729" }
 fastrand = "2.0"
-egui_extras = "0.34"
+egui_extras = "0.35"
 dirs = "6"
 rayon = "1"
 # Library-panel deletes go to the OS recycle bin (recoverable), never

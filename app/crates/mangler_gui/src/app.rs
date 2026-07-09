@@ -56,7 +56,7 @@ impl eframe::App for App {
         }
 
         let ctx = outer_ui.ctx().clone();
-        egui::CentralPanel::default().show_inside(outer_ui, |ui| {
+        egui::CentralPanel::default().show(outer_ui, |ui| {
             // bg
             ui.painter().add(egui::Shape::rect_filled(
                 ui.max_rect(),
