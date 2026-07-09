@@ -5,7 +5,7 @@ Node-based visual programming tool for image and color manipulation.
 ## Repository Layout
 
 - `app/` — Rust application (Cargo workspace)
-- `website/` — Website (future)
+- `website/` — Project marketing site: standalone Rust crate (`mangler_site`, not in the `app/` workspace) serving static files with axum + tower-http; deployed via Docker to a host running Traefik
 - `scripts/` — test/build/release scripts (`.sh` + `.bat`); see `scripts/README.md`
 
 ## Versioning & Releases

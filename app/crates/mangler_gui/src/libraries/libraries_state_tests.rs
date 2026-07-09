@@ -100,6 +100,7 @@ fn take_pending_drains_the_queue() {
     state.push_action(LibraryAction::PathRenamed {
         from: PathBuf::from("C:/libs/a/x.mangle.json"),
         to: PathBuf::from("C:/libs/a/y.mangle.json"),
+        new_name: "y".to_string(),
     });
 
     let drained = state.take_pending();
@@ -112,6 +113,51 @@ fn take_pending_drains_the_queue() {
     );
     // A second take returns nothing: the queue was emptied.
     assert!(state.take_pending().is_empty());
+}
+
+/// `rename_path` renames a real file and must queue `PathRenamed` carrying
+/// the sanitized stem as `new_name` — `App` needs that stem verbatim to
+/// patch the embedded `GraphSaveData.name` / retarget an open tab, and
+/// re-deriving it from `to` would be wrong (`.mangle.json` is a double
+/// extension, so `file_stem()` would leave `.mangle` on it).
+#[test]
+fn rename_path_queues_path_renamed_with_sanitized_new_name() {
+    let dir = std::env::temp_dir().join(format!(
+        "mangler_gui_libstate_rename_test_{}_{}",
+        std::process::id(),
+        get_id_for_test(),
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let from = dir.join("old_name.mangle.json");
+    std::fs::write(&from, "{}").unwrap();
+
+    let mut state = state_with(&[]);
+    state.rename_path(&from, "new_name");
+
+    let drained = state.take_pending();
+    assert_eq!(drained.len(), 1, "a graph rename should queue exactly one action");
+    match &drained[0] {
+        LibraryAction::PathRenamed { from: queued_from, to, new_name } => {
+            assert_eq!(queued_from, &from);
+            assert_eq!(to, &dir.join("new_name.mangle.json"));
+            assert_eq!(new_name, "new_name");
+        }
+        other => panic!("expected PathRenamed, got {:?}", other),
+    }
+    // The file itself actually moved on disk.
+    assert!(dir.join("new_name.mangle.json").exists());
+    assert!(!from.exists());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Small unique-id helper so parallel test runs never collide on the same
+/// temp directory name (mirrors `library_scanner_tests.rs`'s `UNIQUE`
+/// counter, kept local since this is the only test here that needs one).
+fn get_id_for_test() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static UNIQUE: AtomicU64 = AtomicU64::new(0);
+    UNIQUE.fetch_add(1, Ordering::SeqCst)
 }
 
 #[test]

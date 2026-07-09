@@ -369,13 +369,47 @@ impl App {
                     }
                 }
             }
-            LibraryAction::PathRenamed { from, to } => {
+            LibraryAction::PathRenamed { from, to, new_name } => {
                 // Any open tab still auto-saving to the old path follows the
-                // file, otherwise its next save would resurrect the old name.
+                // file, otherwise its next save would resurrect the old
+                // name. It must adopt `new_name` — the sanitized stem the
+                // file was renamed to — rather than keep its current
+                // `app.name`, or the tab title (and the embedded
+                // `GraphSaveData.name` its next auto-save writes) would stay
+                // stale even though the file on disk moved.
+                let mut any_open_tab_retargeted = false;
                 for program in self.programs.values_mut() {
                     if program.app.save_path.as_deref() == Some(from.as_path()) {
-                        let name = program.app.name.clone();
-                        program.set_save_location(to.clone(), name);
+                        any_open_tab_retargeted = true;
+                        program.set_save_location(to.clone(), new_name.clone());
+                    }
+                }
+
+                if !any_open_tab_retargeted {
+                    // No tab has this file open, so nothing will ever
+                    // auto-save the corrected name into it — patch the
+                    // embedded `GraphSaveData.name` directly.
+                    //
+                    // Deliberately NOT done when a tab *was* retargeted
+                    // above: that tab's `set_save_location` call already
+                    // queues the engine to auto-save the new name into the
+                    // file in ~1s. Patching the file here too would be an
+                    // external rewrite the engine doesn't know about —
+                    // bumping the file's mtime past the engine's
+                    // `last_synced_mtime` and tripping `disk_is_newer()` on
+                    // its next auto-save tick, which would raise a spurious
+                    // FileConflict dialog for a change the user never made
+                    // from outside the tab. The plain `fs::rename` that
+                    // already happened in `rename_path` is mtime-preserving,
+                    // so that path needs no extra care here.
+                    if let Err(err) =
+                        mangler_core::graph::patch_graph_name_on_disk(&to, &new_name)
+                    {
+                        self.libraries.set_error(format!(
+                            "renamed '{}' but couldn't update its embedded name: {}",
+                            to.display(),
+                            err
+                        ));
                     }
                 }
             }

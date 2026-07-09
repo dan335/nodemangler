@@ -1,0 +1,15 @@
+[package]
+name = "mangler_site"
+version = "0.1.0"
+edition = "2024"
+
+# Standalone package: intentionally NOT a member of the app/ Cargo workspace,
+# since this is a separate deployable (a tiny static-file web server) with no
+# code dependency on the mangler_core/mangler_cli/mangler_gui crates.
+[dependencies]
+# Minimal web server: axum for routing, tower-http for the static-file service.
+axum = "0.8"
+# Only the tokio features the server actually needs (mirrors the trimmed
+# feature list used elsewhere in the repo, e.g. mangler_cli's Cargo.toml).
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+tower-http = { version = "0.7", features = ["fs"] }

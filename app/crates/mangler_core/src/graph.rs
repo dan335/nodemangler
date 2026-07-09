@@ -20,7 +20,7 @@ use glam::f32::Vec2;
 use std::fs;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::SystemTime,
 };
 use tokio::sync::mpsc::Sender;
@@ -1403,6 +1403,47 @@ impl Graph {
 
         sorted_order.push_front(node_id.clone());
     }
+}
+
+/// Rewrite only the top-level `name` field of a graph JSON file in place,
+/// leaving every other byte of structure untouched.
+///
+/// This exists for the Libraries panel's rename flow: renaming the
+/// `.mangle.json` file on disk only changes the *filename*. The graph's
+/// display name is separately embedded as `GraphSaveData.name`, and
+/// `Graph::load` reads that embedded name — so without this, a renamed
+/// graph that isn't currently open in a tab would still show its old name
+/// the next time someone opens it (nothing would ever be around to
+/// auto-save the corrected name into the file). Called only for the "not
+/// currently open" case; a graph open in a tab instead goes through
+/// `Program::set_save_location` so the engine's own auto-save rewrites the
+/// file (see `App::handle_library_action`'s `PathRenamed` arm in
+/// `mangler_gui`).
+///
+/// A free function rather than a `Graph` method deliberately — the caller
+/// (the GUI's Libraries rename handler) has no live `Graph` for this file at
+/// all in the "not open" case, just a path.
+///
+/// CRITICAL: this is a raw `serde_json::Value` edit, not a round-trip
+/// through `GraphSaveData`/`Graph::load`. Deserializing into `GraphSaveData`
+/// and re-serializing would go through the tolerant per-node `saved_nodes`
+/// machinery, which reconstructs node JSON from parsed fields rather than
+/// passing it through byte-for-byte. A file saved by a *newer* NodeMangler
+/// can carry node fields (or entire top-level fields) this build doesn't
+/// know about; a rename should never be the operation that quietly drops
+/// them. Patching the raw `Value` in place guarantees every other byte of
+/// structure — known or not — survives untouched.
+pub fn patch_graph_name_on_disk(path: &Path, new_name: &str) -> Result<(), String> {
+    let data = fs::read_to_string(path)
+        .map_err(|error| format!("couldn't read '{}': {}", path.display(), error))?;
+    let mut json: serde_json::Value = serde_json::from_str(&data)
+        .map_err(|error| format!("couldn't parse '{}' as JSON: {}", path.display(), error))?;
+    json["name"] = serde_json::Value::String(new_name.to_string());
+    let out = serde_json::to_string_pretty(&json)
+        .map_err(|error| format!("couldn't re-serialize '{}': {}", path.display(), error))?;
+    fs::write(path, out)
+        .map_err(|error| format!("couldn't write '{}': {}", path.display(), error))?;
+    Ok(())
 }
 
 #[cfg(test)]

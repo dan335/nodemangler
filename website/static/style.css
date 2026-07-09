@@ -1,0 +1,341 @@
+/* Winston design system — the subset the site needs (primitives + light/dark
+   themes + element defaults). Fonts: Geist + Geist Mono via Google Fonts. */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap');
+
+:root {
+  --font-sans: 'Geist', ui-sans-serif, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+/* LIGHT — warm paper, ink text, ember accent */
+:root,
+:root[data-theme="light"] {
+  --bg:        oklch(98.5% 0.004 85);
+  --bg-soft:   oklch(96.5% 0.005 85);
+  --bg-raised: oklch(100% 0 0);
+  --bg-inset:  oklch(94.5% 0.006 85);
+
+  --fg:        oklch(20% 0.005 85);
+  --fg-muted:  oklch(45% 0.006 85);
+  --fg-faint:  oklch(62% 0.006 85);
+
+  --border:        oklch(89% 0.006 85);
+  --border-strong: oklch(78% 0.008 85);
+  --border-focus:  oklch(45% 0.12 55);
+
+  --accent:        oklch(55% 0.14 55);
+  --accent-fg:     oklch(99% 0 0);
+
+  --selection-bg: oklch(85% 0.08 55);
+  --selection-fg: oklch(20% 0.005 85);
+}
+
+/* DARK — soft near-black, paper text, phosphor-amber accent */
+:root[data-theme="dark"] {
+  --bg:        oklch(15% 0.005 250);
+  --bg-soft:   oklch(18% 0.005 250);
+  --bg-raised: oklch(20% 0.006 250);
+  --bg-inset:  oklch(13% 0.005 250);
+
+  --fg:        oklch(94% 0.005 85);
+  --fg-muted:  oklch(70% 0.006 85);
+  --fg-faint:  oklch(52% 0.006 85);
+
+  --border:        oklch(28% 0.006 250);
+  --border-strong: oklch(38% 0.008 250);
+  --border-focus:  oklch(72% 0.13 65);
+
+  --accent:        oklch(72% 0.13 65);
+  --accent-fg:     oklch(15% 0.005 250);
+
+  --selection-bg: oklch(40% 0.10 65);
+  --selection-fg: oklch(94% 0.005 85);
+}
+
+/* Auto: follow OS preference when no explicit data-theme is set */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:        oklch(15% 0.005 250);
+    --bg-soft:   oklch(18% 0.005 250);
+    --bg-raised: oklch(20% 0.006 250);
+    --bg-inset:  oklch(13% 0.005 250);
+    --fg:        oklch(94% 0.005 85);
+    --fg-muted:  oklch(70% 0.006 85);
+    --fg-faint:  oklch(52% 0.006 85);
+    --border:        oklch(28% 0.006 250);
+    --border-strong: oklch(38% 0.008 250);
+    --border-focus:  oklch(72% 0.13 65);
+    --accent:        oklch(72% 0.13 65);
+    --accent-fg:     oklch(15% 0.005 250);
+    --selection-bg: oklch(40% 0.10 65);
+    --selection-fg: oklch(94% 0.005 85);
+  }
+}
+
+/* Element defaults used by the design */
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  font-feature-settings: "ss01", "cv01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+::selection { background: var(--selection-bg); color: var(--selection-fg); }
+a {
+  color: var(--fg);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 120ms ease, color 120ms ease;
+}
+a:hover { color: var(--accent); text-decoration-color: var(--accent); }
+:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; border-radius: 2px; }
+
+/* ------------------------------------------------------------------ */
+/* Page layout — classes below extracted from the site design doc's   */
+/* inline styles (site-design.html). Structure/visual result matches  */
+/* the design 1:1; only the styling mechanism (inline -> class) moved. */
+/* ------------------------------------------------------------------ */
+
+/* Full-height page background, content centered with generous padding. */
+.page {
+  min-height: 100vh;
+  background: var(--bg);
+  display: flex;
+  justify-content: center;
+  padding: 72px 24px 96px 24px;
+  box-sizing: border-box;
+}
+
+/* Single content column, capped width for a comfortable reading measure. */
+.container {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Top line: wordmark + version badge on the left, github link on the right.
+   flex-wrap lets it wrap gracefully on very narrow viewports instead of
+   overflowing (the desktop layout is unaffected since it already fits). */
+.top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wordmark {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+/* Version badge next to the wordmark; also targeted by the tiny version-
+   fetch script below (see .js-version). */
+.version-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-faint);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 1px 6px;
+}
+
+.github-link {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+/* Intro headline + supporting paragraph. */
+.intro-title {
+  font-size: 34px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  margin: 56px 0 0 0;
+  text-wrap: pretty;
+}
+
+.intro-text {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--fg-muted);
+  margin: 20px 0 0 0;
+  max-width: 58ch;
+  text-wrap: pretty;
+}
+
+/* Screenshot frame + caption. */
+.screenshot {
+  margin-top: 40px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--bg-inset);
+}
+
+.screenshot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.screenshot-caption {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-faint);
+  margin-top: 8px;
+}
+
+/* Quick-facts row (node count, noise generators, color spaces, etc). */
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin-top: 48px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.facts .dot {
+  color: var(--fg-faint);
+}
+
+/* "What it does" two-column feature grid. */
+.features {
+  margin-top: 48px;
+  border-top: 1px solid var(--border);
+  padding-top: 32px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px 32px;
+}
+
+/* Small uppercase label used both as a feature heading and as the
+   "Download" section heading. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  margin-bottom: 8px;
+}
+
+.feature-desc {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fg-muted);
+  text-wrap: pretty;
+}
+
+/* Collapse the feature grid to one column on narrow screens. */
+@media (max-width: 560px) {
+  .features {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Download section. */
+.download-section {
+  margin-top: 48px;
+  border-top: 1px solid var(--border);
+  padding-top: 32px;
+}
+
+/* The download section's eyebrow label sits a bit further from the
+   buttons below it than a feature-grid label sits from its paragraph. */
+.download-section .eyebrow {
+  margin-bottom: 16px;
+}
+
+.download-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Shared button shape; primary/secondary differ only in fill vs outline.
+   No flex gap: the buttons are text-only, and a gap would inflate the
+   space between the "Download" text node and the version <span> (which are
+   separate flex items) well past a normal word space. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 2px;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 500;
+  border: 1px solid var(--accent);
+}
+.btn-primary:hover { opacity: 0.92; color: var(--accent-fg); }
+.btn-primary:active { transform: translateY(1px); }
+
+.btn-secondary {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+}
+.btn-secondary:hover { background: var(--bg-inset); color: var(--fg); }
+.btn-secondary:active { transform: translateY(1px); }
+
+.download-note {
+  font-size: 13px;
+  color: var(--fg-muted);
+  margin: 14px 0 0 0;
+}
+
+.code-block {
+  margin: 14px 0 0 0;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 14px 16px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--fg);
+  overflow-x: auto; /* keep long command lines from widening the page */
+}
+
+.code-comment {
+  color: var(--fg-faint);
+}
+
+/* License line footer. */
+.license-row {
+  margin-top: 48px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-faint);
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}

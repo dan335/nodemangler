@@ -2865,3 +2865,74 @@ async fn test_subgraph_bogus_path_emits_error_message_not_just_println() {
     }
     assert!(saw_error, "a bogus subgraph path should surface an Error message on the node, not just a println");
 }
+
+#[test]
+fn test_patch_graph_name_on_disk_updates_name_and_loads() {
+    use std::fs;
+    use crate::GraphSaveData;
+
+    let tmp_path = std::env::temp_dir().join(format!("mangler_patch_name_{}.mangle.json", get_id()));
+    let save_data = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
+        id: get_id(),
+        name: "old name".to_string(),
+        nodes: std::collections::HashMap::new(),
+    };
+    fs::write(&tmp_path, serde_json::to_string(&save_data).unwrap()).unwrap();
+
+    super::patch_graph_name_on_disk(&tmp_path, "new name").expect("patch should succeed");
+
+    let loaded = Graph::load(tmp_path.clone(), None, None, false)
+        .expect("the patched file should still load");
+    assert_eq!(loaded.name, "new name");
+
+    let _ = fs::remove_file(&tmp_path);
+}
+
+#[test]
+fn test_patch_graph_name_on_disk_preserves_unknown_fields_verbatim() {
+    use std::fs;
+    use crate::GraphSaveData;
+
+    let unknown_id = get_id();
+    let unknown_raw = add_node_json_with_unknown_operation(glam::Vec2::new(7.0, 8.0));
+
+    let save_data = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
+        id: "patch-test-graph".to_string(),
+        name: "old name".to_string(),
+        nodes: std::collections::HashMap::new(),
+    };
+    let mut json = serde_json::to_value(&save_data).unwrap();
+    json["nodes"][unknown_id.as_str()] = unknown_raw.clone();
+    // A top-level field a newer NodeMangler might add — a name patch must
+    // not know or care about it, and it must survive untouched.
+    json["from_the_future_top_level_field"] = serde_json::json!("should survive");
+
+    let tmp_path = std::env::temp_dir()
+        .join(format!("mangler_patch_name_unknown_{}.mangle.json", get_id()));
+    fs::write(&tmp_path, serde_json::to_string(&json).unwrap()).unwrap();
+
+    super::patch_graph_name_on_disk(&tmp_path, "patched name").expect("patch should succeed");
+
+    let raw_after = fs::read_to_string(&tmp_path).unwrap();
+    let after: serde_json::Value = serde_json::from_str(&raw_after).unwrap();
+    assert_eq!(after["name"], serde_json::json!("patched name"));
+    assert_eq!(
+        after["from_the_future_top_level_field"],
+        serde_json::json!("should survive")
+    );
+    // The unknown node's own future-only fields are untouched too — only
+    // the top-level `name` key was ever rewritten.
+    assert_eq!(after["nodes"][unknown_id.as_str()], unknown_raw);
+
+    let _ = fs::remove_file(&tmp_path);
+}
+
+#[test]
+fn test_patch_graph_name_on_disk_missing_file_returns_err() {
+    let bogus = std::env::temp_dir()
+        .join(format!("mangler_patch_name_missing_{}.mangle.json", get_id()));
+    let result = super::patch_graph_name_on_disk(&bogus, "new name");
+    assert!(result.is_err(), "patching a nonexistent file should return an Err, not panic");
+}

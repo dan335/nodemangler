@@ -336,6 +336,14 @@ pub fn show(
         }
     }
 
+    // Right edge (screen x) where the value column must end. Each value cell
+    // is pinned to this (see the `set_max_width` below) so its widgets fill the
+    // column and line up. Captured here from the panel's own (stable) width —
+    // NOT from inside the table, where the remainder cell's available_width/
+    // max_rect ratchet upward every frame. Reserve the 26px expose column and
+    // the item spacing before it.
+    let value_col_right = ui.max_rect().right() - 26.0 - ui.spacing().item_spacing.x;
+
     ui.push_id("inputs", |ui| {
         // No header row and no striping: the compact design relies on the
         // "inputs" section label above plus generous row height instead of a
@@ -412,6 +420,17 @@ pub fn show(
                     });
 
                     row.col(|ui| {
+                        // Pin the cell to the true value-column width. This
+                        // remainder cell's own reported width ratchets upward
+                        // every frame (a feedback loop with egui_extras'
+                        // persisted `max_used_widths`), so instead we derive the
+                        // width from stable geometry: the cell's left edge (which
+                        // doesn't move) and the column's right edge (captured
+                        // from the panel above). With the cell pinned, every
+                        // widget in `input_value` can just fill `available_width`
+                        // and line up on the right — and the ratchet unwinds
+                        // because content no longer exceeds the column.
+                        ui.set_max_width((value_col_right - ui.max_rect().left()).max(60.0));
                         ui.horizontal_centered(|ui| {
                             input_value(ui, input.value.clone(), input, input_index, &node.id, &tx_change_node, sibling_image_format, theme);
 
@@ -537,6 +556,12 @@ pub fn show(
     section_rule(ui, theme);
     section_label(ui, "node");
 
+    // Right edge (screen x) of this table's value column. No expose column
+    // here, so it runs to the panel's content edge. Captured from the stable
+    // panel width — see the note in `input_value` on why the in-cell width is
+    // unreliable.
+    let node_value_col_right = ui.max_rect().right();
+
     ui.push_id("node_settings", |ui| {
         // See the "inputs" table above: no header row, no striping.
         TableBuilder::new(ui)
@@ -551,8 +576,12 @@ pub fn show(
                         });
                     });
                     row.col(|ui| {
+                        // Pin the cell to the true value-column width (this
+                        // table has no expose column, so it runs to the panel
+                        // edge). See the note in the inputs table above.
+                        ui.set_max_width((node_value_col_right - ui.max_rect().left()).max(60.0));
                         ui.horizontal_centered(|ui| {
-                            let name_width = (ui.available_width() - 10.0).clamp(60.0, 200.0);
+                            let name_width = ui.available_width();
                             let mut name_text = node.custom_name.clone().unwrap_or_default();
                             if ui.add(TextEdit::singleline(&mut name_text).hint_text("custom name").desired_width(name_width)).changed() {
                                 let new_name = if name_text.is_empty() { None } else { Some(name_text) };
@@ -654,18 +683,35 @@ fn output_value(ui: &mut egui::Ui, value: &Value, theme: &Theme) {
 /// Render an interactive input widget appropriate for the value type.
 /// Connected inputs show a read-only label; disconnected inputs show the full editor.
 fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: usize, node_id: &str, tx_change_node: &Sender<ChangeNodeMessage>, sibling_image_format: Option<image::ImageFormat>, theme: &Theme) {
-    // Size interactive widgets to the available column width. This used to
-    // also clamp with a 140px cap: before the value column was
-    // `.clip(true)` (see the input/output tables above), egui_extras'
-    // `Column::remainder()` could report an unbounded `available_width` for
-    // unconstrained parent layouts, which would push widgets past the
-    // visible panel — an off-screen slider track also captures stray
-    // pointer events, so the value appeared to drift on its own with the
-    // knob out of sight. Clipping now bounds the column properly, so these
-    // just need a floor (never shrink below usable) and can otherwise fill
-    // the row up to the expose checkbox.
-    ui.spacing_mut().slider_width = (ui.available_width() - 80.0).max(80.0);
-    let text_width = (ui.available_width() - 10.0).max(60.0);
+    // Size value widgets to fill the value column (name | value | expose).
+    //
+    // We CANNOT derive the width from `available_width()`/`max_rect()`/
+    // `clip_rect()` here: this cell lives in an egui_extras `Column::remainder()`,
+    // whose reported width ratchets upward a few pixels every frame (a feedback
+    // loop with the table's persisted `max_used_widths` — measured climbing
+    // 137 → 160 → … → 1000+ px), which is what let the value widgets creep off
+    // the panel and swallow the expose column. The cell's *left* edge is stable
+    // though (only the width grows, rightward), so combine it with the value
+    // column's right edge (captured from the panel width before the table) to
+    // get the true column width. Keeping widgets within this bound also stops
+    // the ratchet: their content no longer exceeds the column, so it unwinds.
+    // The caller has pinned this cell to the true value-column width (see the
+    // note in `show`), so `available_width()` is now reliable here — no longer
+    // the ratcheting value egui_extras reports for a remainder cell. Every
+    // value widget just fills it, so their right edges line up on the column's
+    // right boundary:
+    //   - TextEdit: `desired_width` is the widget's full outer width → `avail`.
+    //   - ComboBox: total width == `combo_width` (its internal padding cancels).
+    //   - Slider: laid out as [track][gap][value box], where the value box (a
+    //     DragValue) is `interact_size.x` wide for small numbers — so sizing the
+    //     track to `avail - gap - value_box` puts the value box's right edge on
+    //     the boundary.
+    let avail = ui.available_width();
+    let gap = ui.spacing().item_spacing.x;
+    let value_box_w = ui.spacing().interact_size.x;
+    ui.spacing_mut().slider_width = (avail - gap - value_box_w).max(40.0);
+    ui.spacing_mut().combo_width = avail;
+    let text_width = avail;
 
     match value {
         Value::Bool(a) => {
@@ -882,39 +928,52 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 // force it open.
                 ui.add(Label::new(path.into_os_string().into_string().unwrap()).truncate());
             } else {
-                // Leave room for the sibling folder-picker button.
-                let path_width = (text_width - 30.0).max(40.0);
-                ui.add_enabled_ui(false, |ui| {
-                    ui.add(
-                        TextEdit::singleline(
-                            &mut path.clone().into_os_string().into_string().unwrap_or_default(),
-                        )
-                        .desired_width(path_width),
-                    );
-                });
+                // Right-to-left inside a `col_w`-wide region: pin the folder
+                // button to the column's right edge, then let the (disabled)
+                // path field fill the remaining width. This lines the button's
+                // right edge up with the other value widgets instead of leaving
+                // a variable gap.
+                ui.allocate_ui_with_layout(
+                    vec2(avail, ui.available_height()),
+                    Layout::right_to_left(egui::Align::Center),
+                    |ui| {
+                        let picked = ui.button("🗀").clicked();
+                        // Remaining width, minus the spacing egui inserts before
+                        // the field, so field + gap + button == col_w exactly.
+                        let field_w = (ui.available_width() - gap).max(40.0);
+                        ui.add_enabled_ui(false, |ui| {
+                            ui.add(
+                                TextEdit::singleline(
+                                    &mut path.clone().into_os_string().into_string().unwrap_or_default(),
+                                )
+                                .desired_width(field_w),
+                            );
+                        });
 
-                if ui.button("🗀").clicked() {
-                    if let Some(InputSettings::Path {
-                        extension_filter,
-                        set_directory: _,
-                        set_file_name: _,
-                        set_title,
-                        file_dialog_type
-                    }) = input.settings.clone() {
+                        if picked {
+                            if let Some(InputSettings::Path {
+                                extension_filter,
+                                set_directory: _,
+                                set_file_name: _,
+                                set_title,
+                                file_dialog_type
+                            }) = input.settings.clone() {
 
-                        let extensions: Vec<&str> = extension_filter.iter().map(|s| s.as_str()).collect();
-                        let title = set_title.unwrap_or("file".to_string());
-                        let file_dialog = rfd::FileDialog::new().add_filter(&title, &extensions);
+                                let extensions: Vec<&str> = extension_filter.iter().map(|s| s.as_str()).collect();
+                                let title = set_title.unwrap_or("file".to_string());
+                                let file_dialog = rfd::FileDialog::new().add_filter(&title, &extensions);
 
-                        if let Some(save_path) = match file_dialog_type {
-                            mangler_core::input::FileDialogType::PickFile => file_dialog.pick_file(),
-                            mangler_core::input::FileDialogType::PickFolder => file_dialog.pick_folder(),
-                            mangler_core::input::FileDialogType::SaveFile => file_dialog.save_file(),
-                        } {
-                            change_value(tx_change_node, node_id, input_index, input, Value::Path(save_path));
+                                if let Some(save_path) = match file_dialog_type {
+                                    mangler_core::input::FileDialogType::PickFile => file_dialog.pick_file(),
+                                    mangler_core::input::FileDialogType::PickFolder => file_dialog.pick_folder(),
+                                    mangler_core::input::FileDialogType::SaveFile => file_dialog.save_file(),
+                                } {
+                                    change_value(tx_change_node, node_id, input_index, input, Value::Path(save_path));
+                                }
+                            }
                         }
-                    }
-                }
+                    },
+                );
             }
         }
         Value::ImageType(a) => {

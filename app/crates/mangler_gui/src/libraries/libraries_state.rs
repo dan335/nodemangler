@@ -61,7 +61,13 @@ pub enum LibraryAction {
     CreateGraph { path: PathBuf, name: String },
     /// A graph file was renamed on disk. Open tabs pointing at `from` must
     /// re-target `to`, otherwise their auto-save resurrects the old file.
-    PathRenamed { from: PathBuf, to: PathBuf },
+    /// `new_name` is the sanitized stem `rename_path` renamed the file to —
+    /// carried here rather than re-derived from `to` because `.mangle.json`
+    /// is a double extension (`to.file_stem()` would leave `.mangle` on it).
+    /// `App` needs it to update the tab's display name / the file's embedded
+    /// `GraphSaveData.name` to match the new filename (see
+    /// `App::handle_library_action`).
+    PathRenamed { from: PathBuf, to: PathBuf, new_name: String },
 }
 
 /// Shared state behind every Libraries panel. Owned by the GUI `App`.
@@ -258,10 +264,20 @@ impl LibrariesState {
             Ok(()) => {
                 if is_graph {
                     // Open tabs pointing at the old path must follow the
-                    // file, or their next auto-save recreates it.
+                    // file, or their next auto-save recreates it. The
+                    // graph's *embedded* name (`GraphSaveData.name`) needs
+                    // patching to match too, but that isn't done here:
+                    // `LibrariesState` has no way to know whether the graph
+                    // is currently open in a tab, and that's exactly what
+                    // decides the safe way to patch it (rewriting the file
+                    // out from under an open tab's engine would corrupt its
+                    // mtime bookkeeping — see `App::handle_library_action`).
+                    // So the sanitized stem is just forwarded for `App` to
+                    // act on.
                     self.push_action(LibraryAction::PathRenamed {
                         from: from.to_path_buf(),
                         to,
+                        new_name: new_name.to_string(),
                     });
                 }
             }
@@ -295,7 +311,10 @@ impl LibrariesState {
     }
 
     /// Records a disk-operation error for the panel's fading error strip.
-    fn set_error(&mut self, message: String) {
+    /// `pub(crate)` so `App::handle_library_action` can surface failures
+    /// (e.g. a failed embedded-name patch after a rename) through the same
+    /// strip instead of a separate error path.
+    pub(crate) fn set_error(&mut self, message: String) {
         self.error = Some((message, Instant::now()));
     }
 
