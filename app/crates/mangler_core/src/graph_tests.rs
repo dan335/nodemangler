@@ -431,8 +431,8 @@ fn test_set_save_path() {
     let mut graph = Graph::new(get_id(), tx_nc, tx_gc, false).unwrap();
 
     assert!(graph.save_path.is_none());
-    graph.set_save_path(std::path::PathBuf::from("/tmp/test.mangle.json"));
-    assert_eq!(graph.save_path, Some(std::path::PathBuf::from("/tmp/test.mangle.json")));
+    graph.set_save_path(std::path::PathBuf::from("/tmp/test.mangler.json"));
+    assert_eq!(graph.save_path, Some(std::path::PathBuf::from("/tmp/test.mangler.json")));
 }
 
 // === run() edge cases ===
@@ -619,7 +619,7 @@ async fn test_save_and_load_round_trip() {
         .await;
     graph.set_input(node_id.clone(), 0, Value::Decimal(42.0));
 
-    let tmp_path = std::env::temp_dir().join(format!("test_graph_{}.mangle.json", get_id()));
+    let tmp_path = std::env::temp_dir().join(format!("test_graph_{}.mangler.json", get_id()));
     graph.set_save_path(tmp_path.clone());
     graph.save_to_file().unwrap();
 
@@ -649,7 +649,7 @@ async fn test_save_and_load_round_trip() {
 async fn test_save_to_file_stamps_app_version() {
     let mut graph = create_test_graph();
 
-    let tmp_path = std::env::temp_dir().join(format!("test_version_{}.mangle.json", get_id()));
+    let tmp_path = std::env::temp_dir().join(format!("test_version_{}.mangler.json", get_id()));
     graph.set_save_path(tmp_path.clone());
     graph.save_to_file().unwrap();
 
@@ -667,7 +667,7 @@ async fn test_save_to_file_subgraph_is_noop() {
     let (tx_nc, _) = mpsc::channel::<NodeChangedMessage>(32);
     let mut graph = Graph::new(get_id(), tx_nc, tx_gc, true).unwrap();
 
-    let tmp_path = std::env::temp_dir().join(format!("test_subgraph_{}.mangle.json", get_id()));
+    let tmp_path = std::env::temp_dir().join(format!("test_subgraph_{}.mangler.json", get_id()));
     graph.set_save_path(tmp_path.clone());
     assert_eq!(graph.save_to_file(), Ok(()));
 
@@ -688,7 +688,7 @@ async fn test_save_to_file_no_path_is_noop() {
 #[test]
 fn test_load_nonexistent_file() {
     let result = Graph::load(
-        std::path::PathBuf::from("/nonexistent/path/graph.mangle.json"),
+        std::path::PathBuf::from("/nonexistent/path/graph.mangler.json"),
         None, None, false,
     );
     assert!(result.is_err());
@@ -696,7 +696,7 @@ fn test_load_nonexistent_file() {
 
 #[test]
 fn test_load_invalid_json() {
-    let tmp_path = std::env::temp_dir().join(format!("test_bad_json_{}.mangle.json", get_id()));
+    let tmp_path = std::env::temp_dir().join(format!("test_bad_json_{}.mangler.json", get_id()));
     std::fs::write(&tmp_path, "this is not valid json").unwrap();
 
     let result = Graph::load(tmp_path.clone(), None, None, false);
@@ -1139,7 +1139,7 @@ async fn test_subgraph_propagates_value_end_to_end() {
 
     // Persist the child graph to a unique tempfile.
     let tmp_path = std::env::temp_dir()
-        .join(format!("mangler_subgraph_int_test_{}.mangle.json", get_id()));
+        .join(format!("mangler_subgraph_int_test_{}.mangler.json", get_id()));
     let save_data = GraphSaveData {
         version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
@@ -1268,7 +1268,7 @@ async fn test_subgraph_many_nodes_exposed_output_not_dropped() {
 
     // Persist the child graph to a unique tempfile.
     let tmp_path = std::env::temp_dir()
-        .join(format!("mangler_subgraph_overflow_test_{}.mangle.json", get_id()));
+        .join(format!("mangler_subgraph_overflow_test_{}.mangler.json", get_id()));
     let save_data = GraphSaveData {
         version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
@@ -1355,7 +1355,7 @@ async fn test_detached_snapshot_executes_subgraph() {
     }
 
     let tmp_path = std::env::temp_dir()
-        .join(format!("mangler_subgraph_detached_test_{}.mangle.json", get_id()));
+        .join(format!("mangler_subgraph_detached_test_{}.mangler.json", get_id()));
     let save_data = GraphSaveData {
         version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
@@ -1429,7 +1429,7 @@ async fn test_load_restores_typed_input_and_output_defaults() {
         .await;
 
     let tmp_path = std::env::temp_dir()
-        .join(format!("mangler_load_defaults_test_{}.mangle.json", get_id()));
+        .join(format!("mangler_load_defaults_test_{}.mangler.json", get_id()));
     let save_data = GraphSaveData {
         version: crate::APP_VERSION.to_string(),
         id: graph.id.clone(),
@@ -1489,7 +1489,7 @@ async fn test_load_graph_with_saved_subgraph_node_auto_reloads() {
         n.outputs[0].is_exposed = true;
     }
     let child_path = std::env::temp_dir()
-        .join(format!("mangler_autoreload_child_{}.mangle.json", get_id()));
+        .join(format!("mangler_autoreload_child_{}.mangler.json", get_id()));
     let child_save = GraphSaveData {
         version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
@@ -1510,7 +1510,7 @@ async fn test_load_graph_with_saved_subgraph_node_auto_reloads() {
     parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
 
     let parent_path = std::env::temp_dir()
-        .join(format!("mangler_autoreload_parent_{}.mangle.json", get_id()));
+        .join(format!("mangler_autoreload_parent_{}.mangler.json", get_id()));
     let parent_save = GraphSaveData {
         version: crate::APP_VERSION.to_string(),
         id: parent.id.clone(),
@@ -1588,7 +1588,7 @@ async fn test_subgraph_image_output_in_memory_flow() {
     }
 
     let child_path = std::env::temp_dir()
-        .join(format!("mangler_subgraph_image_inmem_child_{}.mangle.json", get_id()));
+        .join(format!("mangler_subgraph_image_inmem_child_{}.mangler.json", get_id()));
     let child_save = GraphSaveData {
         version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
@@ -1648,7 +1648,7 @@ async fn test_subgraph_emits_output_changed_with_real_image_through_channel() {
     }
 
     let child_path = std::env::temp_dir()
-        .join(format!("mangler_subgraph_channel_child_{}.mangle.json", get_id()));
+        .join(format!("mangler_subgraph_channel_child_{}.mangler.json", get_id()));
     let child_save = GraphSaveData {
         version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
@@ -1725,7 +1725,7 @@ async fn test_subgraph_image_output_propagates_real_image() {
     }
 
     let child_path = std::env::temp_dir()
-        .join(format!("mangler_subgraph_image_child_{}.mangle.json", get_id()));
+        .join(format!("mangler_subgraph_image_child_{}.mangler.json", get_id()));
     let child_save = GraphSaveData {
         version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
@@ -1742,7 +1742,7 @@ async fn test_subgraph_image_output_propagates_real_image() {
     parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
 
     let parent_path = std::env::temp_dir()
-        .join(format!("mangler_subgraph_image_parent_{}.mangle.json", get_id()));
+        .join(format!("mangler_subgraph_image_parent_{}.mangler.json", get_id()));
     let parent_save = GraphSaveData {
         version: crate::APP_VERSION.to_string(),
         id: parent.id.clone(),
@@ -1811,7 +1811,7 @@ async fn write_child_with_color(color: crate::color::Color, label: &str) -> std:
     }
 
     let path = std::env::temp_dir()
-        .join(format!("mangler_hotreload_{}_{}.mangle.json", label, get_id()));
+        .join(format!("mangler_hotreload_{}_{}.mangler.json", label, get_id()));
     let save = GraphSaveData {
         version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
@@ -2274,7 +2274,7 @@ async fn write_child_with_exposed_inputs(exposed_inputs: usize, label: &str) -> 
     }
 
     let path = std::env::temp_dir()
-        .join(format!("mangler_prune_child_{}_{}.mangle.json", label, get_id()));
+        .join(format!("mangler_prune_child_{}_{}.mangler.json", label, get_id()));
     let save = GraphSaveData {
         version: crate::APP_VERSION.to_string(),
         id: child.id.clone(),
@@ -2352,7 +2352,7 @@ async fn test_save_to_file_write_failure_does_not_panic() {
     // Point the save path into a directory that does not exist: fs::write
     // fails. Must return an error, not panic or corrupt state.
     graph.set_save_path(std::path::PathBuf::from(
-        "/nonexistent_mangler_dir_for_test/graph.mangle.json",
+        "/nonexistent_mangler_dir_for_test/graph.mangler.json",
     ));
     assert!(graph.save_to_file().is_err());
 
@@ -2372,7 +2372,7 @@ async fn test_save_to_file_parent_is_regular_file_returns_err() {
     let file_masquerading_as_dir = tmp_dir.join("not_a_directory");
     std::fs::write(&file_masquerading_as_dir, b"not a directory").unwrap();
 
-    let save_path = file_masquerading_as_dir.join("graph.mangle.json");
+    let save_path = file_masquerading_as_dir.join("graph.mangler.json");
     graph.set_save_path(save_path);
 
     assert!(graph.save_to_file().is_err(), "writing under a regular file as if it were a directory should fail");
@@ -2536,7 +2536,7 @@ fn test_tolerant_load_preserves_other_nodes_and_emits_load_warnings_first() {
     let mut json = serde_json::to_value(&save_data).unwrap();
     json["nodes"][unknown_id.as_str()] = unknown_raw;
 
-    let tmp_path = std::env::temp_dir().join(format!("mangler_tolerant_load_{}.mangle.json", get_id()));
+    let tmp_path = std::env::temp_dir().join(format!("mangler_tolerant_load_{}.mangler.json", get_id()));
     fs::write(&tmp_path, serde_json::to_string(&json).unwrap()).unwrap();
 
     let (tx_nc, _rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
@@ -2592,7 +2592,7 @@ async fn test_save_to_file_round_trips_unknown_node_verbatim() {
     let mut json = serde_json::to_value(&save_data).unwrap();
     json["nodes"][unknown_id.as_str()] = unknown_raw.clone();
 
-    let tmp_path = std::env::temp_dir().join(format!("mangler_unknown_roundtrip_{}.mangle.json", get_id()));
+    let tmp_path = std::env::temp_dir().join(format!("mangler_unknown_roundtrip_{}.mangler.json", get_id()));
     fs::write(&tmp_path, serde_json::to_string(&json).unwrap()).unwrap();
 
     // Load (tolerant) and immediately save back out via save_to_file (the
@@ -2632,7 +2632,7 @@ async fn test_placeholder_node_move_persists_through_save_and_load() {
     let mut json = serde_json::to_value(&save_data).unwrap();
     json["nodes"][unknown_id.as_str()] = unknown_raw;
 
-    let tmp_path = std::env::temp_dir().join(format!("mangler_placeholder_move_{}.mangle.json", get_id()));
+    let tmp_path = std::env::temp_dir().join(format!("mangler_placeholder_move_{}.mangler.json", get_id()));
     fs::write(&tmp_path, serde_json::to_string(&json).unwrap()).unwrap();
 
     let mut graph = Graph::load(tmp_path.clone(), None, None, false).unwrap();
@@ -2665,7 +2665,7 @@ async fn test_connection_into_placeholder_persists_in_raw() {
     let mut json = serde_json::to_value(&save_data).unwrap();
     json["nodes"][unknown_id.as_str()] = unknown_raw;
 
-    let tmp_path = std::env::temp_dir().join(format!("mangler_placeholder_conn_{}.mangle.json", get_id()));
+    let tmp_path = std::env::temp_dir().join(format!("mangler_placeholder_conn_{}.mangler.json", get_id()));
     fs::write(&tmp_path, serde_json::to_string(&json).unwrap()).unwrap();
 
     let mut graph = Graph::load(tmp_path.clone(), None, None, false).unwrap();
@@ -2734,7 +2734,7 @@ async fn test_load_report_detects_newer_version() {
         name: "newer version test".to_string(),
         nodes: std::collections::HashMap::new(),
     };
-    let tmp_path = std::env::temp_dir().join(format!("mangler_newer_version_{}.mangle.json", get_id()));
+    let tmp_path = std::env::temp_dir().join(format!("mangler_newer_version_{}.mangler.json", get_id()));
     fs::write(&tmp_path, serde_json::to_string(&save_data).unwrap()).unwrap();
 
     let loaded = Graph::load(tmp_path.clone(), None, None, false).unwrap();
@@ -2750,7 +2750,7 @@ async fn test_load_report_missing_version_is_not_newer() {
     use std::fs;
 
     // Pre-versioning save: no "version" field at all.
-    let tmp_path = std::env::temp_dir().join(format!("mangler_missing_version_{}.mangle.json", get_id()));
+    let tmp_path = std::env::temp_dir().join(format!("mangler_missing_version_{}.mangler.json", get_id()));
     let json = serde_json::json!({
         "id": "old-graph",
         "name": "pre-versioning graph",
@@ -2769,7 +2769,7 @@ async fn test_load_report_missing_version_is_not_newer() {
 #[tokio::test]
 async fn test_save_to_file_updates_last_synced_mtime() {
     let mut graph = create_test_graph();
-    let tmp_path = std::env::temp_dir().join(format!("mangler_mtime_save_{}.mangle.json", get_id()));
+    let tmp_path = std::env::temp_dir().join(format!("mangler_mtime_save_{}.mangler.json", get_id()));
     graph.set_save_path(tmp_path.clone());
 
     assert!(graph.last_synced_mtime.is_none(), "no sync has happened yet");
@@ -2782,7 +2782,7 @@ async fn test_save_to_file_updates_last_synced_mtime() {
 #[tokio::test]
 async fn test_disk_is_newer_detects_external_rewrite() {
     let mut graph = create_test_graph();
-    let tmp_path = std::env::temp_dir().join(format!("mangler_disk_newer_{}.mangle.json", get_id()));
+    let tmp_path = std::env::temp_dir().join(format!("mangler_disk_newer_{}.mangler.json", get_id()));
     graph.set_save_path(tmp_path.clone());
     graph.save_to_file().unwrap();
 
@@ -2830,7 +2830,7 @@ async fn test_subgraph_with_unknown_child_node_surfaces_error_on_parent() {
     child_json["nodes"][unknown_id.as_str()] = unknown_raw;
 
     let child_path = std::env::temp_dir()
-        .join(format!("mangler_child_unknown_{}.mangle.json", get_id()));
+        .join(format!("mangler_child_unknown_{}.mangler.json", get_id()));
     fs::write(&child_path, serde_json::to_string(&child_json).unwrap()).unwrap();
 
     // Parent with a subgraph node, kept on a channel we can inspect.
@@ -2873,7 +2873,7 @@ async fn test_subgraph_bogus_path_emits_error_message_not_just_println() {
 
     parent.set_subgraph_path(
         subgraph_node_id.clone(),
-        std::path::PathBuf::from("/definitely/does/not/exist.mangle.json"),
+        std::path::PathBuf::from("/definitely/does/not/exist.mangler.json"),
     );
 
     let mut saw_error = false;
@@ -2900,7 +2900,7 @@ fn test_rename_file_moves_file_and_updates_state() {
     let (tx_nc, _) = mpsc::channel::<NodeChangedMessage>(32);
     let mut graph = Graph::new(get_id(), tx_nc, tx_gc, false).unwrap();
 
-    let old_path = std::env::temp_dir().join(format!("mangler_rename_old_{}.mangle.json", get_id()));
+    let old_path = std::env::temp_dir().join(format!("mangler_rename_old_{}.mangler.json", get_id()));
     graph.set_save_path(old_path.clone());
     graph.save_to_file().unwrap();
     assert!(old_path.exists());
@@ -2912,7 +2912,7 @@ fn test_rename_file_moves_file_and_updates_state() {
     assert!(new_path.exists(), "new file should exist");
     assert_eq!(
         new_path.file_name().unwrap().to_str().unwrap(),
-        "renamed graph.mangle.json"
+        "renamed graph.mangler.json"
     );
 
     // save_path and name follow the new stem.
@@ -2936,13 +2936,13 @@ fn test_rename_file_collision_errors_and_preserves_original() {
     let mut graph = Graph::new(get_id(), tx_nc, tx_gc, false).unwrap();
 
     let unique = get_id();
-    let old_path = std::env::temp_dir().join(format!("mangler_rename_src_{}.mangle.json", unique));
+    let old_path = std::env::temp_dir().join(format!("mangler_rename_src_{}.mangler.json", unique));
     graph.set_save_path(old_path.clone());
     graph.save_to_file().unwrap();
 
     // Pre-create the file the rename would target.
     let target_stem = format!("mangler_rename_dst_{}", unique);
-    let target_path = std::env::temp_dir().join(format!("{}.mangle.json", target_stem));
+    let target_path = std::env::temp_dir().join(format!("{}.mangler.json", target_stem));
     fs::write(&target_path, "existing file").unwrap();
 
     let result = graph.rename_file(&target_stem);
@@ -2975,7 +2975,7 @@ fn test_load_ignores_embedded_name_uses_file_stem() {
     use std::fs;
     use crate::GraphSaveData;
 
-    let tmp_path = std::env::temp_dir().join(format!("mangler_stem_name_{}.mangle.json", get_id()));
+    let tmp_path = std::env::temp_dir().join(format!("mangler_stem_name_{}.mangler.json", get_id()));
     let save_data = GraphSaveData {
         version: crate::APP_VERSION.to_string(),
         id: get_id(),
@@ -2991,7 +2991,7 @@ fn test_load_ignores_embedded_name_uses_file_stem() {
         .unwrap()
         .to_str()
         .unwrap()
-        .strip_suffix(".mangle.json")
+        .strip_suffix(".mangler.json")
         .unwrap();
     assert_eq!(loaded.name, expected_stem);
     assert_ne!(loaded.name, "embedded bar name");

@@ -12,9 +12,13 @@ fn solid(w: u32, h: u32, values: &[f32]) -> Arc<FloatImage> {
     Arc::new(FloatImage::from_raw(w, h, ch, data).unwrap())
 }
 
-/// The 30-input vec with defaults; helpers below wire specific maps/settings.
+/// The input vec with defaults; helpers below wire specific maps/settings.
+/// Auto-save is forced on (index 30) so `run` actually writes — these tests
+/// call `run` directly, with no engine run-context to force saving.
 fn base_inputs() -> Vec<Input> {
-    OpImageOutputMaterial::create_inputs()
+    let mut inputs = OpImageOutputMaterial::create_inputs();
+    inputs[AUTO_SAVE].value = Value::Bool(true);
+    inputs
 }
 
 /// Marks a map input as connected with a real image.
@@ -65,7 +69,7 @@ async fn test_material_settings_freeze() {
     let s = OpImageOutputMaterial::settings();
     assert_eq!(s.name, "material");
     let inputs = OpImageOutputMaterial::create_inputs();
-    assert_eq!(inputs.len(), 30, "input count is frozen at 30");
+    assert_eq!(inputs.len(), 32, "input count is frozen at 32 (30 + auto save + save)");
     let names: Vec<&str> = inputs.iter().map(|i| i.name.as_str()).collect();
     assert_eq!(&names[0..10], &[
         "albedo", "opacity", "normal", "roughness", "metallic", "ambient occlusion",
@@ -78,6 +82,9 @@ async fn test_material_settings_freeze() {
     assert_eq!(names[15], "texture 2 suffix");
     assert_eq!(names[25], "texture 4 suffix");
     assert_eq!(names[29], "texture 4 a");
+    // Appended save-gating inputs.
+    assert_eq!(names[30], "auto save");
+    assert_eq!(names[31], "save");
     let outputs = OpImageOutputMaterial::create_outputs();
     assert_eq!(outputs.len(), 1);
     assert_eq!(outputs[0].name, "folder");

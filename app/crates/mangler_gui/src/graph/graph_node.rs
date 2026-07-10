@@ -52,7 +52,7 @@ pub struct GraphNode {
     pub last_drag_position: Option<Pos2>,
     pub thumbnail: Option<GraphNodeThumbnail>,
     pub is_subgraph: bool,
-    /// For subgraph nodes, the path to the child `.mangle.json` file. `None`
+    /// For subgraph nodes, the path to the child `.mangler.json` file. `None`
     /// for operation nodes or subgraph nodes that haven't been loaded yet.
     pub subgraph_path: Option<PathBuf>,
     pub is_busy: bool,
@@ -121,6 +121,37 @@ impl GraphNode {
         };
         let view_size = graph_to_view_space_pos2(graph_zoom, node_size.to_pos2());
         Rect::from_center_size(graph_pos, view_size.to_vec2())
+    }
+
+    /// The node's full bounding rect in **graph space** (camera-independent),
+    /// including its thumbnail block if present. Used to frame the camera on a
+    /// set of nodes ("F" to focus). Mirrors the header-size rule in `get_rect`.
+    pub fn graph_space_rect(&self) -> Rect {
+        // Header box (matches the size rule used by `get_rect`).
+        let node_size = if self.custom_name.is_some() {
+            Vec2::new(NODE_SIZE.x, NODE_SIZE.y + 12.0)
+        } else {
+            NODE_SIZE
+        };
+        let header_rect = Rect::from_center_size(self.position, node_size);
+
+        // Thumbnails hang below the header's bottom edge, centered horizontally
+        // on the node (see `show` / `GraphNodeThumbnail::show`). Union them in so
+        // framing doesn't clip previews.
+        match &self.thumbnail {
+            Some(thumbnail) => {
+                let thumb_size = thumbnail.graph_space_size();
+                let thumb_rect = Rect::from_center_size(
+                    Pos2::new(
+                        self.position.x,
+                        header_rect.bottom() + thumb_size.y / 2.0,
+                    ),
+                    thumb_size,
+                );
+                header_rect.union(thumb_rect)
+            },
+            None => header_rect,
+        }
     }
 
     pub fn show(

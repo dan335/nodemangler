@@ -18,8 +18,59 @@ use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::{CompressionType as PngCompression, FilterType as PngFilter, PngEncoder};
 use image::{DynamicImage, ImageBuffer};
 use crate::float_image::FloatImage;
-use crate::value::ColorFormat;
+use crate::input::Input;
+use crate::value::{ColorFormat, Value};
 use std::io::{BufWriter, Write};
+
+/// Decide whether an output node (`to file`, `material`, `to clipboard`) should
+/// actually write on this run, and consume the one-shot manual-save pulse.
+///
+/// `auto_save_idx` holds the `Value::Bool` auto-save toggle (off by default);
+/// `save_idx` holds the `Value::Bool` fired by the manual "save" button. A write
+/// happens when **any** of these is true:
+/// - auto-save is on,
+/// - the save button was just clicked (the pulse is `true`), or
+/// - the engine forced saving for this run (a headless CLI `graph.run()`, via
+///   [`crate::run_context`]).
+///
+/// The save pulse is reset to `false` here so a click writes exactly once: a
+/// later reactive run (e.g. the image input changing) then sees `false` and
+/// does not re-save. Input mutations persist back onto the node (see
+/// [`Node::run`](crate::node::Node::run)), and `Graph::set_input` clears the
+/// input-hash cache so a repeat click re-fires. The pulse is left untouched when
+/// the input is driven by a connection (the upstream value owns it).
+pub(crate) fn should_save_and_consume(
+    inputs: &mut [Input],
+    auto_save_idx: usize,
+    save_idx: usize,
+) -> bool {
+    let auto = matches!(inputs.get(auto_save_idx).map(|i| &i.value), Some(Value::Bool(true)));
+    let pulse = matches!(inputs.get(save_idx).map(|i| &i.value), Some(Value::Bool(true)));
+
+    if let Some(input) = inputs.get_mut(save_idx) {
+        if input.connection.is_none() {
+            input.value = Value::Bool(false);
+        }
+    }
+
+    let forced = crate::run_context::current().map(|c| c.force_save).unwrap_or(false);
+    auto || pulse || forced
+}
+
+/// Build the standard pair of save-gating inputs appended to every image output
+/// node: an `auto save` checkbox (off by default) and a momentary `save`
+/// button. Kept here so the three output ops stay in lockstep.
+pub(crate) fn save_gate_inputs() -> [Input; 2] {
+    [
+        Input::new("auto save".to_string(), Value::Bool(false), None, None)
+            .with_description(
+                "When on, this node writes every time its input changes. When off (the default), \
+                 nothing is written until you press the save button.",
+            ),
+        Input::new("save".to_string(), Value::Bool(false), Some(crate::input::InputSettings::Button), None)
+            .with_description("Write the current image once now (used when auto save is off)."),
+    ]
+}
 
 // --- Component conversions --------------------------------------------------
 //

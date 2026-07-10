@@ -73,6 +73,59 @@ impl GraphEditor {
         self.selected_node_ids.clear();
     }
 
+    /// Frames the camera on a set of nodes: the current selection if any, else
+    /// the whole graph. No-op on an empty graph. Instant snap (no animation),
+    /// matching the 2D/3D viewers. Camera is pure GUI state, so nothing is sent
+    /// to the engine.
+    fn focus_camera(&self, camera: &mut GraphCamera, editor_rect: Rect) {
+        // Choose targets: selected nodes if any, otherwise every node.
+        let target_ids: Vec<&String> = if self.selected_node_ids.is_empty() {
+            self.graph_nodes.keys().collect()
+        } else {
+            self.selected_node_ids.iter().collect()
+        };
+
+        // Union each target's graph-space rect into one bounding box.
+        let mut bbox: Option<Rect> = None;
+        for id in target_ids {
+            if let Some(node) = self.graph_nodes.get(id) {
+                let node_rect = node.graph_space_rect();
+                bbox = Some(match bbox {
+                    Some(b) => b.union(node_rect),
+                    None => node_rect,
+                });
+            }
+        }
+        let bbox = match bbox {
+            Some(b) => b,
+            None => return, // empty graph / nothing to frame
+        };
+
+        // Guard against a degenerate panel size (avoids NaN in the ratios).
+        if editor_rect.width() <= 0.0 || editor_rect.height() <= 0.0 {
+            return;
+        }
+
+        // Fit zoom: larger zoom = smaller on screen (screen = graph / zoom), so
+        // pick the axis where content is most oversized, add margin for padding,
+        // clamp to the shared bounds, and cap at 1.0 so a tiny selection never
+        // zooms in past 100%.
+        let margin = 1.15;
+        let zoom = ((bbox.width() / editor_rect.width())
+            .max(bbox.height() / editor_rect.height())
+            * margin)
+            .clamp(pan_zoom::ZOOM_BOUNDS[0], pan_zoom::ZOOM_BOUNDS[1])
+            .max(1.0);
+
+        // Pan so the bbox center lands on the panel center. Solving
+        // (bbox.center + position) / zoom = editor_rect.center for position.
+        let p = editor_rect.center();
+        let c = bbox.center();
+        camera.zoom = zoom;
+        camera.position = Pos2::new(p.x * zoom - c.x, p.y * zoom - c.y);
+        camera.needs_center = false;
+    }
+
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
@@ -110,6 +163,18 @@ impl GraphEditor {
         // Scroll-to-zoom about the cursor (shared with the 2D preview).
         if editor_rect.contains(cursor_position) && !is_popup_open {
             pan_zoom::zoom_about_cursor(ui, &mut camera.position, &mut camera.zoom, cursor_position);
+        }
+
+        // "F" to focus the camera on the selected nodes (or the whole graph if
+        // nothing is selected), Maya-style. Only the hovered panel reframes, and
+        // never while the node search is open or a text field has keyboard focus.
+        let typing = ui.ctx().egui_wants_keyboard_input();
+        if editor_rect.contains(cursor_position)
+            && !is_popup_open
+            && !typing
+            && ui.ctx().input(|i| i.key_pressed(egui::Key::F))
+        {
+            self.focus_camera(camera, editor_rect);
         }
 
 

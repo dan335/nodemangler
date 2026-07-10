@@ -104,7 +104,7 @@ pub struct Program {
     /// its committed value is what drives a file rename (see
     /// `show_settings_panel`).
     graph_name_buffer: String,
-    /// `.mangle.json` files dropped onto this program's window this frame.
+    /// `.mangler.json` files dropped onto this program's window this frame.
     /// Opening a graph needs a new program tab, which only `App` can create,
     /// so the drop handler queues the paths here for `App` to drain after
     /// `update` (see `take_pending_open_graphs`).
@@ -164,8 +164,14 @@ impl Program {
         }
     }
 
-    pub fn close(self) {
-        self.app.thread_handle.abort();
+    /// Whether this program's graph currently has no nodes. `graph_editor`'s
+    /// node map is the GUI-side mirror of the engine graph (kept in sync by the
+    /// `LoadedNode`/`NodeRemoved` handlers and `GraphCleared`), so this is an
+    /// accurate "is the graph blank right now" check. Used at shutdown and on
+    /// tab close to spot throwaway auto-created "untitled" graphs worth deleting
+    /// so blank files don't accumulate in the default library.
+    pub fn is_empty(&self) -> bool {
+        self.graph_editor.graph_nodes.is_empty()
     }
 
     /// This graph's display name: derived purely from the save-path file
@@ -238,7 +244,7 @@ impl Program {
         }
     }
 
-    /// Takes (and clears) the `.mangle.json` files dropped onto this program's
+    /// Takes (and clears) the `.mangler.json` files dropped onto this program's
     /// window this frame. `App` drains these after `update` and opens each in
     /// a tab (via `open_or_focus`), which the program itself can't do.
     pub fn take_pending_open_graphs(&mut self) -> Vec<PathBuf> {

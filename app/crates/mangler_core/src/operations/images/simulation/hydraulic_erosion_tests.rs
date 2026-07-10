@@ -17,10 +17,10 @@ fn make_inputs(
         None => Value::Image { data: default_image(), change_id: get_id() },
     };
     vec![
+        Input::new("height map".to_string(), map_value, None, None),
         Input::new("seed".to_string(), Value::Integer(seed), None, None),
         Input::new("width".to_string(), Value::Integer(width), None, None),
         Input::new("height".to_string(), Value::Integer(height), None, None),
-        Input::new("height map".to_string(), map_value, None, None),
         Input::new("droplets".to_string(), Value::Integer(droplets), None, None),
         Input::new("capacity".to_string(), Value::Decimal(4.0), None, None),
         Input::new("erosion rate".to_string(), Value::Decimal(0.3), None, None),

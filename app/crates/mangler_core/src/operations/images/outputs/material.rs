@@ -21,10 +21,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use super::{image_format_from_path, save_image};
+use super::{image_format_from_path, save_image, save_gate_inputs, should_save_and_consume};
 use super::material_presets::{
     builtin_specs, custom_specs, pack_texture, spec_is_writable, TextureSpec, CHANNEL_SOURCE_OPTIONS, MAP_COUNT,
 };
+
+/// The auto-save toggle and manual-save button sit just past the four Custom
+/// slots (10 + 4*5 = 30). Appended after the frozen 0..=29 contract.
+const AUTO_SAVE: usize = 30;
+const SAVE: usize = 31;
 
 /// Operation that exports channel-packed PBR textures for a target engine.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,11 +41,11 @@ impl OpImageOutputMaterial {
         NodeSettings {
             name: "material".to_string(),
             description: "Exports channel-packed PBR textures for a game engine.".to_string(),
-            help: "Packs the standard PBR maps into the file set a target engine expects and writes them next to the chosen base path as `{base}_{suffix}.{ext}` (e.g. choosing `material.png` writes `material_orm.png` in the same folder). A map input counts as connected when it is wired or holds a real (non-1×1) image; only textures that reference at least one connected map are written, and every unconnected map falls back to a neutral constant: albedo 1, opacity 1, normal (0.5, 0.5, 1), roughness 1, metallic 0, ao 1, height 0.5, emission 0. Pixel values are written exactly as stored (sRGB floats, same as the `to file` node); no color-space conversion is applied.\n\nPresets:\n• Godot — albedo (+A=opacity), orm (R=ao, G=roughness, B=metallic), normal (OpenGL Y+, 16-bit), emission, height (16-bit gray).\n• Unity — albedo (+A=opacity), metallic (RGB=metallic, A=1−roughness smoothness, always RGBA), normal (OpenGL Y+, 16-bit), ao (8-bit gray), emission, height (16-bit gray).\n• Unreal — basecolor (+A=opacity), orm, normal (DirectX Y−: green channel inverted, 16-bit), emissive, height (16-bit gray).\n• Custom — four free-form slots: a suffix plus R/G/B/A source dropdowns. An R/G/B source of \"none\" writes 0; an alpha of \"none\" makes a 3-channel file; a \"1 - x\" option inverts. Empty-suffix slots are ignored and duplicate suffixes are an error. The slot inputs are inert under the built-in presets.\n\nThe base path's extension chooses the image format shared by every exported texture — supported: png, jpg/jpeg, gif, webp, pnm, tiff, tga, bmp, ico, hdr, exr, ff (farbfeld), avif, qoi. A texture's preferred 16-bit depth is silently degraded to 8-bit when the chosen format can't hold it; a still-incompatible format (e.g. an alpha texture into JPEG) is rejected before any file is written. Encoding uses fixed defaults (quality 85, PNG fast). Files are (re)written whenever an input changes. The destination folder is returned as an output for chaining.".to_string(),
+            help: "Packs the standard PBR maps into the file set a target engine expects and writes them next to the chosen base path as `{base}_{suffix}.{ext}` (e.g. choosing `material.png` writes `material_orm.png` in the same folder). A map input counts as connected when it is wired or holds a real (non-1×1) image; only textures that reference at least one connected map are written, and every unconnected map falls back to a neutral constant: albedo 1, opacity 1, normal (0.5, 0.5, 1), roughness 1, metallic 0, ao 1, height 0.5, emission 0. Pixel values are written exactly as stored (sRGB floats, same as the `to file` node); no color-space conversion is applied.\n\nPresets:\n• Godot — albedo (+A=opacity), orm (R=ao, G=roughness, B=metallic), normal (OpenGL Y+, 16-bit), emission, height (16-bit gray).\n• Unity — albedo (+A=opacity), metallic (RGB=metallic, A=1−roughness smoothness, always RGBA), normal (OpenGL Y+, 16-bit), ao (8-bit gray), emission, height (16-bit gray).\n• Unreal — basecolor (+A=opacity), orm, normal (DirectX Y−: green channel inverted, 16-bit), emissive, height (16-bit gray).\n• Custom — four free-form slots: a suffix plus R/G/B/A source dropdowns. An R/G/B source of \"none\" writes 0; an alpha of \"none\" makes a 3-channel file; a \"1 - x\" option inverts. Empty-suffix slots are ignored and duplicate suffixes are an error. The slot inputs are inert under the built-in presets.\n\nThe base path's extension chooses the image format shared by every exported texture — supported: png, jpg/jpeg, gif, webp, pnm, tiff, tga, bmp, ico, hdr, exr, ff (farbfeld), avif, qoi. A texture's preferred 16-bit depth is silently degraded to 8-bit when the chosen format can't hold it; a still-incompatible format (e.g. an alpha texture into JPEG) is rejected before any file is written. Encoding uses fixed defaults (quality 85, PNG fast). The destination folder is returned as an output for chaining.\n\nExport is off by default: turn on auto save to write whenever an input changes, or leave it off and press the save button to export once. Headless `mangle run` always exports regardless of the toggle.".to_string(),
         }
     }
 
-    /// Creates the 30 inputs. The order is a frozen contract (positional zip
+    /// Creates the 32 inputs. The order is a frozen contract (positional zip
     /// reconcile in graph.rs); future additions must append.
     pub fn create_inputs() -> Vec<Input> {
         let image_input = |name: &str, desc: &str| {
@@ -93,6 +98,9 @@ impl OpImageOutputMaterial {
             }
         }
 
+        // 30, 31 — auto-save toggle and manual-save button.
+        inputs.extend(save_gate_inputs());
+
         inputs
     }
 
@@ -107,6 +115,17 @@ impl OpImageOutputMaterial {
     /// Executes the operation: packs and writes the preset's texture set.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
+
+        // Gate writing on auto-save / the save button / a forced headless run,
+        // consuming the one-shot save pulse. Nothing is written (and no
+        // validation runs) when idle in manual mode.
+        if !should_save_and_consume(inputs, AUTO_SAVE, SAVE) {
+            return Ok(OperationResponse {
+                time: Instant::now().duration_since(start_time),
+                responses: vec![OutputResponse { value: Value::Path(PathBuf::new()) }],
+            });
+        }
+
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         // Convert the core inputs (maps 0..8, preset, file path).

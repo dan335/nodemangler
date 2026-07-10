@@ -1,5 +1,5 @@
 //! Data model for a "library": a named link to a folder on disk containing
-//! saved `.mangle.json` graphs. Only the link (name + source) is persisted
+//! saved `.mangler.json` graphs. Only the link (name + source) is persisted
 //! in `AppConfig`; the folder tree itself is rescanned from disk each
 //! session by `library_scanner`.
 

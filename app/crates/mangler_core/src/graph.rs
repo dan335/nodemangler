@@ -64,6 +64,13 @@ pub struct Graph {
     /// before any load/save has happened, or if the filesystem didn't report
     /// an mtime.
     pub last_synced_mtime: Option<SystemTime>,
+    /// When true, side-effecting output nodes (`to file`, `material`, `to
+    /// clipboard`) write on every run regardless of their per-node auto-save
+    /// toggle. The interactive GUI leaves this `false` (auto-save is opt-in and
+    /// off by default); headless CLI runs (`mangle run`) set it so graphs still
+    /// emit their files with no user around to click "save". Not persisted —
+    /// it's a property of *this* execution, not of the saved graph.
+    pub force_save_outputs: bool,
 }
 
 impl Graph {
@@ -91,10 +98,11 @@ impl Graph {
             // A brand-new graph was never loaded from a file.
             load_report: None,
             last_synced_mtime: None,
+            force_save_outputs: false,
         })
     }
 
-    /// Load a graph from a `.mangle.json` (or `.json`) file on disk.
+    /// Load a graph from a `.mangler.json` (or `.json`) file on disk.
     ///
     /// Deserializes the graph structure, marks all nodes as dirty so they will
     /// run on the next execution pass, and sends `LoadedNode` messages to the UI.
@@ -156,6 +164,7 @@ impl Graph {
                         thumbnail_service,
                         load_report: Some(load_report),
                         last_synced_mtime: load_mtime,
+                        force_save_outputs: false,
                     };
 
                     // Surface load anomalies to the UI *before* the
@@ -253,7 +262,7 @@ impl Graph {
     /// Add a new node to the graph and notify the UI.
     ///
     /// For subgraph nodes, a file path input is created so the user can select
-    /// which `.mangle.json` file to load. Returns the node ID.
+    /// which `.mangler.json` file to load. Returns the node ID.
     /// Add a node to the graph and echo it to the UI.
     ///
     /// `input_values` (`(input_index, value)` pairs) seed the node's inputs
@@ -878,7 +887,7 @@ impl Graph {
         }
     }
 
-    /// Re-read any subgraph node whose child `.mangle.json` has been modified
+    /// Re-read any subgraph node whose child `.mangler.json` has been modified
     /// on disk since the last load. Call this once per engine tick to pick up
     /// edits made from another tab or an external editor.
     ///
@@ -921,7 +930,7 @@ impl Graph {
     /// Rename this graph's file on disk, keeping it in the same directory.
     ///
     /// `new_stem` is a user-entered display name (spaces allowed); it's
-    /// sanitized and given the canonical `.mangle.json` extension via
+    /// sanitized and given the canonical `.mangler.json` extension via
     /// [`crate::naming::graph_file_name`]. The file is physically moved with
     /// `fs::rename`; on success `save_path` and `name` follow it and
     /// `last_synced_mtime` is re-stat'd from the *new* path so the next
@@ -996,6 +1005,8 @@ impl Graph {
             // The snapshot's save_path is cleared above, so there is
             // nothing for disk_is_newer to compare against.
             last_synced_mtime: None,
+            // A detached render should still emit its files.
+            force_save_outputs: self.force_save_outputs,
         };
         // Cloning the nodes dropped every subgraph node's loaded child graph and
         // readback channel to None (see NodeType::clone), so the snapshot would
@@ -1010,6 +1021,23 @@ impl Graph {
     // so that their thumbnails will know to update
     pub async fn run(&mut self) {
         let run_start = std::time::Instant::now();
+
+        // Graph context handed to each node's operation for this run (via a
+        // thread-local; see `crate::run_context`). Output ops use `graph_dir`
+        // to resolve relative folder inputs, `graph_name` as the default output
+        // file name, and `force_save` to write even when their own auto-save
+        // toggle is off (headless CLI runs). Computed once here from the graph's
+        // save location so per-node cloning is cheap.
+        let run_ctx = crate::run_context::RunContext {
+            graph_dir: self
+                .save_path
+                .as_ref()
+                .and_then(|p| p.parent())
+                .map(|d| d.to_path_buf()),
+            graph_name: self.name.clone(),
+            force_save: self.force_save_outputs,
+        };
+
         let mut dirty_nodes: HashSet<String> = HashSet::new();
         let mut checked_nodes: HashSet<String> = HashSet::new();
         let mut nodes_to_check: VecDeque<String> = VecDeque::new();
@@ -1218,6 +1246,7 @@ impl Graph {
                 node.run(
                     self.tx_node_changed.clone(),
                     self.thumbnail_service.as_deref(),
+                    run_ctx.clone(),
                 ).await;
                 node.cached_input_hash = Some(input_hash);
 

@@ -27,7 +27,7 @@ async fn test_auto_save_is_debounced_and_final_save_not_lost() {
     )
     .expect("App::new should succeed");
 
-    let path = std::env::temp_dir().join(format!("mangler_autosave_test_{}.mangle.json", get_id()));
+    let path = std::env::temp_dir().join(format!("mangler_autosave_test_{}.mangler.json", get_id()));
 
     tx_change_graph
         .send(ChangeGraphMessage::SetSavePath(path.clone()))
@@ -93,7 +93,7 @@ async fn wait_for_message<T>(
 #[tokio::test]
 async fn test_newer_version_file_holds_autosave_until_edit() {
     // A graph file stamped with a version newer than this build.
-    let path = std::env::temp_dir().join(format!("mangler_hold_test_{}.mangle.json", get_id()));
+    let path = std::env::temp_dir().join(format!("mangler_hold_test_{}.mangler.json", get_id()));
     let save_data = crate::GraphSaveData {
         version: "999.0.0".to_string(),
         id: get_id(),
@@ -160,7 +160,7 @@ async fn test_newer_version_file_holds_autosave_until_edit() {
 
 #[tokio::test]
 async fn test_external_overwrite_with_pending_edit_triggers_file_conflict() {
-    let path = std::env::temp_dir().join(format!("mangler_conflict_test_{}.mangle.json", get_id()));
+    let path = std::env::temp_dir().join(format!("mangler_conflict_test_{}.mangler.json", get_id()));
     let initial = crate::GraphSaveData {
         version: crate::APP_VERSION.to_string(),
         id: get_id(),
@@ -227,7 +227,7 @@ async fn test_external_overwrite_with_pending_edit_triggers_file_conflict() {
 
 #[tokio::test]
 async fn test_resolve_file_conflict_keep_ours_overwrites_disk() {
-    let path = std::env::temp_dir().join(format!("mangler_keep_ours_{}.mangle.json", get_id()));
+    let path = std::env::temp_dir().join(format!("mangler_keep_ours_{}.mangler.json", get_id()));
     let initial = crate::GraphSaveData {
         version: crate::APP_VERSION.to_string(),
         id: get_id(),
@@ -309,7 +309,7 @@ async fn test_resolve_file_conflict_keep_ours_overwrites_disk() {
 
 #[tokio::test]
 async fn test_resolve_file_conflict_keep_theirs_reloads_from_disk() {
-    let path = std::env::temp_dir().join(format!("mangler_keep_theirs_{}.mangle.json", get_id()));
+    let path = std::env::temp_dir().join(format!("mangler_keep_theirs_{}.mangler.json", get_id()));
     let initial = crate::GraphSaveData {
         version: crate::APP_VERSION.to_string(),
         id: get_id(),

@@ -38,6 +38,7 @@ pub mod color;
 pub mod version;
 pub mod saved_nodes;
 pub mod naming;
+pub mod run_context;
 mod tests;
 
 /// Generate a unique identifier using nanoid.
@@ -99,13 +100,13 @@ pub enum ChangeNodeMessage {
         /// The new custom name, or `None` to clear it.
         name: Option<String>,
     },
-    /// Point a Subgraph node at a `.mangle.json` file on disk. The engine
+    /// Point a Subgraph node at a `.mangler.json` file on disk. The engine
     /// loads the child graph and populates the node's inputs/outputs from the
     /// child's exposed slots.
     SetSubgraphPath {
         /// The target node's unique identifier.
         node_id: String,
-        /// Path to the child `.mangle.json` file.
+        /// Path to the child `.mangler.json` file.
         path: std::path::PathBuf,
     },
 }

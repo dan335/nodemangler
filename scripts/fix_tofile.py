@@ -19,7 +19,7 @@ png compression carry over unchanged (their names + settings already match).
 Usage:
     python fix_tofile.py <folder-or-file> [--dry-run]
 
-Recurses into subfolders for *.mangle.json. Writes a .bak beside each file it
+Recurses into subfolders for *.mangler.json. Writes a .bak beside each file it
 changes (skips if a .bak already exists). Idempotent: already-migrated nodes
 are left alone.
 """
@@ -170,7 +170,7 @@ def main():
         sys.exit(1)
     target = args[0]
     if os.path.isdir(target):
-        files = glob.glob(os.path.join(target, "**", "*.mangle.json"), recursive=True)
+        files = glob.glob(os.path.join(target, "**", "*.mangler.json"), recursive=True)
     else:
         files = [target]
     total = 0

@@ -53,7 +53,7 @@ Pass the global `--json` flag for machine-readable output instead of human-reada
 
 ### Subgraphs
 
-- `add-subgraph [--id <id>] [--subgraph-file <child.mangle.json>]`
+- `add-subgraph [--id <id>] [--subgraph-file <child.mangler.json>]`
 - `set-subgraph-path --node <id> --subgraph-file <file>`
 - `expose-input --node <id> --input <index> [--expose <true|false>]`
 - `expose-output --node <id> --output <index> [--expose <true|false>]`

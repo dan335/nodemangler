@@ -1,5 +1,5 @@
 //! Background scanner that walks a library's root folder on disk and builds
-//! a snapshot of its subfolders and `.mangle.json` graphs. Runs on a
+//! a snapshot of its subfolders and `.mangler.json` graphs. Runs on a
 //! dedicated `std::thread` (spawned by `Scanner::spawn`) so the UI thread
 //! never blocks on filesystem I/O, which matters on slow/offline network
 //! shares. The thread polls every `SCAN_INTERVAL`, publishing an immutable
@@ -31,10 +31,10 @@ pub const MAX_ENTRIES_PER_LIBRARY: usize = 10_000;
 /// `Graph::save_to_file`'s on-disk naming.
 pub const GRAPH_EXTENSION: &str = mangler_core::naming::GRAPH_EXTENSION;
 
-/// One `.mangle.json` graph found while scanning a folder.
+/// One `.mangler.json` graph found while scanning a folder.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GraphEntry {
-    /// Display name: the file name with the `.mangle.json` suffix stripped.
+    /// Display name: the file name with the `.mangler.json` suffix stripped.
     pub name: String,
     /// Full path to the graph file on disk.
     pub path: PathBuf,
@@ -87,7 +87,7 @@ pub enum LibraryScan {
 pub type ScanResults = HashMap<LibraryId, LibraryScan>;
 
 /// Returns `true` if `file_name` should be listed as a graph, i.e. ends in
-/// the literal `.mangle.json` suffix (and isn't just the bare suffix with no
+/// the literal `.mangler.json` suffix (and isn't just the bare suffix with no
 /// stem, which would be a strange/unusable name).
 pub fn is_graph_file(file_name: &str) -> bool {
     file_name.ends_with(GRAPH_EXTENSION) && file_name.len() > GRAPH_EXTENSION.len()
@@ -111,7 +111,7 @@ pub fn is_image_file(file_name: &str) -> bool {
 }
 
 /// Derives a graph's display name from its file name by stripping the
-/// `.mangle.json` suffix. Never parses the file itself — scans must stay
+/// `.mangler.json` suffix. Never parses the file itself — scans must stay
 /// fast on network shares, so the on-disk name is all we show.
 ///
 /// Thin wrapper over `mangler_core::naming::graph_display_name` (the single

@@ -104,19 +104,19 @@ impl OpImageSimulationHydraulicErosion {
         }
     }
 
-    /// Creates the default inputs: seed, dimensions, the optional height
-    /// guidance map, the droplet count, the droplet-physics params, and the
+    /// Creates the default inputs: the optional height guidance map first, then
+    /// seed, dimensions, the droplet count, the droplet-physics params, and the
     /// fallback-terrain params last.
     pub fn create_inputs() -> Vec<Input> {
         vec![
+            Input::new("height map".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+                .with_description("Optional starting terrain to erode; when unconnected an internal fBm heightmap is generated from the seed."),
             Input::new("seed".to_string(), Value::Integer(1), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
                 .with_description("Random seed for droplet rainfall positions and the fallback terrain."),
             Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None)
                 .with_description("Output image width in pixels."),
             Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None)
                 .with_description("Output image height in pixels."),
-            Input::new("height map".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
-                .with_description("Optional starting terrain to erode; when unconnected an internal fBm heightmap is generated from the seed."),
             Input::new("droplets".to_string(), Value::Integer(400000), Some(InputSettings::DragValue { clamp: Some((0.0, 4000000.0)), speed: Some(1000.0) }), None)
                 .with_description("Number of raindrops simulated; more droplets deepen and extend the gully network."),
             Input::new("capacity".to_string(), Value::Decimal(8.0), Some(InputSettings::DragValue { clamp: Some((0.01, 64.0)), speed: Some(0.05) }), None)
@@ -191,10 +191,10 @@ impl OpImageSimulationHydraulicErosion {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let map_converted = convert_input(inputs, 3, ValueType::Image, &mut input_errors);
+        let map_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
+        let seed_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
+        let width_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
+        let height_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
         let droplets_converted = convert_input(inputs, 4, ValueType::Integer, &mut input_errors);
         let capacity_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
         let erosion_rate_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);

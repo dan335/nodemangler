@@ -95,11 +95,11 @@ fn rename_library_with_unknown_id_is_a_noop() {
 fn take_pending_drains_the_queue() {
     let mut state = state_with(&[]);
     state.push_action(LibraryAction::OpenGraph {
-        path: PathBuf::from("C:/libs/a/x.mangle.json"),
+        path: PathBuf::from("C:/libs/a/x.mangler.json"),
     });
     state.push_action(LibraryAction::PathRenamed {
-        from: PathBuf::from("C:/libs/a/x.mangle.json"),
-        to: PathBuf::from("C:/libs/a/y.mangle.json"),
+        from: PathBuf::from("C:/libs/a/x.mangler.json"),
+        to: PathBuf::from("C:/libs/a/y.mangler.json"),
     });
 
     let drained = state.take_pending();
@@ -107,7 +107,7 @@ fn take_pending_drains_the_queue() {
     assert_eq!(
         drained[0],
         LibraryAction::OpenGraph {
-            path: PathBuf::from("C:/libs/a/x.mangle.json")
+            path: PathBuf::from("C:/libs/a/x.mangler.json")
         }
     );
     // A second take returns nothing: the queue was emptied.
@@ -125,7 +125,7 @@ fn rename_path_queues_path_renamed_with_sanitized_new_name() {
         get_id_for_test(),
     ));
     std::fs::create_dir_all(&dir).unwrap();
-    let from = dir.join("old_name.mangle.json");
+    let from = dir.join("old_name.mangler.json");
     std::fs::write(&from, "{}").unwrap();
 
     let mut state = state_with(&[]);
@@ -136,12 +136,12 @@ fn rename_path_queues_path_renamed_with_sanitized_new_name() {
     match &drained[0] {
         LibraryAction::PathRenamed { from: queued_from, to } => {
             assert_eq!(queued_from, &from);
-            assert_eq!(to, &dir.join("new_name.mangle.json"));
+            assert_eq!(to, &dir.join("new_name.mangler.json"));
         }
         other => panic!("expected PathRenamed, got {:?}", other),
     }
     // The file itself actually moved on disk.
-    assert!(dir.join("new_name.mangle.json").exists());
+    assert!(dir.join("new_name.mangler.json").exists());
     assert!(!from.exists());
 
     let _ = std::fs::remove_dir_all(&dir);

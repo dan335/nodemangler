@@ -24,21 +24,21 @@ fn make_temp_dir(label: &str) -> PathBuf {
 fn test_next_untitled_path_empty_dir() {
     let dir = make_temp_dir("empty");
     let path = next_untitled_path(&dir, &HashSet::new());
-    assert_eq!(path, dir.join("untitled 1.mangle.json"));
+    assert_eq!(path, dir.join("untitled 1.mangler.json"));
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// Existing "untitled 1.mangle.json"/"untitled 2.mangle.json" files on disk
+/// Existing "untitled 1.mangler.json"/"untitled 2.mangler.json" files on disk
 /// are skipped in favor of the first free number.
 #[test]
 fn test_next_untitled_path_skips_existing_files() {
     let dir = make_temp_dir("existing_files");
-    std::fs::write(dir.join("untitled 1.mangle.json"), "{}").unwrap();
-    std::fs::write(dir.join("untitled 2.mangle.json"), "{}").unwrap();
+    std::fs::write(dir.join("untitled 1.mangler.json"), "{}").unwrap();
+    std::fs::write(dir.join("untitled 2.mangler.json"), "{}").unwrap();
 
     let path = next_untitled_path(&dir, &HashSet::new());
 
-    assert_eq!(path, dir.join("untitled 3.mangle.json"));
+    assert_eq!(path, dir.join("untitled 3.mangler.json"));
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -50,11 +50,11 @@ fn test_next_untitled_path_skips_existing_files() {
 fn test_next_untitled_path_skips_taken_paths() {
     let dir = make_temp_dir("taken");
     let mut taken = HashSet::new();
-    taken.insert(dir.join("untitled 1.mangle.json"));
+    taken.insert(dir.join("untitled 1.mangler.json"));
 
     let path = next_untitled_path(&dir, &taken);
 
-    assert_eq!(path, dir.join("untitled 2.mangle.json"));
+    assert_eq!(path, dir.join("untitled 2.mangler.json"));
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -62,12 +62,39 @@ fn test_next_untitled_path_skips_taken_paths() {
 #[test]
 fn test_next_untitled_path_combines_disk_and_taken() {
     let dir = make_temp_dir("combined");
-    std::fs::write(dir.join("untitled 1.mangle.json"), "{}").unwrap();
+    std::fs::write(dir.join("untitled 1.mangler.json"), "{}").unwrap();
     let mut taken = HashSet::new();
-    taken.insert(dir.join("untitled 2.mangle.json"));
+    taken.insert(dir.join("untitled 2.mangler.json"));
 
     let path = next_untitled_path(&dir, &taken);
 
-    assert_eq!(path, dir.join("untitled 3.mangle.json"));
+    assert_eq!(path, dir.join("untitled 3.mangler.json"));
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// Exactly the paths `next_untitled_path` produces are recognized as
+/// auto-created, so empty-graph cleanup targets them.
+#[test]
+fn test_is_untitled_graph_path_matches_generated_names() {
+    let dir = make_temp_dir("untitled_match");
+    assert!(is_untitled_graph_path(&next_untitled_path(&dir, &HashSet::new())));
+    assert!(is_untitled_graph_path(Path::new("untitled 1.mangler.json")));
+    assert!(is_untitled_graph_path(Path::new("untitled 42.mangler.json")));
+    assert!(is_untitled_graph_path(&dir.join("untitled 7.mangler.json")));
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A user-chosen name (or anything not matching the exact `untitled <digits>`
+/// shape) is never treated as auto-created, so cleanup can't delete it.
+#[test]
+fn test_is_untitled_graph_path_rejects_other_names() {
+    // Deliberately named graphs.
+    assert!(!is_untitled_graph_path(Path::new("my graph.mangler.json")));
+    assert!(!is_untitled_graph_path(Path::new("untitled.mangler.json"))); // no number
+    assert!(!is_untitled_graph_path(Path::new("untitled 1v2.mangler.json"))); // trailing junk
+    assert!(!is_untitled_graph_path(Path::new("untitled 1 copy.mangler.json")));
+    assert!(!is_untitled_graph_path(Path::new("prefix untitled 1.mangler.json")));
+    // Right name, wrong extension.
+    assert!(!is_untitled_graph_path(Path::new("untitled 1.json")));
+    assert!(!is_untitled_graph_path(Path::new("untitled 1")));
 }

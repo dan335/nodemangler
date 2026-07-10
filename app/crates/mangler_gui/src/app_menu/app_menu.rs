@@ -79,7 +79,7 @@ impl AppMenu {
                             if ui.button("load").clicked() {
                                 // rfd matches extensions against the final
                                 // dot-component only, so "json" alone covers
-                                // both "x.json" and "x.mangle.json" — a
+                                // both "x.json" and "x.mangler.json" — a
                                 // "mangle.json" token would never match.
                                 if let Some(save_path) = rfd::FileDialog::new()
                                     .add_filter("NodeMangler graph", &["json"])

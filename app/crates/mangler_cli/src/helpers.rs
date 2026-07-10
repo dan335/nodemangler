@@ -410,7 +410,7 @@ pub(crate) fn score_op(haystack_parts: (&str, &str, &str), terms: &[String]) -> 
 #[cfg(test)]
 pub(crate) fn temp_graph_path(label: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
-        "mangle_test_{}_{}.mangle.json",
+        "mangle_test_{}_{}.mangler.json",
         label,
         std::process::id()
     ))

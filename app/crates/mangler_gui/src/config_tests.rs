@@ -215,13 +215,13 @@ fn test_ensure_default_library_tolerates_pre_existing_folder() {
     let base = make_temp_dir("pre_existing");
     let expected = base.join("NodeMangler");
     std::fs::create_dir_all(&expected).unwrap();
-    std::fs::write(expected.join("marker.mangle.json"), "{}").unwrap();
+    std::fs::write(expected.join("marker.mangler.json"), "{}").unwrap();
 
     let mut config = AppConfig::default();
     let result = config.ensure_default_library_in(&[base.clone()]);
 
     assert_eq!(result, Some(expected.clone()));
-    assert!(expected.join("marker.mangle.json").is_file());
+    assert!(expected.join("marker.mangler.json").is_file());
 
     std::fs::remove_dir_all(&base).ok();
 }

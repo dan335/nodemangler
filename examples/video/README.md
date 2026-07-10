@@ -1,6 +1,6 @@
 # Video processing with NodeMangler
 
-`mangle-video.sh` runs a NodeMangler node graph over **every frame of a video**.
+`mangler-video.sh` runs a NodeMangler node graph over **every frame of a video**.
 It uses `ffmpeg` to split the video into frames, `mangler_cli` to run the graph
 on each frame, and `ffmpeg` again to stitch the processed frames back into a
 video — reusing the source's frame rate and audio.
@@ -9,7 +9,7 @@ By default it downloads a small sample clip and applies an edge-detect graph, so
 you can see it work with a single command:
 
 ```bash
-./mangle-video.sh
+./mangler-video.sh
 ```
 
 That writes `output.mp4` in the current directory.
@@ -30,16 +30,16 @@ That writes `output.mp4` in the current directory.
 
 ```bash
 # Default: edge-detect the sample clip → output.mp4
-./mangle-video.sh
+./mangler-video.sh
 
 # Your own video, your own output name
-./mangle-video.sh -i my_clip.mov -o stylized.mp4
+./mangler-video.sh -i my_clip.mov -o stylized.mp4
 
 # A different graph
-./mangle-video.sh -g graphs/edge_detect.mangle.json -o edges.mp4
+./mangler-video.sh -g graphs/edge_detect.mangler.json -o edges.mp4
 
 # Fast preview: first 20 frames only, and keep the intermediate frames
-./mangle-video.sh --limit 20 --keep
+./mangler-video.sh --limit 20 --keep
 ```
 
 ## Options
@@ -47,7 +47,7 @@ That writes `output.mp4` in the current directory.
 | Option | Default | Description |
 | --- | --- | --- |
 | `-i, --input <path\|url>` | sample clip online | Source video: a local file or an `http(s)` URL. |
-| `-g, --graph <file>` | `graphs/edge_detect.mangle.json` | Graph JSON applied to each frame. |
+| `-g, --graph <file>` | `graphs/edge_detect.mangler.json` | Graph JSON applied to each frame. |
 | `-o, --output <file>` | `output.mp4` | Output video path. |
 | `--input-node <id>` | `input` | Node whose path input receives each frame. |
 | `--input-index <n>` | `0` | Which input slot on that node is the file path. |
@@ -59,7 +59,7 @@ That writes `output.mp4` in the current directory.
 | `--workdir <dir>` | temp dir | Use a specific scratch directory. |
 | `--cli <path>` | auto | Path to the `mangler_cli` binary. |
 
-Run `./mangle-video.sh --help` for the same list.
+Run `./mangler-video.sh --help` for the same list.
 
 ## How it works
 
@@ -128,7 +128,7 @@ Build the bundled edge-detect graph from scratch to see the pattern:
 
 ```bash
 CLI=../../app/target/release/mangler_cli   # or wherever your binary is
-G=graphs/my.mangle.json
+G=graphs/my.mangler.json
 
 $CLI $G new
 $CLI $G add-node --type images/input/from_file        --id input
@@ -136,7 +136,7 @@ $CLI $G add-node --type images/filter/edges/edge_detect --id fx
 $CLI $G connect  --from input:0 --to fx:0
 $CLI $G set-input --node fx --input 1 --value decimal:1.5   # edge intensity
 
-./mangle-video.sh -g $G -o mine.mp4
+./mangler-video.sh -g $G -o mine.mp4
 ```
 
 Swap `edge_detect` for any image operation — browse them with
@@ -144,7 +144,7 @@ Swap `edge_detect` for any image operation — browse them with
 Just keep the file loader wired to the effect, and point `--output-node` at
 whichever node produces your final image.
 
-`graphs/edge_detect.mangle.json` is the ready-made default (regenerated
+`graphs/edge_detect.mangler.json` is the ready-made default (regenerated
 automatically if you delete it).
 
 ## Troubleshooting

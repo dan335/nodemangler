@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn display_name_strips_mangle_json_suffix() {
-    assert_eq!(graph_display_name("my graph.mangle.json"), "my graph");
+    assert_eq!(graph_display_name("my graph.mangler.json"), "my graph");
 }
 
 #[test]
@@ -12,9 +12,9 @@ fn display_name_strips_plain_json_suffix() {
 
 #[test]
 fn display_name_prefers_mangle_json_over_plain_json() {
-    // ".mangle.json" ends in ".json" too; make sure the more specific suffix
+    // ".mangler.json" ends in ".json" too; make sure the more specific suffix
     // wins and we don't leave a dangling ".mangle".
-    assert_eq!(graph_display_name("thing.mangle.json"), "thing");
+    assert_eq!(graph_display_name("thing.mangler.json"), "thing");
 }
 
 #[test]
@@ -24,7 +24,7 @@ fn display_name_returns_unchanged_name_as_is() {
 
 #[test]
 fn display_name_from_path_uses_file_name() {
-    let path = std::path::Path::new("/some/dir/my graph.mangle.json");
+    let path = std::path::Path::new("/some/dir/my graph.mangler.json");
     assert_eq!(graph_display_name_from_path(path), "my graph");
 }
 
@@ -63,10 +63,10 @@ fn sanitize_name_of_only_illegal_characters_is_non_empty_safe_string() {
 
 #[test]
 fn graph_file_name_sanitizes_and_appends_extension() {
-    assert_eq!(graph_file_name("my graph"), "my graph.mangle.json");
+    assert_eq!(graph_file_name("my graph"), "my graph.mangler.json");
 }
 
 #[test]
 fn graph_file_name_strips_illegal_chars_but_keeps_spaces() {
-    assert_eq!(graph_file_name("a/b c"), "ab c.mangle.json");
+    assert_eq!(graph_file_name("a/b c"), "ab c.mangler.json");
 }

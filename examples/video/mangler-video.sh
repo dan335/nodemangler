@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# mangle-video.sh — run a NodeMangler graph over every frame of a video.
+# mangler-video.sh — run a NodeMangler graph over every frame of a video.
 #
 # Pipeline:
 #   1. Fetch the source video (local path or URL; defaults to a small clip online).
@@ -9,7 +9,7 @@
 #   4. ffmpeg reassembles the processed frames into a video, reusing the source's
 #      frame rate and audio track.
 #
-# Run `./mangle-video.sh --help` for usage.
+# Run `./mangler-video.sh --help` for usage.
 
 set -euo pipefail
 
@@ -20,7 +20,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # ── Defaults ─────────────────────────────────────────────────────────────────
 # A small (≈1 MB, 10 s, 360p) Big Buck Bunny clip that is fine to download.
 DEFAULT_INPUT="https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4"
-DEFAULT_GRAPH="$SCRIPT_DIR/graphs/edge_detect.mangle.json"
+DEFAULT_GRAPH="$SCRIPT_DIR/graphs/edge_detect.mangler.json"
 
 INPUT="$DEFAULT_INPUT"
 GRAPH=""
@@ -37,16 +37,16 @@ WORKDIR=""                  # explicit scratch dir (default: mktemp)
 
 usage() {
     cat <<EOF
-mangle-video.sh — run a NodeMangler graph on every frame of a video.
+mangler-video.sh — run a NodeMangler graph on every frame of a video.
 
 USAGE:
-  ./mangle-video.sh [options]
+  ./mangler-video.sh [options]
 
 OPTIONS:
   -i, --input <path|url>    Source video. Local file or http(s) URL.
                             (default: a ~1 MB Big Buck Bunny clip online)
   -g, --graph <file>        NodeMangler graph JSON to apply per frame.
-                            (default: graphs/edge_detect.mangle.json)
+                            (default: graphs/edge_detect.mangler.json)
   -o, --output <file>       Output video path. (default: output.mp4)
       --input-node <id>     Node ID whose path input receives each frame.
                             (default: input)
@@ -64,16 +64,16 @@ OPTIONS:
 
 EXAMPLES:
   # Default: edge-detect the sample clip into output.mp4
-  ./mangle-video.sh
+  ./mangler-video.sh
 
   # Your own video and graph
-  ./mangle-video.sh -i clip.mov -g graphs/edge_detect.mangle.json -o edges.mp4
+  ./mangler-video.sh -i clip.mov -g graphs/edge_detect.mangler.json -o edges.mp4
 
   # A custom graph with differently-named input/output nodes
-  ./mangle-video.sh -g my.mangle.json --input-node loader --output-node result
+  ./mangler-video.sh -g my.mangler.json --input-node loader --output-node result
 
   # Fast preview of the first 20 frames, keeping the intermediates
-  ./mangle-video.sh --limit 20 --keep
+  ./mangler-video.sh --limit 20 --keep
 
 The graph must contain an image-from-file node (its path input is set to each
 frame) and a node whose image output becomes the processed frame. Use
@@ -160,7 +160,7 @@ if [[ -n "$WORKDIR" ]]; then
     mkdir -p "$WORKDIR"
     WORK="$(cd "$WORKDIR" && pwd)"
 else
-    WORK="$(mktemp -d "${TMPDIR:-/tmp}/mangle-video.XXXXXX")"
+    WORK="$(mktemp -d "${TMPDIR:-/tmp}/mangler-video.XXXXXX")"
 fi
 SRC_FRAMES="$WORK/src"      # frames extracted from the source
 OUT_FRAMES="$WORK/out"      # frames after the graph runs

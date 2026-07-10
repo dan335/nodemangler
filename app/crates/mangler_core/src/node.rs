@@ -302,6 +302,7 @@ impl Node {
         &mut self,
         tx_node_changed: Option<Sender<NodeChangedMessage>>,
         thumbnail_service: Option<&crate::thumbnail_service::ThumbnailService>,
+        run_ctx: crate::run_context::RunContext,
     ) {
         match &mut self.node_type {
             // if node is an operation
@@ -354,6 +355,12 @@ impl Node {
                 let operation_clone = operation.clone();
                 let mut op_inputs = std::mem::take(&mut self.inputs);
                 let run_result = match tokio::task::spawn_blocking(move || {
+                    // Make the graph context visible to the operation for the
+                    // duration of this run. The guard clears it on drop (even on
+                    // panic), so it never leaks to the next task on this
+                    // blocking-pool thread. Output ops read it via
+                    // `run_context::current()`; every other op ignores it.
+                    let _run_ctx_guard = crate::run_context::set(run_ctx);
                     let result = tokio::runtime::Handle::current()
                         .block_on(operation_clone.run(&mut op_inputs));
                     (result, op_inputs)

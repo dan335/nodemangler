@@ -52,11 +52,11 @@ fn test_scan_folder_nested_and_sorted() {
     std::fs::create_dir(root.join("apple")).unwrap();
 
     // Graphs at the root, also mixed-case / non-alphabetical.
-    std::fs::write(root.join("b.mangle.json"), "{}").unwrap();
-    std::fs::write(root.join("A.mangle.json"), "{}").unwrap();
+    std::fs::write(root.join("b.mangler.json"), "{}").unwrap();
+    std::fs::write(root.join("A.mangler.json"), "{}").unwrap();
 
     // A graph nested one level down, to confirm recursion happened.
-    std::fs::write(root.join("Zebra").join("nested.mangle.json"), "{}").unwrap();
+    std::fs::write(root.join("Zebra").join("nested.mangler.json"), "{}").unwrap();
 
     let mut budget = MAX_ENTRIES_PER_LIBRARY;
     let scan = scan_folder(&root, 0, &mut budget).unwrap();
@@ -79,7 +79,7 @@ fn test_scan_folder_nested_and_sorted() {
     std::fs::remove_dir_all(&root).unwrap();
 }
 
-/// Files that don't end in the exact `.mangle.json` suffix are not listed as
+/// Files that don't end in the exact `.mangler.json` suffix are not listed as
 /// graphs, even if they look similar.
 #[test]
 fn test_scan_folder_ignores_non_graph_files() {
@@ -87,8 +87,8 @@ fn test_scan_folder_ignores_non_graph_files() {
 
     std::fs::write(root.join("notes.txt"), "hello").unwrap();
     std::fs::write(root.join("graph.json"), "{}").unwrap(); // wrong suffix
-    std::fs::write(root.join("graph.mangle.jsonx"), "{}").unwrap(); // wrong suffix
-    std::fs::write(root.join("real.mangle.json"), "{}").unwrap(); // the only real one
+    std::fs::write(root.join("graph.mangler.jsonx"), "{}").unwrap(); // wrong suffix
+    std::fs::write(root.join("real.mangler.json"), "{}").unwrap(); // the only real one
 
     let mut budget = MAX_ENTRIES_PER_LIBRARY;
     let scan = scan_folder(&root, 0, &mut budget).unwrap();
@@ -144,7 +144,7 @@ fn test_scan_folder_depth_cap_sets_truncated() {
 fn test_scan_folder_budget_exhaustion_sets_truncated() {
     let root = make_temp_dir("budget");
     for i in 0..5 {
-        std::fs::write(root.join(format!("g{i}.mangle.json")), "{}").unwrap();
+        std::fs::write(root.join(format!("g{i}.mangler.json")), "{}").unwrap();
     }
 
     // Budget smaller than the number of entries in the folder.
@@ -161,11 +161,11 @@ fn test_scan_folder_budget_exhaustion_sets_truncated() {
 
 #[test]
 fn test_is_graph_file_cases() {
-    assert!(is_graph_file("foo.mangle.json"));
-    assert!(is_graph_file("My Graph.mangle.json"));
+    assert!(is_graph_file("foo.mangler.json"));
+    assert!(is_graph_file("My Graph.mangler.json"));
     assert!(!is_graph_file("foo.json")); // wrong suffix
-    assert!(!is_graph_file("foo.mangle.jsonx")); // wrong suffix
-    assert!(!is_graph_file(".mangle.json")); // suffix with no stem
+    assert!(!is_graph_file("foo.mangler.jsonx")); // wrong suffix
+    assert!(!is_graph_file(".mangler.json")); // suffix with no stem
     assert!(!is_graph_file("FOO.MANGLE.JSON")); // case-sensitive match
     assert!(!is_graph_file("foo")); // no extension at all
 }
@@ -185,7 +185,7 @@ fn test_is_image_file_cases() {
     assert!(is_image_file("Photo.Jpg"));
     // Not images.
     assert!(!is_image_file("notes.txt"));
-    assert!(!is_image_file("graph.mangle.json"));
+    assert!(!is_image_file("graph.mangler.json"));
     assert!(!is_image_file("noext"));
 }
 
@@ -202,7 +202,7 @@ fn test_scan_folder_classifies_images() {
     std::fs::write(root.join("zebra.png"), "x").unwrap();
     std::fs::write(root.join("Apple.PNG"), "x").unwrap();
     // A graph — must stay a graph, not an image.
-    std::fs::write(root.join("g.mangle.json"), "{}").unwrap();
+    std::fs::write(root.join("g.mangler.json"), "{}").unwrap();
     // Unrelated file — ignored by both classifiers.
     std::fs::write(root.join("readme.txt"), "hi").unwrap();
 
@@ -226,8 +226,8 @@ fn test_scan_folder_classifies_images() {
 
 #[test]
 fn test_graph_display_name() {
-    assert_eq!(graph_display_name("foo.mangle.json"), "foo");
-    assert_eq!(graph_display_name("My Graph.mangle.json"), "My Graph");
+    assert_eq!(graph_display_name("foo.mangler.json"), "foo");
+    assert_eq!(graph_display_name("My Graph.mangler.json"), "My Graph");
     // Not the canonical extension, but still a `.json` file (e.g. legacy or
     // foreign): mangler_core::naming::graph_display_name strips the plain
     // `.json` suffix too, rather than showing the extension as part of the

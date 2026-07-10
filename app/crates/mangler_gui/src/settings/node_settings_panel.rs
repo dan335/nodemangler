@@ -324,6 +324,16 @@ pub fn show(
         if let Value::ExportPreset(p) = &i.value { Some(*p) } else { None }
     });
 
+    // On the image output nodes, the manual `save` button only applies when
+    // `auto save` is off; used below to hide it when auto-save is on.
+    let sibling_auto_save = node.inputs.iter().find_map(|i| {
+        if i.name == "auto save" {
+            if let Value::Bool(b) = i.value { Some(b) } else { None }
+        } else {
+            None
+        }
+    });
+
     // Auto-correct: if the current color format is incompatible with the
     // selected image format, switch to a sensible default.
     if let Some(ref img_fmt) = sibling_image_format {
@@ -394,6 +404,17 @@ pub fn show(
                 // be managed.
                 if input.name.starts_with("texture ")
                     && matches!(sibling_export_preset, Some(p) if p != ExportPreset::Custom)
+                    && input.connection.is_none()
+                    && !input.is_exposed
+                {
+                    continue;
+                }
+
+                // Hide the manual `save` button while `auto save` is on — there
+                // is nothing to press for. Connected/exposed stay visible.
+                if input.name == "save"
+                    && matches!(input.settings, Some(InputSettings::Button))
+                    && sibling_auto_save == Some(true)
                     && input.connection.is_none()
                     && !input.is_exposed
                 {
@@ -712,14 +733,27 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
     //     the boundary.
     let avail = ui.available_width();
     let gap = ui.spacing().item_spacing.x;
-    let value_box_w = ui.spacing().interact_size.x;
+    // Widen the slider's value box a little so multi-digit numbers (e.g. "0.50")
+    // aren't cramped. The Slider draws its value as a DragValue sized to
+    // `interact_size.x`, so bump that and subtract the same width from the track
+    // to keep the value box's right edge on the column boundary.
+    let value_box_w = ui.spacing().interact_size.x + 16.0;
+    ui.spacing_mut().interact_size.x = value_box_w;
     ui.spacing_mut().slider_width = (avail - gap - value_box_w).max(40.0);
     ui.spacing_mut().combo_width = avail;
     let text_width = avail;
 
     match value {
         Value::Bool(a) => {
-            if input.connection.is_some() {
+            if matches!(input.settings, Some(InputSettings::Button)) {
+                // Momentary action button (e.g. the output nodes' "save"). A
+                // click fires a one-shot Bool(true) pulse the operation consumes.
+                if input.connection.is_some() {
+                    ui.label(a.to_string());
+                } else if ui.add(egui::Button::new(input.name.clone())).clicked() {
+                    change_value(tx_change_node, node_id, input_index, input, Value::Bool(true));
+                }
+            } else if input.connection.is_some() {
                 ui.label(a.to_string());
             } else {
                 let mut x = a;

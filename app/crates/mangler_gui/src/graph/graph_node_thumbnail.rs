@@ -133,4 +133,23 @@ impl GraphNodeThumbnail {
             },
         }
     }
+
+    /// The thumbnail's extent in **graph space** (width, and height below the
+    /// node's bottom edge). Graph-space size equals the raw texture size because
+    /// `show` divides the texture size by zoom when drawing (screen = graph / zoom).
+    /// Used by the graph editor to include thumbnails when framing the camera on
+    /// nodes ("F" to focus).
+    pub fn graph_space_size(&self) -> Vec2 {
+        match self {
+            // Image thumbnails draw the texture, then a channels/resolution info
+            // row underneath — add a small allowance for that row (see `show`).
+            GraphNodeThumbnail::Image { texture_handle, .. } => {
+                texture_handle.size_vec2() + Vec2::new(0.0, 24.0)
+            },
+            GraphNodeThumbnail::Color { texture_handle } => texture_handle.size_vec2(),
+            // Text thumbnails wrap to the node width and cap at 8 rows; an exact
+            // measurement isn't needed for framing, so use a representative block.
+            GraphNodeThumbnail::Text(_) => Vec2::new(NODE_SIZE.x, 110.0),
+        }
+    }
 }

@@ -159,6 +159,11 @@ pub enum InputSettings {
         /// The allowed values shown in the dropdown.
         options: Vec<String>,
     },
+    /// A momentary action button. Used on a `Value::Bool` input: clicking sends
+    /// `Bool(true)` as a one-shot pulse (the operation consumes it and resets
+    /// the value to `false`), rather than toggling a persistent checkbox. Drives
+    /// the manual "save" button on the image output nodes.
+    Button,
 }
 
 /// The type of file dialog to present when an input uses `InputSettings::Path`.

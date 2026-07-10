@@ -120,13 +120,13 @@ pub(crate) fn do_set_input(graph: &mut Graph, node: &str, index: usize, value: &
 
 /// `mangle new <path>` — create an empty graph file.
 ///
-/// If the path does not end in `.json`, `.mangle.json` is appended automatically.
+/// If the path does not end in `.json`, `.mangler.json` is appended automatically.
 pub(crate) fn cmd_new(path: PathBuf, json_output: bool) -> Result<(), String> {
     let path = if path.extension().map_or(false, |ext| ext == "json") {
         path
     } else {
         let mut name = path.as_os_str().to_os_string();
-        name.push(".mangle.json");
+        name.push(".mangler.json");
         PathBuf::from(name)
     };
     if path.exists() {
@@ -382,7 +382,7 @@ pub(crate) async fn cmd_add_subgraph(
 }
 
 /// `mangle set-subgraph-path <path> --node <id> --subgraph-file <file>` — point a
-/// subgraph node at a child `.mangle.json` file and load it.
+/// subgraph node at a child `.mangler.json` file and load it.
 pub(crate) fn cmd_set_subgraph_path(
     path: PathBuf,
     node: String,
@@ -511,6 +511,9 @@ pub(crate) fn cmd_set_enabled(path: PathBuf, node: String, enabled: bool, json_o
 /// `mangle run <path>` — execute the graph and print all output values.
 pub(crate) async fn cmd_run(path: PathBuf, json_output: bool) -> Result<(), String> {
     let mut graph = load_graph(&path)?;
+    // Headless run: there's no user to press "save", so force every output node
+    // to write regardless of its (default-off) auto-save toggle.
+    graph.force_save_outputs = true;
     graph.run().await;
     save_graph(&graph, &path)?;
     if json_output {
@@ -541,7 +544,9 @@ pub(crate) async fn cmd_show_output(
         return Err(node_not_found_error(&graph, &node));
     }
 
-    // Run the graph to compute output values.
+    // Run the graph to compute output values. Force output nodes to write too,
+    // so a headless render emits its files (see cmd_run).
+    graph.force_save_outputs = true;
     graph.run().await;
     save_graph(&graph, &path)?;
 

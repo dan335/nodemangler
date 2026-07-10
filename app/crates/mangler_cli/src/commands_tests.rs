@@ -38,7 +38,7 @@ fn cmd_new_fails_if_file_already_exists() {
 fn cmd_new_appends_mangle_json_when_no_json_extension() {
     let base = std::env::temp_dir().join(format!("mangle_test_ext_{}", std::process::id()));
     // Clean up both potential outputs.
-    let expected = std::path::PathBuf::from(format!("{}.mangle.json", base.display()));
+    let expected = std::path::PathBuf::from(format!("{}.mangler.json", base.display()));
     let _ = std::fs::remove_file(&base);
     let _ = std::fs::remove_file(&expected);
     cmd_new(base.clone(), false).unwrap();
@@ -892,7 +892,7 @@ fn cmd_show_ops_ai_category() {
 
 // ── subgraph commands ────────────────────────────────────────────────────────
 
-/// Build a reusable child `.mangle.json` at `child_path` containing a single
+/// Build a reusable child `.mangler.json` at `child_path` containing a single
 /// exposed decimal passthrough node. Used by the subgraph tests below.
 #[cfg(test)]
 async fn build_child_graph_fixture(child_path: &std::path::PathBuf) {
@@ -953,7 +953,7 @@ async fn cmd_add_subgraph_with_missing_file_errors() {
     let _ = std::fs::remove_file(&path);
     cmd_new(path.clone(), false).unwrap();
 
-    let bogus = std::env::temp_dir().join("mangle_does_not_exist_xyz.mangle.json");
+    let bogus = std::env::temp_dir().join("mangle_does_not_exist_xyz.mangler.json");
     let result = cmd_add_subgraph(path.clone(), None, Some(bogus), false).await;
     assert!(result.is_err());
 

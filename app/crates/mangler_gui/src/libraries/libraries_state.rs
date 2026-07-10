@@ -56,7 +56,7 @@ pub enum LibraryAction {
     /// already pointing at it).
     OpenGraph { path: PathBuf },
     /// Create a brand-new graph: a blank program tab whose save path is set
-    /// to `path` (full `…/name.mangle.json`), so the engine's auto-save
+    /// to `path` (full `…/name.mangler.json`), so the engine's auto-save
     /// writes the file.
     CreateGraph { path: PathBuf, name: String },
     /// A graph file was renamed on disk. Open tabs pointing at `from` must
@@ -239,7 +239,7 @@ impl LibrariesState {
 
     /// Renames a folder or graph file on disk to `new_name` (already
     /// sanitized; for graphs the caller passes the stem — the
-    /// `.mangle.json` extension is re-appended here). On a successful graph
+    /// `.mangler.json` extension is re-appended here). On a successful graph
     /// rename, queues `PathRenamed` so `App` re-targets any open tab still
     /// auto-saving to the old path.
     pub fn rename_path(&mut self, from: &Path, new_name: &str) {
@@ -249,7 +249,7 @@ impl LibrariesState {
             .unwrap_or(false);
 
         // Rebuild the sibling path with the new name, keeping graph files'
-        // full `.mangle.json` extension.
+        // full `.mangler.json` extension.
         let file_name = if is_graph {
             mangler_core::naming::graph_file_name(new_name)
         } else {

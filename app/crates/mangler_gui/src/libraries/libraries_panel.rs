@@ -595,7 +595,7 @@ fn apply_dialog(state: &mut LibrariesState, dialog: LibraryDialog) {
         LibraryDialog::RenameEntry { path, is_folder: _, name } => {
             // Folders and graph files are sanitized the same way now that
             // graph filenames preserve spaces (`rename_path` re-appends the
-            // `.mangle.json` extension itself for graphs).
+            // `.mangler.json` extension itself for graphs).
             let sanitized = LibrariesState::sanitize(name.trim());
             if !sanitized.is_empty() {
                 state.rename_path(&path, &sanitized);

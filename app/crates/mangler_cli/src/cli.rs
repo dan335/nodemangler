@@ -166,15 +166,15 @@ Use `mangle show-ops --compact` for a quick summary."
         name: String,
     },
 
-    /// Add a subgraph node (optionally loading a child `.mangle.json` immediately)
+    /// Add a subgraph node (optionally loading a child `.mangler.json` immediately)
     #[command(
         override_usage = "mangle <PATH> add-subgraph [OPTIONS]",
         after_help = "\
 Examples:
   mangle parent.json add-subgraph --id sub1
-  mangle parent.json add-subgraph --id sub1 --subgraph-file child.mangle.json
+  mangle parent.json add-subgraph --id sub1 --subgraph-file child.mangler.json
 
-The child `.mangle.json` should contain nodes with exposed inputs/outputs
+The child `.mangler.json` should contain nodes with exposed inputs/outputs
 (see `expose-input`, `expose-output`). When `--subgraph-file` is provided,
 the child loads immediately and its exposed slots surface as parent I/O."
     )]
@@ -182,18 +182,18 @@ the child loads immediately and its exposed slots surface as parent I/O."
         /// Node ID for the new subgraph node (auto-generated if omitted)
         #[arg(long)]
         id: Option<String>,
-        /// Child `.mangle.json` file to load immediately
+        /// Child `.mangler.json` file to load immediately
         #[arg(long)]
         subgraph_file: Option<PathBuf>,
     },
 
-    /// Point an existing subgraph node at a child `.mangle.json` file
+    /// Point an existing subgraph node at a child `.mangler.json` file
     #[command(override_usage = "mangle <PATH> set-subgraph-path --node <NODE> --subgraph-file <FILE>")]
     SetSubgraphPath {
         /// ID of the target subgraph node
         #[arg(long)]
         node: String,
-        /// Child `.mangle.json` file to load
+        /// Child `.mangler.json` file to load
         #[arg(long)]
         subgraph_file: PathBuf,
     },

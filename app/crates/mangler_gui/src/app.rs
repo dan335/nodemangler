@@ -125,7 +125,7 @@ impl eframe::App for App {
                 if let Some(program) = self.programs.get_mut(current_program) {
                     program.has_preview_2d_panel = has_preview_2d_panel;
                     program.update(&ctx, ui);
-                    // A dropped `.mangle.json` opens as a tab — queue it on the
+                    // A dropped `.mangler.json` opens as a tab — queue it on the
                     // libraries action channel (drained below), the same path
                     // library double-clicks take. `self.libraries` is a field
                     // disjoint from `self.programs`, so this borrows cleanly
@@ -206,7 +206,14 @@ impl eframe::App for App {
 
             if let Some(program_id_to_close) = bar_response.program_to_close {
                 if let Some(program) = self.programs.remove(&program_id_to_close) {
-                    program.close();
+                    // Abort the engine task before cleanup so no in-flight
+                    // auto-save can re-create a file we're about to delete, then
+                    // drop the tab's blank auto-created "untitled" file if it
+                    // was never used — otherwise closing empty tabs one by one
+                    // still litters the default library.
+                    program.app.thread_handle.abort();
+                    cleanup_empty_untitled(&program);
+                    drop(program);
                     if self.current_program == Some(program_id_to_close) {
                         self.current_program = None;
 
@@ -244,6 +251,25 @@ impl eframe::App for App {
 
     fn persist_egui_memory(&self) -> bool {
         true
+    }
+
+    /// Cleans up throwaway blank graphs on shutdown. Every opened window /
+    /// new tab auto-creates an `untitled N.mangler.json` in the default library
+    /// so auto-save works from the first edit — but if the user never touches
+    /// it, that leaves an empty file behind, and they pile up over time.
+    ///
+    /// Here, for every still-open program, we abort its engine task first (so
+    /// no in-flight auto-save can re-create a file after we remove it) and then
+    /// delete any that are empty and still sitting at their auto-generated
+    /// "untitled" path. Tabs closed earlier in the session are handled at
+    /// close time (see the `program_to_close` branch in `ui`).
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        for program in self.programs.values() {
+            program.app.thread_handle.abort();
+        }
+        for program in self.programs.values() {
+            cleanup_empty_untitled(program);
+        }
     }
 }
 
@@ -593,7 +619,41 @@ fn assign_default_save_location(
     }
 }
 
-/// Finds the first available "untitled N.mangle.json" path inside `dir`,
+/// Deletes `program`'s save file if the graph is empty and the file is an
+/// auto-generated "untitled N" one — the throwaway blank tab case. Called when
+/// a tab or the whole app closes so these never-used files don't accumulate.
+///
+/// The caller must abort the program's engine task first, otherwise a pending
+/// auto-save could re-write the file right after we remove it.
+///
+/// Best-effort: a failed delete just leaves a harmless empty file behind, so
+/// errors are swallowed rather than surfaced at close time. A graph the user
+/// deliberately named (or one with any nodes) is never touched.
+fn cleanup_empty_untitled(program: &Program) {
+    if !program.is_empty() {
+        return;
+    }
+    let Some(path) = program.app.save_path.as_ref() else {
+        return;
+    };
+    if is_untitled_graph_path(path) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+/// True if `path`'s file name is an auto-generated `untitled N.mangler.json`
+/// (exactly the shape [`next_untitled_path`] produces: the literal `untitled `,
+/// then one or more ASCII digits, then the graph extension). A user-chosen
+/// name won't match, so cleanup can't delete an intentionally-named graph.
+fn is_untitled_graph_path(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .and_then(|name| name.strip_suffix(mangler_core::naming::GRAPH_EXTENSION))
+        .and_then(|stem| stem.strip_prefix("untitled "))
+        .is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// Finds the first available "untitled N.mangler.json" path inside `dir`,
 /// skipping both files that already exist on disk and paths in `taken`
 /// (already claimed by an open-but-not-yet-saved program).
 fn next_untitled_path(dir: &Path, taken: &HashSet<PathBuf>) -> PathBuf {

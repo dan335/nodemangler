@@ -89,7 +89,7 @@ pub fn show(
             let starting_file_name = naming::graph_file_name(display_name);
 
             // rfd matches extensions against the final dot-component only,
-            // so "json" alone covers both "x.json" and "x.mangle.json" — a
+            // so "json" alone covers both "x.json" and "x.mangler.json" — a
             // "mangle.json" filter token would never match anything.
             if let Some(save_path) = rfd::FileDialog::new()
                 .set_file_name(&starting_file_name)
@@ -108,8 +108,8 @@ pub fn show(
                 } else {
                     // Strip a single trailing plain ".json" (if any) before
                     // appending the canonical extension, so a plain-.json
-                    // choice becomes "<name>.mangle.json" rather than
-                    // "<name>.json.mangle.json".
+                    // choice becomes "<name>.mangler.json" rather than
+                    // "<name>.json.mangler.json".
                     let stem = file_name.strip_suffix(".json").unwrap_or(file_name);
                     save_path.with_file_name(format!("{stem}{}", naming::GRAPH_EXTENSION))
                 };

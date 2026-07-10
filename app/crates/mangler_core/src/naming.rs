@@ -7,11 +7,11 @@
 //! dialog: one sanitizer, one extension constant, one display-name rule.
 
 /// The canonical extension for saved NodeMangler graph files.
-pub const GRAPH_EXTENSION: &str = ".mangle.json";
+pub const GRAPH_EXTENSION: &str = ".mangler.json";
 
 /// Derives a graph's display name from its file name.
 ///
-/// Strips the canonical `.mangle.json` suffix if present. Otherwise strips a
+/// Strips the canonical `.mangler.json` suffix if present. Otherwise strips a
 /// plain `.json` suffix, so foreign/legacy `.json` files (from before this
 /// extension existed, or dropped in by hand) still get a sensible display
 /// name instead of showing their extension. If neither suffix matches, the
