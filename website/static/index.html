@@ -23,15 +23,12 @@
       <div class="top-row">
         <div class="brand">
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-            <rect x="1" y="8" width="6" height="6" rx="1" stroke="var(--fg)" stroke-width="1.5"></rect>
-            <rect x="15" y="1" width="6" height="6" rx="1" stroke="var(--fg)" stroke-width="1.5"></rect>
-            <rect x="15" y="15" width="6" height="6" rx="1" stroke="var(--accent)" stroke-width="1.5"></rect>
-            <path d="M7 11 H11 M11 11 V4 H15 M11 11 V18 H15" stroke="var(--border-strong)" stroke-width="1.5"></path>
+            <path d="M12.60 10.70 L14.75 7.56 M7.39 10.71 L5.97 8.64" stroke="var(--border-strong)" stroke-width="1.5"></path>
+            <circle cx="10" cy="14.5" r="4.5" stroke="var(--fg)" stroke-width="1.5"></circle>
+            <circle cx="4.5" cy="6.5" r="2.5" stroke="var(--fg)" stroke-width="1.5"></circle>
+            <circle cx="16.5" cy="5" r="3" stroke="var(--accent)" stroke-width="1.5"></circle>
           </svg>
           <span class="wordmark">nodemangler</span>
-          <!-- js-version: static "v1.0.3" fallback, replaced by the script
-               at the bottom of the page if the GitHub API call succeeds. -->
-          <span class="version-badge js-version">v1.0.3</span>
         </div>
         <a href="https://github.com/dan335/nodemangler" class="github-link">github &rarr;</a>
       </div>
@@ -42,36 +39,43 @@
 
       <!-- screenshot -->
       <div class="screenshot">
-        <img src="https://raw.githubusercontent.com/dan335/nodemangler/main/screenshot.jpg" alt="NodeMangler graph editor" loading="lazy">
+        <img src="/screenshot.jpg" alt="NodeMangler graph editor" loading="lazy">
       </div>
       <div class="screenshot-caption">the graph editor</div>
 
       <!-- facts -->
       <div class="facts">
-        <span>380 nodes</span><span class="dot">&middot;</span>
-        <span>45 noise generators</span><span class="dot">&middot;</span>
-        <span>14 color spaces</span><span class="dot">&middot;</span>
-        <span>16 file formats</span><span class="dot">&middot;</span>
-        <span>gui + cli</span>
+        <span>free & open source</span><span class="dot">&middot;</span>
+        <span>windows / mac / linux</span><span class="dot">&middot;</span>
+        <span>gui + cli</span><span class="dot">&middot;</span>
+        <span>100% rust</span>
       </div>
 
       <!-- what it does -->
       <div class="features">
         <div>
           <div class="eyebrow">Procedural</div>
-          <p class="feature-desc">Noise, patterns, shapes, and PBR nodes for building textures from nothing. Package a pipeline into a single reusable subgraph node.</p>
+          <p class="feature-desc">Noise, patterns, shapes, and generators for building textures from nothing — fractal, cellular, grunge, and simulation-based.</p>
+        </div>
+        <div>
+          <div class="eyebrow">PBR materials</div>
+          <p class="feature-desc">Normal, AO, curvature, and bevel from height maps, a live 3D material preview, and channel-packed export presets for Godot, Unity, and Unreal.</p>
         </div>
         <div>
           <div class="eyebrow">Image editing</div>
-          <p class="feature-desc">Adjustments, filters, morphology, and transforms in a floating-point pipeline — images stay f32 from input to output.</p>
+          <p class="feature-desc">Adjustments, filters, morphology, blurs, and transforms in a floating-point pipeline — images stay f32 from input to output.</p>
         </div>
         <div>
           <div class="eyebrow">Color</div>
-          <p class="feature-desc">Fourteen color spaces with conversion between them, plus harmony, analysis, and manipulation nodes.</p>
+          <p class="feature-desc">Construct, convert, and analyze colors across every major color space, with harmony and blend-mode nodes.</p>
+        </div>
+        <div>
+          <div class="eyebrow">Resolution independent</div>
+          <p class="feature-desc">Spatial parameters scale with output size: design at 512px, render at 4K, same result — don't touch the numbers.</p>
         </div>
         <div>
           <div class="eyebrow">Scriptable</div>
-          <p class="feature-desc">The CLI runs graphs headless and is easy for scripts and LLMs to drive. Graphs round-trip freely between GUI and CLI.</p>
+          <p class="feature-desc">The CLI runs graphs headless and is easy for scripts and LLMs to drive. Graphs round-trip freely between GUI and CLI, and pipelines package into reusable subgraph nodes.</p>
         </div>
       </div>
 
@@ -79,8 +83,8 @@
       <div class="download-section">
         <div class="eyebrow">Download</div>
         <div class="download-actions">
-          <a href="https://github.com/dan335/nodemangler/releases/latest" class="btn btn-primary">Download&nbsp;<span class="js-version">v1.0.3</span></a>
-          <a href="https://github.com/dan335/nodemangler" class="btn btn-secondary">View on GitHub</a>
+          <a href="https://dan335.itch.io/nodemangler" class="btn btn-primary">Download on itch.io</a>
+          <a href="https://github.com/dan335/nodemangler/releases/latest" class="btn btn-primary">Download on GitHub</a>
         </div>
         <p class="download-note">Prebuilt binaries for Windows, macOS, and Linux on the <a href="https://github.com/dan335/nodemangler/releases">releases page</a>. Or build from source:</p>
         <pre class="code-block"><code>git clone https://github.com/dan335/nodemangler
@@ -92,27 +96,10 @@ cargo run -p mangler_cli    <span class="code-comment"># headless cli</span></co
       <!-- license line -->
       <div class="license-row">
         <span>mit or apache-2.0, at your option</span>
-        <span>github.com/dan335/nodemangler</span>
+        <span><a href="https://github.com/dan335/nodemangler">github</a> &middot; <a href="https://dan335.itch.io/nodemangler">itch.io</a></span>
       </div>
 
     </main>
   </div>
-
-  <script>
-    // Keep the version badge/button fresh without templating: fetch the
-    // latest GitHub release tag client-side and swap it into every
-    // `.js-version` element. Any failure (offline, rate-limited, API
-    // shape change) is swallowed and the static "v1.0.3" fallback stays.
-    fetch('https://api.github.com/repos/dan335/nodemangler/releases/latest')
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        var tag = data && data.tag_name;
-        if (!tag) return;
-        document.querySelectorAll('.js-version').forEach(function (el) {
-          el.textContent = tag;
-        });
-      })
-      .catch(function () { /* keep static fallback */ });
-  </script>
 </body>
 </html>

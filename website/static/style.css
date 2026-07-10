@@ -145,17 +145,6 @@ a:hover { color: var(--accent); text-decoration-color: var(--accent); }
   letter-spacing: -0.01em;
 }
 
-/* Version badge next to the wordmark; also targeted by the tiny version-
-   fetch script below (see .js-version). */
-.version-badge {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--fg-faint);
-  border: 1px solid var(--border);
-  border-radius: 2px;
-  padding: 1px 6px;
-}
-
 .github-link {
   font-family: var(--font-mono);
   font-size: 12px;
@@ -273,10 +262,7 @@ a:hover { color: var(--accent); text-decoration-color: var(--accent); }
   gap: 8px;
 }
 
-/* Shared button shape; primary/secondary differ only in fill vs outline.
-   No flex gap: the buttons are text-only, and a gap would inflate the
-   space between the "Download" text node and the version <span> (which are
-   separate flex items) well past a normal word space. */
+/* Shared button shape; primary/secondary differ only in fill vs outline. */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -338,4 +324,15 @@ a:hover { color: var(--accent); text-decoration-color: var(--accent); }
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* Footer links stay as muted as the surrounding text; only pick up the
+   accent color on hover, same as the rest of the page. */
+.license-row a {
+  color: var(--fg-faint);
+  text-decoration-color: var(--border);
+}
+.license-row a:hover {
+  color: var(--accent);
+  text-decoration-color: var(--accent);
 }

@@ -1,10 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-  <!-- Favicon version of the wordmark's node-graph mark (site-design.html).
+  <!-- Favicon version of the desktop app's icon mark: three hollow rings
+       (large hub lower-centre, small upper-left, medium accent upper-right)
+       joined by straight spokes trimmed to the ring edges.
        Favicons render outside the page's CSS custom properties, so the
        theme colors are hardcoded here and re-picked per color scheme with
        a media query, approximating the oklch design tokens as hex:
-         light: ink (--fg), ember (--accent), border-strong
-         dark:  paper (--fg), amber (--accent), border-strong -->
+         light: ink (fg), ember (accent), border-strong
+         dark:  paper (fg), amber (accent), border-strong -->
   <style>
     .node-a, .node-b { stroke: #2b2926; }
     .node-c { stroke: #b35730; }
@@ -15,8 +17,8 @@
       .connector { stroke: #474c54; }
     }
   </style>
-  <rect class="node-a" x="1" y="8" width="6" height="6" rx="1" stroke-width="1.5"></rect>
-  <rect class="node-b" x="15" y="1" width="6" height="6" rx="1" stroke-width="1.5"></rect>
-  <rect class="node-c" x="15" y="15" width="6" height="6" rx="1" stroke-width="1.5"></rect>
-  <path class="connector" d="M7 11 H11 M11 11 V4 H15 M11 11 V18 H15" stroke-width="1.5"></path>
+  <path class="connector" d="M12.60 10.70 L14.75 7.56 M7.39 10.71 L5.97 8.64" stroke-width="1.5"></path>
+  <circle class="node-a" cx="10" cy="14.5" r="4.5" stroke-width="1.5"></circle>
+  <circle class="node-b" cx="4.5" cy="6.5" r="2.5" stroke-width="1.5"></circle>
+  <circle class="node-c" cx="16.5" cy="5" r="3" stroke-width="1.5"></circle>
 </svg>
