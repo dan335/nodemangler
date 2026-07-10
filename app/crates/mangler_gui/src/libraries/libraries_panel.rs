@@ -400,6 +400,50 @@ fn show_folder_contents(
         });
     }
 
+    for image in &folder.images {
+        // Image row: double-click (or the context menu) adds an "image from
+        // file" node to the current graph. Never a "current" row — images are
+        // not opened as tabs — so it renders unselected.
+        let label = format!("{}  {}", icons::IMAGE, image.name);
+        let response = ui.selectable_label(false, label);
+
+        if response.double_clicked() {
+            commands.actions.push(LibraryAction::AddImageNode {
+                path: image.path.clone(),
+            });
+        }
+
+        // Same open-menu marker as the folder/graph rows.
+        if response.context_menu_opened() {
+            ui.ctx().highlight_widget(response.id);
+        }
+
+        response.context_menu(|ui| {
+            strengthen_menu_hover(ui, colors);
+            if ui.button("add to current graph").clicked() {
+                commands.actions.push(LibraryAction::AddImageNode {
+                    path: image.path.clone(),
+                });
+                ui.close();
+            }
+            if !read_only {
+                if ui.button("delete…").clicked() {
+                    commands.open_dialog = Some(LibraryDialog::ConfirmDelete {
+                        path: image.path.clone(),
+                        is_folder: false,
+                    });
+                    ui.close();
+                }
+                ui.separator();
+            }
+            // Select the image file in its folder.
+            if ui.button("reveal in file explorer").clicked() {
+                commands.reveal = Some((image.path.clone(), true));
+                ui.close();
+            }
+        });
+    }
+
     if folder.truncated {
         // The scanner hit its depth/entry cap inside this folder; say so
         // instead of silently hiding content.
@@ -448,14 +492,24 @@ fn show_dialog(ui: &mut egui::Ui, state: &mut LibrariesState, colors: &ThemeValu
                 name_field(ui, name, &mut outcome);
             }
             LibraryDialog::ConfirmDelete { path, is_folder } => {
-                ui.heading(if *is_folder { "delete folder" } else { "delete graph" });
-                ui.add_space(8.0);
                 let name = path
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_default();
+                // Non-folder deletes can be a graph or an image; only graphs
+                // carry the "an open tab will re-save it" caveat.
+                let is_graph = !*is_folder && super::library_scanner::is_graph_file(&name);
+                let heading = if *is_folder {
+                    "delete folder"
+                } else if is_graph {
+                    "delete graph"
+                } else {
+                    "delete file"
+                };
+                ui.heading(heading);
+                ui.add_space(8.0);
                 ui.label(format!("Move '{}' to the recycle bin?", name));
-                if !*is_folder {
+                if is_graph {
                     // The engine auto-saves open graphs; warn that an open
                     // tab will recreate the file on its next save.
                     ui.label("If this graph is open in a tab, it will be re-saved on its next change.");
@@ -530,24 +584,19 @@ fn apply_dialog(state: &mut LibrariesState, dialog: LibraryDialog) {
         LibraryDialog::NewGraph { folder, name } => {
             let name = name.trim().to_string();
             // Same filename derivation as the graph-settings save dialog:
-            // sanitize, then spaces become underscores.
-            let file_stem = LibrariesState::sanitize(&name).replace(' ', "_");
-            if !file_stem.is_empty() {
-                let path = folder.join(format!(
-                    "{}{}",
-                    file_stem,
-                    super::library_scanner::GRAPH_EXTENSION
-                ));
+            // sanitize (keeping spaces) then append the canonical extension,
+            // so the display name and the on-disk file-name stem agree.
+            let file_name = mangler_core::naming::graph_file_name(&name);
+            if file_name != mangler_core::naming::GRAPH_EXTENSION {
+                let path = folder.join(file_name);
                 state.push_action(LibraryAction::CreateGraph { path, name });
             }
         }
-        LibraryDialog::RenameEntry { path, is_folder, name } => {
-            let mut sanitized = LibrariesState::sanitize(name.trim());
-            if !is_folder {
-                // Graph filenames use the same space→underscore rule as
-                // creation, so renamed files match created ones.
-                sanitized = sanitized.replace(' ', "_");
-            }
+        LibraryDialog::RenameEntry { path, is_folder: _, name } => {
+            // Folders and graph files are sanitized the same way now that
+            // graph filenames preserve spaces (`rename_path` re-appends the
+            // `.mangle.json` extension itself for graphs).
+            let sanitized = LibrariesState::sanitize(name.trim());
             if !sanitized.is_empty() {
                 state.rename_path(&path, &sanitized);
             }

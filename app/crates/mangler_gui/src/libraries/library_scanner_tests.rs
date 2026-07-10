@@ -170,10 +170,69 @@ fn test_is_graph_file_cases() {
     assert!(!is_graph_file("foo")); // no extension at all
 }
 
+// === is_image_file ===
+
+#[test]
+fn test_is_image_file_cases() {
+    // Common image extensions the loader supports. The list is derived from
+    // `ValueType::file_extensions(Image)`, which uses each format's *primary*
+    // extension (e.g. JPEG → "jpg", not "jpeg").
+    assert!(is_image_file("photo.png"));
+    assert!(is_image_file("photo.jpg"));
+    assert!(is_image_file("photo.bmp"));
+    // Case-insensitive: an uppercase extension still classifies.
+    assert!(is_image_file("PHOTO.PNG"));
+    assert!(is_image_file("Photo.Jpg"));
+    // Not images.
+    assert!(!is_image_file("notes.txt"));
+    assert!(!is_image_file("graph.mangle.json"));
+    assert!(!is_image_file("noext"));
+}
+
+// === scan_folder: image classification ===
+
+/// Image files are classified into `images` (with their extension kept in the
+/// name), graphs stay in `graphs`, and unrelated files are ignored — all
+/// case-insensitively and sorted.
+#[test]
+fn test_scan_folder_classifies_images() {
+    let root = make_temp_dir("images");
+
+    // Two images in non-alphabetical, mixed-case order + one uppercase ext.
+    std::fs::write(root.join("zebra.png"), "x").unwrap();
+    std::fs::write(root.join("Apple.PNG"), "x").unwrap();
+    // A graph — must stay a graph, not an image.
+    std::fs::write(root.join("g.mangle.json"), "{}").unwrap();
+    // Unrelated file — ignored by both classifiers.
+    std::fs::write(root.join("readme.txt"), "hi").unwrap();
+
+    let mut budget = MAX_ENTRIES_PER_LIBRARY;
+    let scan = scan_folder(&root, 0, &mut budget).unwrap();
+
+    // Graph classification is unchanged and doesn't leak into images.
+    assert_eq!(scan.graphs.len(), 1);
+    assert_eq!(scan.graphs[0].name, "g");
+
+    // Both images listed, sorted case-insensitively, extension preserved.
+    assert_eq!(scan.images.len(), 2);
+    assert_eq!(scan.images[0].name, "Apple.PNG"); // "apple" < "zebra"
+    assert_eq!(scan.images[1].name, "zebra.png");
+
+    // The .txt is in neither bucket.
+    assert!(scan.images.iter().all(|i| i.name != "readme.txt"));
+
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
 #[test]
 fn test_graph_display_name() {
     assert_eq!(graph_display_name("foo.mangle.json"), "foo");
     assert_eq!(graph_display_name("My Graph.mangle.json"), "My Graph");
-    // No matching suffix: returned unchanged.
-    assert_eq!(graph_display_name("foo.json"), "foo.json");
+    // Not the canonical extension, but still a `.json` file (e.g. legacy or
+    // foreign): mangler_core::naming::graph_display_name strips the plain
+    // `.json` suffix too, rather than showing the extension as part of the
+    // name.
+    assert_eq!(graph_display_name("foo.json"), "foo");
+    // No matching suffix at all: returned unchanged.
+    assert_eq!(graph_display_name("foo.txt"), "foo.txt");
 }

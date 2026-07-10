@@ -95,6 +95,20 @@ pub struct Program {
     /// published by the window holding the mouse capture so every window can
     /// hit-test and draw the ghost node.
     menu_drag_pointer_screen: Option<Pos2>,
+    /// Display name to show when this graph has no save path yet (a brand-new
+    /// unsaved tab). Once a save path exists the name is derived purely from
+    /// the file stem — see [`Self::display_name`].
+    fallback_name: String,
+    /// Editable buffer backing the graph-settings name field. Kept in sync
+    /// with the authoritative display name while the field isn't focused, and
+    /// its committed value is what drives a file rename (see
+    /// `show_settings_panel`).
+    graph_name_buffer: String,
+    /// `.mangle.json` files dropped onto this program's window this frame.
+    /// Opening a graph needs a new program tab, which only `App` can create,
+    /// so the drop handler queues the paths here for `App` to drain after
+    /// `update` (see `take_pending_open_graphs`).
+    pending_open_graphs: Vec<PathBuf>,
 }
 
 impl Program {
@@ -139,6 +153,9 @@ impl Program {
                 main_graph_rects: Vec::new(),
                 graph_rects_screen: HashMap::new(),
                 menu_drag_pointer_screen: None,
+                fallback_name: "new graph".to_string(),
+                graph_name_buffer: String::new(),
+                pending_open_graphs: Vec::new(),
             }),
             Err(error) => Err(NewGraphError(format!(
                 "Error creating program. {:?}",
@@ -151,27 +168,89 @@ impl Program {
         self.app.thread_handle.abort();
     }
 
-    /// Points this program's graph at a save path + name in one step. Used by
-    /// the Libraries panel when creating a graph inside a library folder and
-    /// when re-targeting a tab after its file was renamed on disk. Mirrors
-    /// the graph-settings panel's flow: update the GUI-side copies, then tell
-    /// the engine, which auto-saves to the new path ~1s later.
-    pub fn set_save_location(&mut self, path: PathBuf, name: String) {
-        self.app.name = name.clone();
+    /// This graph's display name: derived purely from the save-path file
+    /// stem (so the tab title and the Libraries panel always agree), falling
+    /// back to [`Self::fallback_name`] for a brand-new graph with no file yet.
+    pub fn display_name(&self) -> String {
+        match &self.app.save_path {
+            Some(path) => mangler_core::naming::graph_display_name_from_path(path),
+            None => self.fallback_name.clone(),
+        }
+    }
+
+    /// Points this program's graph at a save path. Used by the Libraries panel
+    /// when creating a graph inside a library folder and when re-targeting a
+    /// tab after its file was renamed on disk. The display name follows the
+    /// path automatically (see [`Self::display_name`]), so there's no separate
+    /// name to set: update the GUI-side save path, then tell the engine, which
+    /// auto-saves to the new path ~1s later.
+    pub fn set_save_location(&mut self, path: PathBuf) {
         self.app.save_path = Some(path.clone());
 
-        if let Err(err) = self
-            .tx_change_graph
-            .try_send(ChangeGraphMessage::SetGraphName(name))
-        {
-            println!("Error sending graph_message: {:?}", err);
-        }
         if let Err(err) = self
             .tx_change_graph
             .try_send(ChangeGraphMessage::SetSavePath(path))
         {
             println!("Error sending graph_message: {:?}", err);
         }
+    }
+
+    /// Creates an "image from file" input node wired to `path` and drops it
+    /// near the focused graph panel's centre (with a little random jitter so
+    /// repeated adds don't stack exactly). Shared by the drag-and-drop handler
+    /// and the Libraries panel's "add to current graph" action.
+    pub fn add_image_from_file(&mut self, path: PathBuf) {
+        // Pick a screen point inside the focused graph panel, then map it into
+        // graph space through that panel's camera. `main_graph_rects` holds
+        // last frame's panel rects — the same source `camera_at` relies on for
+        // pre-render pointer conversions.
+        let rect = self
+            .main_graph_rects
+            .first()
+            .map(|(_, r)| *r)
+            .unwrap_or_else(|| Rect::from_min_size(Pos2::ZERO, egui::vec2(800.0, 600.0)));
+        let jitter = rect.width().min(rect.height()) * 0.3;
+        let screen = Pos2::new(
+            rect.center().x + fastrand::f32() * jitter - jitter * 0.5,
+            rect.center().y + fastrand::f32() * jitter - jitter * 0.5,
+        );
+        let (zoom, position) = self.camera_at(screen);
+        let graph_pos = view_to_graph_space_pos2(zoom, screen) - position.to_vec2();
+
+        match self.add_node(
+            AddNodeType::Operation(mangler_core::operations::Operation::OpImageInputFile),
+            graph_pos,
+            true,
+            None,
+            Vec::new(),
+        ) {
+            Ok(node_id) => {
+                let message = ChangeNodeMessage::SetInput {
+                    node_id,
+                    input_index: 0,
+                    value: Value::Path(path),
+                };
+                if let Err(err) = self.tx_change_node.try_send(message) {
+                    println!("Error sending graph_message: {:?}", err);
+                }
+            }
+            Err(err) => println!("Error adding image node: {}", err.0),
+        }
+    }
+
+    /// Takes (and clears) the `.mangle.json` files dropped onto this program's
+    /// window this frame. `App` drains these after `update` and opens each in
+    /// a tab (via `open_or_focus`), which the program itself can't do.
+    pub fn take_pending_open_graphs(&mut self) -> Vec<PathBuf> {
+        std::mem::take(&mut self.pending_open_graphs)
+    }
+
+    /// Shows `message` in the fading status overlay (see
+    /// `show_status_message`). Used by `App` for one-off notices that don't
+    /// warrant the blocking error modal — e.g. "no default library" when a
+    /// brand-new graph can't be given an auto-save location.
+    pub fn queue_status_message(&mut self, message: String) {
+        self.status_message = Some((message, std::time::Instant::now()));
     }
 
     /// Once-per-frame logic that must run before any panel rendering: pointer
@@ -390,6 +469,17 @@ impl Program {
                     // Reload-vs-Overwrite modal while this is set.
                     self.file_conflict = Some(path);
                 }
+                GraphChangedMessage::SaveError { path, message } => {
+                    // Writing the save file failed (missing/unwritable
+                    // directory, disk full, ...). Not fatal — the edit is
+                    // still in memory and the next auto-save tick will try
+                    // again — so this is a fading status message rather
+                    // than a blocking modal.
+                    self.status_message = Some((
+                        format!("couldn't save {}: {}", path.display(), message),
+                        std::time::Instant::now(),
+                    ));
+                }
                 GraphChangedMessage::GraphCleared => {
                     // The engine is replacing the graph wholesale (conflict
                     // resolved with "reload from disk"): drop every node,
@@ -400,6 +490,12 @@ impl Program {
                     self.graph_editor.clear();
                     self.editing_node_id = None;
                     self.viewing_node_id_index = None;
+                }
+                GraphChangedMessage::FileRenamed { new_path } => {
+                    // The engine renamed our file on disk (in response to a
+                    // RenameFile). Adopt the new path; the tab title and the
+                    // name field follow automatically via `display_name`.
+                    self.app.save_path = Some(new_path);
                 }
             }
         }
@@ -574,48 +670,36 @@ impl Program {
             }
         }
 
-        let app_rect = ctx.content_rect();
-
-        // dropped files
-        // can't figure out  how to get pointer position
-        // so just put in middle of screen
+        // Dropped files: collect the paths under the ctx.input borrow, then
+        // act on them afterwards (adding a node / queueing a graph-open both
+        // touch `self`, which we can't mutate while the input closure holds
+        // its borrow).
+        let mut dropped_image_paths: Vec<PathBuf> = Vec::new();
+        let mut dropped_graph_paths: Vec<PathBuf> = Vec::new();
         ctx.input(|i| {
-            if !i.raw.dropped_files.is_empty() {
-                for file in i.raw.dropped_files.iter() {
-                    if let Some(path) = &file.path {
-                        if let Some(extension) = path.extension() {
-                            if let Ok(ext) = extension.to_os_string().into_string() {
-                                for value_type in ValueType::types().iter() {
-                                    if ValueType::file_extensions(value_type).contains(&ext.to_lowercase()) {
-                                        match value_type {
-                                            ValueType::Image => {
-                                                let random_size = app_rect.width().min(app_rect.height()) * 0.3;
-                                                let x = app_rect.center().x + fastrand::f32() * random_size - random_size * 0.5;
-                                                let y = app_rect.center().y + fastrand::f32() * random_size - random_size * 0.5;
-                                                let (zoom, position) = self.camera_at(Pos2::new(x, y));
-                                                let pos = view_to_graph_space_pos2(zoom, Pos2::new(x, y)) - position.to_vec2();
-                                                if let Ok(node_id) = self.add_node(AddNodeType::Operation(mangler_core::operations::Operation::OpImageInputFile), pos, true, None, Vec::new()) {
-
-                                                    let message = ChangeNodeMessage::SetInput { node_id, input_index: 0, value: Value::Path(path.clone()) };
-
-                                                    match self.tx_change_node.try_send(message) {
-                                                        Ok(_) => {}
-                                                        Err(err) => {
-                                                            println!("Error sending graph_message: {:?}", err);
-                                                        }
-                                                    }
-                                                }
-                                            },
-                                            _ => {},
-                                        }
-                                    }
-                                }
-                            }
-                        }
+            for file in i.raw.dropped_files.iter() {
+                let Some(path) = &file.path else { continue };
+                let file_name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                if crate::libraries::library_scanner::is_graph_file(&file_name) {
+                    // A NodeMangler graph: let `App` open it in a tab.
+                    dropped_graph_paths.push(path.clone());
+                } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    if ValueType::file_extensions(&ValueType::Image)
+                        .contains(&ext.to_lowercase())
+                    {
+                        dropped_image_paths.push(path.clone());
                     }
                 }
             }
         });
+        for path in dropped_image_paths {
+            self.add_image_from_file(path);
+        }
+        // Bubble dropped graphs up for `App` to open (needs the programs map).
+        self.pending_open_graphs.extend(dropped_graph_paths);
 
         // Request repaint only when needed:
         // - Immediately if we received engine messages this frame
@@ -696,12 +780,18 @@ impl Program {
             // show node settings
             if let Some(editing_node_id) = &self.editing_node_id {
                 if let Some(node) = self.graph_editor.graph_nodes.get_mut(editing_node_id) {
+                    // Seed file-dialog directories with this graph's own
+                    // folder, so a "save/open file" input starts next to the
+                    // graph rather than wherever rfd last landed. An input with
+                    // an explicit `set_directory` overrides this in the panel.
+                    let graph_dir = self.app.save_path.as_deref().and_then(|p| p.parent());
                     let node_settings_response =
                         node_settings_panel::show(
                             ui,
                             node,
                             &self.tx_change_node,
                             theme,
+                            graph_dir,
                         );
                     show_graph_settings = false;
 
@@ -713,14 +803,22 @@ impl Program {
             }
 
             if show_graph_settings {
-                let graph_settings_response =
-                    graph_settings_panel::show(ui, &mut self.app.name, &self.app.save_path, theme);
+                let display_name = self.display_name();
+                let graph_settings_response = graph_settings_panel::show(
+                    ui,
+                    &mut self.graph_name_buffer,
+                    &display_name,
+                    &self.app.save_path,
+                    theme,
+                );
 
-                // name changed
-                if let Some(new_name) = graph_settings_response.new_name {
-                    self.app.name = new_name.clone();
-
-                    let message = ChangeGraphMessage::SetGraphName(new_name);
+                // name committed -> rename the file on disk. We do NOT
+                // optimistically update save_path here: the rename can fail
+                // (name collision), and the engine's SaveError → status
+                // message explains it. On success FileRenamed updates the
+                // path, and display_name (hence the tab title) follows.
+                if let Some(new_stem) = graph_settings_response.new_name {
+                    let message = ChangeGraphMessage::RenameFile { new_stem };
 
                     match self.tx_change_graph.try_send(message) {
                         Ok(_) => {}

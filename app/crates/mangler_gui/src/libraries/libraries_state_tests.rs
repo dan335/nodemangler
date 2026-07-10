@@ -100,7 +100,6 @@ fn take_pending_drains_the_queue() {
     state.push_action(LibraryAction::PathRenamed {
         from: PathBuf::from("C:/libs/a/x.mangle.json"),
         to: PathBuf::from("C:/libs/a/y.mangle.json"),
-        new_name: "y".to_string(),
     });
 
     let drained = state.take_pending();
@@ -115,11 +114,9 @@ fn take_pending_drains_the_queue() {
     assert!(state.take_pending().is_empty());
 }
 
-/// `rename_path` renames a real file and must queue `PathRenamed` carrying
-/// the sanitized stem as `new_name` — `App` needs that stem verbatim to
-/// patch the embedded `GraphSaveData.name` / retarget an open tab, and
-/// re-deriving it from `to` would be wrong (`.mangle.json` is a double
-/// extension, so `file_stem()` would leave `.mangle` on it).
+/// `rename_path` renames a real file and must queue `PathRenamed` with the
+/// old and new paths so `App` can retarget any open tab; the sanitized stem
+/// lives in the new file name (`App` re-derives the display name from it).
 #[test]
 fn rename_path_queues_path_renamed_with_sanitized_new_name() {
     let dir = std::env::temp_dir().join(format!(
@@ -137,10 +134,9 @@ fn rename_path_queues_path_renamed_with_sanitized_new_name() {
     let drained = state.take_pending();
     assert_eq!(drained.len(), 1, "a graph rename should queue exactly one action");
     match &drained[0] {
-        LibraryAction::PathRenamed { from: queued_from, to, new_name } => {
+        LibraryAction::PathRenamed { from: queued_from, to } => {
             assert_eq!(queued_from, &from);
             assert_eq!(to, &dir.join("new_name.mangle.json"));
-            assert_eq!(new_name, "new_name");
         }
         other => panic!("expected PathRenamed, got {:?}", other),
     }

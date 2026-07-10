@@ -127,7 +127,14 @@ async fn test_newer_version_file_holds_autosave_until_edit() {
     // An edit should release the hold and let the pending save go through,
     // restamping the file with this build's APP_VERSION.
     tx_change_graph
-        .send(ChangeGraphMessage::SetGraphName("edited".to_string()))
+        .send(ChangeGraphMessage::AddNode {
+            node_id: get_id(),
+            node_type: AddNodeType::Operation(Operation::OpNumberInputDecimal),
+            position: glam::Vec2::ZERO,
+            is_enabled: true,
+            custom_name: None,
+            input_values: Vec::new(),
+        })
         .await
         .unwrap();
 
@@ -179,7 +186,14 @@ async fn test_external_overwrite_with_pending_edit_triggers_file_conflict() {
 
     // A pending local edit that wants to auto-save on the next debounce tick.
     tx_change_graph
-        .send(ChangeGraphMessage::SetGraphName("edited locally".to_string()))
+        .send(ChangeGraphMessage::AddNode {
+            node_id: get_id(),
+            node_type: AddNodeType::Operation(Operation::OpNumberInputDecimal),
+            position: glam::Vec2::ZERO,
+            is_enabled: true,
+            custom_name: None,
+            input_values: Vec::new(),
+        })
         .await
         .unwrap();
 
@@ -237,8 +251,19 @@ async fn test_resolve_file_conflict_keep_ours_overwrites_disk() {
     )
     .expect("App::new should succeed");
 
+    // Our pending local edit: add a node with a known id. After a keep_ours
+    // resolve, the overwritten file must contain this node — proof our
+    // in-memory graph won, not the external content (which has no nodes).
+    let our_node_id = get_id();
     tx_change_graph
-        .send(ChangeGraphMessage::SetGraphName("mine".to_string()))
+        .send(ChangeGraphMessage::AddNode {
+            node_id: our_node_id.clone(),
+            node_type: AddNodeType::Operation(Operation::OpNumberInputDecimal),
+            position: glam::Vec2::ZERO,
+            is_enabled: true,
+            custom_name: None,
+            input_values: Vec::new(),
+        })
         .await
         .unwrap();
 
@@ -268,7 +293,7 @@ async fn test_resolve_file_conflict_keep_ours_overwrites_disk() {
     for _ in 0..50 {
         if let Ok(contents) = std::fs::read_to_string(&path) {
             if let Ok(parsed) = serde_json::from_str::<crate::GraphSaveData>(&contents) {
-                if parsed.name == "mine" {
+                if parsed.nodes.contains_key(&our_node_id) {
                     overwritten = true;
                     break;
                 }

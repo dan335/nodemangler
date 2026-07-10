@@ -178,6 +178,10 @@ pub fn show(
     node: &mut GraphNode,
     tx_change_node: &Sender<ChangeNodeMessage>,
     theme: &Theme,
+    // The focused graph's folder (from its save path), used to seed the
+    // starting directory of a Path input's file dialog when the input doesn't
+    // pin one explicitly. `None` for an unsaved graph.
+    default_dir: Option<&std::path::Path>,
 ) -> NodeSettingsResponse {
     let mut node_settings_response = NodeSettingsResponse::new();
 
@@ -280,7 +284,7 @@ pub fn show(
             ui.label(label);
             if ui.button("🗀").clicked() {
                 let file_dialog = rfd::FileDialog::new()
-                    .add_filter("subgraph (*.mangle.json)", &["json"]);
+                    .add_filter("NodeMangler graph", &["json"]);
                 if let Some(picked) = file_dialog.pick_file() {
                     node.subgraph_path = Some(picked.clone());
                     let message = ChangeNodeMessage::SetSubgraphPath {
@@ -432,7 +436,7 @@ pub fn show(
                         // because content no longer exceeds the column.
                         ui.set_max_width((value_col_right - ui.max_rect().left()).max(60.0));
                         ui.horizontal_centered(|ui| {
-                            input_value(ui, input.value.clone(), input, input_index, &node.id, &tx_change_node, sibling_image_format, theme);
+                            input_value(ui, input.value.clone(), input, input_index, &node.id, &tx_change_node, sibling_image_format, theme, default_dir);
 
                             // Show error indicator if the input has a validation error.
                             if input.is_error {
@@ -682,7 +686,7 @@ fn output_value(ui: &mut egui::Ui, value: &Value, theme: &Theme) {
 
 /// Render an interactive input widget appropriate for the value type.
 /// Connected inputs show a read-only label; disconnected inputs show the full editor.
-fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: usize, node_id: &str, tx_change_node: &Sender<ChangeNodeMessage>, sibling_image_format: Option<image::ImageFormat>, theme: &Theme) {
+fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: usize, node_id: &str, tx_change_node: &Sender<ChangeNodeMessage>, sibling_image_format: Option<image::ImageFormat>, theme: &Theme, default_dir: Option<&std::path::Path>) {
     // Size value widgets to fill the value column (name | value | expose).
     //
     // We CANNOT derive the width from `available_width()`/`max_rect()`/
@@ -953,15 +957,28 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         if picked {
                             if let Some(InputSettings::Path {
                                 extension_filter,
-                                set_directory: _,
-                                set_file_name: _,
+                                set_directory,
+                                set_file_name,
                                 set_title,
                                 file_dialog_type
                             }) = input.settings.clone() {
 
                                 let extensions: Vec<&str> = extension_filter.iter().map(|s| s.as_str()).collect();
                                 let title = set_title.unwrap_or("file".to_string());
-                                let file_dialog = rfd::FileDialog::new().add_filter(&title, &extensions);
+                                let mut file_dialog = rfd::FileDialog::new().add_filter(&title, &extensions);
+
+                                // Starting directory: an explicit per-node
+                                // `set_directory` wins; otherwise fall back to
+                                // the current graph's folder (if it has one).
+                                if let Some(dir) = set_directory.as_ref() {
+                                    file_dialog = file_dialog.set_directory(dir);
+                                } else if let Some(dir) = default_dir {
+                                    file_dialog = file_dialog.set_directory(dir);
+                                }
+                                // Pre-fill the file name if the input asks for one.
+                                if let Some(file_name) = set_file_name.as_ref() {
+                                    file_dialog = file_dialog.set_file_name(file_name);
+                                }
 
                                 if let Some(save_path) = match file_dialog_type {
                                     mangler_core::input::FileDialogType::PickFile => file_dialog.pick_file(),

@@ -11,22 +11,20 @@ fn float_from_dynamic(img: DynamicImage) -> Arc<FloatImage> {
 }
 
 /// Helper to build file output inputs with default Rgba8 color format.
-fn make_file_inputs(img: Arc<FloatImage>, folder: std::path::PathBuf, format: image::ImageFormat) -> Vec<Input> {
-    make_file_inputs_with_format(img, folder, format, ColorFormat::Rgba8)
+/// `path` is the full destination path (extension drives the format).
+fn make_file_inputs(img: Arc<FloatImage>, path: std::path::PathBuf) -> Vec<Input> {
+    make_file_inputs_with_format(img, path, ColorFormat::Rgba8)
 }
 
 /// Helper to build file output inputs with a specific color format.
 fn make_file_inputs_with_format(
     img: Arc<FloatImage>,
-    folder: std::path::PathBuf,
-    format: image::ImageFormat,
+    path: std::path::PathBuf,
     color_format: ColorFormat,
 ) -> Vec<Input> {
     vec![
         Input::new("image".to_string(), Value::Image { data: img, change_id: get_id() }, None, None),
-        Input::new("file name".to_string(), Value::Text("test_output".to_string()), None, None),
-        Input::new("folder".to_string(), Value::Path(folder), None, None),
-        Input::new("image format".to_string(), Value::ImageType(format), None, None),
+        Input::new("file path".to_string(), Value::Path(path), None, None),
         Input::new("quality".to_string(), Value::Integer(85), None, None),
         Input::new("color format".to_string(), Value::ColorFormat(color_format), None, None),
         Input::new("png compression".to_string(), Value::Text("fast".to_string()), None, None),
@@ -103,7 +101,10 @@ async fn test_file_output_settings() {
 async fn test_file_output_exact_settings() {
     let s = OpImageOutputFile::settings();
     assert_eq!(s.name, "to file");
-    assert_eq!(OpImageOutputFile::create_inputs().len(), 7);
+    let inputs = OpImageOutputFile::create_inputs();
+    assert_eq!(inputs.len(), 5);
+    let names: Vec<&str> = inputs.iter().map(|i| i.name.as_str()).collect();
+    assert_eq!(names, vec!["image", "file path", "quality", "color format", "png compression"]);
     assert_eq!(OpImageOutputFile::create_outputs().len(), 1);
 }
 
@@ -111,7 +112,7 @@ async fn test_file_output_exact_settings() {
 async fn test_file_output_nonexistent_folder_returns_error() {
     let imgbuf = image::RgbaImage::new(4, 4);
     let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
-    let mut inputs = make_file_inputs(img, std::path::PathBuf::from("/this/path/does/not/exist/at/all"), image::ImageFormat::Png);
+    let mut inputs = make_file_inputs(img, std::path::PathBuf::from("/this/path/does/not/exist/at/all/out.png"));
     let result = OpImageOutputFile::run(&mut inputs).await;
     assert!(result.is_err(), "saving to nonexistent folder should fail");
 }
@@ -130,9 +131,9 @@ async fn test_file_output_rgba32f_saves_png() {
     let tmp = std::env::temp_dir().join("nodemangler_test_rgba32f_png");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs(img, tmp.clone(), image::ImageFormat::Png);
-    let result = OpImageOutputFile::run(&mut inputs).await;
     let path = tmp.join("test_output.png");
+    let mut inputs = make_file_inputs(img, path.clone());
+    let result = OpImageOutputFile::run(&mut inputs).await;
     assert_save_ok(result, &path);
 
     std::fs::remove_file(&path).ok();
@@ -152,9 +153,9 @@ async fn test_file_output_rgba32f_saves_jpeg() {
     let tmp = std::env::temp_dir().join("nodemangler_test_rgba32f_jpg");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs_with_format(img, tmp.clone(), image::ImageFormat::Jpeg, ColorFormat::Rgb8);
-    let result = OpImageOutputFile::run(&mut inputs).await;
     let path = tmp.join("test_output.jpg");
+    let mut inputs = make_file_inputs_with_format(img, path.clone(), ColorFormat::Rgb8);
+    let result = OpImageOutputFile::run(&mut inputs).await;
     assert_save_ok(result, &path);
 
     std::fs::remove_file(&path).ok();
@@ -172,9 +173,9 @@ async fn test_file_output_rgba32f_saves_bmp() {
     let tmp = std::env::temp_dir().join("nodemangler_test_rgba32f_bmp");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs_with_format(img, tmp.clone(), image::ImageFormat::Bmp, ColorFormat::Rgb8);
-    let result = OpImageOutputFile::run(&mut inputs).await;
     let path = tmp.join("test_output.bmp");
+    let mut inputs = make_file_inputs_with_format(img, path.clone(), ColorFormat::Rgb8);
+    let result = OpImageOutputFile::run(&mut inputs).await;
     assert_save_ok(result, &path);
 
     std::fs::remove_file(&path).ok();
@@ -193,9 +194,9 @@ async fn test_file_output_rgba32f_with_hdr_values_saves() {
     let tmp = std::env::temp_dir().join("nodemangler_test_rgba32f_hdr");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs(img, tmp.clone(), image::ImageFormat::Png);
-    let result = OpImageOutputFile::run(&mut inputs).await;
     let path = tmp.join("test_output.png");
+    let mut inputs = make_file_inputs(img, path.clone());
+    let result = OpImageOutputFile::run(&mut inputs).await;
     assert_save_ok(result, &path);
 
     std::fs::remove_file(&path).ok();
@@ -213,9 +214,9 @@ async fn test_file_output_rgba8_still_works() {
     let tmp = std::env::temp_dir().join("nodemangler_test_rgba8_png");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs(img, tmp.clone(), image::ImageFormat::Png);
-    let result = OpImageOutputFile::run(&mut inputs).await;
     let path = tmp.join("test_output.png");
+    let mut inputs = make_file_inputs(img, path.clone());
+    let result = OpImageOutputFile::run(&mut inputs).await;
     assert_save_ok(result, &path);
 
     std::fs::remove_file(&path).ok();
@@ -233,17 +234,18 @@ async fn test_file_output_returns_path_on_success() {
     let tmp = std::env::temp_dir().join("nodemangler_test_rgba32f_path");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs(img, tmp.clone(), image::ImageFormat::Png);
+    let path = tmp.join("test_output.png");
+    let mut inputs = make_file_inputs(img, path.clone());
     let result = OpImageOutputFile::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
         Value::Path(p) => {
             assert!(!p.as_os_str().is_empty(), "output path should not be empty");
             assert!(p.exists(), "output file should exist at the returned path");
+            assert_eq!(p, &path, "output path should be the requested path exactly");
         }
         other => panic!("Expected Path output, got {:?}", other),
     }
 
-    let path = tmp.join("test_output.png");
     std::fs::remove_file(&path).ok();
     std::fs::remove_dir(&tmp).ok();
 }
@@ -260,9 +262,9 @@ async fn test_file_output_luma8_saves_png() {
     std::fs::create_dir_all(&tmp).unwrap();
 
     // Use Gray8 to match the luma input
-    let mut inputs = make_file_inputs_with_format(img, tmp.clone(), image::ImageFormat::Png, ColorFormat::Gray8);
-    let result = OpImageOutputFile::run(&mut inputs).await;
     let path = tmp.join("test_output.png");
+    let mut inputs = make_file_inputs_with_format(img, path.clone(), ColorFormat::Gray8);
+    let result = OpImageOutputFile::run(&mut inputs).await;
     assert_save_ok(result, &path);
 
     std::fs::remove_file(&path).ok();
@@ -282,9 +284,9 @@ async fn test_file_output_rgba16_saves_png() {
     let tmp = std::env::temp_dir().join("nodemangler_test_rgba16_png");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs_with_format(img, tmp.clone(), image::ImageFormat::Png, ColorFormat::Rgba16);
-    let result = OpImageOutputFile::run(&mut inputs).await;
     let path = tmp.join("test_output.png");
+    let mut inputs = make_file_inputs_with_format(img, path.clone(), ColorFormat::Rgba16);
+    let result = OpImageOutputFile::run(&mut inputs).await;
     assert_save_ok(result, &path);
 
     std::fs::remove_file(&path).ok();
@@ -302,9 +304,9 @@ async fn test_file_output_rgba32f_saves_exr() {
     let tmp = std::env::temp_dir().join("nodemangler_test_rgba32f_exr");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs_with_format(img, tmp.clone(), image::ImageFormat::OpenExr, ColorFormat::Rgba32F);
-    let result = OpImageOutputFile::run(&mut inputs).await;
     let path = tmp.join("test_output.exr");
+    let mut inputs = make_file_inputs_with_format(img, path.clone(), ColorFormat::Rgba32F);
+    let result = OpImageOutputFile::run(&mut inputs).await;
     assert_save_ok(result, &path);
 
     std::fs::remove_file(&path).ok();
@@ -322,9 +324,9 @@ async fn test_file_output_gray8_saves_jpeg() {
     let tmp = std::env::temp_dir().join("nodemangler_test_gray8_jpg");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs_with_format(img, tmp.clone(), image::ImageFormat::Jpeg, ColorFormat::Gray8);
-    let result = OpImageOutputFile::run(&mut inputs).await;
     let path = tmp.join("test_output.jpg");
+    let mut inputs = make_file_inputs_with_format(img, path.clone(), ColorFormat::Gray8);
+    let result = OpImageOutputFile::run(&mut inputs).await;
     assert_save_ok(result, &path);
 
     std::fs::remove_file(&path).ok();
@@ -342,9 +344,9 @@ async fn test_file_output_gray16_saves_png() {
     let tmp = std::env::temp_dir().join("nodemangler_test_gray16_png");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs_with_format(img, tmp.clone(), image::ImageFormat::Png, ColorFormat::Gray16);
-    let result = OpImageOutputFile::run(&mut inputs).await;
     let path = tmp.join("test_output.png");
+    let mut inputs = make_file_inputs_with_format(img, path.clone(), ColorFormat::Gray16);
+    let result = OpImageOutputFile::run(&mut inputs).await;
     assert_save_ok(result, &path);
 
     std::fs::remove_file(&path).ok();
@@ -362,7 +364,8 @@ async fn test_file_output_incompatible_rgba32f_png_errors() {
     let tmp = std::env::temp_dir().join("nodemangler_test_incompat_rgba32f_png");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs_with_format(img, tmp.clone(), image::ImageFormat::Png, ColorFormat::Rgba32F);
+    let path = tmp.join("test_output.png");
+    let mut inputs = make_file_inputs_with_format(img, path, ColorFormat::Rgba32F);
     let result = OpImageOutputFile::run(&mut inputs).await;
     assert!(result.is_err(), "Rgba32F + PNG should be rejected");
     let err = result.unwrap_err();
@@ -380,7 +383,8 @@ async fn test_file_output_incompatible_rgb16_jpeg_errors() {
     let tmp = std::env::temp_dir().join("nodemangler_test_incompat_rgb16_jpg");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs_with_format(img, tmp.clone(), image::ImageFormat::Jpeg, ColorFormat::Rgb16);
+    let path = tmp.join("test_output.jpg");
+    let mut inputs = make_file_inputs_with_format(img, path, ColorFormat::Rgb16);
     let result = OpImageOutputFile::run(&mut inputs).await;
     assert!(result.is_err(), "Rgb16 + JPEG should be rejected");
     let err = result.unwrap_err();
@@ -400,9 +404,9 @@ async fn test_file_output_farbfeld_rgba16() {
     let tmp = std::env::temp_dir().join("nodemangler_test_farbfeld_rgba16");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs_with_format(img, tmp.clone(), image::ImageFormat::Farbfeld, ColorFormat::Rgba16);
-    let result = OpImageOutputFile::run(&mut inputs).await;
     let path = tmp.join("test_output.ff");
+    let mut inputs = make_file_inputs_with_format(img, path.clone(), ColorFormat::Rgba16);
+    let result = OpImageOutputFile::run(&mut inputs).await;
     assert_save_ok(result, &path);
 
     std::fs::remove_file(&path).ok();
@@ -413,18 +417,17 @@ async fn test_file_output_farbfeld_rgba16() {
 
 #[tokio::test]
 async fn test_file_output_dotted_filename_keeps_full_name() {
-    // A dot in the file name must not be treated as an extension boundary:
-    // "render.v2" saved as PNG must produce "render.v2.png", not "render.png".
+    // A dot in the file stem must not be treated as an extension boundary:
+    // "render.v2.png" must save exactly as given, not as "render.png".
     let imgbuf = image::RgbaImage::new(4, 4);
     let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
 
     let tmp = std::env::temp_dir().join("nodemangler_test_dotted_name");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs(img, tmp.clone(), image::ImageFormat::Png);
-    inputs[1].value = Value::Text("render.v2".to_string());
-    let result = OpImageOutputFile::run(&mut inputs).await;
     let path = tmp.join("render.v2.png");
+    let mut inputs = make_file_inputs(img, path.clone());
+    let result = OpImageOutputFile::run(&mut inputs).await;
     assert_save_ok(result, &path);
 
     std::fs::remove_file(&path).ok();
@@ -432,26 +435,71 @@ async fn test_file_output_dotted_filename_keeps_full_name() {
 }
 
 #[tokio::test]
-async fn test_file_output_empty_filename_errors() {
-    // An empty file name must be rejected; previously it renamed the folder
-    // path itself ("/tmp/out" → "/tmp/out.png").
+async fn test_file_output_empty_path_errors() {
+    // An empty path must be rejected.
     let imgbuf = image::RgbaImage::new(4, 4);
     let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
 
-    let tmp = std::env::temp_dir().join("nodemangler_test_empty_name");
+    let mut inputs = make_file_inputs(img, std::path::PathBuf::new());
+    let result = OpImageOutputFile::run(&mut inputs).await;
+    assert!(result.is_err(), "empty path should be rejected");
+}
+
+#[tokio::test]
+async fn test_file_output_missing_extension_errors_before_writing() {
+    // A path with no extension can't select a format; must error, and no
+    // file should be created.
+    let imgbuf = image::RgbaImage::new(4, 4);
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
+
+    let tmp = std::env::temp_dir().join("nodemangler_test_missing_ext");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs(img, tmp.clone(), image::ImageFormat::Png);
-    inputs[1].value = Value::Text("   ".to_string());
+    let path = tmp.join("no_extension");
+    let mut inputs = make_file_inputs(img, path.clone());
     let result = OpImageOutputFile::run(&mut inputs).await;
-    assert!(result.is_err(), "empty file name should be rejected");
+    assert!(result.is_err(), "missing extension should be rejected");
+    assert!(!path.exists(), "no file should be created on error");
 
     std::fs::remove_dir(&tmp).ok();
 }
 
 #[tokio::test]
+async fn test_file_output_unknown_extension_errors_before_writing() {
+    // An unrecognized extension must be rejected before any file is written.
+    let imgbuf = image::RgbaImage::new(4, 4);
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
+
+    let tmp = std::env::temp_dir().join("nodemangler_test_unknown_ext");
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    let path = tmp.join("out.dds");
+    let mut inputs = make_file_inputs(img, path.clone());
+    let result = OpImageOutputFile::run(&mut inputs).await;
+    assert!(result.is_err(), "unknown extension should be rejected");
+    let err = result.unwrap_err();
+    assert!(err.node_error.as_ref().unwrap().contains("dds"), "error should mention the bad extension: {:?}", err.node_error);
+    assert!(!path.exists(), "no file should be created on error");
+
+    std::fs::remove_dir(&tmp).ok();
+}
+
+#[tokio::test]
+async fn test_file_output_missing_parent_folder_errors() {
+    // The path's parent directory must exist; a nonexistent parent is rejected.
+    let imgbuf = image::RgbaImage::new(4, 4);
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
+
+    let path = std::path::PathBuf::from("/this/path/does/not/exist/at/all/out.png");
+    let mut inputs = make_file_inputs(img, path.clone());
+    let result = OpImageOutputFile::run(&mut inputs).await;
+    assert!(result.is_err(), "missing parent folder should be rejected");
+    assert!(!path.exists(), "no file should be created on error");
+}
+
+#[tokio::test]
 async fn test_file_output_folder_is_file_errors() {
-    // A folder path that points at an existing file must be rejected.
+    // A destination whose parent path points at an existing file must be rejected.
     let imgbuf = image::RgbaImage::new(4, 4);
     let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
 
@@ -460,7 +508,8 @@ async fn test_file_output_folder_is_file_errors() {
     let file_as_folder = tmp.join("not_a_folder.txt");
     std::fs::write(&file_as_folder, "x").unwrap();
 
-    let mut inputs = make_file_inputs(img, file_as_folder.clone(), image::ImageFormat::Png);
+    let path = file_as_folder.join("out.png");
+    let mut inputs = make_file_inputs(img, path);
     let result = OpImageOutputFile::run(&mut inputs).await;
     assert!(result.is_err(), "file used as folder should be rejected");
 
@@ -484,11 +533,10 @@ async fn test_file_output_jpg_quality_affects_size() {
 
     let mut sizes = vec![];
     for (name, quality) in [("q10", 10), ("q95", 95)] {
-        let mut inputs = make_file_inputs_with_format(img.clone(), tmp.clone(), image::ImageFormat::Jpeg, ColorFormat::Rgb8);
-        inputs[1].value = Value::Text(name.to_string());
-        inputs[4].value = Value::Integer(quality);
-        let result = OpImageOutputFile::run(&mut inputs).await;
         let path = tmp.join(format!("{}.jpg", name));
+        let mut inputs = make_file_inputs_with_format(img.clone(), path.clone(), ColorFormat::Rgb8);
+        inputs[2].value = Value::Integer(quality);
+        let result = OpImageOutputFile::run(&mut inputs).await;
         assert_save_ok(result, &path);
         sizes.push(std::fs::metadata(&path).unwrap().len());
         std::fs::remove_file(&path).ok();
@@ -513,11 +561,10 @@ async fn test_file_output_png_compression_levels() {
 
     let mut sizes = std::collections::HashMap::new();
     for level in ["fast", "default", "best", "uncompressed"] {
-        let mut inputs = make_file_inputs(img.clone(), tmp.clone(), image::ImageFormat::Png);
-        inputs[1].value = Value::Text(level.to_string());
-        inputs[6].value = Value::Text(level.to_string());
-        let result = OpImageOutputFile::run(&mut inputs).await;
         let path = tmp.join(format!("{}.png", level));
+        let mut inputs = make_file_inputs(img.clone(), path.clone());
+        inputs[4].value = Value::Text(level.to_string());
+        let result = OpImageOutputFile::run(&mut inputs).await;
         assert_save_ok(result, &path);
 
         let decoded = image::open(&path).unwrap().to_rgba8();
@@ -538,33 +585,14 @@ async fn test_file_output_invalid_png_compression_errors() {
     let tmp = std::env::temp_dir().join("nodemangler_test_bad_png_compression");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs(img, tmp.clone(), image::ImageFormat::Png);
-    inputs[6].value = Value::Text("banana".to_string());
+    let path = tmp.join("test_output.png");
+    let mut inputs = make_file_inputs(img, path);
+    inputs[4].value = Value::Text("banana".to_string());
     let result = OpImageOutputFile::run(&mut inputs).await;
     assert!(result.is_err(), "unknown png compression should be rejected");
     let err = result.unwrap_err();
-    assert_eq!(err.input_errors.first().map(|(i, _)| *i), Some(6), "error should point at the png compression input");
+    assert_eq!(err.input_errors.first().map(|(i, _)| *i), Some(4), "error should point at the png compression input");
 
-    std::fs::remove_dir(&tmp).ok();
-}
-
-#[tokio::test]
-async fn test_file_output_without_png_compression_input_still_saves() {
-    // Graphs saved before the png compression input existed have only 6
-    // inputs; the node must fall back to "fast" instead of panicking.
-    let imgbuf = image::RgbaImage::new(4, 4);
-    let img = float_from_dynamic(DynamicImage::ImageRgba8(imgbuf));
-
-    let tmp = std::env::temp_dir().join("nodemangler_test_legacy_inputs");
-    std::fs::create_dir_all(&tmp).unwrap();
-
-    let mut inputs = make_file_inputs(img, tmp.clone(), image::ImageFormat::Png);
-    inputs.truncate(6);
-    let result = OpImageOutputFile::run(&mut inputs).await;
-    let path = tmp.join("test_output.png");
-    assert_save_ok(result, &path);
-
-    std::fs::remove_file(&path).ok();
     std::fs::remove_dir(&tmp).ok();
 }
 
@@ -580,9 +608,9 @@ async fn test_file_output_rgb32f_saves_hdr() {
     let tmp = std::env::temp_dir().join("nodemangler_test_rgb32f_hdr");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs_with_format(img, tmp.clone(), image::ImageFormat::Hdr, ColorFormat::Rgb32F);
-    let result = OpImageOutputFile::run(&mut inputs).await;
     let path = tmp.join("test_output.hdr");
+    let mut inputs = make_file_inputs_with_format(img, path.clone(), ColorFormat::Rgb32F);
+    let result = OpImageOutputFile::run(&mut inputs).await;
     assert_save_ok(result, &path);
 
     let decoded = image::open(&path).unwrap().to_rgb32f();
@@ -603,7 +631,8 @@ async fn test_file_output_hdr_wrong_color_format_errors() {
     let tmp = std::env::temp_dir().join("nodemangler_test_hdr_wrong_cf");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs(img, tmp.clone(), image::ImageFormat::Hdr);
+    let path = tmp.join("test_output.hdr");
+    let mut inputs = make_file_inputs(img, path);
     let result = OpImageOutputFile::run(&mut inputs).await;
     assert!(result.is_err(), "HDR + Rgba8 should be rejected");
 
@@ -622,9 +651,9 @@ async fn test_file_output_rgba8_saves_avif() {
     let tmp = std::env::temp_dir().join("nodemangler_test_rgba8_avif");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs(img, tmp.clone(), image::ImageFormat::Avif);
-    let result = OpImageOutputFile::run(&mut inputs).await;
     let path = tmp.join("test_output.avif");
+    let mut inputs = make_file_inputs(img, path.clone());
+    let result = OpImageOutputFile::run(&mut inputs).await;
     assert_save_ok(result, &path);
 
     std::fs::remove_file(&path).ok();
@@ -644,11 +673,10 @@ async fn test_file_output_avif_quality_affects_size() {
 
     let mut sizes = vec![];
     for (name, quality) in [("q10", 10), ("q95", 95)] {
-        let mut inputs = make_file_inputs_with_format(img.clone(), tmp.clone(), image::ImageFormat::Avif, ColorFormat::Rgb8);
-        inputs[1].value = Value::Text(name.to_string());
-        inputs[4].value = Value::Integer(quality);
-        let result = OpImageOutputFile::run(&mut inputs).await;
         let path = tmp.join(format!("{}.avif", name));
+        let mut inputs = make_file_inputs_with_format(img.clone(), path.clone(), ColorFormat::Rgb8);
+        inputs[2].value = Value::Integer(quality);
+        let result = OpImageOutputFile::run(&mut inputs).await;
         assert_save_ok(result, &path);
         sizes.push(std::fs::metadata(&path).unwrap().len());
         std::fs::remove_file(&path).ok();
@@ -667,7 +695,8 @@ async fn test_file_output_avif_wrong_color_format_errors() {
     let tmp = std::env::temp_dir().join("nodemangler_test_avif_wrong_cf");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs_with_format(img, tmp.clone(), image::ImageFormat::Avif, ColorFormat::Rgba16);
+    let path = tmp.join("test_output.avif");
+    let mut inputs = make_file_inputs_with_format(img, path, ColorFormat::Rgba16);
     let result = OpImageOutputFile::run(&mut inputs).await;
     assert!(result.is_err(), "AVIF + Rgba16 should be rejected");
 
@@ -683,7 +712,8 @@ async fn test_file_output_farbfeld_wrong_format_errors() {
     let tmp = std::env::temp_dir().join("nodemangler_test_farbfeld_wrong");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let mut inputs = make_file_inputs_with_format(img, tmp.clone(), image::ImageFormat::Farbfeld, ColorFormat::Rgba8);
+    let path = tmp.join("test_output.ff");
+    let mut inputs = make_file_inputs_with_format(img, path, ColorFormat::Rgba8);
     let result = OpImageOutputFile::run(&mut inputs).await;
     assert!(result.is_err(), "Rgba8 + Farbfeld should be rejected");
     let err = result.unwrap_err();

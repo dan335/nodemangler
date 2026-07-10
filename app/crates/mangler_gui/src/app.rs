@@ -15,6 +15,7 @@ use eframe::egui;
 use epaint::{pos2, CornerRadius, Rect};
 use crate::program::Program;
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 pub const PROFILE: bool = false;
 // pub const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
@@ -66,17 +67,14 @@ impl eframe::App for App {
 
             let bar_response = self.app_menu.show(&ctx, ui, &self.programs, &self.current_program, &self.theme);
 
-            if let Some(new_program) = bar_response.new_program {
-                let program_id = new_program.app.id.clone();
-                self.programs.insert(new_program.app.id.clone(), new_program);
-                self.current_program = Some(program_id);
+            // Both of these construct/locate a `Program` and may populate
+            // `error_modal` on failure (real IO or top-level JSON corruption
+            // — tolerant loading in core absorbs everything else).
+            if bar_response.new_graph_requested {
+                self.create_new_program();
             }
-
-            // A menu-bar new/load failed (real IO or top-level JSON
-            // corruption — tolerant loading in core absorbs everything
-            // else). Surface it in the error modal below.
-            if let Some(error) = bar_response.error {
-                self.error_modal = Some(error);
+            if let Some(path) = bar_response.open_path {
+                self.open_or_focus(path);
             }
 
             if let Some(current_program) = bar_response.current_program {
@@ -127,6 +125,16 @@ impl eframe::App for App {
                 if let Some(program) = self.programs.get_mut(current_program) {
                     program.has_preview_2d_panel = has_preview_2d_panel;
                     program.update(&ctx, ui);
+                    // A dropped `.mangle.json` opens as a tab — queue it on the
+                    // libraries action channel (drained below), the same path
+                    // library double-clicks take. `self.libraries` is a field
+                    // disjoint from `self.programs`, so this borrows cleanly
+                    // alongside the live `program` borrow.
+                    for path in program.take_pending_open_graphs() {
+                        self.libraries.push_action(
+                            crate::libraries::libraries_state::LibraryAction::OpenGraph { path },
+                        );
+                    }
                     let resp = panel_view::render_tree(
                         ui,
                         self.main_tree.as_mut().unwrap(),
@@ -244,7 +252,7 @@ impl App {
         setup_fonts(&cc.egui_ctx);
 
         // Load persistent config.
-        let config = AppConfig::load();
+        let mut config = AppConfig::load();
 
         // Restore theme from config, or use default.
         let theme = config.theme.as_deref()
@@ -252,6 +260,13 @@ impl App {
             .unwrap_or(crate::DEFAULT_THEME);
         set_theme(&cc.egui_ctx, theme.clone());
 
+        // Make sure a default library folder exists (creating it and/or
+        // linking it into `config.libraries` on first run) so brand-new
+        // graphs have somewhere to auto-save to. Persisted below alongside
+        // whatever `assign_default_save_location` decides for the startup
+        // tab; `LibrariesState::new` further down clones the (now possibly
+        // updated) `config.libraries`, so a freshly-linked default library
+        // shows up in the panel immediately, no restart needed.
         let mut programs = HashMap::new();
         let mut current_program: Option<String> = None;
         let mut error_modal: Option<String> = None;
@@ -261,7 +276,10 @@ impl App {
         // couldn't spawn) — surface it instead of silently starting with no
         // tab and no explanation.
         match Program::new(None, None) {
-            Ok(program) => {
+            Ok(mut program) => {
+                // No other programs are open yet, so the untitled-name
+                // collision check has nothing to avoid besides what's on disk.
+                assign_default_save_location(&mut program, &mut config, &HashSet::new());
                 current_program = Some(program.app.id.clone());
                 programs.insert(program.app.id.clone(), program);
             }
@@ -269,6 +287,7 @@ impl App {
                 error_modal = Some(format!("Failed to create a new graph: {}", error.0));
             }
         }
+        config.save();
 
         Self {
             app_menu: AppMenu::new(),
@@ -313,50 +332,79 @@ impl App {
         }
     }
 
+    /// Creates a brand-new blank program tab (the menu bar's "new" button).
+    /// Points it at a fresh "untitled N" file inside the default library, if
+    /// one is configured/writable — see `assign_default_save_location`.
+    fn create_new_program(&mut self) {
+        match Program::new(None, None) {
+            Ok(mut program) => {
+                let mut config = AppConfig::load();
+                let taken: HashSet<PathBuf> = self
+                    .programs
+                    .values()
+                    .filter_map(|p| p.app.save_path.clone())
+                    .collect();
+                assign_default_save_location(&mut program, &mut config, &taken);
+                config.save();
+
+                let id = program.app.id.clone();
+                self.programs.insert(id.clone(), program);
+                self.current_program = Some(id);
+            }
+            Err(error) => {
+                self.error_modal = Some(format!("Failed to create a new graph: {}", error.0));
+            }
+        }
+    }
+
+    /// Opens `path` as a new program tab, or focuses the existing tab
+    /// already editing it (two engines auto-saving one file would clobber
+    /// each other). Shared by the Libraries panel's open action and the menu
+    /// bar's "load" button.
+    fn open_or_focus(&mut self, path: PathBuf) {
+        let already_open = self
+            .programs
+            .iter()
+            .find(|(_, p)| p.app.save_path.as_deref() == Some(path.as_path()))
+            .map(|(id, _)| id.clone());
+        if let Some(id) = already_open {
+            self.current_program = Some(id);
+            return;
+        }
+
+        // With tolerant loading in core, failure here means real IO/JSON
+        // corruption — tell the user instead of the old silent "double-click
+        // does nothing".
+        match Program::new(None, Some(path.clone())) {
+            Ok(program) => {
+                let id = program.app.id.clone();
+                self.programs.insert(id.clone(), program);
+                self.current_program = Some(id);
+            }
+            Err(error) => {
+                self.error_modal = Some(format!(
+                    "Failed to open '{}': {}",
+                    path.display(),
+                    error.0
+                ));
+            }
+        }
+    }
+
     /// Perform a request raised by the Libraries panel. These need the
     /// programs map (open/create a graph = a new tab; a rename must
     /// re-target open tabs), which the panel itself can't touch.
     fn handle_library_action(&mut self, action: crate::libraries::libraries_state::LibraryAction) {
         use crate::libraries::libraries_state::LibraryAction;
         match action {
-            LibraryAction::OpenGraph { path } => {
-                // If a tab is already editing this file, focus it instead of
-                // opening a second engine on the same path (two engines
-                // auto-saving one file would clobber each other).
-                let already_open = self
-                    .programs
-                    .iter()
-                    .find(|(_, p)| p.app.save_path.as_deref() == Some(path.as_path()))
-                    .map(|(id, _)| id.clone());
-                if let Some(id) = already_open {
-                    self.current_program = Some(id);
-                } else {
-                    // With tolerant loading in core, failure here means real
-                    // IO/JSON corruption — tell the user instead of the old
-                    // silent "double-click does nothing".
-                    match Program::new(None, Some(path.clone())) {
-                        Ok(program) => {
-                            let id = program.app.id.clone();
-                            self.programs.insert(id.clone(), program);
-                            self.current_program = Some(id);
-                        }
-                        Err(error) => {
-                            self.error_modal = Some(format!(
-                                "Failed to open '{}': {}",
-                                path.display(),
-                                error.0
-                            ));
-                        }
-                    }
-                }
-            }
+            LibraryAction::OpenGraph { path } => self.open_or_focus(path),
             LibraryAction::CreateGraph { path, name } => {
                 // A blank tab pointed at the target path: the engine's
                 // auto-save writes the file ~1s later, and the library
                 // scanner picks it up on its next pass.
                 match Program::new(None, None) {
                     Ok(mut program) => {
-                        program.set_save_location(path, name);
+                        program.set_save_location(path);
                         let id = program.app.id.clone();
                         self.programs.insert(id.clone(), program);
                         self.current_program = Some(id);
@@ -369,47 +417,25 @@ impl App {
                     }
                 }
             }
-            LibraryAction::PathRenamed { from, to, new_name } => {
+            LibraryAction::PathRenamed { from, to } => {
                 // Any open tab still auto-saving to the old path follows the
-                // file, otherwise its next save would resurrect the old
-                // name. It must adopt `new_name` — the sanitized stem the
-                // file was renamed to — rather than keep its current
-                // `app.name`, or the tab title (and the embedded
-                // `GraphSaveData.name` its next auto-save writes) would stay
-                // stale even though the file on disk moved.
-                let mut any_open_tab_retargeted = false;
+                // file, otherwise its next save would resurrect it at the old
+                // location. The tab's display name is derived from the file
+                // stem, so it updates itself once the path changes — nothing
+                // to patch. And for a graph that ISN'T open in a tab there's
+                // nothing to do either: `Graph::load` ignores the embedded
+                // name and re-derives it from the (now-renamed) file name.
                 for program in self.programs.values_mut() {
                     if program.app.save_path.as_deref() == Some(from.as_path()) {
-                        any_open_tab_retargeted = true;
-                        program.set_save_location(to.clone(), new_name.clone());
+                        program.set_save_location(to.clone());
                     }
                 }
-
-                if !any_open_tab_retargeted {
-                    // No tab has this file open, so nothing will ever
-                    // auto-save the corrected name into it — patch the
-                    // embedded `GraphSaveData.name` directly.
-                    //
-                    // Deliberately NOT done when a tab *was* retargeted
-                    // above: that tab's `set_save_location` call already
-                    // queues the engine to auto-save the new name into the
-                    // file in ~1s. Patching the file here too would be an
-                    // external rewrite the engine doesn't know about —
-                    // bumping the file's mtime past the engine's
-                    // `last_synced_mtime` and tripping `disk_is_newer()` on
-                    // its next auto-save tick, which would raise a spurious
-                    // FileConflict dialog for a change the user never made
-                    // from outside the tab. The plain `fs::rename` that
-                    // already happened in `rename_path` is mtime-preserving,
-                    // so that path needs no extra care here.
-                    if let Err(err) =
-                        mangler_core::graph::patch_graph_name_on_disk(&to, &new_name)
-                    {
-                        self.libraries.set_error(format!(
-                            "renamed '{}' but couldn't update its embedded name: {}",
-                            to.display(),
-                            err
-                        ));
+            }
+            LibraryAction::AddImageNode { path } => {
+                // Target the focused program's graph.
+                if let Some(id) = self.current_program.clone() {
+                    if let Some(program) = self.programs.get_mut(&id) {
+                        program.add_image_from_file(path);
                     }
                 }
             }
@@ -536,6 +562,52 @@ impl App {
     }
 }
 
+/// Points `program` at a fresh "untitled N" file inside the default library
+/// (creating the library folder if necessary), or — if no writable default
+/// library location exists — leaves it pathless and queues a status hint
+/// explaining why auto-save won't kick in.
+///
+/// `taken` is the set of save paths already claimed by currently-open
+/// programs this session; it guards against two rapid "new" clicks (before
+/// the first program's ~1s auto-save actually writes its file) both picking
+/// "untitled 1".
+///
+/// Mutates `config` (`ensure_default_library` may set `default_library`
+/// and/or link a library entry) but does not persist it — callers must call
+/// `config.save()` themselves once they're done using it.
+fn assign_default_save_location(
+    program: &mut Program,
+    config: &mut AppConfig,
+    taken: &HashSet<PathBuf>,
+) {
+    match config.ensure_default_library() {
+        Some(dir) => {
+            let path = next_untitled_path(&dir, taken);
+            program.set_save_location(path);
+        }
+        None => {
+            program.queue_status_message(
+                "no default library — pick a save location in graph settings".to_string(),
+            );
+        }
+    }
+}
+
+/// Finds the first available "untitled N.mangle.json" path inside `dir`,
+/// skipping both files that already exist on disk and paths in `taken`
+/// (already claimed by an open-but-not-yet-saved program).
+fn next_untitled_path(dir: &Path, taken: &HashSet<PathBuf>) -> PathBuf {
+    let mut n: u32 = 1;
+    loop {
+        let candidate =
+            dir.join(format!("untitled {}{}", n, mangler_core::naming::GRAPH_EXTENSION));
+        if !candidate.exists() && !taken.contains(&candidate) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
 fn setup_fonts(ctx: &egui::Context) {
     // Start with the default fonts (we will be adding to them rather than replacing them).
     let mut fonts = egui::FontDefinitions::default();
@@ -589,3 +661,7 @@ fn setup_fonts(ctx: &egui::Context) {
     // Tell egui to use these fonts:
     ctx.set_fonts(fonts);
 }
+
+#[cfg(test)]
+#[path = "app_tests.rs"]
+mod tests;

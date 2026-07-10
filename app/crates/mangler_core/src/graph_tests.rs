@@ -621,7 +621,7 @@ async fn test_save_and_load_round_trip() {
 
     let tmp_path = std::env::temp_dir().join(format!("test_graph_{}.mangle.json", get_id()));
     graph.set_save_path(tmp_path.clone());
-    graph.save_to_file();
+    graph.save_to_file().unwrap();
 
     // Load it back
     let (tx_nc, _) = mpsc::channel::<NodeChangedMessage>(32);
@@ -651,7 +651,7 @@ async fn test_save_to_file_stamps_app_version() {
 
     let tmp_path = std::env::temp_dir().join(format!("test_version_{}.mangle.json", get_id()));
     graph.set_save_path(tmp_path.clone());
-    graph.save_to_file();
+    graph.save_to_file().unwrap();
 
     let raw = std::fs::read_to_string(&tmp_path).unwrap();
     let saved: crate::GraphSaveData = serde_json::from_str(&raw).unwrap();
@@ -669,7 +669,7 @@ async fn test_save_to_file_subgraph_is_noop() {
 
     let tmp_path = std::env::temp_dir().join(format!("test_subgraph_{}.mangle.json", get_id()));
     graph.set_save_path(tmp_path.clone());
-    graph.save_to_file();
+    assert_eq!(graph.save_to_file(), Ok(()));
 
     // File should NOT be created for subgraphs
     assert!(!tmp_path.exists());
@@ -680,7 +680,7 @@ async fn test_save_to_file_no_path_is_noop() {
     let mut graph = create_test_graph();
     assert!(graph.save_path.is_none());
     // Should be a no-op, not panic
-    graph.save_to_file();
+    assert_eq!(graph.save_to_file(), Ok(()));
 }
 
 // === load() error cases ===
@@ -2350,13 +2350,34 @@ async fn test_save_to_file_write_failure_does_not_panic() {
         .await;
 
     // Point the save path into a directory that does not exist: fs::write
-    // fails. Must log (stderr) and return, not panic or corrupt state.
+    // fails. Must return an error, not panic or corrupt state.
     graph.set_save_path(std::path::PathBuf::from(
         "/nonexistent_mangler_dir_for_test/graph.mangle.json",
     ));
-    graph.save_to_file();
+    assert!(graph.save_to_file().is_err());
 
     assert_eq!(graph.nodes.len(), 1);
+}
+
+// Saving to a path whose *parent* is a regular file (not a directory) is
+// another way the write can fail — `fs::write` returns an OS error instead
+// of creating anything. Distinct from the nonexistent-directory case above:
+// this one is a real, existing filesystem entry that just isn't a directory.
+#[tokio::test]
+async fn test_save_to_file_parent_is_regular_file_returns_err() {
+    let mut graph = create_test_graph();
+
+    let tmp_dir = std::env::temp_dir().join(format!("mangler_save_err_{}", get_id()));
+    std::fs::create_dir_all(&tmp_dir).unwrap();
+    let file_masquerading_as_dir = tmp_dir.join("not_a_directory");
+    std::fs::write(&file_masquerading_as_dir, b"not a directory").unwrap();
+
+    let save_path = file_masquerading_as_dir.join("graph.mangle.json");
+    graph.set_save_path(save_path);
+
+    assert!(graph.save_to_file().is_err(), "writing under a regular file as if it were a directory should fail");
+
+    let _ = std::fs::remove_dir_all(&tmp_dir);
 }
 
 // ── trigger firing vs input-hash cache ────────────────────────────────────
@@ -2579,7 +2600,7 @@ async fn test_save_to_file_round_trips_unknown_node_verbatim() {
     // sync with GraphSaveData's tolerant `#[serde(with)]` attribute).
     let mut loaded = Graph::load(tmp_path.clone(), None, None, false).unwrap();
     assert!(matches!(loaded.nodes.get(&unknown_id).unwrap().node_type, NodeType::Unknown { .. }));
-    loaded.save_to_file();
+    loaded.save_to_file().unwrap();
 
     let raw_after = fs::read_to_string(&tmp_path).unwrap();
     let after: serde_json::Value = serde_json::from_str(&raw_after).unwrap();
@@ -2616,7 +2637,7 @@ async fn test_placeholder_node_move_persists_through_save_and_load() {
 
     let mut graph = Graph::load(tmp_path.clone(), None, None, false).unwrap();
     graph.set_node_position(unknown_id.clone(), glam::Vec2::new(321.0, 654.0));
-    graph.save_to_file();
+    graph.save_to_file().unwrap();
 
     let reloaded = Graph::load(tmp_path.clone(), None, None, false).unwrap();
     let node = reloaded.nodes.get(&unknown_id).unwrap();
@@ -2661,7 +2682,7 @@ async fn test_connection_into_placeholder_persists_in_raw() {
         "a connection into a placeholder's parsed socket should be accepted like any other node"
     );
 
-    graph.save_to_file();
+    graph.save_to_file().unwrap();
     let reloaded = Graph::load(tmp_path.clone(), None, None, false).unwrap();
     let node = reloaded.nodes.get(&unknown_id).unwrap();
     assert!(matches!(node.node_type, NodeType::Unknown { .. }));
@@ -2752,7 +2773,7 @@ async fn test_save_to_file_updates_last_synced_mtime() {
     graph.set_save_path(tmp_path.clone());
 
     assert!(graph.last_synced_mtime.is_none(), "no sync has happened yet");
-    graph.save_to_file();
+    graph.save_to_file().unwrap();
     assert!(graph.last_synced_mtime.is_some(), "save_to_file should record the file's new mtime");
 
     let _ = std::fs::remove_file(tmp_path);
@@ -2763,7 +2784,7 @@ async fn test_disk_is_newer_detects_external_rewrite() {
     let mut graph = create_test_graph();
     let tmp_path = std::env::temp_dir().join(format!("mangler_disk_newer_{}.mangle.json", get_id()));
     graph.set_save_path(tmp_path.clone());
-    graph.save_to_file();
+    graph.save_to_file().unwrap();
 
     assert!(!graph.disk_is_newer(), "no external edit has happened yet");
 
@@ -2866,73 +2887,114 @@ async fn test_subgraph_bogus_path_emits_error_message_not_just_println() {
     assert!(saw_error, "a bogus subgraph path should surface an Error message on the node, not just a println");
 }
 
+// === rename_file ===
+
+// Happy path: the file is physically moved, save_path and name follow the new
+// stem, and last_synced_mtime is re-stat'd from the new path so a follow-up
+// disk_is_newer() check does NOT see a spurious conflict.
 #[test]
-fn test_patch_graph_name_on_disk_updates_name_and_loads() {
+fn test_rename_file_moves_file_and_updates_state() {
+    use std::fs;
+
+    let (tx_gc, _) = mpsc::channel::<GraphChangedMessage>(32);
+    let (tx_nc, _) = mpsc::channel::<NodeChangedMessage>(32);
+    let mut graph = Graph::new(get_id(), tx_nc, tx_gc, false).unwrap();
+
+    let old_path = std::env::temp_dir().join(format!("mangler_rename_old_{}.mangle.json", get_id()));
+    graph.set_save_path(old_path.clone());
+    graph.save_to_file().unwrap();
+    assert!(old_path.exists());
+
+    let new_path = graph.rename_file("renamed graph").expect("rename should succeed");
+
+    // Old file gone, new file present.
+    assert!(!old_path.exists(), "old file should have been moved");
+    assert!(new_path.exists(), "new file should exist");
+    assert_eq!(
+        new_path.file_name().unwrap().to_str().unwrap(),
+        "renamed graph.mangle.json"
+    );
+
+    // save_path and name follow the new stem.
+    assert_eq!(graph.save_path, Some(new_path.clone()));
+    assert_eq!(graph.name, "renamed graph");
+
+    // Baseline was re-stat'd from the new path, so no spurious conflict.
+    assert!(!graph.disk_is_newer(), "disk_is_newer must be false right after rename");
+
+    let _ = fs::remove_file(&new_path);
+}
+
+// A rename that would collide with an existing file must error and leave the
+// original file untouched.
+#[test]
+fn test_rename_file_collision_errors_and_preserves_original() {
+    use std::fs;
+
+    let (tx_gc, _) = mpsc::channel::<GraphChangedMessage>(32);
+    let (tx_nc, _) = mpsc::channel::<NodeChangedMessage>(32);
+    let mut graph = Graph::new(get_id(), tx_nc, tx_gc, false).unwrap();
+
+    let unique = get_id();
+    let old_path = std::env::temp_dir().join(format!("mangler_rename_src_{}.mangle.json", unique));
+    graph.set_save_path(old_path.clone());
+    graph.save_to_file().unwrap();
+
+    // Pre-create the file the rename would target.
+    let target_stem = format!("mangler_rename_dst_{}", unique);
+    let target_path = std::env::temp_dir().join(format!("{}.mangle.json", target_stem));
+    fs::write(&target_path, "existing file").unwrap();
+
+    let result = graph.rename_file(&target_stem);
+    assert!(result.is_err(), "rename onto an existing file must error");
+
+    // Original file and state untouched; target file not clobbered.
+    assert!(old_path.exists(), "original file must survive a failed rename");
+    assert_eq!(graph.save_path, Some(old_path.clone()));
+    assert_eq!(fs::read_to_string(&target_path).unwrap(), "existing file");
+
+    let _ = fs::remove_file(&old_path);
+    let _ = fs::remove_file(&target_path);
+}
+
+// Renaming a graph that has no save path yet is an error.
+#[test]
+fn test_rename_file_without_save_path_errors() {
+    let (tx_gc, _) = mpsc::channel::<GraphChangedMessage>(32);
+    let (tx_nc, _) = mpsc::channel::<NodeChangedMessage>(32);
+    let mut graph = Graph::new(get_id(), tx_nc, tx_gc, false).unwrap();
+
+    assert!(graph.save_path.is_none());
+    assert!(graph.rename_file("whatever").is_err());
+}
+
+// The embedded `name` field is a write-only mirror: load ignores it and
+// derives the display name from the file stem instead.
+#[test]
+fn test_load_ignores_embedded_name_uses_file_stem() {
     use std::fs;
     use crate::GraphSaveData;
 
-    let tmp_path = std::env::temp_dir().join(format!("mangler_patch_name_{}.mangle.json", get_id()));
+    let tmp_path = std::env::temp_dir().join(format!("mangler_stem_name_{}.mangle.json", get_id()));
     let save_data = GraphSaveData {
         version: crate::APP_VERSION.to_string(),
         id: get_id(),
-        name: "old name".to_string(),
+        // Deliberately disagrees with the file stem — must be ignored.
+        name: "embedded bar name".to_string(),
         nodes: std::collections::HashMap::new(),
     };
     fs::write(&tmp_path, serde_json::to_string(&save_data).unwrap()).unwrap();
 
-    super::patch_graph_name_on_disk(&tmp_path, "new name").expect("patch should succeed");
-
-    let loaded = Graph::load(tmp_path.clone(), None, None, false)
-        .expect("the patched file should still load");
-    assert_eq!(loaded.name, "new name");
-
-    let _ = fs::remove_file(&tmp_path);
-}
-
-#[test]
-fn test_patch_graph_name_on_disk_preserves_unknown_fields_verbatim() {
-    use std::fs;
-    use crate::GraphSaveData;
-
-    let unknown_id = get_id();
-    let unknown_raw = add_node_json_with_unknown_operation(glam::Vec2::new(7.0, 8.0));
-
-    let save_data = GraphSaveData {
-        version: crate::APP_VERSION.to_string(),
-        id: "patch-test-graph".to_string(),
-        name: "old name".to_string(),
-        nodes: std::collections::HashMap::new(),
-    };
-    let mut json = serde_json::to_value(&save_data).unwrap();
-    json["nodes"][unknown_id.as_str()] = unknown_raw.clone();
-    // A top-level field a newer NodeMangler might add — a name patch must
-    // not know or care about it, and it must survive untouched.
-    json["from_the_future_top_level_field"] = serde_json::json!("should survive");
-
-    let tmp_path = std::env::temp_dir()
-        .join(format!("mangler_patch_name_unknown_{}.mangle.json", get_id()));
-    fs::write(&tmp_path, serde_json::to_string(&json).unwrap()).unwrap();
-
-    super::patch_graph_name_on_disk(&tmp_path, "patched name").expect("patch should succeed");
-
-    let raw_after = fs::read_to_string(&tmp_path).unwrap();
-    let after: serde_json::Value = serde_json::from_str(&raw_after).unwrap();
-    assert_eq!(after["name"], serde_json::json!("patched name"));
-    assert_eq!(
-        after["from_the_future_top_level_field"],
-        serde_json::json!("should survive")
-    );
-    // The unknown node's own future-only fields are untouched too — only
-    // the top-level `name` key was ever rewritten.
-    assert_eq!(after["nodes"][unknown_id.as_str()], unknown_raw);
+    let loaded = Graph::load(tmp_path.clone(), None, None, false).expect("should load");
+    let expected_stem = tmp_path
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .strip_suffix(".mangle.json")
+        .unwrap();
+    assert_eq!(loaded.name, expected_stem);
+    assert_ne!(loaded.name, "embedded bar name");
 
     let _ = fs::remove_file(&tmp_path);
-}
-
-#[test]
-fn test_patch_graph_name_on_disk_missing_file_returns_err() {
-    let bogus = std::env::temp_dir()
-        .join(format!("mangler_patch_name_missing_{}.mangle.json", get_id()));
-    let result = super::patch_graph_name_on_disk(&bogus, "new name");
-    assert!(result.is_err(), "patching a nonexistent file should return an Err, not panic");
 }

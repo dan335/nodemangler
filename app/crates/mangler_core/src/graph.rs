@@ -20,7 +20,7 @@ use glam::f32::Vec2;
 use std::fs;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    path::{Path, PathBuf},
+    path::PathBuf,
     time::SystemTime,
 };
 use tokio::sync::mpsc::Sender;
@@ -138,12 +138,19 @@ impl Graph {
                         unknown_node_names: unknown_node_names.clone(),
                     };
 
+                    // The display name is now derived purely from the file
+                    // stem — the embedded `json.name` is ignored on load (it's
+                    // a write-only mirror kept for external tooling). This is
+                    // what keeps the tab title and the Libraries panel (which
+                    // shows the filename stem) in agreement.
+                    let name = crate::naming::graph_display_name_from_path(&save_path);
+
                     let mut graph = Graph {
                         tx_node_changed,
                         save_path: Some(save_path),
                         nodes: json.nodes,
                         id: json.id,
-                        name: json.name,
+                        name,
                         tx_graph_changed,
                         is_subgraph,
                         thumbnail_service,
@@ -902,8 +909,61 @@ impl Graph {
     }
 
     /// Set the file path where this graph will be saved.
+    ///
+    /// The display `name` is a pure function of the file stem, so it is
+    /// re-derived here too — a save-as that changes the path also changes the
+    /// name (and the tab title that follows it).
     pub fn set_save_path(&mut self, save_path: PathBuf) {
+        self.name = crate::naming::graph_display_name_from_path(&save_path);
         self.save_path = Some(save_path);
+    }
+
+    /// Rename this graph's file on disk, keeping it in the same directory.
+    ///
+    /// `new_stem` is a user-entered display name (spaces allowed); it's
+    /// sanitized and given the canonical `.mangle.json` extension via
+    /// [`crate::naming::graph_file_name`]. The file is physically moved with
+    /// `fs::rename`; on success `save_path` and `name` follow it and
+    /// `last_synced_mtime` is re-stat'd from the *new* path so the next
+    /// [`Self::disk_is_newer`] check compares against a fresh baseline (not the
+    /// stale one from the old path, which would trip a spurious FileConflict).
+    ///
+    /// Returns the new path on success. Errors: no save path set yet; a file
+    /// with the target name already exists (never clobbered).
+    pub fn rename_file(&mut self, new_stem: &str) -> Result<PathBuf, String> {
+        let Some(old) = self.save_path.clone() else {
+            return Err("graph has no file yet".to_string());
+        };
+
+        let new = old.with_file_name(crate::naming::graph_file_name(new_stem));
+
+        // Renaming to the same path is a no-op (e.g. the stem sanitizes back
+        // to the current file name).
+        if new == old {
+            return Ok(old);
+        }
+
+        if new.exists() {
+            return Err(format!(
+                "a file named '{}' already exists",
+                new.file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| new.display().to_string())
+            ));
+        }
+
+        fs::rename(&old, &new).map_err(|error| {
+            format!("couldn't rename '{}' to '{}': {}", old.display(), new.display(), error)
+        })?;
+
+        self.name = crate::naming::graph_display_name_from_path(&new);
+        self.save_path = Some(new.clone());
+        // Re-stat the mtime from the NEW path: `fs::rename` gives the moved
+        // file a fresh mtime on some filesystems, and comparing the new file
+        // against the old baseline could otherwise raise a false conflict.
+        self.last_synced_mtime = std::fs::metadata(&new).and_then(|m| m.modified()).ok();
+
+        Ok(new)
     }
 
     /// Create a self-contained snapshot of this graph for running on a
@@ -1234,9 +1294,20 @@ impl Graph {
     /// `&mut self` (rather than `&self`) purely to store that mtime; this
     /// does not otherwise mutate graph content. Callers that used to hold a
     /// plain `&Graph` need a `&mut Graph` now.
-    pub fn save_to_file(&mut self) {
+    ///
+    /// The `name` field is still written into the JSON, but it is now a
+    /// *write-only* mirror of the file stem — [`Self::load`] ignores it and
+    /// re-derives the display name from the file name. It's kept only so
+    /// external tooling reading the file has a human-readable name to show.
+    ///
+    /// Returns `Err(message)` if serialization or the write itself fails, so
+    /// callers (the engine loop) can surface it to the UI via
+    /// [`crate::GraphChangedMessage::SaveError`] instead of it silently
+    /// vanishing into a log line. `Ok(())` covers both a genuinely
+    /// successful write and the no-op cases (subgraph, or no save path set).
+    pub fn save_to_file(&mut self) -> Result<(), String> {
         if self.is_subgraph {
-            return;
+            return Ok(());
         }
 
         if let Some(save_path) = &self.save_path {
@@ -1267,21 +1338,22 @@ impl Graph {
             match serde_json::to_string(&data) {
                 Ok(data_string) => {
                     if let Err(error) = fs::write(save_path, data_string) {
-                        // TODO: a graph-level error variant on NodeChangedMessage would be the proper channel to surface this in the UI.
-                        eprintln!(
+                        return Err(format!(
                             "Error writing graph save file {:?}: {}",
                             save_path, error
-                        );
+                        ));
                     } else {
                         self.last_synced_mtime =
                             std::fs::metadata(save_path).and_then(|m| m.modified()).ok();
                     }
                 }
                 Err(error) => {
-                    println!("Error saving file.  {:?}", error);
+                    return Err(format!("Error saving file.  {:?}", error));
                 }
             }
         }
+
+        Ok(())
     }
 
     /// Returns `true` if this graph's `save_path` file has a modification
@@ -1403,47 +1475,6 @@ impl Graph {
 
         sorted_order.push_front(node_id.clone());
     }
-}
-
-/// Rewrite only the top-level `name` field of a graph JSON file in place,
-/// leaving every other byte of structure untouched.
-///
-/// This exists for the Libraries panel's rename flow: renaming the
-/// `.mangle.json` file on disk only changes the *filename*. The graph's
-/// display name is separately embedded as `GraphSaveData.name`, and
-/// `Graph::load` reads that embedded name — so without this, a renamed
-/// graph that isn't currently open in a tab would still show its old name
-/// the next time someone opens it (nothing would ever be around to
-/// auto-save the corrected name into the file). Called only for the "not
-/// currently open" case; a graph open in a tab instead goes through
-/// `Program::set_save_location` so the engine's own auto-save rewrites the
-/// file (see `App::handle_library_action`'s `PathRenamed` arm in
-/// `mangler_gui`).
-///
-/// A free function rather than a `Graph` method deliberately — the caller
-/// (the GUI's Libraries rename handler) has no live `Graph` for this file at
-/// all in the "not open" case, just a path.
-///
-/// CRITICAL: this is a raw `serde_json::Value` edit, not a round-trip
-/// through `GraphSaveData`/`Graph::load`. Deserializing into `GraphSaveData`
-/// and re-serializing would go through the tolerant per-node `saved_nodes`
-/// machinery, which reconstructs node JSON from parsed fields rather than
-/// passing it through byte-for-byte. A file saved by a *newer* NodeMangler
-/// can carry node fields (or entire top-level fields) this build doesn't
-/// know about; a rename should never be the operation that quietly drops
-/// them. Patching the raw `Value` in place guarantees every other byte of
-/// structure — known or not — survives untouched.
-pub fn patch_graph_name_on_disk(path: &Path, new_name: &str) -> Result<(), String> {
-    let data = fs::read_to_string(path)
-        .map_err(|error| format!("couldn't read '{}': {}", path.display(), error))?;
-    let mut json: serde_json::Value = serde_json::from_str(&data)
-        .map_err(|error| format!("couldn't parse '{}' as JSON: {}", path.display(), error))?;
-    json["name"] = serde_json::Value::String(new_name.to_string());
-    let out = serde_json::to_string_pretty(&json)
-        .map_err(|error| format!("couldn't re-serialize '{}': {}", path.display(), error))?;
-    fs::write(path, out)
-        .map_err(|error| format!("couldn't write '{}': {}", path.display(), error))?;
-    Ok(())
 }
 
 #[cfg(test)]

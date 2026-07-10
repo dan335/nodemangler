@@ -61,13 +61,14 @@ pub enum LibraryAction {
     CreateGraph { path: PathBuf, name: String },
     /// A graph file was renamed on disk. Open tabs pointing at `from` must
     /// re-target `to`, otherwise their auto-save resurrects the old file.
-    /// `new_name` is the sanitized stem `rename_path` renamed the file to —
-    /// carried here rather than re-derived from `to` because `.mangle.json`
-    /// is a double extension (`to.file_stem()` would leave `.mangle` on it).
-    /// `App` needs it to update the tab's display name / the file's embedded
-    /// `GraphSaveData.name` to match the new filename (see
+    /// The tab's display name is derived from the file stem, so re-targeting
+    /// the path is all that's needed — nothing to patch (see
     /// `App::handle_library_action`).
-    PathRenamed { from: PathBuf, to: PathBuf, new_name: String },
+    PathRenamed { from: PathBuf, to: PathBuf },
+    /// Add an "image from file" node wired to `path` into the currently
+    /// focused program's graph (needs the programs map, which the panel can't
+    /// touch — see `App::handle_library_action`).
+    AddImageNode { path: PathBuf },
 }
 
 /// Shared state behind every Libraries panel. Owned by the GUI `App`.
@@ -250,7 +251,7 @@ impl LibrariesState {
         // Rebuild the sibling path with the new name, keeping graph files'
         // full `.mangle.json` extension.
         let file_name = if is_graph {
-            format!("{}{}", new_name, super::library_scanner::GRAPH_EXTENSION)
+            mangler_core::naming::graph_file_name(new_name)
         } else {
             new_name.to_string()
         };
@@ -264,20 +265,13 @@ impl LibrariesState {
             Ok(()) => {
                 if is_graph {
                     // Open tabs pointing at the old path must follow the
-                    // file, or their next auto-save recreates it. The
-                    // graph's *embedded* name (`GraphSaveData.name`) needs
-                    // patching to match too, but that isn't done here:
-                    // `LibrariesState` has no way to know whether the graph
-                    // is currently open in a tab, and that's exactly what
-                    // decides the safe way to patch it (rewriting the file
-                    // out from under an open tab's engine would corrupt its
-                    // mtime bookkeeping — see `App::handle_library_action`).
-                    // So the sanitized stem is just forwarded for `App` to
-                    // act on.
+                    // file, or their next auto-save recreates it. The graph's
+                    // display name is derived from the file stem now, so once
+                    // a tab re-targets the new path its name follows — there's
+                    // nothing about the file's contents to patch.
                     self.push_action(LibraryAction::PathRenamed {
                         from: from.to_path_buf(),
                         to,
-                        new_name: new_name.to_string(),
                     });
                 }
             }
@@ -319,15 +313,11 @@ impl LibrariesState {
     }
 
     /// Sanitizes a user-entered name into something safe to use as a file or
-    /// folder name, with the same options the graph-settings save dialog
-    /// uses (so library-created files match dialog-created ones).
+    /// folder name. Thin wrapper over `mangler_core::naming::sanitize_name`
+    /// so library-created files match dialog-created ones (one sanitizer,
+    /// not several drifting copies).
     pub fn sanitize(name: &str) -> String {
-        let options = sanitize_filename::Options {
-            truncate: true,   // truncate to 255 bytes
-            windows: true,    // strip Windows-reserved names like `con`
-            replacement: "",  // drop disallowed characters entirely
-        };
-        sanitize_filename::sanitize_with_options(name, options)
+        mangler_core::naming::sanitize_name(name)
     }
 }
 

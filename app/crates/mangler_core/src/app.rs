@@ -7,7 +7,6 @@ use crate::{ChangeGraphMessage, ChangeNodeMessage, NodeChangedMessage, GraphChan
 /// nodes each tick (~60 Hz target, 2 ms minimum between ticks).
 pub struct App {
     pub id: String,
-    pub name: String,
     pub save_path: Option<PathBuf>,
     pub thread_handle: JoinHandle<()>,
 }
@@ -41,7 +40,6 @@ impl App {
         match graph_result {
             Ok(mut graph) => {
                 let id = graph.id.clone();
-                let name = graph.name.clone();
                 let save_path = graph.save_path.clone();
                 // Auto-save debounce state. `needs_to_save` flips true on any
                 // mutation this tick; `last_save` is when we last wrote to disk.
@@ -137,9 +135,51 @@ impl App {
                                     graph.set_save_path(save_path);
                                     needs_to_save = true;
                                 }
-                                ChangeGraphMessage::SetGraphName(graph_name) => {
-                                    graph.name = graph_name;
-                                    needs_to_save = true;
+                                ChangeGraphMessage::RenameFile { new_stem } => {
+                                    // Never rename out from under an unresolved
+                                    // conflict: the file on disk differs from
+                                    // what we think it is, so moving it would
+                                    // muddy the resolution. Ask the user to
+                                    // settle the conflict first.
+                                    if conflict_pending {
+                                        if let Some(tx) = &graph.tx_graph_changed {
+                                            let path = graph.save_path.clone().unwrap_or_default();
+                                            if let Err(err) = tx.try_send(GraphChangedMessage::SaveError {
+                                                path,
+                                                message: "resolve the file conflict first".to_string(),
+                                            }) {
+                                                println!("Error sending SaveError: {:?}", err);
+                                            }
+                                        }
+                                    } else {
+                                        match graph.rename_file(&new_stem) {
+                                            Ok(new_path) => {
+                                                if let Some(tx) = &graph.tx_graph_changed {
+                                                    if let Err(err) = tx.try_send(GraphChangedMessage::FileRenamed {
+                                                        new_path,
+                                                    }) {
+                                                        println!("Error sending FileRenamed: {:?}", err);
+                                                    }
+                                                }
+                                                // Persist the write-only mirror
+                                                // `name` into the newly-named
+                                                // file. rename_file already
+                                                // re-stat'd last_synced_mtime
+                                                // from the new path, so this
+                                                // save can't trip a spurious
+                                                // conflict.
+                                                needs_to_save = true;
+                                            }
+                                            Err(message) => {
+                                                if let Some(tx) = &graph.tx_graph_changed {
+                                                    let path = graph.save_path.clone().unwrap_or_default();
+                                                    if let Err(err) = tx.try_send(GraphChangedMessage::SaveError { path, message }) {
+                                                        println!("Error sending SaveError: {:?}", err);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 ChangeGraphMessage::ResolveFileConflict { keep_ours } => {
                                     // A resolution action, not an edit in its
@@ -153,7 +193,14 @@ impl App {
                                         // last_synced_mtime, so the next
                                         // disk_is_newer check has a fresh
                                         // baseline.
-                                        graph.save_to_file();
+                                        if let Err(message) = graph.save_to_file() {
+                                            if let Some(tx) = &graph.tx_graph_changed {
+                                                let path = graph.save_path.clone().unwrap_or_default();
+                                                if let Err(err) = tx.try_send(GraphChangedMessage::SaveError { path, message }) {
+                                                    println!("Error sending SaveError: {:?}", err);
+                                                }
+                                            }
+                                        }
                                     } else {
                                         // Reload: discard local edits and take
                                         // the disk copy. Tell the UI to wipe
@@ -311,7 +358,14 @@ impl App {
                                     }
                                 }
                             } else {
-                                graph.save_to_file();
+                                if let Err(message) = graph.save_to_file() {
+                                    if let Some(tx) = &graph.tx_graph_changed {
+                                        let path = graph.save_path.clone().unwrap_or_default();
+                                        if let Err(err) = tx.try_send(GraphChangedMessage::SaveError { path, message }) {
+                                            println!("Error sending SaveError: {:?}", err);
+                                        }
+                                    }
+                                }
                                 last_save = Instant::now();
                                 needs_to_save = false;
                             }
@@ -329,7 +383,6 @@ impl App {
                 Ok(App {
                     thread_handle,
                     id,
-                    name,
                     save_path,
                 })
             },

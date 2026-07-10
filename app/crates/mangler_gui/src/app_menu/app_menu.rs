@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use eframe::egui::{self, Layout};
 use epaint::{CornerRadius, Pos2, Rect};
@@ -64,44 +65,31 @@ impl AppMenu {
 
                         egui::Frame::NONE.inner_margin(8.0).show(ui, |ui| {
                             if ui.button("new").clicked() {
-                                // Failures surface through the bar response;
-                                // App turns them into its error modal.
-                                match Program::new(None, None) {
-                                    Ok(new_program) => {
-                                        bar_response.new_program = Some(new_program);
-                                    }
-                                    Err(error) => {
-                                        bar_response.error = Some(format!(
-                                            "Failed to create a new graph: {}",
-                                            error.0
-                                        ));
-                                    }
-                                }
+                                // Constructing the Program (and pointing it at
+                                // a default-library save location) happens in
+                                // `App`, which owns the config and the
+                                // already-open programs map needed for the
+                                // untitled-name collision check — this button
+                                // just raises the signal.
+                                bar_response.new_graph_requested = true;
                             }
 
                             //ui.add_space(10.0);
 
                             if ui.button("load").clicked() {
+                                // rfd matches extensions against the final
+                                // dot-component only, so "json" alone covers
+                                // both "x.json" and "x.mangle.json" — a
+                                // "mangle.json" token would never match.
                                 if let Some(save_path) = rfd::FileDialog::new()
-                                    .add_filter("mangler", &["mangle.json", "json"])
+                                    .add_filter("NodeMangler graph", &["json"])
                                     .pick_file()
                                 {
-                                    // With tolerant loading in core, this only
-                                    // fails on real IO / top-level JSON
-                                    // corruption — worth telling the user
-                                    // about instead of a click doing nothing.
-                                    match Program::new(None, Some(save_path.clone())) {
-                                        Ok(new_program) => {
-                                            bar_response.new_program = Some(new_program);
-                                        }
-                                        Err(error) => {
-                                            bar_response.error = Some(format!(
-                                                "Failed to open '{}': {}",
-                                                save_path.display(),
-                                                error.0
-                                            ));
-                                        }
-                                    }
+                                    // `App` opens this (or focuses an existing
+                                    // tab already editing it) via
+                                    // `open_or_focus` — same dedup path as the
+                                    // Libraries panel's open action.
+                                    bar_response.open_path = Some(save_path);
                                 }
                             }
 
@@ -156,7 +144,7 @@ impl AppMenu {
 
                         // sort programs and put into list
                         for (program_id, program) in programs.iter() {
-                            program_list.push((program_id.clone(), program.app.name.clone()));
+                            program_list.push((program_id.clone(), program.display_name()));
                         }
 
                         program_list.sort_by(|a, b| {
@@ -281,26 +269,28 @@ impl AppMenu {
 // }
 
 pub struct BarResponse {
-    pub new_program: Option<Program>,
+    /// The "new" button was clicked this frame. `App` constructs the
+    /// `Program` (it owns the config needed to pick a default-library save
+    /// location) and turns any `NewGraphError` into its error modal.
+    pub new_graph_requested: bool,
+    /// The "load" button picked a file this frame. `App` opens it (or
+    /// focuses an existing tab already editing it) via `open_or_focus`.
+    pub open_path: Option<PathBuf>,
     pub current_program: Option<String>,
     pub program_to_close: Option<String>,
     pub theme_changed_to: Option<Theme>,
     pub panel_action: Option<PanelAction>,
-    /// A new/load action failed this frame; the App shows this text in its
-    /// error modal. (IO or top-level JSON corruption — tolerant graph
-    /// loading in core absorbs unknown-node failures before they get here.)
-    pub error: Option<String>,
 }
 
 impl BarResponse {
     pub fn new() -> Self {
         Self {
-            new_program: None,
+            new_graph_requested: false,
+            open_path: None,
             current_program: None,
             program_to_close: None,
             theme_changed_to: None,
             panel_action: None,
-            error: None,
         }
     }
 }

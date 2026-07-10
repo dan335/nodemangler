@@ -217,6 +217,43 @@ pub(crate) fn parse_png_compression(text: &str) -> Result<PngCompression, String
     }
 }
 
+/// Map a save-path's file extension to the `ImageFormat` it selects.
+///
+/// Case-insensitively matches the path's extension against every supported
+/// [`crate::value::ImageType`] (the same 14 formats enumerated by
+/// `ImageType::types()`, which includes AVIF — write-only in this app, unlike
+/// the read-side extension list used by the image "from file" input node).
+/// Returns `Err` with a message listing the supported extensions if the path
+/// has no extension or an unrecognized one.
+pub fn image_format_from_path(path: &std::path::Path) -> Result<ImageFormat, String> {
+    let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+        return Err(format!(
+            "File path has no extension; cannot determine image format. Supported extensions: {}.",
+            supported_extensions_list()
+        ));
+    };
+    let ext_lower = ext.to_lowercase();
+    for image_type in crate::value::ImageType::types().iter() {
+        if image_type.format().extensions_str().contains(&ext_lower.as_str()) {
+            return Ok(image_type.format());
+        }
+    }
+    Err(format!(
+        "Unsupported image extension '{}'. Supported extensions: {}.",
+        ext, supported_extensions_list()
+    ))
+}
+
+/// Comma-separated list of the first (canonical) extension for every
+/// supported image format, for error messages.
+fn supported_extensions_list() -> String {
+    crate::value::ImageType::types()
+        .iter()
+        .map(|t| t.format().extensions_str()[0])
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// Convert a `FloatImage` to the requested `ColorFormat` and encode/save it to
 /// `path` in `image_format`. JPEG/PNG/AVIF use explicit encoders so `quality`
 /// (JPEG/AVIF) and `png_compression` (PNG) apply; other formats are saved via
@@ -260,3 +297,7 @@ pub fn save_image(
         _ => converted.save_with_format(path, image_format).map_err(|e| e.to_string()),
     }
 }
+
+#[cfg(test)]
+#[path = "mod_tests.rs"]
+mod tests;

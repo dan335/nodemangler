@@ -37,6 +37,7 @@ pub mod float_image_serde;
 pub mod color;
 pub mod version;
 pub mod saved_nodes;
+pub mod naming;
 mod tests;
 
 /// Generate a unique identifier using nanoid.
@@ -270,8 +271,17 @@ pub enum ChangeGraphMessage {
     },
     /// Set the file path where the graph will be saved.
     SetSavePath(PathBuf),
-    /// Set the human-readable name for the graph.
-    SetGraphName(String),
+    /// Rename the graph's file on disk. `new_stem` is a user-entered display
+    /// name; the engine sanitizes it, appends the canonical extension, and
+    /// physically renames the file (see [`crate::graph::Graph::rename_file`]).
+    /// The name is a pure function of the file stem, so there is no separate
+    /// "set name" message anymore. On success the engine replies with
+    /// [`GraphChangedMessage::FileRenamed`]; on failure (e.g. a name
+    /// collision) with [`GraphChangedMessage::SaveError`].
+    RenameFile {
+        /// The new display name / file stem the user typed.
+        new_stem: String,
+    },
     /// Resolve a detected external-modification conflict (see
     /// [`GraphChangedMessage::FileConflict`]): the save file was rewritten
     /// by someone else while local edits were pending.
@@ -370,6 +380,24 @@ pub enum GraphChangedMessage {
     /// [`GraphChangedMessage::LoadedNode`] stream, e.g. when resolving a
     /// [`ChangeGraphMessage::ResolveFileConflict`] with `keep_ours: false`.
     GraphCleared,
+    /// The graph's file was renamed on disk in response to a
+    /// [`ChangeGraphMessage::RenameFile`]. The UI should adopt `new_path` as
+    /// its save path; the tab title follows automatically because the display
+    /// name is derived from the path.
+    FileRenamed {
+        /// The path the file was renamed to.
+        new_path: PathBuf,
+    },
+    /// Writing the graph's save file failed (e.g. the parent directory
+    /// vanished, or a permissions/disk-space error). Previously this only
+    /// reached an `eprintln!` — this variant gives the UI a channel to
+    /// surface it (see [`crate::graph::Graph::save_to_file`]).
+    SaveError {
+        /// The path the engine attempted to write to.
+        path: PathBuf,
+        /// Human-readable error description.
+        message: String,
+    },
 }
 
 /// Specifies what kind of node to create when adding to a graph.

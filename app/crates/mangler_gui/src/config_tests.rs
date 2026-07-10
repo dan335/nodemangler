@@ -4,6 +4,7 @@ use crate::panels::{
     panel_kind::PanelKind,
     panel_tree::{PanelNode, SplitDirection},
 };
+use std::path::PathBuf;
 
 /// Default config has no theme set.
 #[test]
@@ -21,6 +22,7 @@ fn test_serialize_deserialize_roundtrip() {
         theme: Some("dark_green".to_string()),
         default_layout: None,
         libraries: Vec::new(),
+        default_library: None,
     };
 
     let json = serde_json::to_string(&config).unwrap();
@@ -41,6 +43,7 @@ fn test_serialize_deserialize_roundtrip_with_libraries() {
                 path: std::path::PathBuf::from("D:/textures"),
             },
         }],
+        default_library: None,
     };
 
     let json = serde_json::to_string(&config).unwrap();
@@ -80,6 +83,7 @@ fn test_serialize_deserialize_roundtrip_with_layout() {
         theme: Some("dark_green".to_string()),
         default_layout: Some(layout.clone()),
         libraries: Vec::new(),
+        default_library: None,
     };
 
     let json = serde_json::to_string(&config).unwrap();
@@ -140,10 +144,117 @@ fn test_save_and_load_roundtrip() {
         theme: Some("light_blue".to_string()),
         default_layout: None,
         libraries: Vec::new(),
+        default_library: None,
     };
 
     let json = serde_json::to_string_pretty(&config).unwrap();
     let restored: AppConfig = serde_json::from_str(&json).unwrap();
 
     assert_eq!(restored.theme.as_deref(), Some("light_blue"));
+}
+
+/// Monotonic counter so parallel `cargo test` runs never collide on the same
+/// temp directory name (mirrors `library_scanner_tests::make_temp_dir`).
+static UNIQUE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Builds a fresh, uniquely-named directory under the OS temp dir. Caller is
+/// responsible for cleanup via `std::fs::remove_dir_all`.
+fn make_temp_dir(label: &str) -> PathBuf {
+    let n = UNIQUE.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let dir = std::env::temp_dir().join(format!(
+        "mangler_gui_config_test_{}_{}_{}",
+        std::process::id(),
+        label,
+        n
+    ));
+    dir
+}
+
+/// `ensure_default_library_in` creates the "NodeMangler" folder under the
+/// first candidate dir and registers a matching library entry.
+#[test]
+fn test_ensure_default_library_creates_dir_and_registers_library() {
+    let base = make_temp_dir("creates");
+    let expected = base.join("NodeMangler");
+
+    let mut config = AppConfig::default();
+    let result = config.ensure_default_library_in(&[base.clone()]);
+
+    assert_eq!(result, Some(expected.clone()));
+    assert!(expected.is_dir());
+    assert_eq!(config.default_library, Some(expected.clone()));
+    assert_eq!(config.libraries.len(), 1);
+    assert_eq!(config.libraries[0].name, "NodeMangler");
+    assert_eq!(config.libraries[0].source.local_path(), Some(expected.as_path()));
+
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// A second call returns the same path and does not add a duplicate library
+/// entry.
+#[test]
+fn test_ensure_default_library_is_idempotent() {
+    let base = make_temp_dir("idempotent");
+    let expected = base.join("NodeMangler");
+
+    let mut config = AppConfig::default();
+    let first = config.ensure_default_library_in(&[base.clone()]);
+    let second = config.ensure_default_library_in(&[base.clone()]);
+
+    assert_eq!(first, second);
+    assert_eq!(first, Some(expected));
+    assert_eq!(config.libraries.len(), 1);
+
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// A pre-existing "NodeMangler" folder is tolerated (not recreated/cleared),
+/// and its content survives the call.
+#[test]
+fn test_ensure_default_library_tolerates_pre_existing_folder() {
+    let base = make_temp_dir("pre_existing");
+    let expected = base.join("NodeMangler");
+    std::fs::create_dir_all(&expected).unwrap();
+    std::fs::write(expected.join("marker.mangle.json"), "{}").unwrap();
+
+    let mut config = AppConfig::default();
+    let result = config.ensure_default_library_in(&[base.clone()]);
+
+    assert_eq!(result, Some(expected.clone()));
+    assert!(expected.join("marker.mangle.json").is_file());
+
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// If `default_library` is already set and still exists, later calls reuse
+/// it even when given different (irrelevant) candidates.
+#[test]
+fn test_ensure_default_library_reuses_existing_configured_path() {
+    let base = make_temp_dir("reuse");
+    let expected = base.join("NodeMangler");
+    std::fs::create_dir_all(&expected).unwrap();
+
+    let mut config = AppConfig {
+        default_library: Some(expected.clone()),
+        ..AppConfig::default()
+    };
+    // Candidates list is deliberately unrelated — should be ignored since
+    // `default_library` is already set and usable.
+    let other = make_temp_dir("reuse_unused_candidate");
+    let result = config.ensure_default_library_in(&[other.clone()]);
+
+    assert_eq!(result, Some(expected));
+    assert_eq!(config.libraries.len(), 1);
+
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// Empty candidate list (e.g. every real base dir was `None`) fails cleanly.
+#[test]
+fn test_ensure_default_library_no_candidates_returns_none() {
+    let mut config = AppConfig::default();
+    let result = config.ensure_default_library_in(&[]);
+    assert!(result.is_none());
+    assert!(config.default_library.is_none());
+    assert!(config.libraries.is_empty());
 }

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
-extern crate sanitize_filename;
 use eframe::egui::{self, Button, Label, RichText, TextEdit};
+use mangler_core::naming;
 
 use crate::{
     settings::section::{section_label, section_rule},
@@ -9,7 +9,8 @@ use crate::{
 
 pub fn show(
     ui: &mut egui::Ui,
-    program_name: &mut String,
+    name_buffer: &mut String,
+    display_name: &str,
     program_path: &Option<PathBuf>,
     theme: &Theme,
 ) -> GraphSettingsResponse {
@@ -43,8 +44,22 @@ pub fn show(
             },
         );
         let remaining_width = ui.available_width();
-        if ui.add(TextEdit::singleline(program_name).desired_width(remaining_width)).changed() {
-            graph_settings_response.new_name = Some(program_name.clone());
+        let response = ui.add(
+            TextEdit::singleline(name_buffer).desired_width(remaining_width),
+        );
+        // The graph's name IS its file name, so a name change renames the
+        // file on disk — an expensive, potentially-failing op we don't want
+        // to fire on every keystroke. Commit only when the field loses focus
+        // (click-away or Enter).
+        if response.lost_focus() {
+            graph_settings_response.new_name = Some(name_buffer.clone());
+        } else if !response.has_focus() {
+            // While not being edited, keep the buffer in sync with the
+            // authoritative name derived from the file path, so an external
+            // rename (or a failed rename that kept the old name) is reflected.
+            if name_buffer != display_name {
+                *name_buffer = display_name.to_string();
+            }
         }
     });
 
@@ -66,24 +81,39 @@ pub fn show(
     ui.add_space(8.0);
 
     //ui.vertical_centered(|ui| {
-        if ui.add(Button::new(egui::RichText::new("select location"))).clicked() {
-            let options = sanitize_filename::Options {
-                truncate: true,  // true by default, truncates to 255 bytes
-                windows: true, // default value depends on the OS, removes reserved names like `con` from start of strings on Windows
-                replacement: "", // str to replace sanitized chars/strings
-            };
+        if ui
+            .add(Button::new(egui::RichText::new("select location")))
+            .on_hover_text("saves a copy to the new location; the old file is not deleted")
+            .clicked()
+        {
+            let starting_file_name = naming::graph_file_name(display_name);
 
-            let sanitized =
-                sanitize_filename::sanitize_with_options(program_name, options);
-
-            // remove whitespace and append .mangle.json extension
-            let starting_file_name = format!("{}.mangle.json", sanitized.replace(' ', "_"));
-
+            // rfd matches extensions against the final dot-component only,
+            // so "json" alone covers both "x.json" and "x.mangle.json" — a
+            // "mangle.json" filter token would never match anything.
             if let Some(save_path) = rfd::FileDialog::new()
                 .set_file_name(&starting_file_name)
-                .add_filter("mangler", &["mangle.json", "json"])
+                .add_filter("NodeMangler graph", &["json"])
                 .save_file()
             {
+                // Plain-.json saves must become impossible: force the
+                // canonical extension onto whatever the OS dialog returned,
+                // regardless of what the user typed as the file name.
+                let file_name = save_path
+                    .file_name()
+                    .and_then(|f| f.to_str())
+                    .unwrap_or_default();
+                let save_path = if file_name.ends_with(naming::GRAPH_EXTENSION) {
+                    save_path
+                } else {
+                    // Strip a single trailing plain ".json" (if any) before
+                    // appending the canonical extension, so a plain-.json
+                    // choice becomes "<name>.mangle.json" rather than
+                    // "<name>.json.mangle.json".
+                    let stem = file_name.strip_suffix(".json").unwrap_or(file_name);
+                    save_path.with_file_name(format!("{stem}{}", naming::GRAPH_EXTENSION))
+                };
+
                 graph_settings_response.new_save_path = Some(save_path);
             }
         }

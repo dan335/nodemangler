@@ -29,7 +29,7 @@ pub const MAX_SCAN_DEPTH: usize = 8;
 pub const MAX_ENTRIES_PER_LIBRARY: usize = 10_000;
 /// The only file extension the scanner lists as a graph. Chosen to match
 /// `Graph::save_to_file`'s on-disk naming.
-pub const GRAPH_EXTENSION: &str = ".mangle.json";
+pub const GRAPH_EXTENSION: &str = mangler_core::naming::GRAPH_EXTENSION;
 
 /// One `.mangle.json` graph found while scanning a folder.
 #[derive(Debug, Clone, PartialEq)]
@@ -37,6 +37,16 @@ pub struct GraphEntry {
     /// Display name: the file name with the `.mangle.json` suffix stripped.
     pub name: String,
     /// Full path to the graph file on disk.
+    pub path: PathBuf,
+}
+
+/// One image file found while scanning a folder. Unlike graphs, the display
+/// name keeps its extension so `foo.png` and `foo.jpg` stay distinguishable.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImageEntry {
+    /// Display name: the file name *including* its extension.
+    pub name: String,
+    /// Full path to the image file on disk.
     pub path: PathBuf,
 }
 
@@ -52,6 +62,9 @@ pub struct FolderScan {
     pub folders: Vec<FolderScan>,
     /// Graphs directly inside this folder, sorted case-insensitively by name.
     pub graphs: Vec<GraphEntry>,
+    /// Image files directly inside this folder, sorted case-insensitively by
+    /// name (extension included).
+    pub images: Vec<ImageEntry>,
     /// `true` if this folder has content the scanner didn't fully walk
     /// (depth cap reached, or the per-library entry budget ran out). The
     /// panel shows this as a "more items not shown" marker rather than
@@ -80,14 +93,31 @@ pub fn is_graph_file(file_name: &str) -> bool {
     file_name.ends_with(GRAPH_EXTENSION) && file_name.len() > GRAPH_EXTENSION.len()
 }
 
+/// Returns `true` if `file_name` has an image extension the app can load,
+/// matched case-insensitively. Reuses the exact extension list the
+/// "image from file" node advertises (`ValueType::file_extensions` for
+/// `Image`), so what the panel lists and what the node can open never drift.
+pub fn is_image_file(file_name: &str) -> bool {
+    let Some(ext) = Path::new(file_name)
+        .extension()
+        .and_then(|e| e.to_str())
+    else {
+        return false;
+    };
+    let ext = ext.to_lowercase();
+    mangler_core::value::ValueType::file_extensions(&mangler_core::value::ValueType::Image)
+        .iter()
+        .any(|e| e.eq_ignore_ascii_case(&ext))
+}
+
 /// Derives a graph's display name from its file name by stripping the
 /// `.mangle.json` suffix. Never parses the file itself — scans must stay
 /// fast on network shares, so the on-disk name is all we show.
+///
+/// Thin wrapper over `mangler_core::naming::graph_display_name` (the single
+/// source of truth for this rule).
 pub fn graph_display_name(file_name: &str) -> String {
-    file_name
-        .strip_suffix(GRAPH_EXTENSION)
-        .unwrap_or(file_name)
-        .to_string()
+    mangler_core::naming::graph_display_name(file_name)
 }
 
 /// Recursively scans `path`, listing its immediate subfolders and graphs and
@@ -114,6 +144,7 @@ pub fn scan_folder(path: &Path, depth: usize, budget: &mut usize) -> std::io::Re
         path: path.to_path_buf(),
         folders: Vec::new(),
         graphs: Vec::new(),
+        images: Vec::new(),
         truncated: false,
     };
 
@@ -149,6 +180,12 @@ pub fn scan_folder(path: &Path, depth: usize, budget: &mut usize) -> std::io::Re
                 name: graph_display_name(&file_name),
                 path: entry_path,
             });
+        } else if file_type.is_file() && is_image_file(&file_name) {
+            scan.images.push(ImageEntry {
+                // Keep the extension visible so foo.png / foo.jpg are distinct.
+                name: file_name,
+                path: entry_path,
+            });
         }
     }
 
@@ -179,6 +216,8 @@ pub fn scan_folder(path: &Path, depth: usize, budget: &mut usize) -> std::io::Re
     scan.folders
         .sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     scan.graphs
+        .sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    scan.images
         .sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
     Ok(scan)
