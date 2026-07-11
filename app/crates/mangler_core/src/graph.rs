@@ -26,6 +26,19 @@ use std::{
 use tokio::sync::mpsc::Sender;
 use crate::NodeChangedMessage::SubgraphLoaded;
 
+/// For an image-output operation, the `(folder, file name)` input indices used
+/// to pre-fill a fresh node's save destination and to detect stem collisions.
+/// Returns `None` for any other operation. Keep in sync with each op's input
+/// layout (`to file`: 1/2; `material`: 9/10).
+fn output_node_path_inputs(op: &crate::operations::Operation) -> Option<(usize, usize)> {
+    use crate::operations::Operation;
+    match op {
+        Operation::OpImageOutputFile => Some((1, 2)),
+        Operation::OpImageOutputMaterial => Some((9, 10)),
+        _ => None,
+    }
+}
+
 /// The node graph engine that owns all nodes, manages connections, and
 /// orchestrates the processing pipeline.
 ///
@@ -291,28 +304,27 @@ impl Graph {
             }
         }
 
-        // A freshly-added "to file" node pre-fills its folder with the graph's
-        // own directory (absolute) and its file name with a unique
-        // `{graph name}_{N}` stem, so the save destination is visible, editable,
-        // and won't collide with sibling output nodes or existing files. Only
-        // fill inputs that are still empty, so explicit values (e.g. a recreated
-        // node carrying them) are never clobbered.
-        if matches!(node_type, AddNodeType::Operation(crate::operations::Operation::OpImageOutputFile)) {
-            const FOLDER: usize = 1;
-            const FILE_NAME: usize = 2;
-
-            let dir = self.save_path.as_ref().and_then(|p| p.parent()).map(|d| d.to_path_buf());
-            if let Some(dir) = &dir {
-                if let Some(input) = node.inputs.get_mut(FOLDER) {
-                    if matches!(&input.value, Value::Path(p) if p.as_os_str().is_empty()) {
-                        input.value = Value::Path(dir.clone());
+        // A freshly-added image-output node ("to file" / "material") pre-fills
+        // its folder with the graph's own directory (absolute) and its file name
+        // with a unique `{graph name}_{N}` stem, so the save destination is
+        // visible, editable, and won't collide with sibling output nodes or
+        // existing files. Only fill inputs that are still empty, so explicit
+        // values (e.g. a recreated node carrying them) are never clobbered.
+        if let AddNodeType::Operation(op) = &node_type {
+            if let Some((folder_idx, file_name_idx)) = output_node_path_inputs(op) {
+                let dir = self.save_path.as_ref().and_then(|p| p.parent()).map(|d| d.to_path_buf());
+                if let Some(dir) = &dir {
+                    if let Some(input) = node.inputs.get_mut(folder_idx) {
+                        if matches!(&input.value, Value::Path(p) if p.as_os_str().is_empty()) {
+                            input.value = Value::Path(dir.clone());
+                        }
                     }
                 }
-            }
 
-            if let Some(input) = node.inputs.get_mut(FILE_NAME) {
-                if matches!(&input.value, Value::Text(t) if t.trim().is_empty()) {
-                    input.value = Value::Text(self.next_unique_output_stem(dir.as_deref()));
+                if let Some(input) = node.inputs.get_mut(file_name_idx) {
+                    if matches!(&input.value, Value::Text(t) if t.trim().is_empty()) {
+                        input.value = Value::Text(self.next_unique_output_stem(dir.as_deref()));
+                    }
                 }
             }
         }
@@ -346,29 +358,25 @@ impl Graph {
         node_id
     }
 
-    /// Picks a unique `{graph name}_{N}` file stem for a new "to file" node.
+    /// Picks a unique `{graph name}_{N}` file stem for a new image-output node.
     ///
     /// `N` is the smallest integer ≥ 1 whose stem is not already used by another
-    /// "to file" node's explicit file name in this graph, nor by an existing
-    /// file in `dir` (extension ignored — a stem is considered taken whatever
-    /// its extension). Comparison is case-insensitive so it holds on
-    /// case-insensitive filesystems. The base is the graph's own (sanitized)
-    /// name; when the graph has no name yet it falls back to "untitled".
+    /// image-output node's explicit file name in this graph ("to file" or
+    /// "material"), nor by an existing file in `dir` (extension ignored — a stem
+    /// is considered taken whatever its extension). Comparison is
+    /// case-insensitive so it holds on case-insensitive filesystems. The base is
+    /// the graph's own (sanitized) name; when the graph has no name yet it falls
+    /// back to "untitled".
     fn next_unique_output_stem(&self, dir: Option<&std::path::Path>) -> String {
         let mut base = crate::naming::sanitize_name(&self.name);
         if base.is_empty() { base = "untitled".to_string(); }
 
         // Stems already claimed by other output nodes' explicit file names.
         let mut taken: HashSet<String> = HashSet::new();
-        const FILE_NAME: usize = 2;
         for other in self.nodes.values() {
-            if !matches!(
-                other.node_type,
-                crate::node_type::NodeType::Operation { operation: crate::operations::Operation::OpImageOutputFile }
-            ) {
-                continue;
-            }
-            if let Some(input) = other.inputs.get(FILE_NAME) {
+            let crate::node_type::NodeType::Operation { operation } = &other.node_type else { continue };
+            let Some((_, file_name_idx)) = output_node_path_inputs(operation) else { continue };
+            if let Some(input) = other.inputs.get(file_name_idx) {
                 if let Value::Text(name) = &input.value {
                     let name = name.trim();
                     if !name.is_empty() {

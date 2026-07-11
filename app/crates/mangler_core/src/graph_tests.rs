@@ -3050,6 +3050,53 @@ async fn test_to_file_nodes_get_incrementing_unique_names() {
 }
 
 #[tokio::test]
+async fn test_material_node_prefills_folder_and_name() {
+    use std::path::PathBuf;
+    const FOLDER: usize = 9;
+    const FILE_NAME: usize = 10;
+
+    let mut graph = create_test_graph();
+    let dir = PathBuf::from("/some/where/MyGraphs");
+    graph.set_save_path(dir.join("mygraph.mangler.json"));
+
+    let node_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpImageOutputMaterial), glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+
+    let node = graph.nodes.get(&node_id).unwrap();
+    assert!(matches!(&node.inputs[FOLDER].value, Value::Path(p) if p == &dir));
+    assert!(matches!(&node.inputs[FILE_NAME].value, Value::Text(t) if t == "mygraph_1"));
+}
+
+#[tokio::test]
+async fn test_output_nodes_share_unique_name_counter_across_types() {
+    use std::path::PathBuf;
+
+    // A "to file" and a "material" node in the same graph must not pick the
+    // same {name}_{N} stem (they'd collide on disk).
+    let mut graph = create_test_graph();
+    graph.set_save_path(PathBuf::from("/no/such/dir/mygraph.mangler.json"));
+
+    let file_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpImageOutputFile), glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+    let mat_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpImageOutputMaterial), glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+
+    let file_name = match &graph.nodes.get(&file_id).unwrap().inputs[2].value {
+        Value::Text(t) => t.clone(),
+        _ => panic!("expected text"),
+    };
+    let mat_name = match &graph.nodes.get(&mat_id).unwrap().inputs[10].value {
+        Value::Text(t) => t.clone(),
+        _ => panic!("expected text"),
+    };
+    assert_eq!(file_name, "mygraph_1");
+    assert_eq!(mat_name, "mygraph_2");
+}
+
+#[tokio::test]
 async fn test_to_file_node_folder_empty_without_save_path() {
     const FOLDER: usize = 1;
 

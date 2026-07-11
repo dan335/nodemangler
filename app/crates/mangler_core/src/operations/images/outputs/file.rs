@@ -143,36 +143,9 @@ impl OpImageOutputFile {
         let Value::ColorFormat(color_format) = color_format_converted.unwrap() else { unreachable!() };
         let Value::Text(png_compression_text) = png_compression_converted.unwrap() else { unreachable!() };
 
-        // Graph context supplies the base directory for a relative folder and
-        // the default file name. Absent (direct unit-test call) → no base dir
-        // and an empty graph name.
-        let ctx = crate::run_context::current().unwrap_or_default();
-
-        // Resolve the destination folder: absolute stays as-is; relative joins
-        // the graph's folder; empty means the graph's folder itself.
-        let resolved_dir = if folder.as_os_str().is_empty() {
-            ctx.graph_dir.clone().unwrap_or_default()
-        } else if folder.is_absolute() {
-            folder.clone()
-        } else {
-            match &ctx.graph_dir {
-                Some(dir) => dir.join(&folder),
-                None => folder.clone(),
-            }
-        };
-        if resolved_dir.as_os_str().is_empty() {
-            let msg = "No folder set and the graph has no save location yet.".to_string();
-            return Err(OperationError { input_errors: vec![(FOLDER, msg.clone())], node_error: Some(msg) });
-        }
-
-        // Resolve the file stem: an empty name falls back to the graph's name.
-        // Sanitize either way so it's a safe file name.
-        let raw_stem = if file_name.trim().is_empty() { ctx.graph_name.as_str() } else { file_name.as_str() };
-        let stem = crate::naming::sanitize_name(raw_stem);
-        if stem.is_empty() {
-            let msg = "File name is empty (and the graph has no name to fall back to).".to_string();
-            return Err(OperationError { input_errors: vec![(FILE_NAME, msg.clone())], node_error: Some(msg) });
-        }
+        // Resolve the destination folder and file stem from the graph context
+        // (shared with the `material` node so both behave identically).
+        let (resolved_dir, stem) = super::resolve_output_dir_and_stem(&folder, &file_name, FOLDER, FILE_NAME)?;
 
         // Validate the color format against the chosen image format before
         // touching the filesystem.

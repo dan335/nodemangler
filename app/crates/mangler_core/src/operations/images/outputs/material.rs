@@ -21,15 +21,22 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use super::{image_format_from_path, save_image, save_gate_inputs, should_save_and_consume};
+use super::{save_image, save_gate_inputs, should_save_and_consume};
 use super::material_presets::{
     builtin_specs, custom_specs, pack_texture, spec_is_writable, TextureSpec, CHANNEL_SOURCE_OPTIONS, MAP_COUNT,
 };
 
-/// The auto-save toggle and manual-save button sit just past the four Custom
-/// slots (10 + 4*5 = 30). Appended after the frozen 0..=29 contract.
-const AUTO_SAVE: usize = 30;
-const SAVE: usize = 31;
+/// Input indices. 0..=7 are the eight PBR maps, 8 the preset, then the
+/// destination is authored as `folder` / `file name` / `format` (like the
+/// `to file` node) at 9/10/11. The four Custom slots occupy 12..=31 (slot `s`
+/// channel `offset` at `CUSTOM_SLOTS_BASE + s*5 + offset`), and the save-gating
+/// toggle + button are appended last.
+const FOLDER: usize = 9;
+const FILE_NAME: usize = 10;
+const FORMAT: usize = 11;
+const CUSTOM_SLOTS_BASE: usize = 12;
+const AUTO_SAVE: usize = 32;
+const SAVE: usize = 33;
 
 /// Operation that exports channel-packed PBR textures for a target engine.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,11 +48,11 @@ impl OpImageOutputMaterial {
         NodeSettings {
             name: "material".to_string(),
             description: "Exports channel-packed PBR textures for a game engine.".to_string(),
-            help: "Packs the standard PBR maps into the file set a target engine expects and writes them next to the chosen base path as `{base}_{suffix}.{ext}` (e.g. choosing `material.png` writes `material_orm.png` in the same folder). A map input counts as connected when it is wired or holds a real (non-1×1) image; only textures that reference at least one connected map are written, and every unconnected map falls back to a neutral constant: albedo 1, opacity 1, normal (0.5, 0.5, 1), roughness 1, metallic 0, ao 1, height 0.5, emission 0. Pixel values are written exactly as stored (sRGB floats, same as the `to file` node); no color-space conversion is applied.\n\nPresets:\n• Godot — albedo (+A=opacity), orm (R=ao, G=roughness, B=metallic), normal (OpenGL Y+, 16-bit), emission, height (16-bit gray).\n• Unity — albedo (+A=opacity), metallic (RGB=metallic, A=1−roughness smoothness, always RGBA), normal (OpenGL Y+, 16-bit), ao (8-bit gray), emission, height (16-bit gray).\n• Unreal — basecolor (+A=opacity), orm, normal (DirectX Y−: green channel inverted, 16-bit), emissive, height (16-bit gray).\n• Custom — four free-form slots: a suffix plus R/G/B/A source dropdowns. An R/G/B source of \"none\" writes 0; an alpha of \"none\" makes a 3-channel file; a \"1 - x\" option inverts. Empty-suffix slots are ignored and duplicate suffixes are an error. The slot inputs are inert under the built-in presets.\n\nThe base path's extension chooses the image format shared by every exported texture — supported: png, jpg/jpeg, gif, webp, pnm, tiff, tga, bmp, ico, hdr, exr, ff (farbfeld), avif, qoi. A texture's preferred 16-bit depth is silently degraded to 8-bit when the chosen format can't hold it; a still-incompatible format (e.g. an alpha texture into JPEG) is rejected before any file is written. Encoding uses fixed defaults (quality 85, PNG fast). The destination folder is returned as an output for chaining.\n\nExport is off by default: turn on auto save to write whenever an input changes, or leave it off and press the save button to export once. Headless `mangle run` always exports regardless of the toggle.".to_string(),
+            help: "Packs the standard PBR maps into the file set a target engine expects and writes them into the chosen folder as `{file name}_{suffix}.{ext}` (e.g. file name `material` writes `material_orm.png`). The folder is resolved relative to where the graph is saved (so a graph and its textures move together) unless you give an absolute path; leave it empty to write next to the graph file, and it is created if it doesn't exist. The file name defaults to the graph's name when left blank. A map input counts as connected when it is wired or holds a real (non-1×1) image; only textures that reference at least one connected map are written, and every unconnected map falls back to a neutral constant: albedo 1, opacity 1, normal (0.5, 0.5, 1), roughness 1, metallic 0, ao 1, height 0.5, emission 0. Pixel values are written exactly as stored (sRGB floats, same as the `to file` node); no color-space conversion is applied.\n\nPresets:\n• Godot — albedo (+A=opacity), orm (R=ao, G=roughness, B=metallic), normal (OpenGL Y+, 16-bit), emission, height (16-bit gray).\n• Unity — albedo (+A=opacity), metallic (RGB=metallic, A=1−roughness smoothness, always RGBA), normal (OpenGL Y+, 16-bit), ao (8-bit gray), emission, height (16-bit gray).\n• Unreal — basecolor (+A=opacity), orm, normal (DirectX Y−: green channel inverted, 16-bit), emissive, height (16-bit gray).\n• Custom — four free-form slots: a suffix plus R/G/B/A source dropdowns. An R/G/B source of \"none\" writes 0; an alpha of \"none\" makes a 3-channel file; a \"1 - x\" option inverts. Empty-suffix slots are ignored and duplicate suffixes are an error. The slot inputs are inert under the built-in presets.\n\nThe format dropdown chooses the image format (and file extension) shared by every exported texture — supported: png, jpg/jpeg, gif, webp, pnm, tiff, tga, bmp, ico, hdr, exr, ff (farbfeld), avif, qoi. A texture's preferred 16-bit depth is silently degraded to 8-bit when the chosen format can't hold it; a still-incompatible format (e.g. an alpha texture into JPEG) is rejected before any file is written. Encoding uses fixed defaults (quality 85, PNG fast). The destination folder is returned as an output for chaining.\n\nExport is off by default: turn on auto save to write whenever an input changes, or leave it off and press the save button to export once. Headless `mangle run` always exports regardless of the toggle.".to_string(),
         }
     }
 
-    /// Creates the 32 inputs. The order is a frozen contract (positional zip
+    /// Creates the 34 inputs. The order is a frozen contract (positional zip
     /// reconcile in graph.rs); future additions must append.
     pub fn create_inputs() -> Vec<Input> {
         let image_input = |name: &str, desc: &str| {
@@ -65,22 +72,26 @@ impl OpImageOutputMaterial {
             // 8 — engine preset.
             Input::new("preset".to_string(), Value::ExportPreset(ExportPreset::Godot), None, None)
                 .with_description("Target engine convention: chooses the file set, channel packing, normal space, and bit depth."),
-            // 9 — base file path. Its extension chooses the image format
-            // shared by every exported texture; its stem (extension
-            // stripped) is the base for each `{base}_{suffix}.{ext}` file.
-            Input::new("file path".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path {
-                extension_filter: ValueType::file_extensions(&ValueType::Image),
+            // 9/10/11 — destination folder, base file name, and format (the
+            // same authoring model as the `to file` node). Every exported
+            // texture is written as `{file name}_{suffix}.{ext}` in the folder.
+            Input::new("folder".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path {
+                extension_filter: vec![],
                 set_directory: None,
                 set_file_name: None,
-                set_title: Some("save material".to_string()),
-                file_dialog_type: crate::input::FileDialogType::SaveFile,
+                set_title: Some("output folder".to_string()),
+                file_dialog_type: crate::input::FileDialogType::PickFolder,
             }), None)
-                .with_description("Base destination path; its extension selects the image format and its stem is reused as the base of every exported file's name."),
+                .with_description("Destination folder, relative to where the graph is saved (or absolute). Empty = the graph's own folder. Pre-filled with the graph's folder when the node is created."),
+            Input::new("file name".to_string(), Value::Text(String::new()), Some(InputSettings::SingleLineText), None)
+                .with_description("Base name reused for every exported texture (`{file name}_{suffix}`). Empty = the graph's name."),
+            Input::new("format".to_string(), Value::ImageType(ImageFormat::Png), None, None)
+                .with_description("Image format (and file extension) shared by every exported texture."),
         ];
 
-        // 10..=29 — four Custom slots. Slot `s` channel `offset` is at index
-        // `10 + s*5 + offset` (offset 0 = suffix, 1..=4 = r/g/b/a). Only used
-        // when preset = Custom.
+        // 12..=31 — four Custom slots. Slot `s` channel `offset` is at index
+        // `CUSTOM_SLOTS_BASE + s*5 + offset` (offset 0 = suffix, 1..=4 =
+        // r/g/b/a). Only used when preset = Custom.
         let dropdown = || Some(InputSettings::Dropdown {
             options: CHANNEL_SOURCE_OPTIONS.iter().map(|s| s.to_string()).collect(),
         });
@@ -128,13 +139,15 @@ impl OpImageOutputMaterial {
 
         let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // Convert the core inputs (maps 0..8, preset, file path).
+        // Convert the core inputs (maps 0..8, preset, folder, file name, format).
         let mut map_values: Vec<Option<Value>> = Vec::with_capacity(MAP_COUNT);
         for m in 0..MAP_COUNT {
             map_values.push(convert_input(inputs, m, ValueType::Image, &mut input_errors));
         }
         let preset_converted = convert_input(inputs, 8, ValueType::ExportPreset, &mut input_errors);
-        let path_converted = convert_input(inputs, 9, ValueType::Path, &mut input_errors);
+        let folder_converted = convert_input(inputs, FOLDER, ValueType::Path, &mut input_errors);
+        let name_converted = convert_input(inputs, FILE_NAME, ValueType::Text, &mut input_errors);
+        let format_converted = convert_input(inputs, FORMAT, ValueType::ImageType, &mut input_errors);
 
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
@@ -149,27 +162,21 @@ impl OpImageOutputMaterial {
             map_data.push(data);
         }
         let Value::ExportPreset(preset) = preset_converted.unwrap() else { unreachable!() };
-        let Value::Path(path) = path_converted.unwrap() else { unreachable!() };
+        let Value::Path(folder_input) = folder_converted.unwrap() else { unreachable!() };
+        let Value::Text(file_name) = name_converted.unwrap() else { unreachable!() };
+        let Value::ImageType(image_format) = format_converted.unwrap() else { unreachable!() };
 
-        // Validation: at least one map, a non-empty path with a recognized
-        // extension, and an existing destination folder.
+        // Validation: at least one map connected.
         let Some(first) = provided.iter().position(|&p| p) else {
             return Err(OperationError { input_errors: vec![], node_error: Some("No map inputs are connected; nothing to export.".to_string()) });
         };
-        if path.as_os_str().is_empty() {
-            let msg = "File path is empty.".to_string();
-            return Err(OperationError { input_errors: vec![(9, msg.clone())], node_error: Some(msg) });
-        }
-        let image_format = match image_format_from_path(&path) {
-            Ok(f) => f,
-            Err(msg) => {
-                return Err(OperationError { input_errors: vec![(9, msg.clone())], node_error: Some(msg) });
-            }
-        };
-        let base_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("material").to_string();
-        let folder = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
-        if !folder.as_os_str().is_empty() && !folder.is_dir() {
-            return Err(OperationError { input_errors: vec![(9, "Folder does not exist or is not a directory.".to_string())], node_error: Some("Folder does not exist or is not a directory.".to_string()) });
+
+        // Resolve the destination folder + base file stem from the graph context
+        // (shared with the `to file` node), then create the folder.
+        let (folder, base_stem) = super::resolve_output_dir_and_stem(&folder_input, &file_name, FOLDER, FILE_NAME)?;
+        if let Err(e) = std::fs::create_dir_all(&folder) {
+            let msg = format!("Could not create folder '{}': {}", folder.display(), e);
+            return Err(OperationError { input_errors: vec![(FOLDER, msg.clone())], node_error: Some(msg) });
         }
 
         // Export size = first provided map; resize the other provided maps once
@@ -192,7 +199,7 @@ impl OpImageOutputMaterial {
             match custom_specs(&slots) {
                 Ok(s) => s,
                 Err(e) => {
-                    let index = 10 + e.slot * 5 + e.offset;
+                    let index = CUSTOM_SLOTS_BASE + e.slot * 5 + e.offset;
                     return Err(OperationError { input_errors: vec![(index, e.message.clone())], node_error: Some(e.message) });
                 }
             }
@@ -209,12 +216,12 @@ impl OpImageOutputMaterial {
                         "{:?} cannot store the '{}' texture ({:?}).",
                         image_format, spec.suffix, spec.preferred_format
                     );
-                    return Err(OperationError { input_errors: vec![(9, msg.clone())], node_error: Some(msg) });
+                    return Err(OperationError { input_errors: vec![(FORMAT, msg.clone())], node_error: Some(msg) });
                 }
             };
             let packed = pack_texture(spec, &maps, out_w, out_h);
             let ext = image_format.extensions_str()[0];
-            let out_path = path.with_file_name(format!("{}_{}.{}", base_stem, spec.suffix, ext));
+            let out_path = folder.join(format!("{}_{}.{}", base_stem, spec.suffix, ext));
             if let Err(e) = save_image(&out_path, &packed, &color_format, image_format, 85, PngCompression::Fast) {
                 return Err(OperationError { input_errors: vec![], node_error: Some(format!("Failed to save '{}': {}", spec.suffix, e)) });
             }
@@ -237,7 +244,7 @@ impl OpImageOutputMaterial {
         };
         let mut slots: [(String, [String; 4]); 4] = Default::default();
         for slot in 0..4 {
-            let base = 10 + slot * 5;
+            let base = CUSTOM_SLOTS_BASE + slot * 5;
             slots[slot] = (
                 text_at(base),
                 [text_at(base + 1), text_at(base + 2), text_at(base + 3), text_at(base + 4)],

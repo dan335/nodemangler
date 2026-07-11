@@ -31,17 +31,24 @@ fn set_preset(inputs: &mut [Input], preset: ExportPreset) {
     inputs[8].value = Value::ExportPreset(preset);
 }
 
-/// Sets the base file path (index 9); its extension drives the format and
-/// its stem is reused as the base name for every exported file.
-fn set_path(inputs: &mut [Input], path: &std::path::Path) {
-    inputs[9].value = Value::Path(path.to_path_buf());
+/// Sets the destination folder (9), file name (10), and format (11)
+/// separately — the material node's `to file`-style path inputs.
+fn set_name_folder_format(inputs: &mut [Input], folder: &std::path::Path, name: &str, format: ImageFormat) {
+    inputs[9].value = Value::Path(folder.to_path_buf());
+    inputs[10].value = Value::Text(name.to_string());
+    inputs[11].value = Value::ImageType(format);
 }
 
-/// Convenience: set the base path from a folder + base name + format,
-/// mirroring the old `set_name`/`set_folder`/`set_format` triple.
-fn set_name_folder_format(inputs: &mut [Input], folder: &std::path::Path, name: &str, format: ImageFormat) {
-    let ext = format.extensions_str()[0];
-    set_path(inputs, &folder.join(format!("{}.{}", name, ext)));
+/// Convenience for the tests that still express the destination as one full
+/// path: decomposes it into folder / file name / format inputs.
+fn set_path(inputs: &mut [Input], path: &std::path::Path) {
+    let folder = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+    inputs[9].value = Value::Path(folder);
+    inputs[10].value = Value::Text(name);
+    if let Some(format) = path.extension().and_then(|e| e.to_str()).and_then(ImageFormat::from_extension) {
+        inputs[11].value = Value::ImageType(format);
+    }
 }
 
 /// Creates a fresh temp dir for a test.
@@ -69,22 +76,22 @@ async fn test_material_settings_freeze() {
     let s = OpImageOutputMaterial::settings();
     assert_eq!(s.name, "material");
     let inputs = OpImageOutputMaterial::create_inputs();
-    assert_eq!(inputs.len(), 32, "input count is frozen at 32 (30 + auto save + save)");
+    assert_eq!(inputs.len(), 34, "input count is frozen at 34 (32 + auto save + save)");
     let names: Vec<&str> = inputs.iter().map(|i| i.name.as_str()).collect();
-    assert_eq!(&names[0..10], &[
+    assert_eq!(&names[0..12], &[
         "albedo", "opacity", "normal", "roughness", "metallic", "ambient occlusion",
-        "height", "emission", "preset", "file path",
+        "height", "emission", "preset", "folder", "file name", "format",
     ]);
-    // Custom slots at 10 + slot*5 + offset.
-    assert_eq!(names[10], "texture 1 suffix");
-    assert_eq!(names[11], "texture 1 r");
-    assert_eq!(names[14], "texture 1 a");
-    assert_eq!(names[15], "texture 2 suffix");
-    assert_eq!(names[25], "texture 4 suffix");
-    assert_eq!(names[29], "texture 4 a");
+    // Custom slots at 12 + slot*5 + offset.
+    assert_eq!(names[12], "texture 1 suffix");
+    assert_eq!(names[13], "texture 1 r");
+    assert_eq!(names[16], "texture 1 a");
+    assert_eq!(names[17], "texture 2 suffix");
+    assert_eq!(names[27], "texture 4 suffix");
+    assert_eq!(names[31], "texture 4 a");
     // Appended save-gating inputs.
-    assert_eq!(names[30], "auto save");
-    assert_eq!(names[31], "save");
+    assert_eq!(names[32], "auto save");
+    assert_eq!(names[33], "save");
     let outputs = OpImageOutputMaterial::create_outputs();
     assert_eq!(outputs.len(), 1);
     assert_eq!(outputs[0].name, "folder");
@@ -232,11 +239,11 @@ async fn test_material_custom_slot() {
     set_preset(&mut inputs, ExportPreset::Custom);
     set_name_folder_format(&mut inputs, &dir, "c", ImageFormat::Png);
     set_map(&mut inputs, 3, solid(4, 4, &[0.25])); // roughness
-    inputs[10].value = Value::Text("mask".to_string());
-    inputs[11].value = Value::Text("1 - roughness".to_string()); // r
-    inputs[12].value = Value::Text("none".to_string()); // g
-    inputs[13].value = Value::Text("none".to_string()); // b
-    inputs[14].value = Value::Text("none".to_string()); // a
+    inputs[12].value = Value::Text("mask".to_string());
+    inputs[13].value = Value::Text("1 - roughness".to_string()); // r
+    inputs[14].value = Value::Text("none".to_string()); // g
+    inputs[15].value = Value::Text("none".to_string()); // b
+    inputs[16].value = Value::Text("none".to_string()); // a
     // slot 2 left with empty suffix.
     ok(OpImageOutputMaterial::run(&mut inputs).await);
 
@@ -251,15 +258,15 @@ async fn test_material_custom_slot() {
     set_preset(&mut inputs, ExportPreset::Godot);
     set_name_folder_format(&mut inputs, &dir, "d", ImageFormat::Png);
     set_map(&mut inputs, 3, solid(4, 4, &[0.25]));
-    inputs[10].value = Value::Text("mask".to_string());
-    inputs[11].value = Value::Text("1 - roughness".to_string());
+    inputs[12].value = Value::Text("mask".to_string());
+    inputs[13].value = Value::Text("1 - roughness".to_string());
     ok(OpImageOutputMaterial::run(&mut inputs).await);
     assert!(!dir.join("d_mask.png").exists(), "custom slots inert under Godot");
     assert!(dir.join("d_orm.png").exists(), "Godot orm written (roughness connected)");
     cleanup(&dir);
 }
 
-// ⑨ Custom parse error maps to the exact input index 10 + slot*5 + offset.
+// ⑨ Custom parse error maps to the exact input index 12 + slot*5 + offset.
 #[tokio::test]
 async fn test_material_custom_error_index() {
     let dir = temp_dir("custom_error");
@@ -268,11 +275,11 @@ async fn test_material_custom_error_index() {
     set_name_folder_format(&mut inputs, &dir, "e", ImageFormat::Png);
     set_map(&mut inputs, 3, solid(4, 4, &[0.5]));
     // slot 1 (second slot), green channel (offset 2): garbage.
-    inputs[15].value = Value::Text("tex".to_string()); // slot 1 suffix
-    inputs[16].value = Value::Text("albedo.r".to_string()); // r
-    inputs[17].value = Value::Text("banana".to_string()); // g -> error
+    inputs[17].value = Value::Text("tex".to_string()); // slot 1 suffix
+    inputs[18].value = Value::Text("albedo.r".to_string()); // r
+    inputs[19].value = Value::Text("banana".to_string()); // g -> error
     let err = OpImageOutputMaterial::run(&mut inputs).await.unwrap_err();
-    let expected = 10 + 1 * 5 + 2; // = 17
+    let expected = 12 + 1 * 5 + 2; // = 19
     assert_eq!(err.input_errors.first().map(|(i, _)| *i), Some(expected));
     cleanup(&dir);
 }
@@ -296,20 +303,21 @@ async fn test_material_mixed_sizes() {
     cleanup(&dir);
 }
 
-// ⑪ JPEG + alpha texture errors at input 9 (the file path); JPEG + height
+// ⑪ JPEG + alpha texture errors at the format input; JPEG + height
 // degrades to 8-bit.
 #[tokio::test]
 async fn test_material_format_policy() {
     let dir = temp_dir("format_policy");
 
-    // JPEG cannot hold the RGBA albedo (opacity connected) -> hard error at 9.
+    // JPEG cannot hold the RGBA albedo (opacity connected) -> hard error at
+    // the format input.
     let mut inputs = base_inputs();
     set_preset(&mut inputs, ExportPreset::Godot);
     set_name_folder_format(&mut inputs, &dir, "j", ImageFormat::Jpeg);
     set_map(&mut inputs, 0, solid(4, 4, &[0.5, 0.5, 0.5]));
     set_map(&mut inputs, 1, solid(4, 4, &[0.5]));
     let err = OpImageOutputMaterial::run(&mut inputs).await.unwrap_err();
-    assert_eq!(err.input_errors.first().map(|(i, _)| *i), Some(9));
+    assert_eq!(err.input_errors.first().map(|(i, _)| *i), Some(11));
 
     // JPEG + height silently degrades Gray16 -> Gray8 and succeeds.
     let mut inputs = base_inputs();
@@ -321,33 +329,25 @@ async fn test_material_format_policy() {
     cleanup(&dir);
 }
 
-// ⑫ Empty path, unknown extension, missing parent folder, and no-maps are rejected.
+// ⑫ Empty folder (with no graph dir), an uncreatable folder, and no-maps are
+// rejected.
 #[tokio::test]
 async fn test_material_path_and_folder_errors() {
     let dir = temp_dir("name_folder");
 
-    // Empty path -> error at input 9.
+    // Empty folder and no run-context graph dir -> error at the folder input.
     let mut inputs = base_inputs();
     set_preset(&mut inputs, ExportPreset::Godot);
     set_map(&mut inputs, 0, solid(4, 4, &[0.5, 0.5, 0.5]));
     let err = OpImageOutputMaterial::run(&mut inputs).await.unwrap_err();
-    assert_eq!(err.input_errors.first().map(|(i, _)| *i), Some(9), "empty path -> input 9");
+    assert_eq!(err.input_errors.first().map(|(i, _)| *i), Some(9), "empty folder -> input 9");
 
-    // Unrecognized extension -> error at input 9, before any file is written.
+    // A folder that can't be created (under root) -> error.
     let mut inputs = base_inputs();
     set_preset(&mut inputs, ExportPreset::Godot);
-    set_path(&mut inputs, &dir.join("ok.dds"));
+    set_name_folder_format(&mut inputs, std::path::Path::new("/this/does/not/exist/at/all"), "ok", ImageFormat::Png);
     set_map(&mut inputs, 0, solid(4, 4, &[0.5, 0.5, 0.5]));
-    let err = OpImageOutputMaterial::run(&mut inputs).await.unwrap_err();
-    assert_eq!(err.input_errors.first().map(|(i, _)| *i), Some(9), "unknown extension -> input 9");
-    assert!(!dir.join("ok_albedo.dds").exists(), "no file should be created on error");
-
-    // Missing parent folder -> error.
-    let mut inputs = base_inputs();
-    set_preset(&mut inputs, ExportPreset::Godot);
-    set_path(&mut inputs, &std::path::Path::new("/this/does/not/exist/at/all").join("ok.png"));
-    set_map(&mut inputs, 0, solid(4, 4, &[0.5, 0.5, 0.5]));
-    assert!(OpImageOutputMaterial::run(&mut inputs).await.is_err(), "bad folder rejected");
+    assert!(OpImageOutputMaterial::run(&mut inputs).await.is_err(), "uncreatable folder rejected");
 
     // No maps connected -> error.
     let mut inputs = base_inputs();
@@ -357,7 +357,7 @@ async fn test_material_path_and_folder_errors() {
     cleanup(&dir);
 }
 
-// ⑬ Returns the destination folder (the path's parent) as a Path output.
+// ⑬ Returns the resolved destination folder as a Path output.
 #[tokio::test]
 async fn test_material_returns_folder() {
     let dir = temp_dir("returns_folder");
@@ -373,7 +373,7 @@ async fn test_material_returns_folder() {
     cleanup(&dir);
 }
 
-// ⑭ File path's extension drives the format (.png -> PNG, .jpg -> JPEG).
+// ⑭ The format input drives the file extension (PNG -> .png, JPEG -> .jpg).
 #[tokio::test]
 async fn test_material_extension_drives_format() {
     let dir = temp_dir("extension_drives_format");

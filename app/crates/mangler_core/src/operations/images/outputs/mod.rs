@@ -72,6 +72,55 @@ pub(crate) fn save_gate_inputs() -> [Input; 2] {
     ]
 }
 
+/// Resolve an output node's `folder` + `file name` inputs into a concrete
+/// destination directory and a sanitized file stem, using the graph's
+/// [`run_context`](crate::run_context) for the base directory and default name.
+///
+/// Shared by the `to file` and `material` nodes so both resolve paths
+/// identically: an absolute folder is used as-is, a relative one joins the
+/// graph's own directory, and an empty one means the graph's directory itself;
+/// an empty file name falls back to the graph's name. The returned stem is
+/// always sanitized. Does **not** touch the filesystem — the caller creates the
+/// directory when it is ready to write. `folder_idx` / `file_name_idx` are used
+/// only to attribute errors to the right input.
+pub(crate) fn resolve_output_dir_and_stem(
+    folder: &std::path::Path,
+    file_name: &str,
+    folder_idx: usize,
+    file_name_idx: usize,
+) -> Result<(std::path::PathBuf, String), crate::operations::OperationError> {
+    use crate::operations::OperationError;
+
+    let ctx = crate::run_context::current().unwrap_or_default();
+
+    // Absolute stays as-is; relative joins the graph's folder; empty means the
+    // graph's folder itself.
+    let resolved_dir = if folder.as_os_str().is_empty() {
+        ctx.graph_dir.clone().unwrap_or_default()
+    } else if folder.is_absolute() {
+        folder.to_path_buf()
+    } else {
+        match &ctx.graph_dir {
+            Some(dir) => dir.join(folder),
+            None => folder.to_path_buf(),
+        }
+    };
+    if resolved_dir.as_os_str().is_empty() {
+        let msg = "No folder set and the graph has no save location yet.".to_string();
+        return Err(OperationError { input_errors: vec![(folder_idx, msg.clone())], node_error: Some(msg) });
+    }
+
+    // An empty name falls back to the graph's name; sanitize either way.
+    let raw_stem = if file_name.trim().is_empty() { ctx.graph_name.as_str() } else { file_name };
+    let stem = crate::naming::sanitize_name(raw_stem);
+    if stem.is_empty() {
+        let msg = "File name is empty (and the graph has no name to fall back to).".to_string();
+        return Err(OperationError { input_errors: vec![(file_name_idx, msg.clone())], node_error: Some(msg) });
+    }
+
+    Ok((resolved_dir, stem))
+}
+
 // --- Component conversions --------------------------------------------------
 //
 // The save path previously went `FloatImage::to_dynamic()` (1/2ch → Luma16 /
