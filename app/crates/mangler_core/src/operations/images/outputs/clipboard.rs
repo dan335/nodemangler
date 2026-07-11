@@ -100,7 +100,7 @@ impl OpImageOutputClipboard {
                 Err(OperationError { input_errors: vec![], node_error: Some("Unable to copy image to clipboard.".to_string())  })
             }
         } else {
-            Err(OperationError { input_errors: vec![], node_error: Some("Unable to convert to path.".to_string()) })
+            Err(OperationError { input_errors: vec![], node_error: Some("Unable to access the system clipboard.".to_string()) })
         }
     }
 }

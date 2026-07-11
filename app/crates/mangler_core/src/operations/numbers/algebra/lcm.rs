@@ -74,7 +74,18 @@ impl OpNumberMathLcm {
         let result = if a == 0 || b == 0 {
             0
         } else {
-            ((a as i64) * (b as i64)).abs() as i32 / Self::gcd(a, b)
+            // Keep the *division* in i64 as well as the product: casting the
+            // product down to i32 before dividing by gcd (the old bug) makes
+            // the i64 widening pointless, since the wraparound already
+            // happened before the division could shrink the value back down
+            // — e.g. lcm(65536, 65536) computes fine as i64 (4294967296 /
+            // 65536 = 65536) but wraps to garbage if cast to i32 first.
+            // Saturate the final result into i32's range since that's the
+            // node's output type; lcm is always non-negative, so only the
+            // upper bound can realistically be hit.
+            let gcd = Self::gcd(a, b) as i64;
+            let lcm = ((a as i64) * (b as i64)).abs() / gcd;
+            lcm.clamp(i32::MIN as i64, i32::MAX as i64) as i32
         };
 
         Ok(OperationResponse { 

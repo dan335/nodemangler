@@ -103,6 +103,23 @@ async fn test_random_integer_multiple_calls_in_range() {
 }
 
 #[tokio::test]
+async fn test_random_integer_min_is_i32_max_does_not_panic() {
+    // minimum == i32::MAX: saturating_add(1) can't push max past MAX, so the
+    // normalized range is the empty `MAX..MAX`, which used to panic
+    // fastrand::i32. The node should degrade to returning minimum.
+    let mut inputs = vec![
+        Input::new("generate".to_string(), Value::Trigger, None, None),
+        Input::new("min".to_string(), Value::Integer(i32::MAX), None, None),
+        Input::new("max".to_string(), Value::Integer(i32::MAX), None, None),
+    ];
+    let result = OpNumberRandomInteger::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Integer(v) => assert_eq!(*v, i32::MAX),
+        other => panic!("Expected Integer, got {:?}", other),
+    }
+}
+
+#[tokio::test]
 async fn test_random_integer_from_decimal_range() {
     // Decimal inputs for min/max are converted to Integer
     let mut inputs = vec![

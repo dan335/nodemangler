@@ -70,10 +70,22 @@ impl OpNumberRandomInteger {
         // run node
         maximum = maximum.max(minimum.saturating_add(1));
 
-        Ok(OperationResponse { 
+        // When minimum is i32::MAX, saturating_add(1) can't push maximum past
+        // it, so maximum ends up equal to minimum: an empty exclusive range
+        // `MAX..MAX` that `fastrand::i32` would panic on. Treat an
+        // empty/degenerate range as "no room to roll" and just return
+        // minimum, same as the min==max case already covered by the
+        // saturating_add clamp above for every other value.
+        let value = if maximum <= minimum {
+            minimum
+        } else {
+            fastrand::i32(minimum..maximum)
+        };
+
+        Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
-                value: Value::Integer(fastrand::i32(minimum..maximum)),
+                value: Value::Integer(value),
             }],
         })
     }

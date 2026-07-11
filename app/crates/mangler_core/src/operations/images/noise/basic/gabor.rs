@@ -156,13 +156,18 @@ impl OpImageNoiseGabor {
         let kernel_freq = kernel_freq as f64;
         let bandwidth = (bandwidth as f64).max(0.1);
         let density = (density as f64).max(1.0);
+        // Snap density to an integer so the cell grid and the pixel->grid
+        // mapping span the same number of cells; a fractional density leaves a
+        // partial final cell at the tile edge and breaks seamless tiling
+        // (mirrors voronoi_common::grid_size_from_frequency). Integer densities
+        // (including the 16.0 default) are unchanged.
+        let grid_size = density.round().max(1.0) as i32;
+        let density = grid_size as f64;
 
         // Sigma derived from bandwidth: controls how wide each kernel is
         let sigma = bandwidth / density;
         // Truncation radius: kernels beyond this distance contribute negligibly
         let truncation = 3.0 * sigma;
-
-        let grid_size = density.ceil() as i32;
         // Number of impulses (kernels) per grid cell
         let impulses_per_cell = 1u32;
 
@@ -198,8 +203,12 @@ impl OpImageNoiseGabor {
         }
         let impulses_ref = &impulses;
 
-        // Search radius in cells (based on truncation distance)
-        let search = (truncation * density / density).ceil() as i32 + 1;
+        // Search radius in cells: `truncation` is a UV-space distance and there
+        // are `density` cells per UV unit, so multiply to get cells. (Previously
+        // this read `truncation * density / density`, which self-cancelled to
+        // ceil(truncation) + 1 and hard-truncated kernels at ~1.3 sigma.
+        // Matches phasor.rs.)
+        let search = (truncation * density).ceil() as i32 + 1;
         let trunc_sq = truncation * truncation;
         let carrier_freq = kernel_freq * density;
 

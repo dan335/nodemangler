@@ -176,7 +176,12 @@ impl OpImageNoiseSmear {
         width = width.max(4);
         height = height.max(4);
         seed = seed.max(1);
-        let density = (density as f64).max(1.0);
+        // Snap density to an integer so the cell grid and the pixel->grid
+        // mapping span the same number of cells; a fractional density leaves a
+        // partial final cell at the tile edge and breaks seamless tiling
+        // (mirrors voronoi_common::grid_size_from_frequency). Integer densities
+        // are unchanged.
+        let density = (density as f64).max(1.0).round().max(1.0);
         let scale = (scale as f64).max(0.01);
         let scale_variation = (scale_variation as f64).clamp(0.0, 1.0);
         let base_angle = (angle as f64).to_radians();
@@ -208,8 +213,11 @@ impl OpImageNoiseSmear {
                 let cell_x = gx.floor() as i32;
                 let cell_y = gy.floor() as i32;
 
-                // Search radius in cells
-                let search = (truncation * density).ceil() as i32 + 1;
+                // Search radius in cells. Capped at 32 so an extreme
+                // scale/scale_variation combination can't grow the per-pixel
+                // neighbor scan to a size that stalls large renders; smudges
+                // beyond 32 cells contribute negligibly at any reasonable setting.
+                let search = ((truncation * density).ceil() as i32 + 1).min(32);
 
                 for dy in -search..=search {
                     for dx in -search..=search {

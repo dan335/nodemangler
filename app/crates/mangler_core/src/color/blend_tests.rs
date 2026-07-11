@@ -77,6 +77,48 @@ fn test_blend_linear_lerp_midpoint() {
     assert_color_approx(&a, &result, EPSILON);
 }
 
+// === hue shortest-arc interpolation ===
+
+#[test]
+fn test_lerp_hue_no_seam() {
+    // Well away from the 0/360 seam, lerp_hue matches a plain lerp.
+    assert!((lerp_hue(30.0, 90.0, 0.5) - 60.0).abs() < EPSILON);
+    assert!((lerp_hue(30.0, 90.0, 0.0) - 30.0).abs() < EPSILON);
+    assert!((lerp_hue(30.0, 90.0, 1.0) - 90.0).abs() < EPSILON);
+}
+
+#[test]
+fn test_lerp_hue_crosses_seam_forward() {
+    // 350° halfway to 10° should pass through the 0/360 seam, giving 0° —
+    // NOT 180° as a naive linear lerp would produce.
+    let h = lerp_hue(350.0, 10.0, 0.5);
+    assert!(h < EPSILON || (360.0 - h) < EPSILON, "expected ~0/360, got {h}");
+}
+
+#[test]
+fn test_lerp_hue_crosses_seam_backward() {
+    // Symmetric case: 10° halfway to 350° also lands on the seam.
+    let h = lerp_hue(10.0, 350.0, 0.5);
+    assert!(h < EPSILON || (360.0 - h) < EPSILON, "expected ~0/360, got {h}");
+    // A quarter of the way from 10° toward 350° goes the short way (down through
+    // 0), landing at 5°.
+    assert!((lerp_hue(10.0, 350.0, 0.25) - 5.0).abs() < 1e-3, "got {}", lerp_hue(10.0, 350.0, 0.25));
+}
+
+#[test]
+fn test_blend_hsl_lerp_hue_takes_shortest_arc() {
+    // Two saturated colors straddling the hue seam. Blending 50% must yield red
+    // (hue ~0), the shortest-arc midpoint of 350° and 10°, not cyan (~180°).
+    let a = Color::from_hsl(350.0, 1.0, 0.5, 1.0);
+    let b = Color::from_hsl(10.0, 1.0, 0.5, 1.0);
+    let result = Color::blend_hsl(a, b, &BlendMode::Lerp, 0.5);
+    let (hue, _, _, _) = result.to_hsl();
+    assert!(
+        hue < 2.0 || hue > 358.0,
+        "expected blended hue near 0/360, got {hue}",
+    );
+}
+
 #[test]
 fn test_blend_hsl_lerp_identity() {
     let color = Color::from_srgb_float(0.5, 0.3, 0.7, 1.0);

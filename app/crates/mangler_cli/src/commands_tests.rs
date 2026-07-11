@@ -485,6 +485,20 @@ async fn show_output_index_out_of_range() {
     assert!(result.unwrap_err().contains("out of range"));
 }
 
+/// show-output returns Err (nonzero exit for the caller) when the target node
+/// itself reported an error, instead of printing the error and exiting 0.
+#[tokio::test]
+async fn cmd_show_output_reports_err_when_node_errors() {
+    let path = create_temp_graph("so_node_error");
+    let nid = format!("so_err-{}", std::process::id());
+    cmd_add_node(path.clone(), "images/input/from_file".to_string(), Some(nid.clone()), None, false).await.unwrap();
+    cmd_set_input(path.clone(), nid.clone(), vec![0], vec!["path:/definitely/does/not/exist_xyz.png".to_string()], false).unwrap();
+
+    let result = cmd_show_output(path.clone(), nid, Some(0), false, vec![], None, false).await;
+    let _ = std::fs::remove_file(&path);
+    assert!(result.is_err(), "expected Err when the node reports an error");
+}
+
 /// show-output works for a non-image node (arithmetic add outputs a decimal).
 #[tokio::test]
 async fn show_output_non_image_value() {
@@ -610,6 +624,23 @@ async fn cmd_run_graph_with_node() {
     assert!(result.is_ok());
 }
 
+/// cmd_run returns Err (nonzero exit for the caller) when a node reports an
+/// error, e.g. a "from file" node pointed at a path that doesn't exist. The
+/// per-node error detail is still printed to stdout via format_run_human/json
+/// before the short summary Err is returned.
+#[tokio::test]
+async fn cmd_run_reports_err_when_node_errors() {
+    let path = create_temp_graph("run_node_error");
+    let nid = format!("run_err-{}", std::process::id());
+    cmd_add_node(path.clone(), "images/input/from_file".to_string(), Some(nid.clone()), None, false).await.unwrap();
+    cmd_set_input(path.clone(), nid.clone(), vec![0], vec!["path:/definitely/does/not/exist_xyz.png".to_string()], false).unwrap();
+
+    let result = cmd_run(path.clone(), false).await;
+    let _ = std::fs::remove_file(&path);
+    assert!(result.is_err(), "expected Err when a node reports an error");
+    assert!(result.unwrap_err().contains("reported errors"));
+}
+
 // ── cmd_show_output advanced paths ───────────────────────────────────────
 
 /// show-output with no output index shows all outputs.
@@ -622,6 +653,25 @@ async fn cmd_show_output_all_outputs() {
     let result = cmd_show_output(path.clone(), nid, None, false, vec![], None, false).await;
     let _ = std::fs::remove_file(&path);
     assert!(result.is_ok());
+}
+
+/// show-output --save with no --output on a multi-output node still succeeds
+/// and writes only the first output's value (a warning goes to stderr, not
+/// asserted here — see cmd_show_output's save_path handling).
+#[tokio::test]
+async fn cmd_show_output_save_without_output_index_saves_only_first() {
+    let path = create_temp_graph("so_save_multi");
+    let nid = format!("so_save_multi-{}", std::process::id());
+    // "to rgb" decomposes a color into 4 decimal outputs (red/green/blue/alpha).
+    cmd_add_node(path.clone(), "colors/output/to_rgb".to_string(), Some(nid.clone()), None, false).await.unwrap();
+    let save_path = std::env::temp_dir().join(format!("mangle_test_so_save_multi_{}.json", std::process::id()));
+    let _ = std::fs::remove_file(&save_path);
+
+    let result = cmd_show_output(path.clone(), nid, None, false, vec![], Some(save_path.clone()), false).await;
+    let _ = std::fs::remove_file(&path);
+    assert!(result.is_ok());
+    assert!(save_path.exists(), "expected save file to be written for the first output");
+    let _ = std::fs::remove_file(&save_path);
 }
 
 /// show-output --sample on a non-image output returns Err.
@@ -646,6 +696,40 @@ async fn do_add_node_custom_id_matches() {
     let id = do_add_node(&mut graph,"numbers/arithmetic/add", Some("my-custom-id".into()), None).await.unwrap();
     let _ = std::fs::remove_file(&path);
     assert_eq!(id, "my-custom-id");
+}
+
+/// do_add_node with an --id that collides with an existing node returns an
+/// error instead of silently overwriting it (which would leave any of the
+/// former node's connections dangling).
+#[tokio::test]
+async fn do_add_node_duplicate_id_returns_err() {
+    let path = create_temp_graph("do_add_dup");
+    let mut graph = load_graph(&path).unwrap();
+    do_add_node(&mut graph, "numbers/arithmetic/add", Some("dup".into()), None).await.unwrap();
+    let result = do_add_node(&mut graph, "numbers/arithmetic/add", Some("dup".into()), None).await;
+    let _ = std::fs::remove_file(&path);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("already exists"));
+    // The original node must still be present (not overwritten).
+    assert!(graph.nodes.contains_key("dup"));
+}
+
+/// cmd_add_node with a duplicate --id does not clobber the existing node's connections.
+#[tokio::test]
+async fn cmd_add_node_duplicate_id_preserves_existing_connection() {
+    let path = create_temp_graph("cmd_add_dup");
+    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some("src".to_string()), None, false).await.unwrap();
+    cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some("dup".to_string()), None, false).await.unwrap();
+    cmd_connect(path.clone(), "src:0".to_string(), "dup:0".to_string(), false).await.unwrap();
+
+    // Re-adding a node under the same "dup" id must fail, not silently replace
+    // the node (and drop its incoming connection).
+    let result = cmd_add_node(path.clone(), "numbers/arithmetic/add".to_string(), Some("dup".to_string()), None, false).await;
+    assert!(result.is_err());
+
+    let graph = load_graph(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(graph.nodes["dup"].inputs[0].connection, Some(("src".to_string(), 0)));
 }
 
 /// do_add_node without ID returns a non-empty auto-generated ID.
@@ -945,6 +1029,36 @@ async fn cmd_add_subgraph_with_file_surfaces_exposed_io() {
 
     let _ = std::fs::remove_file(&parent_path);
     let _ = std::fs::remove_file(&child_path);
+}
+
+/// cmd_add_subgraph with an --id that collides with an existing node returns
+/// an error instead of silently overwriting it.
+#[tokio::test]
+async fn cmd_add_subgraph_duplicate_id_returns_err() {
+    let path = crate::helpers::temp_graph_path("add_subgraph_dup_id");
+    let _ = std::fs::remove_file(&path);
+    cmd_new(path.clone(), false).unwrap();
+
+    cmd_add_node(
+        path.clone(),
+        "numbers/arithmetic/add".to_string(),
+        Some("dup".to_string()),
+        None,
+        false,
+    ).await.unwrap();
+
+    let result = cmd_add_subgraph(path.clone(), Some("dup".to_string()), None, false).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("already exists"));
+
+    // The original node must still be present as the plain operation node,
+    // not replaced by an (empty) subgraph node.
+    let graph = load_graph(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+    assert!(!matches!(
+        graph.nodes.get("dup").unwrap().node_type,
+        mangler_core::node_type::NodeType::Subgraph { .. }
+    ));
 }
 
 #[tokio::test]

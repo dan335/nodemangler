@@ -102,3 +102,30 @@ async fn test_anisotropic_stretch_1_matches_isotropic() {
     let result = OpImageNoiseAnisotropic::run(&mut inputs).await;
     assert!(result.is_ok());
 }
+
+// Regression: persistence == 0 makes the amplitude-sum normalizer 1/0 = inf,
+// which used to yield an all-NaN image. The 1e-9 floor keeps pixels finite.
+#[tokio::test]
+async fn test_anisotropic_zero_persistence_is_finite() {
+    let mut inputs = vec![
+        Input::new("seed".to_string(), Value::Integer(1), None, None),
+        Input::new("width".to_string(), Value::Integer(16), None, None),
+        Input::new("height".to_string(), Value::Integer(16), None, None),
+        Input::new("angle".to_string(), Value::Decimal(0.0), None, None),
+        Input::new("stretch".to_string(), Value::Decimal(4.0), None, None),
+        Input::new("octaves".to_string(), Value::Integer(4), None, None),
+        Input::new("frequency".to_string(), Value::Integer(4), None, None),
+        Input::new("lacunarity".to_string(), Value::Decimal(2.0), None, None),
+        Input::new("persistence".to_string(), Value::Decimal(0.0), None, None),
+    ];
+    let result = OpImageNoiseAnisotropic::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Image { data, .. } => {
+            assert!(
+                data.pixels().all(|p| p.iter().all(|v| v.is_finite())),
+                "persistence=0 must not produce NaN/inf pixels"
+            );
+        }
+        other => panic!("Expected Image, got {:?}", other),
+    }
+}

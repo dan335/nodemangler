@@ -1,7 +1,8 @@
 //! Grayscale conversion operation for images.
 //!
-//! Converts an image to a 1-channel grayscale FloatImage using Rec. 709
-//! luminance weights. For 1-channel input, returns as-is.
+//! Converts an image to a 1-channel grayscale FloatImage using Rec. 601
+//! luminance weights (0.299 R + 0.587 G + 0.114 B). For 1-channel input,
+//! returns as-is.
 
 use crate::float_image::FloatImage;
 use crate::get_id;
@@ -45,7 +46,7 @@ impl OpImageAdjustmentGrayscale {
     }
 
     /// Executes the grayscale conversion on the input image.
-    /// For 1-channel input, returns as-is. For 3/4-channel, computes Rec. 709 luminance.
+    /// For 1-channel input, returns as-is. For 3/4-channel, computes Rec. 601 luminance.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];

@@ -1180,7 +1180,7 @@ impl Program {
         // the drag always ends on button release instead.)
         self.show_menu_drag(ui, graph_rects, theme);
 
-        self.show_status_message(ui, work_rect);
+        self.show_status_message(ui, work_rect, theme);
 
         self.show_load_warning_banner(ui, work_rect, theme);
         self.show_file_conflict_modal(ui, theme);
@@ -1437,7 +1437,7 @@ impl Program {
 
     /// Fading status message (copy/paste feedback etc.), centered near the
     /// bottom of the main window's work area.
-    fn show_status_message(&mut self, ui: &mut egui::Ui, work_rect: Rect) {
+    fn show_status_message(&mut self, ui: &mut egui::Ui, work_rect: Rect, theme: &Theme) {
         // show status message (copy/paste feedback)
         if let Some((msg, created)) = &self.status_message {
             let elapsed = created.elapsed();
@@ -1449,12 +1449,20 @@ impl Program {
                     255
                 };
                 let pos = Pos2::new(work_rect.center().x, work_rect.bottom() - 40.0);
+                // Derive the base color from the theme (same "strong" readable
+                // text color used elsewhere, e.g. graph node headers) instead of
+                // hardcoding white, which was illegible on light themes. Only
+                // the alpha channel fades over time, so the message keeps the
+                // theme's text color throughout instead of darkening as it
+                // fades toward transparent.
+                let base = theme.get().override_text_color;
+                let color = egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), alpha);
                 ui.painter().text(
                     pos,
                     egui::Align2::CENTER_BOTTOM,
                     msg,
                     egui::FontId::proportional(14.0),
-                    egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha),
+                    color,
                 );
             } else {
                 self.status_message = None;

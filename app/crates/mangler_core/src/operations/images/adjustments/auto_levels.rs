@@ -93,7 +93,11 @@ impl OpImageAdjustmentAutoLevels {
         let mut black_point = 0.0_f32;
         for (i, &count) in histogram.iter().enumerate() {
             cumulative += count;
-            if cumulative >= black_threshold {
+            // Require the bin to actually contain pixels. Otherwise a clip
+            // fraction that rounds to threshold 0 is satisfied on the first
+            // (empty) bin, pinning the black point to 0.0 and turning the whole
+            // stretch into an identity instead of a min→0 stretch.
+            if count > 0 && cumulative >= black_threshold {
                 black_point = i as f32 / 255.0;
                 break;
             }
@@ -105,7 +109,9 @@ impl OpImageAdjustmentAutoLevels {
         let mut white_point = 1.0_f32;
         for (i, &count) in histogram.iter().enumerate().rev() {
             cumulative += count;
-            if cumulative >= white_threshold {
+            // Same guard as the black point: skip empty bins so a threshold that
+            // rounds to 0 does not pin the white point to 1.0 (identity).
+            if count > 0 && cumulative >= white_threshold {
                 white_point = i as f32 / 255.0;
                 break;
             }

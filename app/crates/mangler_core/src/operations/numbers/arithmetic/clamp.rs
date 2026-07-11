@@ -25,7 +25,7 @@ impl OpNumberMathClamp {
         NodeSettings {
             name: "clamp".to_string(),
             description: "Clamps a number between two values.".to_string(),
-            help: "Restricts input a to the [min, max] range: values below min are raised to min, values above max are lowered to max. The min and max bounds are converted to decimal for the comparison.\n\nInteger inputs produce integer outputs, with the clamped value rounded back to i32. Useful for normalizing values to the 0-1 range or keeping parameters inside valid ranges. Behaviour is undefined if min is greater than max.".to_string(),
+            help: "Restricts input a to the [min, max] range: values below min are raised to min, values above max are lowered to max. The min and max bounds are converted to decimal for the comparison.\n\nInteger inputs produce integer outputs, with the clamped value rounded back to i32. Useful for normalizing values to the 0-1 range or keeping parameters inside valid ranges. If min is greater than max, the two bounds are treated as swapped so the range stays valid instead of panicking.".to_string(),
         }
     }
 
@@ -66,9 +66,19 @@ impl OpNumberMathClamp {
         let Ok(Value::Decimal(min)) = inputs[1].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { input_errors: vec![(1, "Unable to convert 'min' to Decimal.".to_string())], node_error: None })};
         let Ok(Value::Decimal(max)) = inputs[2].value.try_convert_to(ValueType::Decimal) else { return Err(OperationError { input_errors: vec![(2, "Unable to convert 'max' to Decimal.".to_string())], node_error: None })};
 
+        // `f32::clamp` panics if `min > max` (its internal assert requires
+        // `min <= max`), which is easy to hit with a wired-up min/max pair.
+        // Normalize the bounds here instead of calling `.clamp()` directly:
+        // `lo`/`hi` are the actual low/high bounds regardless of the order
+        // the caller supplied them in, so this is panic-free even when
+        // `min > max` (bounds treated as swapped) or one of them is NaN
+        // (`f32::min`/`f32::max` prefer the non-NaN operand).
+        let lo = min.min(max);
+        let hi = min.max(max);
+
         let value = match &inputs[0].value {
-            Value::Integer(a) => Value::Integer((*a as f32).clamp(min, max).round() as i32),
-            Value::Decimal(a) => Value::Decimal((*a).clamp(min, max)),
+            Value::Integer(a) => Value::Integer((*a as f32).max(lo).min(hi).round() as i32),
+            Value::Decimal(a) => Value::Decimal((*a).max(lo).min(hi)),
 
             _ => {return Err(OperationError {
                 input_errors: vec![], node_error: Some("Error converting.".to_string()),

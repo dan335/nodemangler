@@ -101,6 +101,27 @@ async fn test_blur_uniform_image() {
 }
 
 #[tokio::test]
+async fn test_blur_zero_width_does_not_panic() {
+    // A zero-width image is constructible. The parallel box-blur chunks by row
+    // length (width * channels); a zero chunk size would panic, so the op must
+    // short-circuit and return the image unchanged instead.
+    let img = Arc::new(FloatImage::new(0, 4, 4));
+    let mut inputs = vec![
+        Input::new("image".to_string(), Value::Image { data: img, change_id: get_id() }, None, None),
+        Input::new("sigma".to_string(), Value::Decimal(2.0), None, None),
+    ];
+    let result = OpImageAdjustmentBlur::run(&mut inputs).await;
+    assert!(result.is_ok(), "zero-width blur should not panic: {:?}", result.err());
+    match &result.unwrap().responses[0].value {
+        Value::Image { data, .. } => {
+            assert_eq!(data.width(), 0);
+            assert_eq!(data.height(), 4);
+        }
+        other => panic!("Expected Image, got {:?}", other),
+    }
+}
+
+#[tokio::test]
 async fn test_blur_preserves_channels() {
     // Verify a 1-channel image stays 1-channel after blur
     let gray = Arc::new(FloatImage::from_pixel(8, 8, 1, &[0.5]));

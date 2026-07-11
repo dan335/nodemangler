@@ -63,6 +63,21 @@ impl OpColorGenerationFromHex {
         // Strip leading '#' if present
         let hex_clean = hex_str.strip_prefix('#').unwrap_or(&hex_str);
 
+        // The length check below counts bytes, and the parsing below slices
+        // by byte offset (e.g. `&hex_clean[0..2]`). Both are only safe when
+        // every character is a single ASCII byte: a non-ASCII string (e.g.
+        // "€€", 2 chars but 6 UTF-8 bytes) could match the byte-length check
+        // while its multi-byte characters straddle a slice boundary, which
+        // panics instead of returning the node's normal error path. Reject
+        // non-ASCII input up front so the rest of the function can safely
+        // treat byte offsets as character offsets.
+        if !hex_clean.is_ascii() {
+            return Err(OperationError {
+                input_errors: vec![],
+                node_error: Some(format!("Invalid hex string: '{}' contains non-ASCII characters", hex_str)),
+            });
+        }
+
         // Parse 6-char (#RRGGBB) or 8-char (#RRGGBBAA) hex strings
         let color = match hex_clean.len() {
             6 => {

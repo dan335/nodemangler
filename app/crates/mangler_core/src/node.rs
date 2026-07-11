@@ -494,9 +494,14 @@ impl Node {
                 if let Some(subgraph) = subgraph_option {
                     // pass node's input to subgraph's input before running
                     for input in self.inputs.iter() {
-                        if let Value::Path(_) = input.value {
-                            // nothing
-                        } else if let Some(link) = &input.link {
+                        // Every value type (including Value::Path) forwards
+                        // through the same changed-fingerprint check below.
+                        // Path was previously skipped here, which left the
+                        // child graph running with a stale path after a
+                        // save→reload until the input was re-edited; the
+                        // interactive Graph::set_input path always forwarded
+                        // Path, so this exclusion was an inconsistency.
+                        if let Some(link) = &input.link {
                             if let Some(subgraph_node) =
                                 subgraph.nodes.get_mut(&link.node_id)
                             {

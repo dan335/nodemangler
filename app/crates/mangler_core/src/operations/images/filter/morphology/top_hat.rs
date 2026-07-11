@@ -68,7 +68,25 @@ impl OpImageAdjustmentTopHat {
         // Opening = erode then dilate.
         let eroded = separable_morphology(&data, radius, |a, b| a.min(b));
         let opened = separable_morphology(&eroded, radius, |a, b| a.max(b));
-        let diff: Vec<f32> = data.as_raw().iter().zip(opened.as_raw().iter()).map(|(a, b)| a - b).collect();
+        // The top-hat difference is a colour operation: subtracting the opening
+        // from a fully-opaque alpha channel would give 1 − 1 = 0 and blank the
+        // whole image. Difference the colour channels only and carry the source
+        // alpha straight through.
+        let channels = data.channels() as usize;
+        let has_alpha = channels == 2 || channels == 4;
+        let src = data.as_raw();
+        let op = opened.as_raw();
+        let mut diff = vec![0.0f32; src.len()];
+        for (i, chunk) in diff.chunks_exact_mut(channels).enumerate() {
+            let base = i * channels;
+            for c in 0..channels {
+                chunk[c] = if has_alpha && c == channels - 1 {
+                    src[base + c]
+                } else {
+                    src[base + c] - op[base + c]
+                };
+            }
+        }
         let out = FloatImage::from_raw(w, h, data.channels(), diff).unwrap();
 
         Ok(OperationResponse {

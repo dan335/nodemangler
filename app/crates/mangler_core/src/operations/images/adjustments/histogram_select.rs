@@ -12,6 +12,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use super::common::smoothstep;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -87,17 +88,12 @@ impl OpImageAdjustmentHistogramSelect {
                     p[0]
                 };
                 let d = (lum - position).abs();
-                let mask = if d <= soft_edge {
-                    1.0
-                } else if d >= hard_edge {
-                    0.0
-                } else {
-                    // Smoothstep from 1 at soft_edge to 0 at hard_edge. The
-                    // gap is strictly positive here: d > soft_edge already
-                    // implies hard_edge > soft_edge.
-                    let t = ((d - soft_edge) / (hard_edge - soft_edge)).clamp(0.0, 1.0);
-                    1.0 - (t * t * (3.0 - 2.0 * t))
-                };
+                // Mask is 1 inside the fully-opaque inner radius (soft_edge),
+                // 0 beyond the outer radius (hard_edge), and a Hermite smoothstep
+                // fade between them. The shared `smoothstep` clamps the input and
+                // degenerates to a hard step when the edges coincide (contrast 1),
+                // giving the rectangular band for free.
+                let mask = 1.0 - smoothstep(soft_edge, hard_edge, d);
                 output.put_pixel(x, y, &[mask]);
             }
         }

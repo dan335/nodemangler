@@ -102,8 +102,10 @@ fn periodic_flow_fbm(
     let mut attenuation = persistence;
     let mut freq = frequency;
 
-    // Scale factor: 1 / sum(persistence^i for i in 1..=octaves)
-    let scale_factor = 1.0 / (1..=octaves).fold(0.0, |acc, i| acc + persistence.powi(i as i32));
+    // Scale factor: 1 / sum(persistence^i for i in 1..=octaves).
+    // The sum is floored at 1e-9 so persistence == 0 (which makes every term 0)
+    // can't produce 1/0 = inf and a subsequent NaN image.
+    let scale_factor = 1.0 / (1..=octaves).fold(0.0, |acc, i| acc + persistence.powi(i as i32)).max(1e-9);
 
     for (i, hasher) in hashers.iter().take(octaves).enumerate() {
         // Round frequency to integer period for tiling

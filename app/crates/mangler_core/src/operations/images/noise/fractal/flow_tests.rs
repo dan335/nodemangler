@@ -162,3 +162,20 @@ async fn test_tiles_seamlessly() {
         _ => panic!("Expected Image"),
     }
 }
+
+// Regression: persistence == 0 makes the amplitude-sum normalizer 1/0 = inf,
+// which used to yield an all-NaN image. The 1e-9 floor keeps pixels finite.
+#[tokio::test]
+async fn test_zero_persistence_is_finite() {
+    let mut inputs = make_inputs(1, 16, 16, 4, 5, 2.0, 0.0, 45.0, 0.5);
+    let result = OpImageNoiseFlow::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Image { data, .. } => {
+            assert!(
+                data.pixels().all(|p| p.iter().all(|v| v.is_finite())),
+                "persistence=0 must not produce NaN/inf pixels"
+            );
+        }
+        _ => panic!("Expected Image"),
+    }
+}

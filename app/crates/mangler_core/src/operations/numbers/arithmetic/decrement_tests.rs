@@ -86,3 +86,15 @@ async fn test_decrement_large_negative_integer() {
         other => panic!("Expected Integer, got {:?}", other),
     }
 }
+
+#[tokio::test]
+async fn test_decrement_i32_min_does_not_panic() {
+    // A wired input of exactly i32::MIN used to overflow-panic `*a - 1` in
+    // debug builds. wrapping_sub should give the wrapped value instead.
+    let mut inputs = vec![Input::new("a".to_string(), Value::Integer(i32::MIN), None, None)];
+    let result = OpNumberMathDecrement::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Integer(v) => assert_eq!(*v, i32::MAX),
+        other => panic!("Expected Integer, got {:?}", other),
+    }
+}

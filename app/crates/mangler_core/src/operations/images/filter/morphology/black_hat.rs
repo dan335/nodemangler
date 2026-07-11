@@ -68,7 +68,24 @@ impl OpImageAdjustmentBlackHat {
         // Closing = dilate then erode.
         let dilated = separable_morphology(&data, radius, |a, b| a.max(b));
         let closed = separable_morphology(&dilated, radius, |a, b| a.min(b));
-        let diff: Vec<f32> = closed.as_raw().iter().zip(data.as_raw().iter()).map(|(a, b)| a - b).collect();
+        // The black-hat difference is a colour operation: on a fully-opaque alpha
+        // channel closing − image would give 1 − 1 = 0 and blank the whole image.
+        // Difference the colour channels only and carry the source alpha through.
+        let channels = data.channels() as usize;
+        let has_alpha = channels == 2 || channels == 4;
+        let src = data.as_raw();
+        let clo = closed.as_raw();
+        let mut diff = vec![0.0f32; src.len()];
+        for (i, chunk) in diff.chunks_exact_mut(channels).enumerate() {
+            let base = i * channels;
+            for c in 0..channels {
+                chunk[c] = if has_alpha && c == channels - 1 {
+                    src[base + c]
+                } else {
+                    clo[base + c] - src[base + c]
+                };
+            }
+        }
         let out = FloatImage::from_raw(w, h, data.channels(), diff).unwrap();
 
         Ok(OperationResponse {

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 use mangler_core::float_image::FloatImage;
 
 use crate::graph::graph_node::GraphNode;
@@ -74,14 +75,21 @@ impl MaterialChannelAssignments {
 }
 
 /// Resolved material data ready for the 3D renderer.
+///
+/// Each bound channel's image is an `Arc<FloatImage>` (matching
+/// `Value::Image`'s own representation) rather than an owned `FloatImage`:
+/// `resolve_material` runs every frame the 3D panel is visible, so cloning
+/// the `Arc` (a refcount bump) instead of deep-copying the pixel buffer keeps
+/// per-frame resolution cheap. The actual pixel data is only ever read (via
+/// `Deref`/`.as_ref()`) when a texture upload is actually staged.
 pub struct MaterialData {
-    pub albedo: Option<(FloatImage, String)>,
-    pub normal: Option<(FloatImage, String)>,
-    pub roughness: Option<(FloatImage, String)>,
-    pub metallic: Option<(FloatImage, String)>,
-    pub height: Option<(FloatImage, String)>,
-    pub ao: Option<(FloatImage, String)>,
-    pub emissive: Option<(FloatImage, String)>,
+    pub albedo: Option<(Arc<FloatImage>, String)>,
+    pub normal: Option<(Arc<FloatImage>, String)>,
+    pub roughness: Option<(Arc<FloatImage>, String)>,
+    pub metallic: Option<(Arc<FloatImage>, String)>,
+    pub height: Option<(Arc<FloatImage>, String)>,
+    pub ao: Option<(Arc<FloatImage>, String)>,
+    pub emissive: Option<(Arc<FloatImage>, String)>,
 }
 
 impl MaterialData {
@@ -125,14 +133,20 @@ pub fn resolve_material(
 }
 
 /// Try to extract an image from a node output assignment.
+///
+/// Clones the `Arc<FloatImage>` (cheap refcount bump), not the underlying
+/// pixel buffer — this runs once per bound channel *every frame* the 3D
+/// panel is visible, so a deep copy here (the previous `data.as_ref().clone()`,
+/// which cloned the dereferenced `FloatImage`) would re-copy the full image
+/// every frame regardless of whether it actually changed.
 fn resolve_image(
     assignment: &MaterialAssignment,
     graph_nodes: &HashMap<String, GraphNode>,
-) -> Option<(FloatImage, String)> {
+) -> Option<(Arc<FloatImage>, String)> {
     let node = graph_nodes.get(&assignment.node_id)?;
     let output = node.outputs.get(assignment.output_index)?;
     if let mangler_core::value::Value::Image { data, change_id } = &output.value {
-        Some((data.as_ref().clone(), change_id.clone()))
+        Some((data.clone(), change_id.clone()))
     } else {
         None
     }

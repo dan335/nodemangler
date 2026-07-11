@@ -37,6 +37,25 @@ fn default_inputs(seed: i32, width: i32, height: i32) -> Vec<Input> {
     make_inputs(seed, width, height, 8.0, 0.7, 0.5, 0.5, 0.5, 0.4, 0.3, 3)
 }
 
+// Regression: a fractional density used to leave a partial cell at the tile
+// edge (grid = ceil(density) but the pixel map spanned [0, density)), breaking
+// seamless tiling. Density is now snapped to an integer grid; a non-integer
+// density must still run and produce finite, in-range pixels.
+#[tokio::test]
+async fn test_non_integer_density_finite() {
+    let mut inputs = make_inputs(3, 32, 32, 8.5, 0.7, 0.5, 0.5, 0.5, 0.4, 0.3, 3);
+    let result = OpImageNoiseDirt::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Image { data, .. } => {
+            assert!(
+                data.pixels().all(|p| p.iter().all(|v| v.is_finite() && (0.0..=1.0).contains(v))),
+                "non-integer density must produce finite, in-range pixels"
+            );
+        }
+        other => panic!("Expected Image, got {:?}", other),
+    }
+}
+
 #[tokio::test]
 async fn test_settings() {
     let s = OpImageNoiseDirt::settings();

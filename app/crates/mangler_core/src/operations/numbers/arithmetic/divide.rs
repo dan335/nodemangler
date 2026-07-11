@@ -75,7 +75,14 @@ impl OpNumberMathDivide {
         let value = match (&inputs[0].value, &inputs[1].value) {
             (Value::Integer(a), Value::Decimal(b)) => Value::Decimal(*a as f32 / *b),
 
-            (Value::Integer(a), Value::Integer(b)) => Value::Integer(*a / *b),
+            // `*a / *b` panics on overflow for the single case `i32::MIN / -1`
+            // (the only integer division whose mathematical result doesn't
+            // fit in i32) — this panics unconditionally, not just in debug
+            // builds, since there's no sane wrapping quotient for hardware
+            // division. `wrapping_div` defines that one case as `i32::MIN`
+            // (the wrapped value) rather than crashing the node; the zero
+            // divisor case is already handled above.
+            (Value::Integer(a), Value::Integer(b)) => Value::Integer(a.wrapping_div(*b)),
 
             (Value::Decimal(a), Value::Decimal(b)) => Value::Decimal(*a / *b),
 

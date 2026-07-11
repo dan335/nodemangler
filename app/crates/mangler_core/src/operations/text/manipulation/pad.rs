@@ -73,7 +73,13 @@ impl OpTextPad {
 
         let fill_char = fill.chars().next().unwrap_or(' ');
         let len = text.chars().count();
-        let target = width.max(0) as usize;
+        // `width`'s DragValue clamp (0..10000) only applies to manual entry;
+        // a value arriving from a wired node can be arbitrarily large, and
+        // the fill loop below allocates one `fill_char` per missing
+        // character — an uncapped width could overflow allocation or exhaust
+        // memory. Cap the total target width to a sane maximum.
+        const MAX_OUTPUT_CHARS: usize = 100_000;
+        let target = (width.max(0) as usize).min(MAX_OUTPUT_CHARS);
 
         let output = if len >= target {
             text

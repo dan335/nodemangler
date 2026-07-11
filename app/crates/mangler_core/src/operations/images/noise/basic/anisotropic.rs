@@ -1,9 +1,16 @@
 //! Anisotropic noise image generator.
 //!
-//! Produces a seamlessly tiling grayscale image with directionally biased noise.
-//! Stretches periodic Perlin noise along a configurable angle and ratio, creating
+//! Produces a grayscale image with directionally biased noise. Stretches
+//! periodic Perlin noise along a configurable angle and ratio, creating
 //! elongated patterns useful for brushed metal, wood grain, or fabric textures.
-//! Reuses `periodic_perlin_2d` and `build_perm_tables` for seamless tiling.
+//! Reuses `periodic_perlin_2d` and `build_perm_tables`.
+//!
+//! Tiling caveat: the periodic Perlin lattice wraps on an axis-aligned integer
+//! grid, but the anisotropic stretch is applied by rotating the sample
+//! coordinates. That rotation only maps the lattice back onto itself for angles
+//! that are multiples of 90 degrees, so the output tiles seamlessly ONLY at
+//! angle 0/90/180/270; at other angles a seam appears at the tile boundary.
+//! (Making arbitrary angles tile would require redesigning the noise basis.)
 
 use rayon::prelude::*;
 use crate::color::color_spaces::rgb_linear::linear_to_nonlinear_srgb;
@@ -39,7 +46,9 @@ fn periodic_anisotropic_fbm(
     let mut attenuation = persistence;
     let mut freq = frequency;
 
-    let scale_factor = 1.0 / (1..=octaves).fold(0.0, |acc, i| acc + persistence.powi(i as i32));
+    // Sum floored at 1e-9 so persistence == 0 (every term 0) can't produce
+    // 1/0 = inf and a subsequent NaN image.
+    let scale_factor = 1.0 / (1..=octaves).fold(0.0, |acc, i| acc + persistence.powi(i as i32)).max(1e-9);
 
     for hasher in hashers.iter().take(octaves) {
         let period = freq.round().max(1.0) as isize;
@@ -77,8 +86,8 @@ impl OpImageNoiseAnisotropic {
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "anisotropic noise".to_string(),
-            description: "Creates a seamlessly tiling image with directionally stretched noise patterns.".to_string(),
-            help: "Layers periodic Perlin octaves (fBm) with their coordinate frame rotated and scaled along one axis, squashing the noise into elongated streaks instead of round blobs.\n\nAngle sets the streak direction and stretch sets how far the noise is drawn out. Octaves, frequency, lacunarity, and persistence behave like standard fBm: more octaves add finer detail, higher lacunarity packs that detail in faster, and lower persistence makes each octave softer.\n\nGood for brushed metal, wood grain, hair, fabric weave, and wind-blown sand.".to_string(),
+            description: "Directionally stretched noise patterns (tiles seamlessly only at angles of 0/90/180/270 degrees).".to_string(),
+            help: "Layers periodic Perlin octaves (fBm) with their coordinate frame rotated and scaled along one axis, squashing the noise into elongated streaks instead of round blobs.\n\nAngle sets the streak direction and stretch sets how far the noise is drawn out. Octaves, frequency, lacunarity, and persistence behave like standard fBm: more octaves add finer detail, higher lacunarity packs that detail in faster, and lower persistence makes each octave softer.\n\nTiling: the periodic wrap is axis-aligned but the stretch rotates the sample coordinates, so the output only tiles seamlessly when the angle is a multiple of 90 degrees (0/90/180/270). At other angles the rotated lattice crosses the tile boundary and a seam appears.\n\nGood for brushed metal, wood grain, hair, fabric weave, and wind-blown sand.".to_string(),
         }
     }
 
@@ -110,7 +119,7 @@ impl OpImageNoiseAnisotropic {
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
-                .with_description("Seamlessly tiling grayscale image with directionally stretched noise."),
+                .with_description("Grayscale image with directionally stretched noise; tiles seamlessly only at angles of 0/90/180/270 degrees."),
         ]
     }
 

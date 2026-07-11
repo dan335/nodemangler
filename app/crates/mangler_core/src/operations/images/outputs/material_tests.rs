@@ -13,7 +13,7 @@ fn solid(w: u32, h: u32, values: &[f32]) -> Arc<FloatImage> {
 }
 
 /// The input vec with defaults; helpers below wire specific maps/settings.
-/// Auto-save is forced on (index 30) so `run` actually writes — these tests
+/// Auto-save is forced on (index 32, `AUTO_SAVE`) so `run` actually writes — these tests
 /// call `run` directly, with no engine run-context to force saving.
 fn base_inputs() -> Vec<Input> {
     let mut inputs = OpImageOutputMaterial::create_inputs();
@@ -351,10 +351,14 @@ async fn test_material_path_and_folder_errors() {
     let err = OpImageOutputMaterial::run(&mut inputs).await.unwrap_err();
     assert_eq!(err.input_errors.first().map(|(i, _)| *i), Some(9), "empty folder -> input 9");
 
-    // A folder that can't be created (under root) -> error.
+    // A folder that can't be created (nested under a plain file, which fails
+    // on every platform — a path under `/` is creatable on a writable Windows
+    // drive root) -> error.
+    let blocker = dir.join("blocker.txt");
+    std::fs::write(&blocker, "not a directory").unwrap();
     let mut inputs = base_inputs();
     set_preset(&mut inputs, ExportPreset::Godot);
-    set_name_folder_format(&mut inputs, std::path::Path::new("/this/does/not/exist/at/all"), "ok", ImageFormat::Png);
+    set_name_folder_format(&mut inputs, &blocker.join("sub"), "ok", ImageFormat::Png);
     set_map(&mut inputs, 0, solid(4, 4, &[0.5, 0.5, 0.5]));
     assert!(OpImageOutputMaterial::run(&mut inputs).await.is_err(), "uncreatable folder rejected");
 

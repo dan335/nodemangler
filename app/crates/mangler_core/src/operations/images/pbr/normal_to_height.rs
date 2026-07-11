@@ -35,7 +35,7 @@ impl OpImagePbrNormalToHeight {
         NodeSettings {
             name: "normal to height".to_string(),
             description: "Reconstructs a grayscale height field from a tangent-space normal map.".to_string(),
-            help: "For each pixel, unpacks the RGB-encoded normal into `[-1, 1]` and computes local slopes `dh/dx = -nx/nz` and `dh/dy = -ny/nz`. The height is integrated via two orthogonal cumulative sweeps (row then column) and the results are averaged, then the full field is renormalised to [0, 1] so the output is displayable and lossless under a final normal-from-height round-trip up to a linear rescale.\n\nIntegration is path-dependent: authored normals that do not come from a real height field (for example, decorative normals mixed between two independent layers) will show a low-frequency tilt or seam in the reconstruction. Scale controls how tall the reconstructed surface appears before normalisation by dividing the slopes — larger scale = gentler height. Output is single-channel regardless of input channels.".to_string(),
+            help: "For each pixel, unpacks the RGB-encoded normal into `[-1, 1]` and computes local slopes `dh/dx = -nx/nz` and `dh/dy = -ny/nz`. The height is integrated via two orthogonal cumulative sweeps (row then column) and the results are averaged, then the full field is renormalised to [0, 1] so the output is displayable and lossless under a final normal-from-height round-trip up to a linear rescale.\n\nIntegration is path-dependent: authored normals that do not come from a real height field (for example, decorative normals mixed between two independent layers) will show a low-frequency tilt or seam in the reconstruction. Scale rescales the reconstructed height about mid-grey AFTER normalisation (applying it to the slopes would be cancelled by the min/max stretch): larger scale compresses the relief toward 0.5 (gentler), smaller scale expands it (steeper), and scale 1 leaves it unchanged. Output is single-channel regardless of input channels.".to_string(),
         }
     }
 
@@ -44,7 +44,7 @@ impl OpImagePbrNormalToHeight {
             Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
                 .with_description("Tangent-space normal map to integrate into a height field."),
             Input::new("scale".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 20.0), step_by: Some(0.1), clamp_to_range: false }), None)
-                .with_description("Divides each slope before integration; inverse of `normal from height` intensity."),
+                .with_description("Rescales the reconstructed height about mid-grey after normalisation; larger values flatten the relief, smaller values exaggerate it."),
         ]
     }
 
@@ -89,9 +89,13 @@ impl OpImagePbrNormalToHeight {
                     (0.0, 0.0, 1.0)
                 };
                 // Clamp nz to avoid division by ~0 on extreme normals.
+                // NOTE: `scale` is deliberately NOT applied here. Dividing every
+                // slope by a constant is exactly undone by the final min/max
+                // renormalisation, so it would be a no-op. Scale is applied after
+                // normalisation instead (see below).
                 let nz_safe = if nz.abs() < 1e-4 { 1e-4_f32.copysign(nz) } else { nz };
-                let sx = -nx / nz_safe / scale;
-                let sy = -ny / nz_safe / scale;
+                let sx = -nx / nz_safe;
+                let sy = -ny / nz_safe;
                 let idx = (y as usize) * width + (x as usize);
                 slope_x[idx] = sx;
                 slope_y[idx] = sy;
@@ -153,6 +157,11 @@ impl OpImagePbrNormalToHeight {
             for y in 0..h {
                 for x in 0..w {
                     let v = (combined[(y as usize) * width + (x as usize)] - min) * inv;
+                    // Apply `scale` about mid-grey AFTER normalisation, where it
+                    // is not cancelled by the stretch. Larger scale compresses
+                    // the relief toward 0.5 (gentler); smaller scale expands it
+                    // (steeper). At scale 1 this is the identity.
+                    let v = (0.5 + (v - 0.5) / scale).clamp(0.0, 1.0);
                     output.put_pixel(x, y, &[v]);
                 }
             }

@@ -43,6 +43,20 @@ async fn small_bright_detail_is_preserved() {
 }
 
 #[tokio::test]
+async fn opaque_alpha_is_preserved() {
+    // A fully-opaque RGBA input must not become transparent: the difference is
+    // taken over colour channels only (1 − 1 = 0 on alpha would blank it), with
+    // the source alpha carried straight through.
+    let mut img = FloatImage::from_pixel(7, 7, 4, &[0.2, 0.2, 0.2, 1.0]);
+    img.put_pixel(3, 3, &[1.0, 1.0, 1.0, 1.0]);
+    let out = run(Value::Image { data: Arc::new(img), change_id: get_id() }, 1).await;
+    let Value::Image { data, .. } = out else { panic!() };
+    for p in data.pixels() {
+        assert!((p[3] - 1.0).abs() < 1e-6, "alpha should stay opaque, got {}", p[3]);
+    }
+}
+
+#[tokio::test]
 async fn preserves_dimensions() {
     let img = FloatImage::from_pixel(6, 9, 4, &[0.5, 0.5, 0.5, 1.0]);
     let out = run(Value::Image { data: Arc::new(img), change_id: get_id() }, 2).await;

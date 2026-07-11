@@ -281,6 +281,19 @@ impl App {
                                         if let Some(input) = node.inputs.get_mut(input_index) {
                                             input.is_exposed = set_to;
                                             needs_to_save = true;
+                                            // Echo the confirmed state back to
+                                            // the UI so its mirror of the node's
+                                            // exposed flags stays in sync.
+                                            if let Some(tx) = &graph.tx_node_changed {
+                                                let message = NodeChangedMessage::ExposeInputChanged {
+                                                    node_id: node_id.clone(),
+                                                    input_index,
+                                                    set_to,
+                                                };
+                                                if let Err(err) = tx.try_send(message) {
+                                                    println!("Error sending NodeChangedMessage::ExposeInputChanged: {:?}", err);
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -293,6 +306,19 @@ impl App {
                                         if let Some(output) = node.outputs.get_mut(output_index) {
                                             output.is_exposed = set_to;
                                             needs_to_save = true;
+                                            // Echo the confirmed state back to
+                                            // the UI so its mirror of the node's
+                                            // exposed flags stays in sync.
+                                            if let Some(tx) = &graph.tx_node_changed {
+                                                let message = NodeChangedMessage::ExposeOutputChanged {
+                                                    node_id: node_id.clone(),
+                                                    output_index,
+                                                    set_to,
+                                                };
+                                                if let Err(err) = tx.try_send(message) {
+                                                    println!("Error sending NodeChangedMessage::ExposeOutputChanged: {:?}", err);
+                                                }
+                                            }
                                         }
                                     }
                                 }

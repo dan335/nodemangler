@@ -66,6 +66,19 @@ impl OpImageAdjustmentBlur {
         // actual image, so the same value blurs the same amount relative to the
         // content at any resolution.
         let (w, h) = data.dimensions();
+
+        // A zero-width or zero-height image has no pixels; the parallel box-blur
+        // passes chunk by row length (width * channels) and would panic on an
+        // empty chunk size, so short-circuit and return the input unchanged.
+        if w == 0 || h == 0 {
+            return Ok(OperationResponse {
+                time: Instant::now().duration_since(start_time),
+                responses: vec![
+                    OutputResponse { value: Value::Image { data, change_id: get_id() } },
+                ],
+            });
+        }
+
         let sigma = scale_to_resolution(sigma.max(0.0), w, h);
 
         // Zero sigma means no blur — return the original image unchanged
@@ -103,6 +116,11 @@ pub(crate) fn gaussian_blur_image(data: &FloatImage, sigma: f32) -> FloatImage {
 
     let ch = data.channels() as usize;
     let (width, height) = data.dimensions();
+    // Guard against empty images: the parallel box passes chunk by row length
+    // (width * ch) and panic on a zero chunk size. Nothing to blur anyway.
+    if width == 0 || height == 0 {
+        return data.clone();
+    }
     let len = (width * height) as usize;
 
     let boxes = box_sizes_for_gaussian(sigma, 3);

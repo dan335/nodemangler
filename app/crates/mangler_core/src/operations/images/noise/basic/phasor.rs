@@ -136,13 +136,18 @@ impl OpImageNoisePhasor {
         let kernel_freq = (kernel_freq as f64).clamp(0.01, 1.0);
         let bandwidth = (bandwidth as f64).max(0.1);
         let density = (density as f64).max(1.0);
+        // Snap density to an integer so the cell grid and the pixel->grid
+        // mapping span the same number of cells; a fractional density leaves a
+        // partial final cell at the tile edge and breaks seamless tiling
+        // (mirrors voronoi_common::grid_size_from_frequency). Integer densities
+        // (including the 16.0 default) are unchanged.
+        let grid_size = density.round().max(1.0) as i32;
+        let density = grid_size as f64;
 
         // Sigma derived from bandwidth: controls how wide each kernel is
         let sigma = bandwidth / density;
         // Truncation radius: kernels beyond this distance contribute negligibly
         let truncation = 3.0 * sigma;
-
-        let grid_size = density.ceil() as i32;
         let w = width as usize;
         let h = height as usize;
         let seed_u32 = seed as u32;

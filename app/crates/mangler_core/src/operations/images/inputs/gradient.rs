@@ -66,8 +66,8 @@ impl OpImageInputGradient {
 
     /// Executes the operation: generates a vertical gradient by blending colors row by row.
     ///
-    /// The blend factor for each row is `y / height`, so the top row is fully color `a`
-    /// and the bottom row is fully color `b`.
+    /// The blend factor for each row is `y / (height - 1)`, so the top row is fully
+    /// color `a` and the bottom row is fully color `b`.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -120,8 +120,12 @@ impl OpImageInputGradient {
         // slice copies rather than per-pixel writes.
         let w = width as usize;
         let mut data = vec![0.0f32; w * height as usize * 4];
+        // Divide by (height - 1) so the blend factor reaches exactly 1.0 on the
+        // last row (color B); dividing by height would top out below 1.0 and the
+        // bottom row would never equal B. `.max(1)` guards a 1px-tall image.
+        let denom = (height - 1).max(1) as f32;
         for (y, row) in data.chunks_exact_mut(w * 4).enumerate() {
-            let blended = blend_fn(a, b, &blend_mode, y as f32 / height as f32);
+            let blended = blend_fn(a, b, &blend_mode, y as f32 / denom);
             let srgb = blended.to_srgb_float();
             let pixel = [srgb.0, srgb.1, srgb.2, srgb.3];
             row[..4].copy_from_slice(&pixel);

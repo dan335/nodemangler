@@ -111,7 +111,7 @@ impl OpImageOutputMaterial {
             }
         }
 
-        // 30, 31 — auto-save toggle and manual-save button.
+        // 32, 33 — auto-save toggle and manual-save button.
         inputs.extend(save_gate_inputs());
 
         inputs

@@ -83,10 +83,17 @@ impl OpImageCombineBlit {
                 let bg_px = background.get_pixel_mut(bx, by);
                 let bg_a = if bg_ch == 2 { bg_px[1] } else if bg_ch == 4 { bg_px[3] } else { 1.0 };
 
-                // Standard "over" alpha compositing for color channels
-                let color_ch = bg_ch.min(fg_ch).min(3);
-                for c in 0..color_ch {
-                    bg_px[c] = fg_px[c] * fg_a + bg_px[c] * (1.0 - fg_a);
+                // Standard "over" alpha compositing for color channels.
+                // Count colour channels (excluding any trailing alpha) on both
+                // sides. When the foreground has fewer colour channels than the
+                // background (e.g. grayscale fg onto RGB bg), broadcast fg
+                // channel 0 across the background's colour channels rather than
+                // writing only red and leaving a red-tinted decal.
+                let bg_color = if bg_ch == 2 { 1 } else if bg_ch == 4 { 3 } else { bg_ch };
+                let fg_color = if fg_ch == 2 { 1 } else if fg_ch == 4 { 3 } else { fg_ch };
+                for c in 0..bg_color {
+                    let fg_c = if c < fg_color { fg_px[c] } else { fg_px[0] };
+                    bg_px[c] = fg_c * fg_a + bg_px[c] * (1.0 - fg_a);
                 }
                 // Composite alpha
                 let new_a = fg_a + bg_a * (1.0 - fg_a);

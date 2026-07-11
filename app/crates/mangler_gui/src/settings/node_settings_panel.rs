@@ -460,9 +460,12 @@ pub fn show(
                             input_value(ui, input.value.clone(), input, input_index, &node.id, &tx_change_node, sibling_image_format, theme, default_dir);
 
                             // Show error indicator if the input has a validation error.
+                            // Uses the theme's error color (same one the graph
+                            // editor uses for error connection dots) instead of
+                            // a hardcoded red, so it stays consistent across themes.
                             if input.is_error {
                                 let error_text = input.error_message.as_deref().unwrap_or("error");
-                                ui.label(RichText::new(error_text).color(Color32::RED).small());
+                                ui.label(RichText::new(error_text).color(theme.get().grid_connection_dot_error).small());
                             }
                         });
                     });

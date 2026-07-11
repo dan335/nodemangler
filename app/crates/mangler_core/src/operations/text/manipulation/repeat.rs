@@ -58,10 +58,27 @@ impl OpTextRepeat {
         let Value::Text(text) = text_converted.unwrap() else { unreachable!() };
         let Value::Integer(count) = count_converted.unwrap() else { unreachable!() };
 
+        // `count`'s DragValue clamp (0..10000) only applies to manual entry;
+        // a value arriving from a wired node can be arbitrarily large, and
+        // `String::repeat` allocates `text.len() * count` bytes — capable of
+        // overflowing its internal capacity check or exhausting memory.
+        // Budget by total *output* characters rather than a flat repeat-count
+        // cap, since a long `text` needs proportionally fewer repeats to hit
+        // the same size; always allow at least one repeat so a single copy
+        // of an already-long text still works.
+        const MAX_OUTPUT_CHARS: usize = 100_000;
+        let count = count.max(0) as usize;
+        let text_char_len = text.chars().count();
+        let capped_count = if text_char_len == 0 {
+            count
+        } else {
+            (MAX_OUTPUT_CHARS / text_char_len).max(1).min(count)
+        };
+
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![OutputResponse {
-                value: Value::Text(text.repeat(count.max(0) as usize)),
+                value: Value::Text(text.repeat(capped_count)),
             }],
         })
     }

@@ -56,13 +56,14 @@ impl Color {
 
         let (h, s, l, alpha) = match blend_mode {
             BlendMode::Over => (
-                lerp(la.0, lb.0, amount * lb.3),
+                // Hue interpolates along the shortest arc across the 0/360 seam.
+                lerp_hue(la.0, lb.0, amount * lb.3),
                 lerp(la.1, lb.1, amount * lb.3),
                 lerp(la.2, lb.2, amount * lb.3),
                 la.3,
             ),
             BlendMode::Lerp => (
-                lerp(la.0, lb.0, amount),
+                lerp_hue(la.0, lb.0, amount),
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
@@ -88,13 +89,14 @@ impl Color {
 
         let (h, s, v, alpha) = match blend_mode {
             BlendMode::Over => (
-                lerp(la.0, lb.0, amount * lb.3),
+                // Hue interpolates along the shortest arc across the 0/360 seam.
+                lerp_hue(la.0, lb.0, amount * lb.3),
                 lerp(la.1, lb.1, amount * lb.3),
                 lerp(la.2, lb.2, amount * lb.3),
                 la.3,
             ),
             BlendMode::Lerp => (
-                lerp(la.0, lb.0, amount),
+                lerp_hue(la.0, lb.0, amount),
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
@@ -154,13 +156,14 @@ impl Color {
             BlendMode::Over => (
                 lerp(la.0, lb.0, amount * lb.3),
                 lerp(la.1, lb.1, amount * lb.3),
-                lerp(la.2, lb.2, amount * lb.3),
+                // Hue interpolates along the shortest arc across the 0/360 seam.
+                lerp_hue(la.2, lb.2, amount * lb.3),
                 la.3,
             ),
             BlendMode::Lerp => (
                 lerp(la.0, lb.0, amount),
                 lerp(la.1, lb.1, amount),
-                lerp(la.2, lb.2, amount),
+                lerp_hue(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
             ),
             _ => (
@@ -341,13 +344,14 @@ impl Color {
             BlendMode::Over => (
                 lerp(la.0, lb.0, amount * lb.3),
                 lerp(la.1, lb.1, amount * lb.3),
-                lerp(la.2, lb.2, amount * lb.3),
+                // Hue interpolates along the shortest arc across the 0/360 seam.
+                lerp_hue(la.2, lb.2, amount * lb.3),
                 la.3,
             ),
             BlendMode::Lerp => (
                 lerp(la.0, lb.0, amount),
                 lerp(la.1, lb.1, amount),
-                lerp(la.2, lb.2, amount),
+                lerp_hue(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
             ),
             _ => (
@@ -371,13 +375,14 @@ impl Color {
 
         let (h, w, bl, alpha) = match blend_mode {
             BlendMode::Over => (
-                lerp(la.0, lb.0, amount * lb.3),
+                // Hue interpolates along the shortest arc across the 0/360 seam.
+                lerp_hue(la.0, lb.0, amount * lb.3),
                 lerp(la.1, lb.1, amount * lb.3),
                 lerp(la.2, lb.2, amount * lb.3),
                 la.3,
             ),
             BlendMode::Lerp => (
-                lerp(la.0, lb.0, amount),
+                lerp_hue(la.0, lb.0, amount),
                 lerp(la.1, lb.1, amount),
                 lerp(la.2, lb.2, amount),
                 lerp(la.3, lb.3, amount),
@@ -597,6 +602,25 @@ pub(crate) fn per_channel_fn(mode: &BlendMode) -> fn(f32, f32) -> f32 {
 /// Returns `a` when `t == 0.0` and `b` when `t == 1.0`.
 pub(crate) fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + t * (b - a)
+}
+
+/// Interpolates between two hue angles (in degrees) along the shortest arc.
+///
+/// Plain `lerp` on a hue channel travels the long way whenever the two hues
+/// straddle the 0/360 seam (e.g. 350° toward 10° would pass through 180°).
+/// This wraps the signed delta into `[-180, 180]` first, interpolates, then
+/// wraps the result back into `[0, 360)` so the interpolation always takes the
+/// short way round (350° halfway to 10° gives 0°).
+pub(crate) fn lerp_hue(a: f32, b: f32, t: f32) -> f32 {
+    // Signed shortest angular difference, folded into [-180, 180].
+    let mut delta = (b - a) % 360.0;
+    if delta > 180.0 {
+        delta -= 360.0;
+    } else if delta < -180.0 {
+        delta += 360.0;
+    }
+    // Interpolate along that shortest arc and normalize back into [0, 360).
+    (a + delta * t).rem_euclid(360.0)
 }
 
 #[cfg(test)]

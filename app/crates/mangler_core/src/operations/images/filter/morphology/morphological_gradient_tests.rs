@@ -43,6 +43,20 @@ async fn edge_produces_response() {
 }
 
 #[tokio::test]
+async fn opaque_alpha_is_preserved() {
+    // A fully-opaque RGBA input must not become transparent: dilation − erosion
+    // on the alpha channel (1 − 1 = 0) would blank it, so alpha is skipped and
+    // the source alpha is carried straight through.
+    let mut img = FloatImage::from_pixel(7, 7, 4, &[0.0, 0.0, 0.0, 1.0]);
+    img.put_pixel(3, 3, &[1.0, 1.0, 1.0, 1.0]);
+    let out = run(Value::Image { data: Arc::new(img), change_id: get_id() }, 1).await;
+    let Value::Image { data, .. } = out else { panic!() };
+    for p in data.pixels() {
+        assert!((p[3] - 1.0).abs() < 1e-6, "alpha should stay opaque, got {}", p[3]);
+    }
+}
+
+#[tokio::test]
 async fn preserves_dimensions() {
     let img = FloatImage::from_pixel(9, 5, 4, &[0.2, 0.3, 0.4, 1.0]);
     let out = run(Value::Image { data: Arc::new(img), change_id: get_id() }, 2).await;

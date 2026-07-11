@@ -28,8 +28,10 @@ fn periodic_fbm(u: f64, v: f64, octaves: usize, frequency: f64, lacunarity: f64,
     let mut attenuation = persistence;
     let mut freq = frequency;
 
-    // Scale factor: 1 / sum(persistence^i for i in 1..=octaves)
-    let scale_factor = 1.0 / (1..=octaves).fold(0.0, |acc, i| acc + persistence.powi(i as i32));
+    // Scale factor: 1 / sum(persistence^i for i in 1..=octaves).
+    // The sum is floored at 1e-9 so persistence == 0 (which makes every term 0)
+    // can't produce 1/0 = inf and a subsequent NaN image.
+    let scale_factor = 1.0 / (1..=octaves).fold(0.0, |acc, i| acc + persistence.powi(i as i32)).max(1e-9);
 
     for hasher in hashers.iter().take(octaves) {
         // Round frequency to integer period for tiling

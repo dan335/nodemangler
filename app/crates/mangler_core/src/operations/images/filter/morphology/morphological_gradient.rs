@@ -68,7 +68,26 @@ impl OpImageAdjustmentMorphGradient {
         let radius = scale_to_resolution(radius.max(1) as f32, w, h).round().max(1.0) as i32;
         let dilated = separable_morphology(&data, radius, |a, b| a.max(b));
         let eroded = separable_morphology(&data, radius, |a, b| a.min(b));
-        let diff: Vec<f32> = dilated.as_raw().iter().zip(eroded.as_raw().iter()).map(|(a, b)| a - b).collect();
+        // The gradient (dilation − erosion) is a colour operation: on a fully-
+        // opaque alpha channel both operators give 1, so the difference is 0 and
+        // the result would be fully transparent. Difference the colour channels
+        // only and carry the source alpha straight through.
+        let channels = data.channels() as usize;
+        let has_alpha = channels == 2 || channels == 4;
+        let src = data.as_raw();
+        let dil = dilated.as_raw();
+        let ero = eroded.as_raw();
+        let mut diff = vec![0.0f32; dil.len()];
+        for (i, chunk) in diff.chunks_exact_mut(channels).enumerate() {
+            let base = i * channels;
+            for c in 0..channels {
+                chunk[c] = if has_alpha && c == channels - 1 {
+                    src[base + c]
+                } else {
+                    dil[base + c] - ero[base + c]
+                };
+            }
+        }
         let out = FloatImage::from_raw(w, h, data.channels(), diff).unwrap();
 
         Ok(OperationResponse {

@@ -62,7 +62,11 @@ impl OpNumberImagePercentile {
         let value = if v.is_empty() {
             0.0f32
         } else {
-            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            // `partial_cmp().unwrap()` panics if any pixel's luminance is NaN
+            // (e.g. propagated from a divide-by-zero upstream). `f32::total_cmp`
+            // gives NaN a well-defined (if somewhat arbitrary) sort position
+            // instead, so a stray NaN pixel can't crash the whole node.
+            v.sort_by(f32::total_cmp);
             let n = v.len();
             let p = percentile.clamp(0.0, 100.0);
             let idx = ((p / 100.0) * ((n - 1) as f32)).round() as usize;

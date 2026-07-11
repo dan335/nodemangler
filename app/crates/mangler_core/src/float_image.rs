@@ -39,7 +39,7 @@ impl FloatImage {
     pub fn new(width: u32, height: u32, channels: u32) -> Self {
         assert!((1..=4).contains(&channels), "channels must be 1–4, got {}", channels);
         Self {
-            data: vec![0.0; (width * height * channels) as usize],
+            data: vec![0.0; width as usize * height as usize * channels as usize],
             width,
             height,
             channels,
@@ -55,7 +55,9 @@ impl FloatImage {
     pub fn from_pixel(width: u32, height: u32, channels: u32, pixel: &[f32]) -> Self {
         assert!((1..=4).contains(&channels), "channels must be 1–4, got {}", channels);
         assert_eq!(pixel.len(), channels as usize, "pixel length must match channels");
-        let total = (width * height) as usize;
+        // Compute the element count in usize so extreme dimensions can't
+        // overflow a u32 product (which would wrap and cause later OOB access).
+        let total = width as usize * height as usize;
         let mut data = Vec::with_capacity(total * channels as usize);
         for _ in 0..total {
             data.extend_from_slice(pixel);
@@ -66,7 +68,7 @@ impl FloatImage {
     /// Creates a FloatImage from raw data. Returns `None` if the data length
     /// does not match `width * height * channels`.
     pub fn from_raw(width: u32, height: u32, channels: u32, data: Vec<f32>) -> Option<Self> {
-        if data.len() != (width * height * channels) as usize {
+        if data.len() != (width as usize * height as usize * channels as usize) {
             return None;
         }
         Some(Self { data, width, height, channels })
@@ -202,7 +204,8 @@ impl FloatImage {
         // four specialized loops. Writing into a preallocated buffer through
         // zipped chunks keeps each iteration free of capacity checks so the
         // quantization can vectorize.
-        let mut out: Vec<u8> = vec![0u8; (self.width * self.height * 4) as usize];
+        // usize product avoids a u32 overflow on extreme dimensions.
+        let mut out: Vec<u8> = vec![0u8; self.width as usize * self.height as usize * 4];
         match self.channels {
             1 => {
                 for (dst, src) in out.chunks_exact_mut(4).zip(self.data.iter()) {

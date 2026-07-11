@@ -72,7 +72,20 @@ impl OpImageAdjustmentFrequencySplit {
 
         // Low-frequency = gaussian-blurred source. Reuse the shared helper so we
         // match the standard blur operator exactly.
-        let low = gaussian_blur_image(&data, sigma);
+        let mut low = gaussian_blur_image(&data, sigma);
+
+        // Alpha is not a frequency band; the blur smears it, but the help
+        // promises alpha passes through both outputs unchanged (and the high
+        // output already copies source alpha). Restore the source alpha on the
+        // low output so the two stay consistent and recombine cleanly.
+        if has_alpha {
+            for y in 0..h {
+                for x in 0..w {
+                    let a = data.get_pixel(x, y)[ch - 1];
+                    low.get_pixel_mut(x, y)[ch - 1] = a;
+                }
+            }
+        }
 
         // High-frequency = source − low + 0.5 on colour channels. Alpha is
         // copied straight through so a stack of high/low layers still composites

@@ -70,6 +70,25 @@ async fn test_from_hex_without_hash() {
 }
 
 #[tokio::test]
+async fn test_from_hex_non_ascii_6_bytes_errors_not_panics() {
+    // "€€" is 2 chars but 6 UTF-8 bytes, matching the 6-hex-digit length
+    // check by byte count. Slicing by byte offset used to panic (index not
+    // a char boundary); it should now return a normal node error instead.
+    let mut inputs = hex_inputs("€€");
+    let result = OpColorGenerationFromHex::run(&mut inputs).await;
+    assert!(result.is_err(), "Expected error for non-ASCII input, not a panic");
+}
+
+#[tokio::test]
+async fn test_from_hex_non_ascii_8_bytes_errors_not_panics() {
+    // "éééé" is 4 chars, each 2 UTF-8 bytes = 8 bytes, matching the
+    // #RRGGBBAA byte length.
+    let mut inputs = hex_inputs("éééé");
+    let result = OpColorGenerationFromHex::run(&mut inputs).await;
+    assert!(result.is_err(), "Expected error for non-ASCII input, not a panic");
+}
+
+#[tokio::test]
 async fn test_settings() {
     let s = OpColorGenerationFromHex::settings();
     assert_eq!(s.name, "from hex");

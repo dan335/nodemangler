@@ -1567,30 +1567,77 @@ impl Graph {
         sorted_order.into_iter().collect()
     }
 
-    /// Recursive DFS visitor for topological sort. Visits downstream neighbors
+    /// Iterative DFS visitor for topological sort. Visits downstream neighbors
     /// first, then pushes the current node to the front of the sorted order.
+    ///
+    /// This mirrors a recursive post-order DFS but uses an explicit stack so a
+    /// pathologically deep graph cannot overflow the call stack. Each stack
+    /// frame holds a node, its downstream-neighbor ids (in the same
+    /// output/connection iteration order the recursion used), and a cursor into
+    /// that neighbor list; when a frame's neighbors are exhausted the node is
+    /// pushed to the front of the order (post-order), producing the identical
+    /// ordering the old recursion did.
     fn visit_node(
         &self,
         nodes: &HashMap<String, Node>,
-        node_id: &String,
+        start_node_id: &String,
         visited: &mut HashSet<String>,
         sorted_order: &mut VecDeque<String>,
     ) {
-        visited.insert(node_id.clone());
-
-        if let Some(node) = nodes.get(node_id) {
-            for output in node.outputs.iter() {
-                if let Some(connections) = &output.connection {
-                    for (connection_node_id, _connection_input_index) in connections {
-                        if !visited.contains(connection_node_id) {
-                            self.visit_node(nodes, connection_node_id, visited, sorted_order);
+        // Collect a node's downstream neighbor ids in output/connection order —
+        // the exact order the recursive version iterated them.
+        let neighbors = |node_id: &str| -> Vec<String> {
+            let mut result = Vec::new();
+            if let Some(node) = nodes.get(node_id) {
+                for output in node.outputs.iter() {
+                    if let Some(connections) = &output.connection {
+                        for (connection_node_id, _connection_input_index) in connections {
+                            result.push(connection_node_id.clone());
                         }
                     }
                 }
             }
-        }
+            result
+        };
 
-        sorted_order.push_front(node_id.clone());
+        // A frame = (node id, its downstream neighbors, cursor into neighbors).
+        visited.insert(start_node_id.clone());
+        let mut stack: Vec<(String, Vec<String>, usize)> =
+            vec![(start_node_id.clone(), neighbors(start_node_id), 0)];
+
+        while !stack.is_empty() {
+            let top = stack.len() - 1;
+            // Advance the top frame's cursor past the next neighbor (if any).
+            // The mutable borrow of `stack` is scoped to this block so we can
+            // freely push/pop below.
+            let next_child = {
+                let frame = &mut stack[top];
+                if frame.2 < frame.1.len() {
+                    let child = frame.1[frame.2].clone();
+                    frame.2 += 1;
+                    Some(child)
+                } else {
+                    None
+                }
+            };
+
+            match next_child {
+                Some(child) => {
+                    // Descend into an unvisited neighbor (mark on descent, just
+                    // as the recursion inserted at function entry).
+                    if !visited.contains(&child) {
+                        visited.insert(child.clone());
+                        let child_neighbors = neighbors(&child);
+                        stack.push((child, child_neighbors, 0));
+                    }
+                }
+                None => {
+                    // Neighbors exhausted: emit this node (post-order) and pop.
+                    let (node_id, _, _) = stack.pop().unwrap();
+                    sorted_order.push_front(node_id);
+                }
+            }
+        }
     }
 }
 

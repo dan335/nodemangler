@@ -57,7 +57,11 @@ impl OpNumberMathDecrement {
         // run node
 
         let value = match &inputs[0].value {
-            Value::Integer(a) => Value::Integer(*a - 1),
+            // `*a - 1` panics on overflow in debug builds when `a` is
+            // `i32::MIN` (a wired input isn't bounded by any UI clamp).
+            // `wrapping_sub` gives a defined (if unintuitive) result instead
+            // of crashing the node.
+            Value::Integer(a) => Value::Integer(a.wrapping_sub(1)),
 
             Value::Decimal(a) => Value::Decimal(*a - 1.0),
 

@@ -56,10 +56,20 @@ impl OpTextUrlDecode {
         let mut i = 0;
         while i < bytes.len() {
             if bytes[i] == b'%' && i + 3 <= bytes.len() {
-                if let Ok(v) = u8::from_str_radix(&input[i + 1..i + 3], 16) {
-                    out.push(v);
-                    i += 3;
-                    continue;
+                // Decode over the raw byte slice rather than `&input[..]`: if
+                // '%' is immediately followed by (part of) a multibyte UTF-8
+                // character, `i + 1`/`i + 3` can land mid-character and a
+                // *string* slice there panics ("byte index is not a char
+                // boundary"). `str::from_utf8` on the byte slice instead just
+                // fails for a malformed/non-ASCII pair (two valid hex digits
+                // are always plain ASCII, so this never rejects a real
+                // escape), and we fall through to passing the '%' through.
+                if let Ok(hex) = std::str::from_utf8(&bytes[i + 1..i + 3]) {
+                    if let Ok(v) = u8::from_str_radix(hex, 16) {
+                        out.push(v);
+                        i += 3;
+                        continue;
+                    }
                 }
             }
             out.push(bytes[i]);

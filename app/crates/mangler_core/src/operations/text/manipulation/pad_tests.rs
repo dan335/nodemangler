@@ -48,6 +48,25 @@ async fn test_pad_already_wide_unchanged() {
 }
 
 #[tokio::test]
+async fn test_pad_huge_width_from_wired_input_is_capped() {
+    // The DragValue clamp (0..10000) only bounds manual entry; a wired
+    // upstream node can send i32::MAX. Without a cap, the pad loop would
+    // try to build a ~2GB string. Width should be capped to a sane maximum
+    // instead of panicking or exhausting memory.
+    let mut inputs = vec![
+        Input::new("text".to_string(), Value::Text("x".to_string()), None, None),
+        Input::new("width".to_string(), Value::Integer(i32::MAX), None, None),
+        Input::new("fill".to_string(), Value::Text(".".to_string()), None, None),
+        Input::new("side".to_string(), Value::Text("right".to_string()), None, None),
+    ];
+    let result = OpTextPad::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Text(v) => assert!(v.len() <= 100_000, "Expected capped output, got length {}", v.len()),
+        other => panic!("Expected Text, got {:?}", other),
+    }
+}
+
+#[tokio::test]
 async fn test_pad_settings() {
     let s = OpTextPad::settings();
     assert_eq!(s.name, "pad");

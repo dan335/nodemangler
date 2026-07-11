@@ -61,6 +61,30 @@ async fn test_blit_preserves_background_dimensions() {
 }
 
 #[tokio::test]
+async fn test_blit_grayscale_fg_broadcasts_to_rgb() {
+    // A grayscale foreground onto an RGB background must fill all colour
+    // channels (broadcast channel 0), not just red (which left a red decal).
+    let bg = Value::Image { data: Arc::new(FloatImage::from_pixel(2, 2, 3, &[0.0, 0.0, 0.0])), change_id: get_id() };
+    let fg = Value::Image { data: Arc::new(FloatImage::from_pixel(2, 2, 1, &[0.5])), change_id: get_id() };
+    let mut inputs = vec![
+        Input::new("background".to_string(), bg, None, None),
+        Input::new("foreground".to_string(), fg, None, None),
+        Input::new("position x".to_string(), Value::Integer(0), None, None),
+        Input::new("position y".to_string(), Value::Integer(0), None, None),
+    ];
+    let result = OpImageCombineBlit::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Image { data, .. } => {
+            let p = data.get_pixel(0, 0);
+            assert!((p[0] - 0.5).abs() < 1e-6, "red should be 0.5, got {}", p[0]);
+            assert!((p[1] - 0.5).abs() < 1e-6, "green should be broadcast to 0.5, got {}", p[1]);
+            assert!((p[2] - 0.5).abs() < 1e-6, "blue should be broadcast to 0.5, got {}", p[2]);
+        }
+        other => panic!("Expected Image, got {:?}", other),
+    }
+}
+
+#[tokio::test]
 async fn test_blit() {
     let mut inputs = vec![
         Input::new("background".to_string(), image_input(8, 8), None, None),

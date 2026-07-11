@@ -135,6 +135,23 @@ async fn test_divide_zero_by_nonzero() {
 }
 
 #[tokio::test]
+async fn test_divide_i32_min_by_negative_one_does_not_panic() {
+    // i32::MIN / -1 is the one integer division whose true result doesn't
+    // fit in i32; the plain `/` operator panics on this unconditionally
+    // (not just in debug builds). wrapping_div should give the wrapped
+    // value (i32::MIN) instead of crashing the node.
+    let mut inputs = vec![
+        Input::new("a".to_string(), Value::Integer(i32::MIN), None, None),
+        Input::new("b".to_string(), Value::Integer(-1), None, None),
+    ];
+    let result = OpNumberMathDivide::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Integer(v) => assert_eq!(*v, i32::MIN),
+        other => panic!("Expected Integer, got {:?}", other),
+    }
+}
+
+#[tokio::test]
 async fn test_divide_invalid_type_returns_error() {
     let mut inputs = vec![
         Input::new("a".to_string(), Value::Bool(true), None, None),

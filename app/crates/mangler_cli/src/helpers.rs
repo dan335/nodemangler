@@ -74,6 +74,25 @@ pub(crate) fn node_not_found_error(graph: &Graph, id: &str) -> String {
     }
 }
 
+/// Reject a caller-supplied node `id` that already exists in `graph`.
+///
+/// `graph.add_node` overwrites any existing node sharing the same ID, which
+/// silently drops it along with every connection that pointed at it. Callers
+/// that accept an explicit `--id` (add-node, add-subgraph) must check this
+/// before adding so a typo'd/reused ID surfaces as an error instead of a
+/// silent, dangling-connection-producing overwrite.
+pub(crate) fn reject_existing_id(graph: &Graph, id: Option<&str>) -> Result<(), String> {
+    if let Some(id) = id {
+        if graph.nodes.contains_key(id) {
+            return Err(format!(
+                "node '{}' already exists — choose a different --id or remove it first",
+                id
+            ));
+        }
+    }
+    Ok(())
+}
+
 // ── Operation & type conversion helpers ───────────────────────────────────
 
 /// Get the serde variant name for an Operation (e.g. "OpNumberMathAdd").

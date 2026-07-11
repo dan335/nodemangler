@@ -35,6 +35,25 @@ fn default_inputs(seed: i32, width: i32, height: i32) -> Vec<Input> {
     make_inputs(seed, width, height, 4.0, 0.5, 0.7, 64, 0.2, 0.6, 0.35)
 }
 
+// Regression: a fractional cluster count used to leave a partial cell at the
+// tile edge (grid = ceil(clusters) but the pixel map spanned [0, clusters)),
+// breaking seamless tiling. The count is now snapped to an integer grid; a
+// non-integer value must still run and produce finite, in-range pixels.
+#[tokio::test]
+async fn test_non_integer_clusters_finite() {
+    let mut inputs = make_inputs(3, 32, 32, 4.5, 0.5, 0.7, 64, 0.2, 0.6, 0.35);
+    let result = OpImageNoiseGrowth::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Image { data, .. } => {
+            assert!(
+                data.pixels().all(|p| p.iter().all(|v| v.is_finite() && (0.0..=1.0).contains(v))),
+                "non-integer cluster count must produce finite, in-range pixels"
+            );
+        }
+        other => panic!("Expected Image, got {:?}", other),
+    }
+}
+
 #[tokio::test]
 async fn test_settings() {
     let s = OpImageNoiseGrowth::settings();

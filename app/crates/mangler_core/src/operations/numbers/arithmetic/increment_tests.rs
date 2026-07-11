@@ -86,3 +86,15 @@ async fn test_increment_large_integer() {
         other => panic!("Expected Integer, got {:?}", other),
     }
 }
+
+#[tokio::test]
+async fn test_increment_i32_max_does_not_panic() {
+    // A wired input of exactly i32::MAX used to overflow-panic `*a + 1` in
+    // debug builds. wrapping_add should give the wrapped value instead.
+    let mut inputs = vec![Input::new("a".to_string(), Value::Integer(i32::MAX), None, None)];
+    let result = OpNumberMathIncrement::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Integer(v) => assert_eq!(*v, i32::MIN),
+        other => panic!("Expected Integer, got {:?}", other),
+    }
+}

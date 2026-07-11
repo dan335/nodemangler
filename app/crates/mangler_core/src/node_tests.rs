@@ -332,3 +332,73 @@ fn test_custom_name_does_not_affect_equality() {
     b.custom_name = Some("name B".to_string());
     assert_eq!(a, b);
 }
+
+// === subgraph input forwarding ===
+
+/// `Value::Path` must forward into a subgraph's linked input just like every
+/// other value type. Regression test: the subgraph run branch used to explicitly
+/// skip `Value::Path`, so after a save→reload the child graph ran with a stale
+/// path until the input was manually re-edited.
+#[tokio::test]
+async fn test_subgraph_forwards_path_input() {
+    use std::path::PathBuf;
+    use tokio::sync::mpsc;
+    use crate::graph::Graph;
+    use crate::input::InputLink;
+    use crate::{get_id, GraphChangedMessage, NodeChangedMessage};
+
+    // Build a child graph containing a single node with a Path input we can
+    // observe. The child node is an (unloaded) subgraph node so that running the
+    // child graph is a safe no-op — we only care that the parent forwards its
+    // Path into this input before the child runs.
+    let (tx_gc, _rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let (tx_nc, _rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
+    let mut child_graph = Graph::new(get_id(), tx_nc, tx_gc, true).unwrap();
+
+    let mut child_node = make_subgraph_node();
+    child_node.id = "child".to_string();
+    // A target input starting with a *different* path so the changed-fingerprint
+    // gate in the forwarding loop actually fires.
+    child_node.inputs = vec![Input::new(
+        "target_in".to_string(),
+        Value::Path(PathBuf::from("old.png")),
+        None,
+        None,
+    )];
+    // The link matches on input id, so pin it to a known value.
+    child_node.inputs[0].id = "target_in".to_string();
+    child_graph.nodes.insert("child".to_string(), child_node);
+
+    // Parent subgraph node whose single input is a Path linked to the child's
+    // target input.
+    let mut parent = make_subgraph_node();
+    parent.node_type = NodeType::Subgraph {
+        path: PathBuf::new(),
+        graph: Some(child_graph),
+        last_mtime: None,
+    };
+    parent.inputs = vec![Input::new(
+        "path_in".to_string(),
+        Value::Path(PathBuf::from("new.png")),
+        None,
+        Some(InputLink {
+            node_id: "child".to_string(),
+            input_id: "target_in".to_string(),
+        }),
+    )];
+
+    parent
+        .run(None, None, crate::run_context::RunContext::default())
+        .await;
+
+    // The forwarded Path should now be visible on the child graph's node.
+    let NodeType::Subgraph { graph: Some(child), .. } = &parent.node_type else {
+        panic!("parent lost its subgraph after running");
+    };
+    let forwarded = &child.nodes.get("child").unwrap().inputs[0].value;
+    assert!(
+        matches!(forwarded, Value::Path(p) if p == &PathBuf::from("new.png")),
+        "expected forwarded Path new.png, got {:?}",
+        forwarded,
+    );
+}

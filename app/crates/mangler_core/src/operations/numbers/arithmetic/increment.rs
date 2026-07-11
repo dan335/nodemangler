@@ -57,7 +57,11 @@ impl OpNumberMathIncrement {
         // run node
 
         let value = match &inputs[0].value {
-            Value::Integer(a) => Value::Integer(*a + 1),
+            // `*a + 1` panics on overflow in debug builds when `a` is
+            // `i32::MAX` (a wired input isn't bounded by any UI clamp).
+            // `wrapping_add` gives a defined (if unintuitive) result instead
+            // of crashing the node.
+            Value::Integer(a) => Value::Integer(a.wrapping_add(1)),
 
             Value::Decimal(a) => Value::Decimal(*a + 1.0),
 

@@ -141,8 +141,9 @@ impl OpImageNoiseGrowth {
     /// against coverage decides whether a cluster spawns there at a jittered
     /// position. Each cluster scatters `growth` child blobs at radii drawn
     /// from a falloff-shaped power distribution, with intensity fading toward
-    /// the cluster edge. For each pixel, takes the MAX contribution from
-    /// nearby blob kernels (not additive).
+    /// the cluster edge. For each pixel, accumulates the contributions of
+    /// nearby blob kernels additively, then applies a soft-saturation curve so
+    /// dense growth fuses into a solid crust while fringe speckles stay dim.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -174,7 +175,12 @@ impl OpImageNoiseGrowth {
         width = width.max(4);
         height = height.max(4);
         seed = seed.max(1);
-        let clusters = (clusters as f64).max(1.0);
+        // Snap the cluster count to an integer so the cluster grid and the
+        // pixel->grid mapping span the same number of cells; a fractional value
+        // leaves a partial final cell at the tile edge and breaks seamless
+        // tiling (mirrors voronoi_common::grid_size_from_frequency). Integer
+        // cluster counts are unchanged.
+        let clusters = (clusters as f64).max(1.0).round().max(1.0);
         let coverage = (coverage as f64).clamp(0.0, 1.0);
         let cluster_size = (cluster_size as f64).max(0.01);
         let growth = (growth as usize).clamp(4, 128);
@@ -209,8 +215,12 @@ impl OpImageNoiseGrowth {
                 let cell_x = gx.floor() as i32;
                 let cell_y = gy.floor() as i32;
 
-                // Search radius in cells
-                let search = (truncation * clusters).ceil() as i32 + 1;
+                // Search radius in cells. Capped at 32 so extreme
+                // cluster_size/blob_size combinations can't blow the per-pixel
+                // neighbor scan (each cell runs `growth` blob evaluations) up to
+                // a size that stalls large renders; kernels beyond 32 cells
+                // contribute negligibly at any reasonable setting.
+                let search = ((truncation * clusters).ceil() as i32 + 1).min(32);
 
                 for dy in -search..=search {
                     for dx in -search..=search {

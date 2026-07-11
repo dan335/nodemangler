@@ -76,3 +76,28 @@ async fn test_clouds_correct_dimensions() {
         other => panic!("Expected Image, got {:?}", other),
     }
 }
+
+// Regression: persistence == 0 makes the amplitude-sum normalizer 1/0 = inf,
+// which used to yield an all-NaN image. The 1e-9 floor keeps pixels finite.
+#[tokio::test]
+async fn test_clouds_zero_persistence_is_finite() {
+    let mut inputs = vec![
+        Input::new("seed".to_string(), Value::Integer(1), None, None),
+        Input::new("width".to_string(), Value::Integer(16), None, None),
+        Input::new("height".to_string(), Value::Integer(16), None, None),
+        Input::new("octaves".to_string(), Value::Integer(4), None, None),
+        Input::new("frequency".to_string(), Value::Integer(4), None, None),
+        Input::new("lacunarity".to_string(), Value::Decimal(2.0), None, None),
+        Input::new("persistence".to_string(), Value::Decimal(0.0), None, None),
+    ];
+    let result = OpImageNoiseClouds::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Image { data, .. } => {
+            assert!(
+                data.pixels().all(|p| p.iter().all(|v| v.is_finite())),
+                "persistence=0 must not produce NaN/inf pixels"
+            );
+        }
+        other => panic!("Expected Image, got {:?}", other),
+    }
+}

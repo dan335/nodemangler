@@ -188,7 +188,12 @@ impl OpImageNoiseDirt {
         width = width.max(4);
         height = height.max(4);
         seed = seed.max(1);
-        let density = (density as f64).max(1.0);
+        // Snap density to an integer so each octave's grid (oct_density =
+        // density * 2^octave) and its pixel->grid mapping span the same integer
+        // number of cells; a fractional density leaves a partial final cell at
+        // the tile edge and breaks seamless tiling (mirrors
+        // voronoi_common::grid_size_from_frequency). Integer densities are unchanged.
+        let density = (density as f64).max(1.0).round().max(1.0);
         let scale = (scale as f64).max(0.01);
         let scale_variation = (scale_variation as f64).clamp(0.0, 1.0);
         let intensity = (intensity as f64).clamp(0.0, 1.0);

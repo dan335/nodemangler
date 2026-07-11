@@ -243,10 +243,15 @@ impl Viewer3d {
             match decide_staging(data.is_some(), needs_upload, renderer_has_texture) {
                 StagingDecision::Upload => {
                     // `decide_staging` only returns Upload when `data.is_some()`.
+                    // `image` is `&Arc<FloatImage>` (see `MaterialData`); this is
+                    // the one place that actually needs pixel data (the GL
+                    // upload), so deref the Arc and clone the `FloatImage`
+                    // itself here — gated on an actual change_id change, unlike
+                    // the per-frame `resolve_material` call above.
                     let (image, change_id) = data.as_ref().unwrap();
                     uploads.push(PendingUpload::Upload {
                         channel: *channel,
-                        image: image.clone(),
+                        image: image.as_ref().clone(),
                         change_id: change_id.clone(),
                     });
                 }

@@ -126,3 +126,35 @@ async fn test_full_contrast() {
         _ => panic!("Expected Image"),
     }
 }
+
+// Regression for the non-integer-density tiling bug: a fractional density used
+// to leave a partial cell at the tile edge, producing a seam. After snapping
+// density to an integer grid, the pixel just past the right edge (== column 0)
+// must be about one field-step from the edge column, like any interior neighbor.
+#[tokio::test]
+async fn test_tiles_seamlessly_non_integer_density() {
+    let r = OpImageNoisePhasor::run(&mut make_inputs(3, 64, 64, 0.0, false, 0.5, 2.0, 12.5, false)).await.unwrap();
+    match &r.responses[0].value {
+        Value::Image { data, .. } => {
+            let mut max_seam_step = 0.0_f32;
+            for y in 0..64 {
+                let edge = data.get_pixel(63, y)[0];
+                let wrap = data.get_pixel(0, y)[0];
+                max_seam_step = max_seam_step.max((edge - wrap).abs());
+            }
+            let mut max_interior_step = 0.0_f32;
+            for y in 0..64 {
+                for x in 0..63 {
+                    let a = data.get_pixel(x, y)[0];
+                    let b = data.get_pixel(x + 1, y)[0];
+                    max_interior_step = max_interior_step.max((a - b).abs());
+                }
+            }
+            assert!(
+                max_seam_step <= max_interior_step * 1.5 + 0.02,
+                "seam step {max_seam_step} much larger than interior step {max_interior_step}; phasor noise may not tile"
+            );
+        }
+        _ => panic!("Expected Image"),
+    }
+}

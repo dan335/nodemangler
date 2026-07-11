@@ -55,3 +55,18 @@ async fn test_median_robust_to_outlier() {
     let r = OpNumberImageMedian::run(&mut inputs).await.unwrap();
     assert!((dec(&r.responses[0].value) - 0.5).abs() < 1e-6);
 }
+
+#[tokio::test]
+async fn test_median_with_nan_pixel_does_not_panic() {
+    // A NaN pixel (e.g. propagated from an upstream divide-by-zero) used to
+    // panic `sort_by(|a, b| a.partial_cmp(b).unwrap())` since NaN has no
+    // total order under `partial_cmp`. `f32::total_cmp` gives NaN a defined
+    // sort position instead, so this should complete without panicking.
+    let mut img = FloatImage::new(3, 1, 1);
+    img.put_pixel(0, 0, &[0.0]);
+    img.put_pixel(1, 0, &[f32::NAN]);
+    img.put_pixel(2, 0, &[1.0]);
+    let mut inputs = image_input(img);
+    let r = OpNumberImageMedian::run(&mut inputs).await;
+    assert!(r.is_ok(), "median should not panic on a NaN pixel");
+}

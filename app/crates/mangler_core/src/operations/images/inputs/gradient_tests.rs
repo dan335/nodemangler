@@ -85,6 +85,30 @@ async fn test_gradient_outputs_width_height() {
 }
 
 #[tokio::test]
+async fn test_gradient_last_row_equals_color_b() {
+    // A 2px-tall black->white gradient: the last row must reach color B exactly.
+    // Dividing the blend factor by height (rather than height-1) would leave the
+    // bottom row stuck at the midpoint (0.5) instead of white.
+    let mut inputs = vec![
+        Input::new("a".to_string(), Value::Color(Color::from_srgb_float(0.0, 0.0, 0.0, 1.0)), None, None),
+        Input::new("b".to_string(), Value::Color(Color::from_srgb_float(1.0, 1.0, 1.0, 1.0)), None, None),
+        Input::new("width".to_string(), Value::Integer(1), None, None),
+        Input::new("height".to_string(), Value::Integer(2), None, None),
+        Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Srgb), None, None),
+    ];
+    let result = OpImageInputGradient::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Image { data, .. } => {
+            let top = data.get_pixel(0, 0);
+            let bottom = data.get_pixel(0, 1);
+            assert!(top[0] < 0.01, "top row should be color A (black), got {}", top[0]);
+            assert!(bottom[0] > 0.99, "bottom row should reach color B (white), got {}", bottom[0]);
+        }
+        other => panic!("Expected Image, got {:?}", other),
+    }
+}
+
+#[tokio::test]
 async fn test_gradient_same_colors_produces_uniform_image() {
     // a == b → every row should be the same
     let red = Color::from_srgb_float(1.0, 0.0, 0.0, 1.0);

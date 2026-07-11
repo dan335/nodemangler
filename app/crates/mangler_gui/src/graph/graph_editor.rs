@@ -14,15 +14,11 @@ use mangler_core::{
     input::Input, node_settings::NodeSettings, operations::Operation, output::Output, value::ValueType,
     AddNodeType,
 };
-use std::{collections::{HashMap, HashSet}, time::Instant};
+use std::collections::{HashMap, HashSet};
 
 pub struct GraphEditor {
     pub graph_nodes: HashMap<String, GraphNode>,
     temp_connection: Option<TempConnection>,
-
-    // if a node was clicked on when was it clicked and what is it's node_id
-    // used to check for click or double click
-    last_node_click: Option<(Instant, String)>,
 
     /// Set of currently selected node IDs (for multi-selection and copy/paste).
     pub selected_node_ids: HashSet<String>,
@@ -56,7 +52,6 @@ impl GraphEditor {
         GraphEditor {
             graph_nodes: HashMap::default(),
             temp_connection: None,
-            last_node_click: None,
             selected_node_ids: HashSet::new(),
         }
     }
@@ -69,7 +64,6 @@ impl GraphEditor {
     pub fn clear(&mut self) {
         self.graph_nodes.clear();
         self.temp_connection = None;
-        self.last_node_click = None;
         self.selected_node_ids.clear();
     }
 
@@ -228,27 +222,28 @@ impl GraphEditor {
         for (node_id, node) in self.graph_nodes.iter() {
             for (input_index, input) in node.inputs.iter().enumerate() {
                 if let Some((output_node_id, output_connection_index)) = &input.connection {
-                    if let Some(input_graph_node) = &self.graph_nodes.get(node_id) {
-                        if let Some(output_graph_node) = &self.graph_nodes.get(output_node_id) {
-                            let input_node_rect =
-                                input_graph_node.get_rect(camera.position, camera.zoom);
-                            let output_node_rect =
-                                output_graph_node.get_rect(camera.position, camera.zoom);
+                    // `node` (from the outer iter()) already *is*
+                    // `self.graph_nodes.get(node_id)` — no need to look it up
+                    // again under a different name.
+                    if let Some(output_graph_node) = &self.graph_nodes.get(output_node_id) {
+                        let input_node_rect =
+                            node.get_rect(camera.position, camera.zoom);
+                        let output_node_rect =
+                            output_graph_node.get_rect(camera.position, camera.zoom);
 
-                            let curve = self.draw_connection_line(
-                                ui,
-                                output_graph_node.get_output_position(
-                                    *output_connection_index,
-                                    output_node_rect,
-                                    camera.zoom,
-                                ),
-                                input_graph_node.get_input_position(input_index, input_node_rect, camera.zoom),
-                                theme,
-                                input.is_error,
-                            );
+                        let curve = self.draw_connection_line(
+                            ui,
+                            output_graph_node.get_output_position(
+                                *output_connection_index,
+                                output_node_rect,
+                                camera.zoom,
+                            ),
+                            node.get_input_position(input_index, input_node_rect, camera.zoom),
+                            theme,
+                            input.is_error,
+                        );
 
-                            connection_curves.push((curve, node_id.clone(), input_index));
-                        }
+                        connection_curves.push((curve, node_id.clone(), input_index));
                     }
                 }
             }
@@ -503,10 +498,6 @@ impl GraphEditor {
         // if cursor_primary_went_down && !is_cursor_over_node {
         //     self.start_dragging();
         // }
-
-        if self.last_node_click.is_some() {
-            graph_editor_response.request_redraw = true;
-        }
 
         // deleting connections
         ui.input(|i| {
@@ -946,7 +937,6 @@ pub struct TempConnection {
 
 pub struct GraphEditorResponse {
     pub new_connection: Option<NewConnection>,
-    pub request_redraw: bool,
     pub editing_node_id: Option<String>,
     pub viewing_node_id_index: Option<(String, usize)>,   // node id, output index
     pub clear_editing_node: bool,
@@ -966,7 +956,6 @@ impl GraphEditorResponse {
     fn default() -> GraphEditorResponse {
         GraphEditorResponse {
             new_connection: None,
-            request_redraw: false,
             editing_node_id: None,
             viewing_node_id_index: None,
             nodes_to_delete: Vec::new(),

@@ -68,8 +68,18 @@ impl OpTextFormatNumber {
         let Value::Integer(min_width) = width_converted.unwrap() else { unreachable!() };
         let Value::Bool(pad_zeros) = pad_converted.unwrap() else { unreachable!() };
 
-        let mut s = format!("{:.*}", decimals.max(0) as usize, value);
-        let width = min_width.max(0) as usize;
+        // `decimals` and `min width` only get UI-clamped by their DragValue
+        // widgets; a value arriving from a wired node can be arbitrarily
+        // large. A huge `decimals` makes `format!("{:.*}", ...)` pad an
+        // enormous number of digits past f32's meaningful precision, and a
+        // huge `min width` makes the left-pad loop below build an enormous
+        // string — either can overflow allocation or exhaust memory. Clamp
+        // both to sane maxima (17 covers f64-level precision; f32 needs far
+        // fewer, but 17 is a safe generous ceiling).
+        let decimals = (decimals.max(0) as usize).min(17);
+        const MAX_OUTPUT_CHARS: usize = 100_000;
+        let mut s = format!("{:.*}", decimals, value);
+        let width = (min_width.max(0) as usize).min(MAX_OUTPUT_CHARS);
         let len = s.chars().count();
         if len < width {
             let pad_char = if pad_zeros { '0' } else { ' ' };

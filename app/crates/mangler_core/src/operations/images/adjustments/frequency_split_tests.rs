@@ -59,6 +59,35 @@ async fn low_plus_high_reconstructs_source() {
 }
 
 #[tokio::test]
+async fn low_output_preserves_nonuniform_alpha() {
+    // With a non-uniform alpha the blur would smear it. The low output must
+    // still carry the source alpha through unchanged (help promises alpha
+    // passes through both outputs). Sigma 512 -> actual sigma 2 on this 4px
+    // image (scaled at the 1024px reference), so the blur is genuinely active.
+    let mut img = FloatImage::new(4, 4, 4);
+    for y in 0..4u32 {
+        for x in 0..4u32 {
+            let a = (x + y) as f32 / 6.0; // varies across the image
+            img.put_pixel(x, y, &[0.5, 0.5, 0.5, a]);
+        }
+    }
+    let src = Arc::new(img);
+    let mut inputs = vec![
+        Input::new("image".into(), Value::Image { data: src.clone(), change_id: get_id() }, None, None),
+        Input::new("sigma".into(), Value::Decimal(512.0), None, None),
+    ];
+    let r = OpImageAdjustmentFrequencySplit::run(&mut inputs).await.unwrap();
+    let Value::Image { data: low, .. } = &r.responses[0].value else { panic!() };
+    for y in 0..4 {
+        for x in 0..4 {
+            let expected = src.get_pixel(x, y)[3];
+            let got = low.get_pixel(x, y)[3];
+            assert!((got - expected).abs() < 1e-6, "low alpha at ({x},{y}) = {got}, expected {expected}");
+        }
+    }
+}
+
+#[tokio::test]
 async fn alpha_passes_through_on_both_outputs() {
     let img = Arc::new(FloatImage::from_pixel(4, 4, 4, &[0.5, 0.5, 0.5, 0.25]));
     let mut inputs = vec![

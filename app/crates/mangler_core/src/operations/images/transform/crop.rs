@@ -85,8 +85,12 @@ impl OpImageTransformCrop {
         // Clamp crop parameters to valid image bounds
         x = x.max(0).min(data.width() as i32 - 1);
         y = y.max(0).min(data.height() as i32 - 1);
-        width = width.max(1).min(data.width() as i32);
-        height = height.max(1).min(data.height() as i32);
+        // Clamp the size to what remains past the origin, not the full image
+        // size, so an off-origin crop clips at the right/bottom edge instead of
+        // edge-replicating past-the-edge pixels. Since x <= width-1 and
+        // y <= height-1, (width - x) and (height - y) are always >= 1.
+        width = width.max(1).min(data.width() as i32 - x);
+        height = height.max(1).min(data.height() as i32 - y);
 
         let cx = x as u32;
         let cy = y as u32;

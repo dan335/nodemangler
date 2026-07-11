@@ -15,8 +15,8 @@ use crate::format::{
     format_show_types_human, format_show_types_json, format_show_values_json, show_values_text,
 };
 use crate::helpers::{
-    load_graph, node_not_found_error, parse_slot, resolve_op, save_graph, value_type_enum_name,
-    value_type_name, enum_variants,
+    load_graph, node_not_found_error, parse_slot, reject_existing_id, resolve_op, save_graph,
+    value_type_enum_name, value_type_name, enum_variants,
 };
 use crate::value_parse::parse_typed_value;
 
@@ -25,6 +25,8 @@ use crate::value_parse::parse_typed_value;
 /// Add a node to an in-memory graph. Returns the node ID.
 pub(crate) async fn do_add_node(graph: &mut Graph, op_type: &str, id: Option<String>, custom_name: Option<String>) -> Result<String, String> {
     let operation = resolve_op(op_type)?;
+    // Bail out before add_node() silently overwrites an existing node sharing this ID.
+    reject_existing_id(graph, id.as_deref())?;
     let node_id = id.unwrap_or_else(get_id);
     graph.add_node(node_id.clone(), AddNodeType::Operation(operation), glam::Vec2::ZERO, true, custom_name, Vec::new()).await;
     Ok(node_id)
@@ -248,12 +250,13 @@ pub(crate) async fn cmd_remove_node(path: PathBuf, id: String, json_output: bool
 /// `mangle connect <path> --from <node:out> --to <node:in>` — connect two nodes.
 pub(crate) async fn cmd_connect(path: PathBuf, from: String, to: String, json_output: bool) -> Result<(), String> {
     let mut graph = load_graph(&path)?;
-    let _msg = do_connect(&mut graph, &from, &to).await?;
+    let msg = do_connect(&mut graph, &from, &to).await?;
     save_graph(&graph, &path)?;
     if json_output {
         println!("{}", serde_json::json!({"from": from, "to": to}));
     } else {
-        println!("connected {from} -> {to}");
+        // Reuse do_connect's own description instead of re-formatting an identical string.
+        println!("{msg}");
     }
     Ok(())
 }
@@ -261,12 +264,13 @@ pub(crate) async fn cmd_connect(path: PathBuf, from: String, to: String, json_ou
 /// `mangle disconnect <path> --node <id> --input <n>` — remove a connection.
 pub(crate) async fn cmd_disconnect(path: PathBuf, node: String, input: usize, json_output: bool) -> Result<(), String> {
     let mut graph = load_graph(&path)?;
-    let _msg = do_disconnect(&mut graph, &node, input).await?;
+    let msg = do_disconnect(&mut graph, &node, input).await?;
     save_graph(&graph, &path)?;
     if json_output {
         println!("{}", serde_json::json!({"node": node, "input": input}));
     } else {
-        println!("disconnected {node}:{input}");
+        // Reuse do_disconnect's own description instead of re-formatting an identical string.
+        println!("{msg}");
     }
     Ok(())
 }
@@ -346,6 +350,8 @@ pub(crate) async fn cmd_add_subgraph(
     json_output: bool,
 ) -> Result<(), String> {
     let mut graph = load_graph(&path)?;
+    // Bail out before add_node() silently overwrites an existing node sharing this ID.
+    reject_existing_id(&graph, id.as_deref())?;
     let node_id = id.unwrap_or_else(get_id);
 
     graph.add_node(
@@ -516,10 +522,21 @@ pub(crate) async fn cmd_run(path: PathBuf, json_output: bool) -> Result<(), Stri
     graph.force_save_outputs = true;
     graph.run().await;
     save_graph(&graph, &path)?;
+
+    // Count errored nodes so the process can exit non-zero below — printed
+    // output already carries the per-node error detail via format_run_*.
+    let error_count = graph.nodes.values().filter(|n| n.is_error).count();
+
     if json_output {
         println!("{}", serde_json::to_string_pretty(&format_run_json(&graph)).unwrap());
     } else {
         print!("{}", format_run_human(&graph));
+    }
+
+    // A headless run with a failed node must exit non-zero, or scripts/CI
+    // driving `mangle run` would treat a broken render as a success.
+    if error_count > 0 {
+        return Err(format!("{error_count} node(s) reported errors"));
     }
     Ok(())
 }
@@ -563,7 +580,9 @@ pub(crate) async fn cmd_show_output(
         } else {
             eprintln!("[{}] ERROR: {}", node, msg);
         }
-        return Ok(());
+        // The full error is already printed above; a headless caller still
+        // needs a non-zero exit code to notice the failed render (see cmd_run).
+        return Err(format!("node '{node}' reported an error"));
     }
 
     // Validate output index if specified.
@@ -581,6 +600,15 @@ pub(crate) async fn cmd_show_output(
         Some(idx) => vec![idx],
         None => (0..node_data.outputs.len()).collect(),
     };
+
+    // --save with no explicit --output only ever writes output[0] (below); on a
+    // multi-output node that silently drops every other output, so warn the caller.
+    if save_path.is_some() && output_index.is_none() && node_data.outputs.len() > 1 {
+        eprintln!(
+            "warning: --save with no --output on node '{}' ({} outputs) only saves output 0 — pass --output to select a specific one",
+            node, node_data.outputs.len()
+        );
+    }
 
     // Build results for each output.
     let mut json_results = Vec::new();
@@ -608,7 +636,9 @@ pub(crate) async fn cmd_show_output(
         };
 
         // Only pass save_path for the first (or only) output to avoid overwriting.
-        let save = if output_indices.len() == 1 || *idx == output_indices[0] {
+        // (When output_indices.len() == 1, idx is always output_indices[0], so
+        // this single comparison covers both cases.)
+        let save = if *idx == output_indices[0] {
             save_path.as_ref()
         } else {
             None

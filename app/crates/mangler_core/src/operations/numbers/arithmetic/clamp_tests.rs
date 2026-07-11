@@ -134,6 +134,38 @@ async fn test_clamp_invalid_type_returns_error() {
 }
 
 #[tokio::test]
+async fn test_clamp_inverted_min_max_does_not_panic() {
+    // A wired min > max used to reach f32::clamp's internal `assert!(min <= max)`
+    // and panic the whole node. The bounds should be treated as swapped instead.
+    let mut inputs = vec![
+        Input::new("a".to_string(), Value::Decimal(5.0), None, None),
+        Input::new("min".to_string(), Value::Decimal(10.0), None, None),
+        Input::new("max".to_string(), Value::Decimal(0.0), None, None),
+    ];
+    let result = OpNumberMathClamp::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        // 5.0 lies between the (swapped) bounds 0..10, so it passes through unclamped.
+        Value::Decimal(v) => assert!((*v - 5.0).abs() < 1e-5),
+        other => panic!("Expected Decimal, got {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_clamp_inverted_min_max_integer_out_of_range() {
+    // Same inverted-bounds case, but with the value outside the (swapped) range.
+    let mut inputs = vec![
+        Input::new("a".to_string(), Value::Integer(-50), None, None),
+        Input::new("min".to_string(), Value::Decimal(100.0), None, None),
+        Input::new("max".to_string(), Value::Decimal(0.0), None, None),
+    ];
+    let result = OpNumberMathClamp::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Integer(v) => assert_eq!(*v, 0),
+        other => panic!("Expected Integer, got {:?}", other),
+    }
+}
+
+#[tokio::test]
 async fn test_clamp_min_from_integer() {
     // min/max accept integer via try_convert_to
     let mut inputs = vec![
