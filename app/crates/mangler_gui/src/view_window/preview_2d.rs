@@ -34,6 +34,7 @@ pub fn show(
             output_index,
             change_id.clone(),
             data,
+            false, // node outputs re-run constantly; don't reset the user's pan/zoom
             theme,
         );
         return;

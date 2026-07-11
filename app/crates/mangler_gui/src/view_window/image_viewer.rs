@@ -29,7 +29,13 @@ impl ImageViewer {
     }
 
     /// Renders the image viewer panel with pan/zoom controls.
-    pub fn show(&mut self, ui: &mut egui::Ui, node_id: String, output_index: usize, change_id: String, float_image: &FloatImage, theme: &Theme) {
+    ///
+    /// When `fit_on_change` is true, the view auto-fits (as if F were pressed)
+    /// the first frame a new image appears — used for library image previews,
+    /// where each freshly-opened image should frame itself. Node-output views
+    /// pass false, since their `change_id` changes every graph run and fitting
+    /// would fight the user's pan/zoom.
+    pub fn show(&mut self, ui: &mut egui::Ui, node_id: String, output_index: usize, change_id: String, float_image: &FloatImage, fit_on_change: bool, theme: &Theme) {
 
         let view_rect = Rect::from_min_size(
             ui.cursor().left_top(),
@@ -46,6 +52,19 @@ impl ImageViewer {
         ));
 
         self.draw_background_grid(ui, view_rect, self.position + view_rect.left_top().to_vec2(), theme);
+
+        // Auto-fit a newly-loaded image before drawing, so its first frame is
+        // already framed. Detected against the texture cache key, which
+        // `draw_image` updates below.
+        if fit_on_change {
+            let changed = match &self.image_id_index {
+                Some((n, o, c)) => n != &node_id || *o != output_index || c != &change_id,
+                None => true,
+            };
+            if changed {
+                self.fit_to_view(view_rect, float_image.width() as f32, float_image.height() as f32);
+            }
+        }
 
         self.draw_image(node_id, output_index, change_id, float_image, ui, view_rect);
 

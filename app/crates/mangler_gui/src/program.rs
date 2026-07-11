@@ -1028,6 +1028,7 @@ impl Program {
                 0,
                 preview.path.to_string_lossy().into_owned(),
                 &preview.image,
+                true, // fit each newly-opened library image to the view
                 theme,
             );
             return;
