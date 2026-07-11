@@ -52,11 +52,14 @@ enum DialogOutcome {
 
 /// Renders the Libraries panel into `ui`. `current_graph` is the focused
 /// program tab's save path, used to highlight that graph's row in the tree.
+/// `previewed_image` is the image file (if any) currently shown in the focused
+/// program's 2D preview, used to highlight its row.
 pub fn show(
     ui: &mut egui::Ui,
     state: &mut LibrariesState,
     theme: &Theme,
     current_graph: Option<&Path>,
+    previewed_image: Option<&Path>,
 ) {
     puffin::profile_scope!("libraries panel");
     let colors = theme.get();
@@ -74,7 +77,7 @@ pub fn show(
         .show(ui, |ui| {
             show_header(ui, &colors, &mut commands);
             ui.add_space(4.0);
-            show_tree(ui, state, &colors, current_graph, &mut commands);
+            show_tree(ui, state, &colors, current_graph, previewed_image, &mut commands);
             show_error_strip(ui, state, &colors);
             show_background_menu(ui, &colors, &mut commands);
         });
@@ -165,6 +168,7 @@ fn show_tree(
     state: &LibrariesState,
     colors: &ThemeValues,
     current_graph: Option<&Path>,
+    previewed_image: Option<&Path>,
     commands: &mut PanelCommands,
 ) {
     // The scan-snapshot lock borrows through `state.scanner`, so everything
@@ -200,6 +204,7 @@ fn show_tree(
                             read_only,
                             colors,
                             current_graph,
+                            previewed_image,
                             commands,
                         );
                     }
@@ -286,6 +291,7 @@ fn show_folder_contents(
     read_only: bool,
     colors: &ThemeValues,
     current_graph: Option<&Path>,
+    previewed_image: Option<&Path>,
     commands: &mut PanelCommands,
 ) {
     for sub in &folder.folders {
@@ -296,7 +302,7 @@ fn show_folder_contents(
             .id_salt(sub.path.as_path())
             .default_open(false)
             .show(ui, |ui| {
-                show_folder_contents(ui, sub, read_only, colors, current_graph, commands);
+                show_folder_contents(ui, sub, read_only, colors, current_graph, previewed_image, commands);
             });
 
         // Keep the row visually marked while its context menu is open, so
@@ -401,11 +407,18 @@ fn show_folder_contents(
     }
 
     for image in &folder.images {
-        // Image row: double-click (or the context menu) adds an "image from
-        // file" node to the current graph. Never a "current" row — images are
-        // not opened as tabs — so it renders unselected.
+        // Image row: single-click previews the image in the 2D view (and the
+        // row highlights while it's showing there); double-click (or the
+        // context menu) adds an "image from file" node to the current graph.
+        let is_previewed = previewed_image == Some(image.path.as_path());
         let label = format!("{}  {}", icons::IMAGE, image.name);
-        let response = ui.selectable_label(false, label);
+        let response = ui.selectable_label(is_previewed, label);
+
+        if response.clicked() {
+            commands.actions.push(LibraryAction::PreviewImage {
+                path: image.path.clone(),
+            });
+        }
 
         if response.double_clicked() {
             commands.actions.push(LibraryAction::AddImageNode {

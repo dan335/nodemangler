@@ -291,6 +291,32 @@ impl Graph {
             }
         }
 
+        // A freshly-added "to file" node pre-fills its folder with the graph's
+        // own directory (absolute) and its file name with a unique
+        // `{graph name}_{N}` stem, so the save destination is visible, editable,
+        // and won't collide with sibling output nodes or existing files. Only
+        // fill inputs that are still empty, so explicit values (e.g. a recreated
+        // node carrying them) are never clobbered.
+        if matches!(node_type, AddNodeType::Operation(crate::operations::Operation::OpImageOutputFile)) {
+            const FOLDER: usize = 1;
+            const FILE_NAME: usize = 2;
+
+            let dir = self.save_path.as_ref().and_then(|p| p.parent()).map(|d| d.to_path_buf());
+            if let Some(dir) = &dir {
+                if let Some(input) = node.inputs.get_mut(FOLDER) {
+                    if matches!(&input.value, Value::Path(p) if p.as_os_str().is_empty()) {
+                        input.value = Value::Path(dir.clone());
+                    }
+                }
+            }
+
+            if let Some(input) = node.inputs.get_mut(FILE_NAME) {
+                if matches!(&input.value, Value::Text(t) if t.trim().is_empty()) {
+                    input.value = Value::Text(self.next_unique_output_stem(dir.as_deref()));
+                }
+            }
+        }
+
         let is_subgraph = matches!(node_type, AddNodeType::Subgraph);
 
         if let Some(tx) = &self.tx_graph_changed {
@@ -318,6 +344,59 @@ impl Graph {
 
 
         node_id
+    }
+
+    /// Picks a unique `{graph name}_{N}` file stem for a new "to file" node.
+    ///
+    /// `N` is the smallest integer ≥ 1 whose stem is not already used by another
+    /// "to file" node's explicit file name in this graph, nor by an existing
+    /// file in `dir` (extension ignored — a stem is considered taken whatever
+    /// its extension). Comparison is case-insensitive so it holds on
+    /// case-insensitive filesystems. The base is the graph's own (sanitized)
+    /// name; when the graph has no name yet it falls back to "untitled".
+    fn next_unique_output_stem(&self, dir: Option<&std::path::Path>) -> String {
+        let mut base = crate::naming::sanitize_name(&self.name);
+        if base.is_empty() { base = "untitled".to_string(); }
+
+        // Stems already claimed by other output nodes' explicit file names.
+        let mut taken: HashSet<String> = HashSet::new();
+        const FILE_NAME: usize = 2;
+        for other in self.nodes.values() {
+            if !matches!(
+                other.node_type,
+                crate::node_type::NodeType::Operation { operation: crate::operations::Operation::OpImageOutputFile }
+            ) {
+                continue;
+            }
+            if let Some(input) = other.inputs.get(FILE_NAME) {
+                if let Value::Text(name) = &input.value {
+                    let name = name.trim();
+                    if !name.is_empty() {
+                        taken.insert(name.to_lowercase());
+                    }
+                }
+            }
+        }
+
+        // Stems already present on disk in the target folder (extension stripped).
+        if let Some(dir) = dir {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    if let Some(stem) = std::path::Path::new(&entry.file_name()).file_stem() {
+                        taken.insert(stem.to_string_lossy().to_lowercase());
+                    }
+                }
+            }
+        }
+
+        let mut n: u32 = 1;
+        loop {
+            let candidate = format!("{}_{}", base, n);
+            if !taken.contains(&candidate.to_lowercase()) {
+                return candidate;
+            }
+            n += 1;
+        }
     }
 
     /// Remove a node from the graph, cleaning up all its inbound and outbound

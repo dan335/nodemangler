@@ -180,6 +180,7 @@ impl eframe::App for App {
                         &mut self.libraries,
                         &self.theme,
                         None,
+                        None,
                     );
                 });
             }
@@ -462,6 +463,20 @@ impl App {
                 if let Some(id) = self.current_program.clone() {
                     if let Some(program) = self.programs.get_mut(&id) {
                         program.add_image_from_file(path);
+                    }
+                }
+            }
+            LibraryAction::PreviewImage { path } => {
+                // Show the image in the focused program's 2D preview panel.
+                if let Some(id) = self.current_program.clone() {
+                    if let Some(program) = self.programs.get_mut(&id) {
+                        if let Err(err) = program.preview_library_image(path.clone()) {
+                            self.libraries.set_error(format!(
+                                "couldn't preview '{}': {}",
+                                path.display(),
+                                err
+                            ));
+                        }
                     }
                 }
             }

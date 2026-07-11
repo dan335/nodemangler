@@ -71,7 +71,7 @@ impl OpImageOutputFile {
                 set_title: Some("output folder".to_string()),
                 file_dialog_type: crate::input::FileDialogType::PickFolder,
             }), None)
-                .with_description("Destination folder, relative to where the graph is saved (or absolute). Empty = the graph's own folder."),
+                .with_description("Destination folder (absolute, or relative to where the graph is saved). Pre-filled with the graph's own folder when the node is created; empty = the graph's own folder."),
             Input::new("file name".to_string(), Value::Text(String::new()), Some(InputSettings::SingleLineText), None)
                 .with_description("Output file name (without extension). Empty = the graph's name."),
             Input::new("format".to_string(), Value::ImageType(image::ImageFormat::Jpeg), None, None)

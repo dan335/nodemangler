@@ -2998,3 +2998,91 @@ fn test_load_ignores_embedded_name_uses_file_stem() {
 
     let _ = fs::remove_file(&tmp_path);
 }
+
+#[tokio::test]
+async fn test_to_file_node_prefills_folder_with_graph_dir() {
+    use std::path::PathBuf;
+    const FOLDER: usize = 1;
+
+    let mut graph = create_test_graph();
+    let dir = PathBuf::from("/some/where/MyGraphs");
+    graph.set_save_path(dir.join("mygraph.mangler.json"));
+
+    let node_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpImageOutputFile), glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+
+    let node = graph.nodes.get(&node_id).unwrap();
+    let folder = &node.inputs[FOLDER].value;
+    assert!(matches!(folder, Value::Path(p) if p == &dir));
+
+    // File name defaults to `{graph name}_{N}`, starting at 1.
+    const FILE_NAME: usize = 2;
+    assert!(matches!(&node.inputs[FILE_NAME].value, Value::Text(t) if t == "mygraph_1"));
+}
+
+#[tokio::test]
+async fn test_to_file_nodes_get_incrementing_unique_names() {
+    use std::path::PathBuf;
+    const FILE_NAME: usize = 2;
+
+    let mut graph = create_test_graph();
+    // Point at a nonexistent dir so only in-graph names drive uniqueness.
+    graph.set_save_path(PathBuf::from("/no/such/dir/mygraph.mangler.json"));
+
+    let a = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpImageOutputFile), glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+    let b = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpImageOutputFile), glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+    let c = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpImageOutputFile), glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+
+    let name = |id: &str| match &graph.nodes.get(id).unwrap().inputs[FILE_NAME].value {
+        Value::Text(t) => t.clone(),
+        _ => panic!("expected text"),
+    };
+    assert_eq!(name(&a), "mygraph_1");
+    assert_eq!(name(&b), "mygraph_2");
+    assert_eq!(name(&c), "mygraph_3");
+}
+
+#[tokio::test]
+async fn test_to_file_node_folder_empty_without_save_path() {
+    const FOLDER: usize = 1;
+
+    // No save_path set: folder stays empty (empty resolves to graph dir at save).
+    let mut graph = create_test_graph();
+    let node_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpImageOutputFile), glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+
+    let folder = &graph.nodes.get(&node_id).unwrap().inputs[FOLDER].value;
+    assert!(matches!(folder, Value::Path(p) if p.as_os_str().is_empty()));
+}
+
+#[tokio::test]
+async fn test_to_file_node_explicit_folder_not_clobbered() {
+    use std::path::PathBuf;
+    const FOLDER: usize = 1;
+
+    // A recreated node carrying an explicit folder keeps it, even though the
+    // graph has its own save location.
+    let mut graph = create_test_graph();
+    graph.set_save_path(PathBuf::from("/some/where/MyGraphs/mygraph.mangler.json"));
+
+    let explicit = PathBuf::from("/elsewhere/renders");
+    let node_id = graph
+        .add_node(
+            get_id(),
+            AddNodeType::Operation(Operation::OpImageOutputFile),
+            glam::Vec2::ZERO, true, None,
+            vec![(FOLDER, Value::Path(explicit.clone()))],
+        )
+        .await;
+
+    let folder = &graph.nodes.get(&node_id).unwrap().inputs[FOLDER].value;
+    assert!(matches!(folder, Value::Path(p) if p == &explicit));
+}

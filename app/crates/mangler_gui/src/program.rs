@@ -8,8 +8,10 @@ use mangler_core::{
     NodeChangedMessage,
 };
 use crate::graph::clipboard::Clipboard;
+use mangler_core::float_image::FloatImage;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -36,6 +38,18 @@ use crate::{
     },
     ManglerError, NODE_SIZE,
 };
+
+/// A library image loaded from disk and shown in this program's 2D preview
+/// panel, independent of any graph node output. Clicking an image in the
+/// Libraries panel sets this; viewing a node output clears it (last action
+/// wins).
+struct LibraryImagePreview {
+    /// The source file, used to highlight the matching Libraries row and as the
+    /// texture cache key.
+    path: PathBuf,
+    /// The decoded image.
+    image: Arc<FloatImage>,
+}
 
 pub struct Program {
     pub app: mangler_core::app::App,
@@ -109,6 +123,10 @@ pub struct Program {
     /// so the drop handler queues the paths here for `App` to drain after
     /// `update` (see `take_pending_open_graphs`).
     pending_open_graphs: Vec<PathBuf>,
+    /// A library image being previewed in the 2D panel (see
+    /// [`LibraryImagePreview`]). When set, it takes precedence over
+    /// `viewing_node_id_index` in the 2D preview.
+    library_image_preview: Option<LibraryImagePreview>,
 }
 
 impl Program {
@@ -156,6 +174,7 @@ impl Program {
                 fallback_name: "new graph".to_string(),
                 graph_name_buffer: String::new(),
                 pending_open_graphs: Vec::new(),
+                library_image_preview: None,
             }),
             Err(error) => Err(NewGraphError(format!(
                 "Error creating program. {:?}",
@@ -745,6 +764,7 @@ impl Program {
                 libraries,
                 theme,
                 self.app.save_path.as_deref(),
+                self.previewed_library_image(),
             ),
         }
     }
@@ -992,10 +1012,26 @@ impl Program {
             viewers_2d,
             graph_editor,
             viewing_node_id_index,
+            library_image_preview,
             ..
         } = self;
 
         let viewer = viewers_2d.entry(leaf_id).or_insert_with(ImageViewer::new);
+
+        // A clicked library image takes precedence over a viewed node output.
+        // Its cache key is the file path, so switching images rebuilds the
+        // texture; a synthetic node id keeps it distinct from real outputs.
+        if let Some(preview) = library_image_preview.as_ref() {
+            viewer.show(
+                ui,
+                "__library_image_preview__".to_string(),
+                0,
+                preview.path.to_string_lossy().into_owned(),
+                &preview.image,
+                theme,
+            );
+            return;
+        }
 
         if let Some((viewing_node_id, output_index)) = viewing_node_id_index.as_ref() {
             if let Some(graph_node) = graph_editor.graph_nodes.get(viewing_node_id) {
@@ -1463,6 +1499,9 @@ impl Program {
 
     pub fn view_node(&mut self, node_id: String, output_index: usize) {
         self.viewing_node_id_index = Some((node_id, output_index));
+        // A node output replaces any library image being previewed (last
+        // action wins), so the 2D panel shows what the user just picked.
+        self.library_image_preview = None;
         if !self.has_preview_2d_panel {
             self.status_message = Some((
                 "no 2D preview panel open — use a panel's corner menu to add one".to_string(),
@@ -1470,6 +1509,30 @@ impl Program {
             ));
         }
         //self.needs_to_save = true;
+    }
+
+    /// Loads `path` off the graph and shows it in the 2D preview panel. Takes
+    /// precedence over any node output being viewed (`view_node` clears this in
+    /// the other direction). Returns an error string if decoding fails.
+    pub fn preview_library_image(&mut self, path: PathBuf) -> Result<(), String> {
+        let image = mangler_core::operations::images::inputs::file::load_image_from_path(&path)?;
+        self.library_image_preview = Some(LibraryImagePreview {
+            path,
+            image: Arc::new(image),
+        });
+        if !self.has_preview_2d_panel {
+            self.status_message = Some((
+                "no 2D preview panel open — use a panel's corner menu to add one".to_string(),
+                std::time::Instant::now(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// The library image currently shown in the 2D preview, if any. Used by the
+    /// Libraries panel to highlight the matching row.
+    pub fn previewed_library_image(&self) -> Option<&Path> {
+        self.library_image_preview.as_ref().map(|p| p.path.as_path())
     }
 
     /// Binds all of the 3D preview panels' material channels from a material

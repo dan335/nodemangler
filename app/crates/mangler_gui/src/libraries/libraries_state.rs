@@ -69,6 +69,10 @@ pub enum LibraryAction {
     /// focused program's graph (needs the programs map, which the panel can't
     /// touch — see `App::handle_library_action`).
     AddImageNode { path: PathBuf },
+    /// Show the image at `path` in the focused program's 2D preview panel
+    /// (loaded off the graph). Needs the programs map, so it's handled by
+    /// `App::handle_library_action`.
+    PreviewImage { path: PathBuf },
 }
 
 /// Shared state behind every Libraries panel. Owned by the GUI `App`.
