@@ -238,6 +238,10 @@ impl GraphNode {
         // inputs
         for (index, input) in self.inputs.iter().enumerate() {
             puffin::profile_scope!("graph node.inputs.iter()");
+            // Hidden inputs get no dot/row; they are edited in the settings panel.
+            if input.hide_in_graph {
+                continue;
+            }
             // draw input
             let input_output_response = draw_graph_input(
                 &self.id,
@@ -357,11 +361,17 @@ impl GraphNode {
     }
 
     pub fn get_input_position(&self, index: usize, node_rect: Rect, graph_zoom: f32) -> Pos2 {
+        // Hidden inputs don't occupy a row: dots are laid out over visible
+        // inputs only, so a node with many hidden config inputs stays compact.
+        let row = self.inputs[..index.min(self.inputs.len())]
+            .iter()
+            .filter(|input| !input.hide_in_graph)
+            .count();
         Pos2::new(
             node_rect.left() - graph_to_view_space(graph_zoom, 14.0),
             node_rect.top()
                 + graph_to_view_space(graph_zoom, 12.0)
-                + graph_to_view_space(graph_zoom, 20.0) * index as f32,
+                + graph_to_view_space(graph_zoom, 20.0) * row as f32,
         )
     }
 

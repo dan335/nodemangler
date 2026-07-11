@@ -1726,12 +1726,13 @@ impl Program {
             ConnectionType::Output => {
                 let inputs = operation.create_inputs();
                 if let Some(input_index) = inputs.iter().position(|input| {
-                    input.accepts_any_type
-                        || input
-                            .value
-                            .value_type()
-                            .valid_conversions()
-                            .contains(&conn.from_value_type)
+                    !input.hide_in_graph
+                        && (input.accepts_any_type
+                            || input
+                                .value
+                                .value_type()
+                                .valid_conversions()
+                                .contains(&conn.from_value_type))
                 }) {
                     self.add_connection(
                         new_node_id.to_string(),

@@ -415,6 +415,10 @@ impl GraphEditor {
                         // Dragging from an output → looking for a compatible input.
                         ConnectionType::Output => {
                             for (input_index, input) in other_graph_node.inputs.iter().enumerate() {
+                                // Hidden inputs draw no dot, so they can't be a drop target.
+                                if input.hide_in_graph {
+                                    continue;
+                                }
                                 let compatible = input.accepts_any_type
                                     || temp_connection
                                         .from_value_type

@@ -99,12 +99,14 @@ impl OpImageOutputMaterial {
             let n = slot + 1;
             inputs.push(
                 Input::new(format!("texture {} suffix", n), Value::Text(String::new()), Some(InputSettings::SingleLineText), None)
-                    .with_description("Custom texture file suffix; leave empty to disable this slot (Custom preset only)."),
+                    .with_description("Custom texture file suffix; leave empty to disable this slot (Custom preset only).")
+                    .hidden_in_graph(),
             );
             for chan in ["r", "g", "b", "a"] {
                 inputs.push(
                     Input::new(format!("texture {} {}", n, chan), Value::Text("none".to_string()), dropdown(), None)
-                        .with_description("Source for this channel of the custom texture (Custom preset only)."),
+                        .with_description("Source for this channel of the custom texture (Custom preset only).")
+                        .hidden_in_graph(),
                 );
             }
         }

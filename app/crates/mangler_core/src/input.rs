@@ -54,6 +54,14 @@ pub struct Input {
     /// Used by pass-through nodes like select that forward values without conversion.
     #[serde(default)]
     pub accepts_any_type: bool,
+    /// Whether the graph editor hides this input's connection dot. Hidden inputs
+    /// stay editable in the node settings panel but get no row on the node, so
+    /// they can't be connected — for config-only inputs that would otherwise
+    /// bloat the node (e.g. the material node's per-channel Custom slots).
+    /// Skipped during serialization — reconstructed from the operation
+    /// definition on load, like `default_value`.
+    #[serde(skip)]
+    pub hide_in_graph: bool,
     // Link to a subgraph's internal input so that data flows from
     // the parent node's input into the child graph's input node.
     #[serde(skip)]
@@ -83,8 +91,16 @@ impl Input {
             error_message: None,
             is_exposed: false,
             accepts_any_type: false,
+            hide_in_graph: false,
             link,
         }
+    }
+
+    /// Builder: hide this input's connection dot in the graph editor. The input
+    /// remains editable in the node settings panel.
+    pub fn hidden_in_graph(mut self) -> Input {
+        self.hide_in_graph = true;
+        self
     }
 
     /// Builder: attach a human-readable description used as the tooltip when

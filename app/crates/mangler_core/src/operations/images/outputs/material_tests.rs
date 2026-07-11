@@ -95,6 +95,15 @@ async fn test_material_settings_freeze() {
     let outputs = OpImageOutputMaterial::create_outputs();
     assert_eq!(outputs.len(), 1);
     assert_eq!(outputs[0].name, "folder");
+    // The Custom-slot config inputs (12..=31) are hidden from the graph view
+    // (settings-panel only); everything else keeps its connection dot.
+    for (i, input) in inputs.iter().enumerate() {
+        assert_eq!(
+            input.hide_in_graph,
+            (12..=31).contains(&i),
+            "hide_in_graph wrong for input {} ({})", i, input.name,
+        );
+    }
 }
 
 // ② Godot ORM channel values.

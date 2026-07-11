@@ -206,14 +206,15 @@ impl Graph {
                     for (_node_id, node) in graph.nodes.iter_mut() {
                         node.is_dirty = true;
 
-                        // Restore Input.default_value and Output.value/default_value
+                        // Restore Input.default_value/hide_in_graph and Output.value/default_value
                         // from the operation definition. These fields are #[serde(skip)]
-                        // so they come back as Value::Bool(false) regardless of type
+                        // so they come back as their Default regardless of type
                         // until we re-derive them from create_inputs/create_outputs.
                         if let NodeType::Operation { operation } = &node.node_type {
                             let fresh_inputs = operation.create_inputs();
                             for (input, fresh) in node.inputs.iter_mut().zip(fresh_inputs.into_iter()) {
                                 input.default_value = fresh.default_value;
+                                input.hide_in_graph = fresh.hide_in_graph;
                             }
                             let fresh_outputs = operation.create_outputs();
                             for (out, fresh) in node.outputs.iter_mut().zip(fresh_outputs.into_iter()) {
