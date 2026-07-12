@@ -29,8 +29,10 @@ fn make_inputs(width: i32, height: i32, curve: Option<Curve>, erodibility: Optio
         Input::new("curve".to_string(), Value::Curve(curve.unwrap_or_default()), None, None),
         Input::new("erodibility".to_string(), erod_value, None, None),
         Input::new("iterations".to_string(), Value::Integer(100), None, None),
-        Input::new("migration rate".to_string(), Value::Decimal(0.3), None, None),
+        Input::new("migration rate".to_string(), Value::Decimal(0.4), None, None),
         Input::new("channel width".to_string(), Value::Decimal(10.0), None, None),
+        Input::new("upstream width".to_string(), Value::Decimal(0.35), None, None),
+        Input::new("width variation".to_string(), Value::Decimal(0.2), None, None),
         Input::new("upstream lag".to_string(), Value::Decimal(1.5), None, None),
         Input::new("cutoff distance".to_string(), Value::Decimal(1.5), None, None),
         Input::new("seed wobble".to_string(), Value::Decimal(0.25), None, None),
@@ -74,7 +76,7 @@ fn curve_length(c: &Curve) -> f32 {
 async fn test_settings() {
     let s = OpCurveSimulationMeander::settings();
     assert_eq!(s.name, "meander");
-    assert_eq!(OpCurveSimulationMeander::create_inputs().len(), 11);
+    assert_eq!(OpCurveSimulationMeander::create_inputs().len(), 13);
     assert_eq!(OpCurveSimulationMeander::create_outputs().len(), 4);
 }
 
@@ -223,9 +225,28 @@ async fn test_degenerate_curves() {
 }
 
 #[tokio::test]
+async fn test_width_grows_downstream() {
+    // Passthrough render (iterations 0) of the horizontal line: the stroke
+    // must be visibly thinner near the source (left) than near the mouth
+    // (right). Channel width 40 so both ends are comfortably super-pixel.
+    let mut inputs = make_inputs(256, 256, Some(line_curve()), None);
+    set(&mut inputs, 5, Value::Integer(0));
+    set(&mut inputs, 7, Value::Decimal(40.0));
+    let result = OpCurveSimulationMeander::run(&mut inputs).await.unwrap();
+    let mask = image_pixels(&result, 1);
+    let column_thickness = |x: usize| (0..256).filter(|y| mask[y * 256 + x][0] > 0.5).count();
+    let upstream = column_thickness(45);
+    let downstream = column_thickness(210);
+    assert!(
+        downstream >= upstream + 3,
+        "channel should widen downstream: upstream {upstream}px vs downstream {downstream}px"
+    );
+}
+
+#[tokio::test]
 async fn test_migration_map_ages() {
-    let mut inputs = make_inputs(64, 64, Some(line_curve()), None);
-    set(&mut inputs, 5, Value::Integer(300));
+    let mut inputs = make_inputs(128, 128, Some(line_curve()), None);
+    set(&mut inputs, 5, Value::Integer(600));
     let result = OpCurveSimulationMeander::run(&mut inputs).await.unwrap();
     let map = image_pixels(&result, 3);
     let max = map.iter().map(|p| p[0]).fold(0.0f32, f32::max);
