@@ -3,3 +3,4 @@
 //! here emits a `Value::Curve`.
 
 pub mod inputs;
+pub mod simulation;

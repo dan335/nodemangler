@@ -542,6 +542,7 @@ operations! {
 
     // curves
     OpCurveInputCurve(crate::operations::curves::inputs::curve::OpCurveInputCurve),
+    OpCurveSimulationMeander(crate::operations::curves::simulation::meander::OpCurveSimulationMeander),
 
     // patterns
     OpImagePatternBrick(crate::operations::images::patterns::brick::OpImagePatternBrick),
@@ -1173,6 +1174,9 @@ pub fn operation_list() -> Vec<OperationListItem> {
         OperationListItem::Category { name: "curves".to_string(), operation_list_items: vec![
             OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpCurveInputCurve },
+            ]},
+            OperationListItem::Category { name: "simulation".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpCurveSimulationMeander },
             ]},
         ]},
     ];

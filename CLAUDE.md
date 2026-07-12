@@ -140,6 +140,7 @@ cargo run -p mangler_cli  # Run the CLI tool
 
 ### curves/
 - `inputs/` — curve (emits a `Value::Curve`; drawn via the Preview2D overlay — see the Curve bullet in Key Conventions)
+- `simulation/` — curve-space simulations (primary output is a Curve, so they live here per the output-type rule, but they follow the images/simulation conventions: seed-first input order, optional guidance maps, iteration count as the main driver). Nodes: meander (Howard & Knutson 1984 curvature-driven bank migration, meanderpy-style: signed curvature non-dimensionalized by channel width + tanh-saturated, upstream-EMA lag sets the meander wavelength ~8.3x lag, neck cutoffs splice loops into oxbow lakes; continuous per-iteration bank noise re-seeds bends because the instability is convective — without it the pinned upstream end relaminarizes straight. Outputs: evolved centerline Curve (RDP-decimated, feeds rasterize_curve/carve_river) + river mask / oxbows / age-graded migration-map images; masks are raw linear like rasterize_curve, not sRGB-encoded)
 
 ### images/
 - `inputs/` — file, url, clipboard, color, gradient, text, constant (number-driven solid grayscale fill)
