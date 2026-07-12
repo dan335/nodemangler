@@ -390,6 +390,15 @@ pub enum GraphChangedMessage {
         /// The path the file was renamed to.
         new_path: PathBuf,
     },
+    /// The engine wrote the graph to `path` in direct response to a
+    /// [`ChangeGraphMessage::SetSavePath`] (first save of an unsaved graph,
+    /// or save-as). Confirms the file exists on disk, so the UI can safely
+    /// complete a close that was waiting on a save instead of racing the
+    /// debounced auto-save.
+    SavedTo {
+        /// The path the graph was written to.
+        path: PathBuf,
+    },
     /// Writing the graph's save file failed (e.g. the parent directory
     /// vanished, or a permissions/disk-space error). Previously this only
     /// reached an `eprintln!` — this variant gives the UI a channel to

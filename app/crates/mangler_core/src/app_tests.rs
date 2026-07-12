@@ -33,9 +33,10 @@ async fn test_auto_save_is_debounced_and_final_save_not_lost() {
         .send(ChangeGraphMessage::SetSavePath(path.clone()))
         .await
         .unwrap();
+    let node_id = get_id();
     tx_change_graph
         .send(ChangeGraphMessage::AddNode {
-            node_id: get_id(),
+            node_id: node_id.clone(),
             node_type: AddNodeType::Operation(Operation::OpNumberInputDecimal),
             position: glam::Vec2::ZERO,
             is_enabled: true,
@@ -46,11 +47,17 @@ async fn test_auto_save_is_debounced_and_final_save_not_lost() {
         .unwrap();
 
     // The pending change must be written within a few debounce intervals.
+    // SetSavePath itself saves synchronously now, so merely existing isn't
+    // enough — wait until the debounced save containing the node lands.
     let mut saved = false;
     for _ in 0..50 {
-        if path.exists() {
-            saved = true;
-            break;
+        if let Ok(contents) = std::fs::read_to_string(&path) {
+            if let Ok(parsed) = serde_json::from_str::<crate::GraphSaveData>(&contents) {
+                if parsed.nodes.contains_key(&node_id) {
+                    saved = true;
+                    break;
+                }
+            }
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
@@ -305,6 +312,200 @@ async fn test_resolve_file_conflict_keep_ours_overwrites_disk() {
 
     app.thread_handle.abort();
     let _ = std::fs::remove_file(&path);
+}
+
+// ── unsaved-until-saved lifecycle: SetSavePath saves synchronously ─────────
+
+/// A pathless engine (brand-new unsaved tab) that receives a SetSavePath must
+/// write the file immediately — not on the ~1s debounce — and ack with
+/// SavedTo, because the GUI's "save then close this tab" flow aborts the
+/// engine task right after the ack and a deferred write would be lost.
+#[tokio::test]
+async fn test_set_save_path_saves_immediately_and_acks() {
+    let (tx_change_graph, rx_change_graph) = mpsc::channel::<ChangeGraphMessage>(32);
+    let (_tx_change_node, rx_change_node) = mpsc::channel::<ChangeNodeMessage>(32);
+    let (tx_node_changed, _rx_node_changed) = mpsc::channel::<NodeChangedMessage>(256);
+    let (tx_graph_changed, mut rx_graph_changed) = mpsc::channel::<GraphChangedMessage>(256);
+
+    let app = App::new(
+        None,
+        None,
+        rx_change_graph,
+        rx_change_node,
+        tx_node_changed,
+        tx_graph_changed,
+    )
+    .expect("App::new should succeed");
+
+    // Content first, path second — the unsaved-tab order.
+    let node_id = get_id();
+    tx_change_graph
+        .send(ChangeGraphMessage::AddNode {
+            node_id: node_id.clone(),
+            node_type: AddNodeType::Operation(Operation::OpNumberInputDecimal),
+            position: glam::Vec2::ZERO,
+            is_enabled: true,
+            custom_name: None,
+            input_values: Vec::new(),
+        })
+        .await
+        .unwrap();
+
+    let path = std::env::temp_dir().join(format!("mangler_first_save_{}.mangler.json", get_id()));
+    tx_change_graph
+        .send(ChangeGraphMessage::SetSavePath(path.clone()))
+        .await
+        .unwrap();
+
+    let acked = wait_for_message(&mut rx_graph_changed, 50, |msg| {
+        matches!(msg, GraphChangedMessage::SavedTo { path: p } if *p == path)
+    })
+    .await;
+    assert!(acked, "SetSavePath should ack with SavedTo for the chosen path");
+
+    let contents = std::fs::read_to_string(&path).expect("file must exist once SavedTo arrived");
+    let parsed: crate::GraphSaveData = serde_json::from_str(&contents).unwrap();
+    assert!(parsed.nodes.contains_key(&node_id), "the saved file must contain the pre-save edit");
+
+    // The immediate save must reset the debounce: with no further changes the
+    // file must not be rewritten by the auto-save loop.
+    let mtime_after_save = std::fs::metadata(&path).unwrap().modified().unwrap();
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    let mtime_later = std::fs::metadata(&path).unwrap().modified().unwrap();
+    assert_eq!(
+        mtime_after_save, mtime_later,
+        "graph file was rewritten while no changes were pending"
+    );
+
+    app.thread_handle.abort();
+    let _ = std::fs::remove_file(&path);
+}
+
+/// A pathless engine with pending edits must idle cleanly: no SaveError, no
+/// FileConflict — the auto-save cycle is a silent no-op until the graph gets
+/// a save path (new tabs are in-memory until the user saves them).
+#[tokio::test]
+async fn test_pathless_graph_never_writes_or_errors() {
+    let (tx_change_graph, rx_change_graph) = mpsc::channel::<ChangeGraphMessage>(32);
+    let (_tx_change_node, rx_change_node) = mpsc::channel::<ChangeNodeMessage>(32);
+    let (tx_node_changed, _rx_node_changed) = mpsc::channel::<NodeChangedMessage>(256);
+    let (tx_graph_changed, mut rx_graph_changed) = mpsc::channel::<GraphChangedMessage>(256);
+
+    let app = App::new(
+        None,
+        None,
+        rx_change_graph,
+        rx_change_node,
+        tx_node_changed,
+        tx_graph_changed,
+    )
+    .expect("App::new should succeed");
+
+    tx_change_graph
+        .send(ChangeGraphMessage::AddNode {
+            node_id: get_id(),
+            node_type: AddNodeType::Operation(Operation::OpNumberInputDecimal),
+            position: glam::Vec2::ZERO,
+            is_enabled: true,
+            custom_name: None,
+            input_values: Vec::new(),
+        })
+        .await
+        .unwrap();
+
+    // Comfortably past several debounce intervals.
+    tokio::time::sleep(Duration::from_millis(2500)).await;
+    let mut errored = false;
+    while let Ok(msg) = rx_graph_changed.try_recv() {
+        if matches!(
+            msg,
+            GraphChangedMessage::SaveError { .. } | GraphChangedMessage::FileConflict { .. }
+        ) {
+            errored = true;
+        }
+    }
+    assert!(!errored, "a pathless graph must not raise SaveError or FileConflict");
+
+    app.thread_handle.abort();
+}
+
+/// SetSavePath must be refused while a file conflict is unresolved — the same
+/// guard RenameFile has. Re-targeting the save path mid-conflict would muddy
+/// the resolution (which file are we overwriting or reloading?).
+#[tokio::test]
+async fn test_set_save_path_refused_while_conflict_pending() {
+    let path = std::env::temp_dir().join(format!("mangler_conflict_sp_{}.mangler.json", get_id()));
+    let initial = crate::GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
+        id: get_id(),
+        name: "conflict setsavepath test".to_string(),
+        nodes: std::collections::HashMap::new(),
+    };
+    std::fs::write(&path, serde_json::to_string(&initial).unwrap()).unwrap();
+
+    let (tx_change_graph, rx_change_graph) = mpsc::channel::<ChangeGraphMessage>(32);
+    let (_tx_change_node, rx_change_node) = mpsc::channel::<ChangeNodeMessage>(32);
+    let (tx_node_changed, _rx_node_changed) = mpsc::channel::<NodeChangedMessage>(256);
+    let (tx_graph_changed, mut rx_graph_changed) = mpsc::channel::<GraphChangedMessage>(256);
+
+    let app = App::new(
+        None,
+        Some(path.clone()),
+        rx_change_graph,
+        rx_change_node,
+        tx_node_changed,
+        tx_graph_changed,
+    )
+    .expect("App::new should succeed");
+
+    // Pending local edit + external overwrite with a future mtime → conflict.
+    tx_change_graph
+        .send(ChangeGraphMessage::AddNode {
+            node_id: get_id(),
+            node_type: AddNodeType::Operation(Operation::OpNumberInputDecimal),
+            position: glam::Vec2::ZERO,
+            is_enabled: true,
+            custom_name: None,
+            input_values: Vec::new(),
+        })
+        .await
+        .unwrap();
+    let external_content = serde_json::to_string(&crate::GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
+        id: get_id(),
+        name: "written by someone else".to_string(),
+        nodes: std::collections::HashMap::new(),
+    })
+    .unwrap();
+    std::fs::write(&path, &external_content).unwrap();
+    let future = std::time::SystemTime::now() + Duration::from_secs(5);
+    filetime::set_file_mtime(&path, filetime::FileTime::from_system_time(future)).unwrap();
+
+    let saw_conflict = wait_for_message(&mut rx_graph_changed, 50, |msg| {
+        matches!(msg, GraphChangedMessage::FileConflict { .. })
+    })
+    .await;
+    assert!(saw_conflict, "precondition: conflict must be detected first");
+
+    let other = std::env::temp_dir().join(format!("mangler_conflict_sp_other_{}.mangler.json", get_id()));
+    tx_change_graph
+        .send(ChangeGraphMessage::SetSavePath(other.clone()))
+        .await
+        .unwrap();
+
+    let refused = wait_for_message(&mut rx_graph_changed, 50, |msg| {
+        matches!(
+            msg,
+            GraphChangedMessage::SaveError { message, .. } if message == "resolve the file conflict first"
+        )
+    })
+    .await;
+    assert!(refused, "SetSavePath during an unresolved conflict must reply SaveError");
+    assert!(!other.exists(), "the refused SetSavePath must not have written the new path");
+
+    app.thread_handle.abort();
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&other);
 }
 
 #[tokio::test]

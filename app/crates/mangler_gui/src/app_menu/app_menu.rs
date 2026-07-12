@@ -65,12 +65,10 @@ impl AppMenu {
 
                         egui::Frame::NONE.inner_margin(8.0).show(ui, |ui| {
                             if ui.button("new").clicked() {
-                                // Constructing the Program (and pointing it at
-                                // a default-library save location) happens in
-                                // `App`, which owns the config and the
-                                // already-open programs map needed for the
-                                // untitled-name collision check — this button
-                                // just raises the signal.
+                                // Constructing the Program happens in `App`,
+                                // which owns the programs map — this button
+                                // just raises the signal. The new graph is
+                                // in-memory and unsaved until the user saves.
                                 bar_response.new_graph_requested = true;
                             }
 

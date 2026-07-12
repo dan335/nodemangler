@@ -15,7 +15,7 @@ use eframe::egui;
 use epaint::{pos2, CornerRadius, Rect};
 use crate::program::Program;
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub const PROFILE: bool = false;
 // pub const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
@@ -46,6 +46,30 @@ pub struct App {
     /// loading in core, these are now only real IO or top-level JSON
     /// corruption failures, which used to be silently swallowed.
     error_modal: Option<String>,
+    /// Deferred close of an unsaved-but-non-empty tab (see [`PendingClose`]).
+    /// At most one close is in flight at a time; further close requests are
+    /// ignored until this resolves.
+    pending_close: Option<PendingClose>,
+    /// True while an app quit is being resolved tab by tab: each frame we
+    /// prompt for the next unsaved non-empty tab; when none remain we
+    /// re-issue `ViewportCommand::Close` and stop cancelling it. Cleared by
+    /// a cancel in the prompt (the user changed their mind about quitting).
+    quit_requested: bool,
+}
+
+/// State of a tab close that couldn't complete immediately because the
+/// graph has unsaved content the user must decide about.
+#[derive(Clone)]
+enum PendingClose {
+    /// The save/discard/cancel modal is up for this tab.
+    Prompt { program_id: String },
+    /// The user chose save and picked a path; waiting for the engine's
+    /// `SavedTo` ack before actually closing — closing aborts the engine
+    /// task, which would race the write if we didn't wait for confirmation.
+    AwaitingSave {
+        program_id: String,
+        since: std::time::Instant,
+    },
 }
 
 impl eframe::App for App {
@@ -57,6 +81,19 @@ impl eframe::App for App {
         }
 
         let ctx = outer_ui.ctx().clone();
+
+        // App-quit intercept: while any tab has unsaved content (or a close
+        // is already being decided), cancel the OS close and resolve it via
+        // the prompt flow below instead. Once every unsaved tab is dealt
+        // with, the re-issued Close passes straight through here.
+        if ctx.input(|i| i.viewport().close_requested()) {
+            let any_unsaved = self.programs.values().any(|p| p.has_unsaved_content());
+            if any_unsaved || self.pending_close.is_some() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.quit_requested = true;
+            }
+        }
+
         egui::CentralPanel::default().show(outer_ui, |ui| {
             // bg
             ui.painter().add(egui::Shape::rect_filled(
@@ -206,24 +243,35 @@ impl eframe::App for App {
             }
 
             if let Some(program_id_to_close) = bar_response.program_to_close {
-                if let Some(program) = self.programs.remove(&program_id_to_close) {
-                    // Abort the engine task before cleanup so no in-flight
-                    // auto-save can re-create a file we're about to delete, then
-                    // drop the tab's blank auto-created "untitled" file if it
-                    // was never used — otherwise closing empty tabs one by one
-                    // still litters the default library.
-                    program.app.thread_handle.abort();
-                    cleanup_empty_untitled(&program);
-                    drop(program);
-                    if self.current_program == Some(program_id_to_close) {
-                        self.current_program = None;
+                self.request_close(program_id_to_close);
+            }
 
-                        if let Some(next_program_id) = self.programs.keys().next() {
-                            self.current_program = Some(next_program_id.clone());
-                        }
+            // Quit flow: with no close currently being decided, prompt for
+            // the next unsaved non-empty tab, or — when none remain — stop
+            // cancelling the close and re-issue it (next frame's intercept
+            // lets it through). One prompt at a time, sequentially.
+            if self.quit_requested && self.pending_close.is_none() {
+                let next = self
+                    .programs
+                    .iter()
+                    .find(|(_, p)| p.has_unsaved_content())
+                    .map(|(id, _)| id.clone());
+                match next {
+                    Some(id) => {
+                        // Focus the tab so the user sees what they're
+                        // deciding about (and so its message pump runs —
+                        // see request_close).
+                        self.current_program = Some(id.clone());
+                        self.pending_close = Some(PendingClose::Prompt { program_id: id });
+                    }
+                    None => {
+                        self.quit_requested = false;
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                 }
             }
+
+            self.show_close_prompt_modal(ui);
 
             // Error modal: any failed Program creation/open this frame (menu
             // bar, Libraries panel, startup) lands here. OK (or Esc/outside
@@ -254,22 +302,14 @@ impl eframe::App for App {
         true
     }
 
-    /// Cleans up throwaway blank graphs on shutdown. Every opened window /
-    /// new tab auto-creates an `untitled N.mangler.json` in the default library
-    /// so auto-save works from the first edit — but if the user never touches
-    /// it, that leaves an empty file behind, and they pile up over time.
-    ///
-    /// Here, for every still-open program, we abort its engine task first (so
-    /// no in-flight auto-save can re-create a file after we remove it) and then
-    /// delete any that are empty and still sitting at their auto-generated
-    /// "untitled" path. Tabs closed earlier in the session are handled at
-    /// close time (see the `program_to_close` branch in `ui`).
+    /// Shuts down every still-open program's engine task. No file cleanup is
+    /// needed: unsaved graphs have no file, and saved graphs keep theirs
+    /// (auto-save already flushed any pending edits). Unsaved graphs with
+    /// content never reach this point silently — the close-requested intercept
+    /// in `ui` prompts for each of them before letting the quit proceed.
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         for program in self.programs.values() {
             program.app.thread_handle.abort();
-        }
-        for program in self.programs.values() {
-            cleanup_empty_untitled(program);
         }
     }
 }
@@ -288,25 +328,25 @@ impl App {
         set_theme(&cc.egui_ctx, theme.clone());
 
         // Make sure a default library folder exists (creating it and/or
-        // linking it into `config.libraries` on first run) so brand-new
-        // graphs have somewhere to auto-save to. Persisted below alongside
-        // whatever `assign_default_save_location` decides for the startup
-        // tab; `LibrariesState::new` further down clones the (now possibly
+        // linking it into `config.libraries` on first run) so the Libraries
+        // panel has content and first-save dialogs have somewhere sensible to
+        // start. `LibrariesState::new` further down clones the (now possibly
         // updated) `config.libraries`, so a freshly-linked default library
         // shows up in the panel immediately, no restart needed.
+        config.ensure_default_library();
+        config.save();
+
         let mut programs = HashMap::new();
         let mut current_program: Option<String> = None;
         let mut error_modal: Option<String> = None;
 
-        // The initial empty tab. Creating a fresh Program has no file IO, so
-        // this failing means something is deeply wrong (e.g. the engine task
+        // The initial empty tab: in-memory and unsaved (no file exists until
+        // the user saves). Creating a fresh Program has no file IO, so this
+        // failing means something is deeply wrong (e.g. the engine task
         // couldn't spawn) — surface it instead of silently starting with no
         // tab and no explanation.
         match Program::new(None, None) {
-            Ok(mut program) => {
-                // No other programs are open yet, so the untitled-name
-                // collision check has nothing to avoid besides what's on disk.
-                assign_default_save_location(&mut program, &mut config, &HashSet::new());
+            Ok(program) => {
                 current_program = Some(program.app.id.clone());
                 programs.insert(program.app.id.clone(), program);
             }
@@ -314,7 +354,6 @@ impl App {
                 error_modal = Some(format!("Failed to create a new graph: {}", error.0));
             }
         }
-        config.save();
 
         Self {
             app_menu: AppMenu::new(),
@@ -329,6 +368,8 @@ impl App {
             // libraries persisted in config.
             libraries: LibrariesState::new(cc.egui_ctx.clone(), config.libraries.clone()),
             error_modal,
+            pending_close: None,
+            quit_requested: false,
         }
     }
 
@@ -359,21 +400,180 @@ impl App {
         }
     }
 
+    /// Requests closing a tab. Saved or empty tabs close immediately; an
+    /// unsaved tab with content defers into the save/discard/cancel prompt
+    /// (`pending_close`), which `show_close_prompt_modal` resolves. Only one
+    /// close can be pending at a time — further requests are dropped until
+    /// it resolves (the close button can simply be clicked again).
+    fn request_close(&mut self, program_id: String) {
+        if self.pending_close.is_some() {
+            return;
+        }
+        let needs_prompt = self
+            .programs
+            .get(&program_id)
+            .is_some_and(|p| p.has_unsaved_content());
+        if needs_prompt {
+            // Focus the tab so the user sees what they're deciding about —
+            // and, load-bearing: only the focused tab's message pump
+            // (`Program::update`) runs each frame, so the SavedTo ack a
+            // save-then-close waits on would never arrive for a background
+            // tab.
+            self.current_program = Some(program_id.clone());
+            self.pending_close = Some(PendingClose::Prompt { program_id });
+        } else {
+            self.close_program(&program_id);
+        }
+    }
+
+    /// Removes a tab: aborts its engine task and moves focus to some other
+    /// tab if the closed one was current. No file cleanup — unsaved graphs
+    /// have no file, and saved graphs keep theirs (auto-save flushed any
+    /// pending edits; for a just-saved closing tab we waited for the
+    /// engine's SavedTo ack before getting here).
+    fn close_program(&mut self, program_id: &str) {
+        if let Some(program) = self.programs.remove(program_id) {
+            program.app.thread_handle.abort();
+            drop(program);
+            if self.current_program.as_deref() == Some(program_id) {
+                self.current_program = self.programs.keys().next().cloned();
+            }
+        }
+    }
+
+    /// Renders and resolves the unsaved-close prompt (see [`PendingClose`]).
+    /// Same `egui::Modal` pattern as `show_error_modal`; chrome colors come
+    /// from the theme via the global visuals.
+    fn show_close_prompt_modal(&mut self, ui: &mut egui::Ui) {
+        let Some(pending) = self.pending_close.clone() else {
+            return;
+        };
+
+        let program_id = match &pending {
+            PendingClose::Prompt { program_id } => program_id.clone(),
+            PendingClose::AwaitingSave { program_id, .. } => program_id.clone(),
+        };
+
+        // The tab vanished out from under the prompt (shouldn't happen —
+        // request_close is the only closer — but don't wedge the modal).
+        if !self.programs.contains_key(&program_id) {
+            self.pending_close = None;
+            return;
+        }
+
+        // Resolve a pending save before rendering: the focused program's
+        // message pump ran earlier this frame, so a SavedTo ack from the
+        // engine is visible now.
+        if let PendingClose::AwaitingSave { since, .. } = &pending {
+            let confirmed = self
+                .programs
+                .get_mut(&program_id)
+                .and_then(|p| p.take_confirmed_save())
+                .is_some();
+            if confirmed {
+                self.pending_close = None;
+                self.close_program(&program_id);
+                return;
+            }
+            if since.elapsed() > std::time::Duration::from_secs(5) {
+                // The write never got confirmed (engine's SaveError details
+                // already surfaced as the tab's status message). Keep the
+                // tab and its in-memory graph alive rather than closing
+                // over an unconfirmed save.
+                self.pending_close = None;
+                self.quit_requested = false;
+                self.error_modal = Some(
+                    "couldn't save the graph — the tab was left open. Check the save location and try again."
+                        .to_string(),
+                );
+                return;
+            }
+        }
+
+        let display_name = self
+            .programs
+            .get(&program_id)
+            .map(|p| p.display_name())
+            .unwrap_or_default();
+        let awaiting_save = matches!(pending, PendingClose::AwaitingSave { .. });
+
+        let mut chose_save = false;
+        let mut chose_discard = false;
+        let mut chose_cancel = false;
+        let modal = egui::Modal::new(egui::Id::new("close_prompt_modal")).show(ui.ctx(), |ui| {
+            ui.set_width(320.0);
+            ui.heading("unsaved graph");
+            ui.add_space(8.0);
+            ui.label(format!("'{}' has never been saved.", display_name));
+            ui.add_space(12.0);
+            if awaiting_save {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label("saving…");
+                });
+            } else {
+                ui.label("Save it before closing?");
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    if ui.button("save").clicked() {
+                        chose_save = true;
+                    }
+                    if ui.button("discard").clicked() {
+                        chose_discard = true;
+                    }
+                    if ui.button("cancel").clicked() {
+                        chose_cancel = true;
+                    }
+                });
+            }
+        });
+
+        if awaiting_save {
+            // Ignore Esc/outside clicks while the (sub-second) save is in
+            // flight — the wait resolves above on ack or timeout.
+            return;
+        }
+
+        if chose_save {
+            // Seed the dialog with the default library so first saves land
+            // where the Libraries panel can see them (same seed as the
+            // settings panel's "save graph" button).
+            let mut config = AppConfig::load();
+            let default_dir = config.ensure_default_library();
+            config.save();
+
+            if let Some(path) = crate::settings::graph_settings_panel::choose_graph_save_path(
+                default_dir.as_deref(),
+                &display_name,
+            ) {
+                if let Some(program) = self.programs.get_mut(&program_id) {
+                    program.set_save_location(path);
+                }
+                self.pending_close = Some(PendingClose::AwaitingSave {
+                    program_id,
+                    since: std::time::Instant::now(),
+                });
+            }
+            // Dialog cancelled: stay in Prompt, the modal remains.
+        } else if chose_discard {
+            self.pending_close = None;
+            self.close_program(&program_id);
+            // An active quit flow naturally advances to the next unsaved
+            // tab (or the final Close) next frame.
+        } else if chose_cancel || modal.should_close() {
+            // Esc / outside click also cancels — unlike the file-conflict
+            // modal there IS a safe "neither" answer here.
+            self.pending_close = None;
+            self.quit_requested = false;
+        }
+    }
+
     /// Creates a brand-new blank program tab (the menu bar's "new" button).
-    /// Points it at a fresh "untitled N" file inside the default library, if
-    /// one is configured/writable — see `assign_default_save_location`.
+    /// The graph is in-memory and unsaved — no file exists until the user
+    /// saves it from graph settings (or via the close prompt).
     fn create_new_program(&mut self) {
         match Program::new(None, None) {
-            Ok(mut program) => {
-                let mut config = AppConfig::load();
-                let taken: HashSet<PathBuf> = self
-                    .programs
-                    .values()
-                    .filter_map(|p| p.app.save_path.clone())
-                    .collect();
-                assign_default_save_location(&mut program, &mut config, &taken);
-                config.save();
-
+            Ok(program) => {
                 let id = program.app.id.clone();
                 self.programs.insert(id.clone(), program);
                 self.current_program = Some(id);
@@ -426,9 +626,11 @@ impl App {
         match action {
             LibraryAction::OpenGraph { path } => self.open_or_focus(path),
             LibraryAction::CreateGraph { path, name } => {
-                // A blank tab pointed at the target path: the engine's
-                // auto-save writes the file ~1s later, and the library
-                // scanner picks it up on its next pass.
+                // A blank tab pointed at the target path: the engine writes
+                // the file immediately on SetSavePath (this is the one
+                // "new graph" flow that starts saved — the user explicitly
+                // created it inside a library), and the library scanner
+                // picks it up on its next pass.
                 match Program::new(None, None) {
                     Ok(mut program) => {
                         program.set_save_location(path);
@@ -603,86 +805,6 @@ impl App {
     }
 }
 
-/// Points `program` at a fresh "untitled N" file inside the default library
-/// (creating the library folder if necessary), or — if no writable default
-/// library location exists — leaves it pathless and queues a status hint
-/// explaining why auto-save won't kick in.
-///
-/// `taken` is the set of save paths already claimed by currently-open
-/// programs this session; it guards against two rapid "new" clicks (before
-/// the first program's ~1s auto-save actually writes its file) both picking
-/// "untitled 1".
-///
-/// Mutates `config` (`ensure_default_library` may set `default_library`
-/// and/or link a library entry) but does not persist it — callers must call
-/// `config.save()` themselves once they're done using it.
-fn assign_default_save_location(
-    program: &mut Program,
-    config: &mut AppConfig,
-    taken: &HashSet<PathBuf>,
-) {
-    match config.ensure_default_library() {
-        Some(dir) => {
-            let path = next_untitled_path(&dir, taken);
-            program.set_save_location(path);
-        }
-        None => {
-            program.queue_status_message(
-                "no default library — pick a save location in graph settings".to_string(),
-            );
-        }
-    }
-}
-
-/// Deletes `program`'s save file if the graph is empty and the file is an
-/// auto-generated "untitled N" one — the throwaway blank tab case. Called when
-/// a tab or the whole app closes so these never-used files don't accumulate.
-///
-/// The caller must abort the program's engine task first, otherwise a pending
-/// auto-save could re-write the file right after we remove it.
-///
-/// Best-effort: a failed delete just leaves a harmless empty file behind, so
-/// errors are swallowed rather than surfaced at close time. A graph the user
-/// deliberately named (or one with any nodes) is never touched.
-fn cleanup_empty_untitled(program: &Program) {
-    if !program.is_empty() {
-        return;
-    }
-    let Some(path) = program.app.save_path.as_ref() else {
-        return;
-    };
-    if is_untitled_graph_path(path) {
-        let _ = std::fs::remove_file(path);
-    }
-}
-
-/// True if `path`'s file name is an auto-generated `untitled N.mangler.json`
-/// (exactly the shape [`next_untitled_path`] produces: the literal `untitled `,
-/// then one or more ASCII digits, then the graph extension). A user-chosen
-/// name won't match, so cleanup can't delete an intentionally-named graph.
-fn is_untitled_graph_path(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .and_then(|name| name.strip_suffix(mangler_core::naming::GRAPH_EXTENSION))
-        .and_then(|stem| stem.strip_prefix("untitled "))
-        .is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
-}
-
-/// Finds the first available "untitled N.mangler.json" path inside `dir`,
-/// skipping both files that already exist on disk and paths in `taken`
-/// (already claimed by an open-but-not-yet-saved program).
-fn next_untitled_path(dir: &Path, taken: &HashSet<PathBuf>) -> PathBuf {
-    let mut n: u32 = 1;
-    loop {
-        let candidate =
-            dir.join(format!("untitled {}{}", n, mangler_core::naming::GRAPH_EXTENSION));
-        if !candidate.exists() && !taken.contains(&candidate) {
-            return candidate;
-        }
-        n += 1;
-    }
-}
-
 fn setup_fonts(ctx: &egui::Context) {
     // Start with the default fonts (we will be adding to them rather than replacing them).
     let mut fonts = egui::FontDefinitions::default();
@@ -736,7 +858,3 @@ fn setup_fonts(ctx: &egui::Context) {
     // Tell egui to use these fonts:
     ctx.set_fonts(fonts);
 }
-
-#[cfg(test)]
-#[path = "app_tests.rs"]
-mod tests;

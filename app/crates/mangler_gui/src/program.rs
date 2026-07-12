@@ -128,6 +128,11 @@ pub struct Program {
     /// [`LibraryImagePreview`]). When set, it takes precedence over
     /// `viewing_node_id_index` in the 2D preview.
     library_image_preview: Option<LibraryImagePreview>,
+    /// Set when the engine confirms a `SetSavePath`-triggered write
+    /// ([`GraphChangedMessage::SavedTo`]). `App`'s deferred-close state
+    /// machine takes it via [`Self::take_confirmed_save`] to complete a
+    /// close that was waiting on the save.
+    confirmed_save: Option<PathBuf>,
 }
 
 impl Program {
@@ -176,6 +181,7 @@ impl Program {
                 graph_name_buffer: String::new(),
                 pending_open_graphs: Vec::new(),
                 library_image_preview: None,
+                confirmed_save: None,
             }),
             Err(error) => Err(NewGraphError(format!(
                 "Error creating program. {:?}",
@@ -187,11 +193,25 @@ impl Program {
     /// Whether this program's graph currently has no nodes. `graph_editor`'s
     /// node map is the GUI-side mirror of the engine graph (kept in sync by the
     /// `LoadedNode`/`NodeRemoved` handlers and `GraphCleared`), so this is an
-    /// accurate "is the graph blank right now" check. Used at shutdown and on
-    /// tab close to spot throwaway auto-created "untitled" graphs worth deleting
-    /// so blank files don't accumulate in the default library.
+    /// accurate "is the graph blank right now" check. Gates the unsaved-close
+    /// prompt: an empty unsaved tab has nothing to lose and closes silently.
     pub fn is_empty(&self) -> bool {
         self.graph_editor.graph_nodes.is_empty()
+    }
+
+    /// True when closing this program should prompt the user: never saved
+    /// AND has content worth saving. Saved graphs are covered by auto-save;
+    /// empty unsaved graphs have nothing to lose.
+    pub fn has_unsaved_content(&self) -> bool {
+        self.app.save_path.is_none() && !self.is_empty()
+    }
+
+    /// Takes the engine's confirmation that a `SetSavePath` write hit disk
+    /// (see [`GraphChangedMessage::SavedTo`]). One-shot by design: `App`'s
+    /// close state machine polls this each frame while waiting to close a
+    /// just-saved tab.
+    pub fn take_confirmed_save(&mut self) -> Option<PathBuf> {
+        self.confirmed_save.take()
     }
 
     /// This graph's display name: derived purely from the save-path file
@@ -204,12 +224,13 @@ impl Program {
         }
     }
 
-    /// Points this program's graph at a save path. Used by the Libraries panel
-    /// when creating a graph inside a library folder and when re-targeting a
-    /// tab after its file was renamed on disk. The display name follows the
-    /// path automatically (see [`Self::display_name`]), so there's no separate
-    /// name to set: update the GUI-side save path, then tell the engine, which
-    /// auto-saves to the new path ~1s later.
+    /// Points this program's graph at a save path. Used for the first save of
+    /// an unsaved graph, save-as, the Libraries panel's create-graph flow, and
+    /// re-targeting a tab after its file was renamed on disk. The display name
+    /// follows the path automatically (see [`Self::display_name`]), so there's
+    /// no separate name to set: update the GUI-side save path, then tell the
+    /// engine, which writes the file immediately and acks with
+    /// [`GraphChangedMessage::SavedTo`].
     pub fn set_save_location(&mut self, path: PathBuf) {
         self.app.save_path = Some(path.clone());
 
@@ -269,14 +290,6 @@ impl Program {
     /// a tab (via `open_or_focus`), which the program itself can't do.
     pub fn take_pending_open_graphs(&mut self) -> Vec<PathBuf> {
         std::mem::take(&mut self.pending_open_graphs)
-    }
-
-    /// Shows `message` in the fading status overlay (see
-    /// `show_status_message`). Used by `App` for one-off notices that don't
-    /// warrant the blocking error modal — e.g. "no default library" when a
-    /// brand-new graph can't be given an auto-save location.
-    pub fn queue_status_message(&mut self, message: String) {
-        self.status_message = Some((message, std::time::Instant::now()));
     }
 
     /// Once-per-frame logic that must run before any panel rendering: pointer
@@ -522,6 +535,15 @@ impl Program {
                     // RenameFile). Adopt the new path; the tab title and the
                     // name field follow automatically via `display_name`.
                     self.app.save_path = Some(new_path);
+                }
+                GraphChangedMessage::SavedTo { path } => {
+                    // The engine confirmed a SetSavePath-triggered write hit
+                    // disk (first save or save-as). Adopting the path is
+                    // normally a no-op (the save-path setter already did it);
+                    // the remembered confirmation is what App's deferred-close
+                    // state machine waits on before aborting the engine task.
+                    self.app.save_path = Some(path.clone());
+                    self.confirmed_save = Some(path);
                 }
             }
         }
@@ -839,18 +861,28 @@ impl Program {
                     theme,
                 );
 
-                // name committed -> rename the file on disk. We do NOT
-                // optimistically update save_path here: the rename can fail
-                // (name collision), and the engine's SaveError → status
+                // name committed. Saved graph -> rename the file on disk. We
+                // do NOT optimistically update save_path here: the rename can
+                // fail (name collision), and the engine's SaveError → status
                 // message explains it. On success FileRenamed updates the
                 // path, and display_name (hence the tab title) follows.
+                // Unsaved graph -> there is no file to rename; the name is a
+                // GUI-side pending value that becomes the on-disk stem at
+                // first save (it seeds the save dialog's file name).
                 if let Some(new_stem) = graph_settings_response.new_name {
-                    let message = ChangeGraphMessage::RenameFile { new_stem };
+                    if self.app.save_path.is_some() {
+                        let message = ChangeGraphMessage::RenameFile { new_stem };
 
-                    match self.tx_change_graph.try_send(message) {
-                        Ok(_) => {}
-                        Err(err) => {
-                            println!("Error sending graph_message: {:?}", err);
+                        match self.tx_change_graph.try_send(message) {
+                            Ok(_) => {}
+                            Err(err) => {
+                                println!("Error sending graph_message: {:?}", err);
+                            }
+                        }
+                    } else {
+                        let trimmed = new_stem.trim();
+                        if !trimmed.is_empty() {
+                            self.fallback_name = trimmed.to_string();
                         }
                     }
                 }

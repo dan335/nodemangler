@@ -132,8 +132,55 @@ impl App {
                                     needs_to_save = true;
                                 }
                                 ChangeGraphMessage::SetSavePath(save_path) => {
-                                    graph.set_save_path(save_path);
-                                    needs_to_save = true;
+                                    // Like RenameFile below: never re-target
+                                    // the save path while a conflict is
+                                    // unresolved.
+                                    if conflict_pending {
+                                        if let Some(tx) = &graph.tx_graph_changed {
+                                            if let Err(err) = tx.try_send(GraphChangedMessage::SaveError {
+                                                path: save_path,
+                                                message: "resolve the file conflict first".to_string(),
+                                            }) {
+                                                println!("Error sending SaveError: {:?}", err);
+                                            }
+                                        }
+                                    } else {
+                                        graph.set_save_path(save_path.clone());
+                                        // Save synchronously rather than via the
+                                        // debounced auto-save: the GUI's close
+                                        // flow ("save then close this unsaved
+                                        // tab") aborts this task right after,
+                                        // which would race a deferred write.
+                                        // Deliberately not gated on
+                                        // disk_is_newer(): the target was chosen
+                                        // by the user through a save dialog
+                                        // (which already confirms overwrites).
+                                        match graph.save_to_file() {
+                                            Ok(()) => {
+                                                if let Some(tx) = &graph.tx_graph_changed {
+                                                    if let Err(err) = tx.try_send(GraphChangedMessage::SavedTo {
+                                                        path: save_path,
+                                                    }) {
+                                                        println!("Error sending SavedTo: {:?}", err);
+                                                    }
+                                                }
+                                                last_save = Instant::now();
+                                                needs_to_save = false;
+                                            }
+                                            Err(message) => {
+                                                if let Some(tx) = &graph.tx_graph_changed {
+                                                    if let Err(err) = tx.try_send(GraphChangedMessage::SaveError {
+                                                        path: save_path,
+                                                        message,
+                                                    }) {
+                                                        println!("Error sending SaveError: {:?}", err);
+                                                    }
+                                                }
+                                                // Let the debounced loop retry.
+                                                needs_to_save = true;
+                                            }
+                                        }
+                                    }
                                 }
                                 ChangeGraphMessage::RenameFile { new_stem } => {
                                     // Never rename out from under an unresolved
