@@ -638,8 +638,8 @@ impl OpCurveSimulationMeander {
                 .with_description("River width at the downstream end, in pixels at a 1024px reference (scales with output size). Also the simulation's local physical scale: bend tightness, meander wavelength, cutoff necks, and step size all follow the local width."),
             Input::new("upstream width".to_string(), Value::Decimal(0.35), Some(InputSettings::Slider { range: (0.05, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Channel width at the source as a fraction of the downstream width; the river widens downstream like accumulating discharge (sqrt growth). 1 = constant width."),
-            Input::new("width variation".to_string(), Value::Decimal(0.2), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
-                .with_description("Local width irregularity in the rendered masks: wider at bends (cut bank + point bar) plus gentle noise along the length, so the banks aren't perfect parallel lines."),
+            Input::new("width variation".to_string(), Value::Decimal(0.2), Some(InputSettings::Slider { range: (0.0, 3.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Local width irregularity in the rendered masks: wider at bends (cut bank + point bar) plus noise along the length. Subtle around 0.2; past ~1.5 the channel swells and pinches into pool-and-narrows beading."),
             Input::new("upstream lag".to_string(), Value::Decimal(1.5), Some(InputSettings::Slider { range: (0.5, 8.0), step_by: Some(0.1), clamp_to_range: true }), None)
                 .with_description("How far upstream curvature influences migration, in channel widths. Sets the meander wavelength (~8x the lag) and the downstream translation of bends; longer lag = longer, slower-growing bends."),
             Input::new("cutoff distance".to_string(), Value::Decimal(1.5), Some(InputSettings::Slider { range: (0.5, 4.0), step_by: Some(0.1), clamp_to_range: true }), None)
@@ -712,7 +712,7 @@ impl OpCurveSimulationMeander {
         let migration_rate = migration_rate.clamp(0.0, 1.0) as f64;
         let channel_width = channel_width.clamp(1.0, 128.0);
         let upstream_frac = upstream_frac.clamp(0.05, 1.0) as f64;
-        let variation = variation.clamp(0.0, 1.0) as f64;
+        let variation = variation.clamp(0.0, 3.0) as f64;
         let lag = lag.clamp(0.5, 8.0) as f64;
         let cutoff = (cutoff.clamp(0.5, 4.0)) as f64;
         let wobble = wobble.clamp(0.0, 1.0) as f64;
@@ -777,12 +777,14 @@ impl OpCurveSimulationMeander {
         let (mut pts, mut spacing) = resample(&poly, ds);
         let lambda_star = 8.3 * lag * w_norm;
         seed_perturbation(&mut pts, &mut rng, wobble * w_norm, lambda_star, spacing, &params);
-        // Width-variation noise: fixed frequencies (cycles per unit of arc
-        // fraction), seeded amplitude + phase. Drawn up front so the pattern
-        // doesn't re-roll when the iteration count changes.
-        let width_waves: Vec<(f64, f64, f64)> = [3.0, 7.0, 13.0]
+        // Width-variation noise: three sinusoids with wavelengths pegged to
+        // the channel scale (in multiples of the channel width, converted to
+        // arc-fraction frequencies at render time), seeded amplitude + phase.
+        // Drawn up front so the pattern doesn't re-roll when the iteration
+        // count changes.
+        let width_waves: Vec<(f64, f64, f64)> = [8.0, 20.0, 50.0]
             .iter()
-            .map(|&f| (0.5 + 0.5 * rng.f64(), f, rng.f64() * std::f64::consts::TAU))
+            .map(|&wl| (0.5 + 0.5 * rng.f64(), wl * w_norm, rng.f64() * std::f64::consts::TAU))
             .collect();
 
         let mut curv: Vec<f64> = Vec::new();
@@ -828,18 +830,19 @@ impl OpCurveSimulationMeander {
         // gentle seeded noise along the length.
         widths_along(pts.len(), &params, &mut widths);
         signed_curvature(&pts, &widths, &mut curv, &mut scratch);
-        let denom = (pts.len().max(2) - 1) as f64;
         let render_widths: Vec<f64> = widths
             .iter()
             .enumerate()
             .map(|(i, &wi)| {
-                let t = i as f64 / denom;
+                let arc = i as f64 * spacing;
                 let noise: f64 = width_waves
                     .iter()
-                    .map(|(a, f, ph)| a * (f * std::f64::consts::TAU * t + ph).sin())
+                    .map(|(a, wl, ph)| a * (arc / wl * std::f64::consts::TAU + ph).sin())
                     .sum::<f64>()
                     / width_waves.len() as f64;
-                wi * (1.0 + variation * (0.6 * curv[i].abs() + 0.4 * noise))
+                // Floor at 0.1x so high variation pinches the channel into
+                // pool-and-narrows beading instead of severing it entirely.
+                wi * (1.0 + variation * (0.6 * curv[i].abs() + 0.4 * noise)).max(0.1)
             })
             .collect();
 
