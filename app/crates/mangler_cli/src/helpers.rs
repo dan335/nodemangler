@@ -258,6 +258,7 @@ pub(crate) fn value_type_name(vt: &ValueType) -> &'static str {
         ValueType::TextHAlign => "texthalign",
         ValueType::TextVAlign => "textvalign",
         ValueType::ExportPreset => "exportpreset",
+        ValueType::Curve => "curve",
     }
 }
 

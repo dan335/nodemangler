@@ -211,11 +211,29 @@ impl Graph {
                         // so they come back as their Default regardless of type
                         // until we re-derive them from create_inputs/create_outputs.
                         if let NodeType::Operation { operation } = &node.node_type {
-                            let fresh_inputs = operation.create_inputs();
-                            for (input, fresh) in node.inputs.iter_mut().zip(fresh_inputs.into_iter()) {
-                                input.default_value = fresh.default_value;
-                                input.hide_in_graph = fresh.hide_in_graph;
+                            // Rebuild inputs/outputs from the current schema so a
+                            // graph saved by a build with a *different* input
+                            // count (an op gained or lost an input) still gets a
+                            // full-length input slice — otherwise a shorter saved
+                            // vector makes `run()` index out of bounds and panics
+                            // the engine thread. Positional migration: keep each
+                            // saved slot's user state (value, connection, exposed)
+                            // where it exists, adopt the schema for everything
+                            // else (name/description/settings/default_value/
+                            // hide_in_graph). Extra saved slots are dropped.
+                            let mut fresh_inputs = operation.create_inputs();
+                            for (i, fresh) in fresh_inputs.iter_mut().enumerate() {
+                                if let Some(saved) = node.inputs.get(i) {
+                                    fresh.value = saved.value.clone();
+                                    fresh.connection = saved.connection.clone();
+                                    fresh.is_exposed = saved.is_exposed;
+                                }
                             }
+                            node.inputs = fresh_inputs;
+
+                            // Outputs carry outgoing connection lists, so keep
+                            // the saved vector and only re-derive the
+                            // #[serde(skip)] value/default_value from the schema.
                             let fresh_outputs = operation.create_outputs();
                             for (out, fresh) in node.outputs.iter_mut().zip(fresh_outputs.into_iter()) {
                                 out.value = fresh.value.clone();
@@ -698,15 +716,18 @@ impl Graph {
             }
         }
 
-        // A normal (typed) input keeps whatever value the connection last
-        // propagated into it. If that value is a different type than the input
-        // declares — e.g. an Integer source left in a Decimal input — restore
-        // the input to its default so its type, and its editing widget/slider,
-        // come back. (accepts_any_type inputs are re-adapted above.)
+        // A normal (typed) input reverts to its default value when its incoming
+        // connection is removed, and the node is marked dirty so it re-runs and
+        // refreshes its output/thumbnail. Without the reset the input would keep
+        // whatever the connection last propagated (e.g. a deleted upstream node's
+        // final image); the downstream node would then recompute to the same
+        // result and appear not to have updated at all. Resetting also restores
+        // the input's declared type — and thus its editing widget/slider — when a
+        // differently-typed source (e.g. an Integer left in a Decimal input) had
+        // been feeding it. (accepts_any_type inputs are re-adapted above.)
         let restore = self.nodes.get(&node_id)
             .and_then(|n| n.inputs.get(input_index))
-            .filter(|i| !i.accepts_any_type
-                && i.value.value_type() != i.default_value.value_type())
+            .filter(|i| !i.accepts_any_type)
             .map(|i| i.default_value.clone());
 
         if let Some(default_value) = restore {

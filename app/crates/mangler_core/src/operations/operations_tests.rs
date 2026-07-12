@@ -191,3 +191,31 @@ fn test_no_stale_operations_in_readme() {
         "README.md Node Reference lists nodes that no longer exist in operation_list(): {extra:?}"
     );
 }
+
+/// Diagnostic: run every operation with its default inputs and report any that
+/// panic (e.g. an input-index-out-of-bounds from a `create_inputs()`/`run()`
+/// mismatch). Panics inside a spawned tokio task surface as a JoinError.
+#[test]
+fn test_no_operation_panics_on_default_inputs() {
+    use crate::operations::Operation;
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let mut panicked = Vec::new();
+    for op in Operation::all_variants() {
+        let name = format!("{:?}", op);
+        let mut inputs = op.create_inputs();
+        let res = rt.block_on(async move {
+            tokio::spawn(async move { op.run(&mut inputs).await }).await
+        });
+        if let Err(join) = res {
+            if join.is_panic() {
+                panicked.push(name);
+            }
+        }
+    }
+    assert!(panicked.is_empty(), "operations panicked on default inputs: {panicked:?}");
+}

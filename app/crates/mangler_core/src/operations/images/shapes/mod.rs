@@ -12,5 +12,6 @@ pub mod line;
 pub mod paraboloid;
 pub mod polygon;
 pub mod pyramid;
+pub mod rasterize_curve;
 pub mod rectangle;
 pub mod star;

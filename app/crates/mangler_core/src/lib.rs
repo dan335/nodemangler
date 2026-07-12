@@ -28,6 +28,7 @@ pub mod node_settings;
 pub mod operations;
 pub mod output;
 pub mod value;
+pub mod curve;
 pub mod node_type;
 pub mod thumbnail;
 pub mod thumbnail_service;

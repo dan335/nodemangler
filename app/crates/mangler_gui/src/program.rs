@@ -31,6 +31,7 @@ use crate::{
     themes::theme::Theme,
     view_to_graph_space_pos2,
     view_window::{
+        curve_overlay,
         image_viewer::ImageViewer,
         material_channels::{material_input_channel, MaterialAssignment, MaterialChannel},
         preview_2d,
@@ -1007,16 +1008,45 @@ impl Program {
 
     fn show_preview_2d_panel(&mut self, ui: &mut egui::Ui, leaf_id: LeafId, theme: &Theme) {
         // Destructure so the per-leaf viewer and the graph nodes can be
-        // borrowed simultaneously (disjoint fields).
+        // borrowed simultaneously (disjoint fields). `tx_change_node` is taken
+        // here too so the curve overlay can commit without re-borrowing `self`.
         let Self {
             viewers_2d,
             graph_editor,
             viewing_node_id_index,
             library_image_preview,
+            editing_node_id,
+            tx_change_node,
             ..
         } = self;
 
         let viewer = viewers_2d.entry(leaf_id).or_insert_with(ImageViewer::new);
+
+        // Capture the panel rect before any child drawing advances the cursor
+        // (same formula as `image_viewer::show`).
+        let view_rect = Rect::from_min_size(ui.cursor().left_top(), ui.available_size());
+
+        // Curve editing is selection-driven: active when the *edited* (settings-
+        // panel) node has an unconnected `Value::Curve` input. Resolved up front
+        // (an immutable read that ends here via clone) so the mutable node
+        // borrow below is sequential, and so the empty-panel branch can show the
+        // "draw a curve" hint instead of the generic placeholder.
+        let editing_curve: Option<(String, usize, mangler_core::curve::Curve)> = editing_node_id
+            .as_ref()
+            .and_then(|id| graph_editor.graph_nodes.get(id))
+            .and_then(|node| {
+                node.inputs
+                    .iter()
+                    .position(|inp| matches!(inp.value, Value::Curve(_)) && inp.connection.is_none())
+                    .and_then(|idx| match &node.inputs[idx].value {
+                        Value::Curve(c) => Some((node.id.clone(), idx, c.clone())),
+                        _ => None,
+                    })
+            });
+
+        // Normal content dispatch. Records the displayed image's dimensions so
+        // the overlay can map onto the same on-screen rect `draw_image` uses.
+        let mut displayed_dims: Option<(f32, f32)> = None;
 
         // A clicked library image takes precedence over a viewed node output.
         // Its cache key is the file path, so switching images rebuilds the
@@ -1031,17 +1061,74 @@ impl Program {
                 true, // fit each newly-opened library image to the view
                 theme,
             );
-            return;
-        }
-
-        if let Some((viewing_node_id, output_index)) = viewing_node_id_index.as_ref() {
+            displayed_dims = Some((preview.image.width() as f32, preview.image.height() as f32));
+        } else if let Some((viewing_node_id, output_index)) = viewing_node_id_index.as_ref() {
             if let Some(graph_node) = graph_editor.graph_nodes.get(viewing_node_id) {
                 preview_2d::show(ui, viewer, graph_node, *output_index, theme);
-                return;
+                if let Some(output) = graph_node.outputs.get(*output_index) {
+                    if let Value::Image { data, .. } = &output.value {
+                        displayed_dims = Some((data.width() as f32, data.height() as f32));
+                    }
+                }
+            } else if editing_curve.is_some() {
+                preview_2d::show_curve_hint(ui, theme);
+            } else {
+                preview_2d::show_empty(ui, theme);
             }
+        } else if editing_curve.is_some() {
+            preview_2d::show_curve_hint(ui, theme);
+        } else {
+            preview_2d::show_empty(ui, theme);
         }
 
-        preview_2d::show_empty(ui, theme);
+        // Draw the editing overlay on top of whatever was displayed.
+        let Some((node_id, input_index, curve)) = editing_curve else {
+            return;
+        };
+
+        // Map onto the displayed image's screen rect (same call `draw_image`
+        // makes), else a letterboxed fallback canvas.
+        let image_rect = match displayed_dims {
+            Some((w, h)) => viewer.get_rect(
+                Pos2::new(view_rect.left() + w * 0.5, view_rect.top() + h * 0.5),
+                viewer.zoom,
+                w,
+                h,
+            ),
+            None => curve_overlay::fallback_canvas_rect(view_rect),
+        };
+
+        let resp = curve_overlay::show(ui, leaf_id, view_rect, image_rect, &curve, theme);
+
+        if let Some(new_curve) = resp.changed {
+            // Local mutate every frame for instant feedback; the immutable
+            // borrows above are done, so this `get_mut` is a fresh borrow.
+            if let Some(node) = graph_editor.graph_nodes.get_mut(&node_id) {
+                if let Some(input) = node.inputs.get_mut(input_index) {
+                    input.value = Value::Curve(new_curve);
+                }
+            }
+        }
+        // Push to the engine only when the gesture completed. A drag's release
+        // frame reports `commit` with `changed: None` (the pointer no longer
+        // moves), so commit sends the accumulated local value — not `changed`.
+        if resp.commit {
+            let value = graph_editor
+                .graph_nodes
+                .get(&node_id)
+                .and_then(|node| node.inputs.get(input_index))
+                .map(|input| input.value.clone());
+            if let Some(value) = value {
+                let message = ChangeNodeMessage::SetInput {
+                    node_id,
+                    input_index,
+                    value,
+                };
+                if let Err(err) = tx_change_node.try_send(message) {
+                    println!("Error sending SetInput: {:?}", err);
+                }
+            }
+        }
     }
 
     fn show_preview_3d_panel(&mut self, ui: &mut egui::Ui, leaf_id: LeafId, theme: &Theme) {
@@ -1127,7 +1214,10 @@ impl Program {
         // Backspace is included because on macOS the key labelled "delete" is
         // Backspace (true forward-delete is Fn+Delete). Skip when a text field
         // has keyboard focus so backspace still edits text there.
-        let typing = ctx.egui_wants_keyboard_input();
+        // Use `text_edit_focused()` (not `egui_wants_keyboard_input()`, which is
+        // true whenever *any* widget has focus, including a just-clicked node) so
+        // that selecting a node doesn't suppress the delete key.
+        let typing = ctx.text_edit_focused();
         let delete_pressed = !typing
             && ctx.input(|i| {
                 i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)
@@ -1851,6 +1941,21 @@ fn build_graph_node_thumbnail(
     match thumbnail {
         Some(Thumbnail::Image(thumbnail)) => match value {
             Value::Color(_) => {
+                let pixels = thumbnail.as_flat_samples();
+                let size = [thumbnail.width() as usize, thumbnail.height() as usize];
+                let color_image =
+                    ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                Some(GraphNodeThumbnail::Color {
+                    texture_handle: ctx.load_texture(
+                        node_id.to_owned(),
+                        color_image,
+                        Default::default(),
+                    ),
+                })
+            }
+            // A curve rasterizes to a small mask preview; show it as a caption-
+            // less texture swatch, reusing the `Color` variant's upload path.
+            Value::Curve(_) => {
                 let pixels = thumbnail.as_flat_samples();
                 let size = [thumbnail.width() as usize, thumbnail.height() as usize];
                 let color_image =

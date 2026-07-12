@@ -15,7 +15,7 @@ use image::{imageops::FilterType, RgbaImage};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    color::Color, float_image::FloatImage, get_id,
+    color::Color, curve::Curve, float_image::FloatImage, get_id,
     operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction,
     thumbnail::Thumbnail,
 };
@@ -96,6 +96,8 @@ pub enum Value {
     TextVAlign(TextVAlign),
     /// Target-engine convention for the material export node's packed textures.
     ExportPreset(ExportPreset),
+    /// A user-drawn 2D curve (open path or closed shape) in normalized coords.
+    Curve(Curve),
 }
 
 impl Default for Value {
@@ -141,6 +143,17 @@ impl Value {
             Value::TextHAlign(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::TextVAlign(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::ExportPreset(value) => Some(Thumbnail::Text(format!("{:?}", value))),
+            Value::Curve(curve) => {
+                // Rasterize a small preview: fill closed shapes, stroke open
+                // paths. White line composited over a dark background.
+                let gray = curve.rasterize(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1], 1.5, 0.0, curve.closed);
+                let mut img = RgbaImage::new(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]);
+                for (pixel, &v) in img.pixels_mut().zip(gray.iter()) {
+                    let c = (30.0 * (1.0 - v) + 255.0 * v).round().clamp(0.0, 255.0) as u8;
+                    *pixel = image::Rgba([c, c, c, 255]);
+                }
+                Some(Thumbnail::Image(img))
+            }
         }
     }
 
@@ -182,6 +195,7 @@ impl Value {
             Value::TextHAlign(v) => std::mem::discriminant(v).hash(&mut h),
             Value::TextVAlign(v) => std::mem::discriminant(v).hash(&mut h),
             Value::ExportPreset(v) => std::mem::discriminant(v).hash(&mut h),
+            Value::Curve(c) => c.fingerprint_into(&mut h),
         }
         h.finish()
     }
@@ -211,6 +225,7 @@ impl Value {
             Value::TextHAlign(_) => ValueType::TextHAlign,
             Value::TextVAlign(_) => ValueType::TextVAlign,
             Value::ExportPreset(_) => ValueType::ExportPreset,
+            Value::Curve(_) => ValueType::Curve,
         }
     }
 
@@ -405,6 +420,13 @@ impl Value {
                 ValueType::ExportPreset => Ok(Value::ExportPreset(*a)),
                 _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
             },
+            // Identity only — rasterizing a curve to an image needs parameters
+            // (size, stroke, fill), so it's an explicit node, not an implicit
+            // conversion.
+            Value::Curve(a) => match other {
+                ValueType::Curve => Ok(Value::Curve(a.clone())),
+                _ => Err(ConversionError { message: "Unable to convert curve to this type.".to_string() }),
+            },
             Value::Text(a) => match other {
                 ValueType::Text => Ok(Value::Text(a.clone())),
                 ValueType::Path => Ok(Value::Path(PathBuf::from(a))),
@@ -487,12 +509,14 @@ pub enum ValueType {
     TextVAlign,
     /// Target-engine convention type for the material export node.
     ExportPreset,
+    /// User-drawn 2D curve type.
+    Curve,
 }
 
 impl ValueType {
     /// Return the standard set of value types available for general use.
-    pub fn types() -> [ValueType; 10] {
-        let types: [ValueType; 10] = [
+    pub fn types() -> [ValueType; 11] {
+        let types: [ValueType; 11] = [
             ValueType::Bool,
             ValueType::Integer,
             ValueType::Decimal,
@@ -503,6 +527,7 @@ impl ValueType {
             ValueType::Trigger,
             ValueType::Image,
             ValueType::Path,
+            ValueType::Curve,
         ];
 
         types
@@ -534,6 +559,7 @@ impl ValueType {
             ValueType::TextHAlign => Value::TextHAlign(TextHAlign::Center),
             ValueType::TextVAlign => Value::TextVAlign(TextVAlign::Middle),
             ValueType::ExportPreset => Value::ExportPreset(ExportPreset::Godot),
+            ValueType::Curve => Value::Curve(Curve::default()),
         }
     }
 
@@ -558,6 +584,7 @@ impl ValueType {
             ValueType::TextHAlign => "text h-align".to_string(),
             ValueType::TextVAlign => "text v-align".to_string(),
             ValueType::ExportPreset => "export preset".to_string(),
+            ValueType::Curve => "curve".to_string(),
         }
     }
 
@@ -651,6 +678,7 @@ impl ValueType {
             ValueType::TextHAlign => vec![ValueType::TextHAlign, ValueType::Trigger],
             ValueType::TextVAlign => vec![ValueType::TextVAlign, ValueType::Trigger],
             ValueType::ExportPreset => vec![ValueType::ExportPreset, ValueType::Trigger],
+            ValueType::Curve => vec![ValueType::Curve, ValueType::Trigger],
         }
     }
 

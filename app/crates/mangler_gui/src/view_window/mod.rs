@@ -1,6 +1,7 @@
 pub mod text_viewer;
 pub mod image_viewer;
 pub mod color_viewer;
+pub mod curve_overlay;
 pub mod arcball_camera;
 pub mod environment;
 pub mod gl_renderer;

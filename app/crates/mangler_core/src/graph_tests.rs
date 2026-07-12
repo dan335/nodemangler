@@ -842,6 +842,49 @@ async fn test_disconnect_one_of_two_keeps_remaining_type() {
 }
 
 #[tokio::test]
+async fn test_disconnect_typed_input_resets_and_marks_dirty() {
+    // Removing a connection to a normal (same-typed) input must reset the input
+    // to its default value AND mark the node dirty, so it re-runs and refreshes
+    // its output/thumbnail. Regression: deleting a node feeding e.g. a blend node
+    // left the downstream node holding the stale value and never re-running,
+    // because the reset/dirty path only fired on a type *mismatch*.
+    let mut graph = create_test_graph();
+
+    let decimal_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberInputDecimal), glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+    let add_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::new(200.0, 0.0), true, None, Vec::new())
+        .await;
+
+    graph.add_connection(add_id.clone(), 0, decimal_id.clone(), 0).await;
+
+    // Simulate a value having been propagated in, and a prior run having cached
+    // the input hash and cleared the dirty flag.
+    {
+        let add = graph.nodes.get_mut(&add_id).unwrap();
+        add.inputs[0].value = Value::Decimal(42.0);
+        add.is_dirty = false;
+        add.cached_input_hash = Some(123);
+    }
+
+    graph.remove_connection(add_id.clone(), 0).await;
+
+    let add = graph.nodes.get(&add_id).unwrap();
+    let default = match add.inputs[0].default_value {
+        Value::Decimal(d) => d,
+        ref other => panic!("expected Decimal default, got {other:?}"),
+    };
+    assert!(
+        matches!(add.inputs[0].value, Value::Decimal(v) if v == default),
+        "disconnected input should reset to its default value, got {:?}",
+        add.inputs[0].value,
+    );
+    assert!(add.is_dirty, "node must be marked dirty so it re-runs after disconnect");
+    assert!(add.cached_input_hash.is_none(), "cached input hash must be cleared");
+}
+
+#[tokio::test]
 async fn test_connect_to_condition_does_not_adapt_types() {
     // Connecting to the condition input (index 0) should NOT trigger type
     // adaptation since condition is not accepts_any_type.
@@ -3132,4 +3175,54 @@ async fn test_to_file_node_explicit_folder_not_clobbered() {
 
     let folder = &graph.nodes.get(&node_id).unwrap().inputs[FOLDER].value;
     assert!(matches!(folder, Value::Path(p) if p == &explicit));
+}
+
+/// Regression: a graph saved by a build whose op had *fewer* inputs must load
+/// with a full-length input slice (padded from the current schema), so `run()`
+/// can't index out of bounds and panic the engine thread. Saved slots keep
+/// their value; new trailing slots get schema defaults.
+#[tokio::test]
+async fn load_pads_short_input_vector_to_current_schema() {
+    let mut graph = create_test_graph();
+    // `levels` currently has 6 inputs.
+    let node_id = graph
+        .add_node(
+            get_id(),
+            AddNodeType::Operation(Operation::OpImageAdjustmentLevels),
+            glam::Vec2::ZERO,
+            true,
+            None,
+            Vec::new(),
+        )
+        .await;
+
+    let full_len = graph.nodes.get(&node_id).unwrap().inputs.len();
+    assert!(full_len >= 4, "test op needs several inputs, got {full_len}");
+
+    // Simulate an older save that only stored the first 3 inputs, marking the
+    // last surviving one so we can prove its value is preserved.
+    {
+        let node = graph.nodes.get_mut(&node_id).unwrap();
+        node.inputs.truncate(3);
+        node.inputs[2].value = Value::Decimal(0.4242);
+    }
+
+    // Round-trip through the real save/load path.
+    let path = std::env::temp_dir().join(format!("mangler_pad_test_{}.mangler.json", get_id()));
+    graph.save_path = Some(path.clone());
+    graph.save_to_file().expect("save");
+
+    let loaded = Graph::load(path.clone(), None, None, false).expect("load");
+    let _ = std::fs::remove_file(&path);
+
+    let node = loaded.nodes.get(&node_id).expect("node survives load");
+    assert_eq!(
+        node.inputs.len(),
+        full_len,
+        "short saved input vector should be padded back to the current schema length"
+    );
+    match &node.inputs[2].value {
+        Value::Decimal(v) => assert!((v - 0.4242).abs() < 1e-9, "preserved value changed: {v}"),
+        other => panic!("preserved slot should keep its saved Decimal value, got {other:?}"),
+    }
 }

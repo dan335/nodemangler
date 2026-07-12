@@ -24,6 +24,8 @@ pub mod colors;
 pub mod logic;
 /// Text operations (clipboard).
 pub mod text;
+/// Curve operations (user-drawn 2D paths and shapes).
+pub mod curves;
 
 /// Successful result of executing a node operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,7 +60,16 @@ pub fn convert_input(
     target_type: ValueType,
     errors: &mut Vec<(usize, String)>,
 ) -> Option<Value> {
-    match inputs[index].value.try_convert_to(target_type) {
+    // Defensive bounds check: a graph saved before this op gained an input
+    // could hand `run()` a shorter slice than it expects. Record an error and
+    // bail rather than panicking the whole engine thread. (Load-time schema
+    // reconciliation in `Graph::load` normally pads this back up, so this is a
+    // safety net, not the primary path.)
+    let Some(input) = inputs.get(index) else {
+        errors.push((index, format!("missing input {index}")));
+        return None;
+    };
+    match input.value.try_convert_to(target_type) {
         Ok(v) => Some(v),
         Err(e) => {
             errors.push((index, e.message));
@@ -176,6 +187,11 @@ macro_rules! operations {
                 match self {
                     $(Operation::$variant => <$inner>::create_inputs(),)*
                 }
+            }
+
+            /// All operation variants (used by tests to exercise every op).
+            pub fn all_variants() -> Vec<Operation> {
+                vec![ $(Operation::$variant,)* ]
             }
 
             pub fn create_outputs(&self) -> Vec<Output> {
@@ -509,6 +525,8 @@ operations! {
 
     // simulation
     OpImageSimulationHydraulicErosion(crate::operations::images::simulation::hydraulic_erosion::OpImageSimulationHydraulicErosion),
+    OpImageSimulationRivers(crate::operations::images::simulation::rivers::OpImageSimulationRivers),
+    OpImageSimulationCarveRiver(crate::operations::images::simulation::carve_river::OpImageSimulationCarveRiver),
 
     // shapes
     OpImageShapeRectangle(crate::operations::images::shapes::rectangle::OpImageShapeRectangle),
@@ -520,6 +538,10 @@ operations! {
     OpImageShapePyramid(crate::operations::images::shapes::pyramid::OpImageShapePyramid),
     OpImageShapeCone(crate::operations::images::shapes::cone::OpImageShapeCone),
     OpImageShapesCircle(crate::operations::images::shapes::circle::OpImageShapesCircle),
+    OpImageShapeRasterizeCurve(crate::operations::images::shapes::rasterize_curve::OpImageShapeRasterizeCurve),
+
+    // curves
+    OpCurveInputCurve(crate::operations::curves::inputs::curve::OpCurveInputCurve),
 
     // patterns
     OpImagePatternBrick(crate::operations::images::patterns::brick::OpImagePatternBrick),
@@ -997,6 +1019,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageShapePyramid },
                 OperationListItem::Operation { operation: Operation::OpImageShapeCone },
                 OperationListItem::Operation { operation: Operation::OpImageShapesCircle },
+                OperationListItem::Operation { operation: Operation::OpImageShapeRasterizeCurve },
             ]},
             OperationListItem::Category { name: "patterns".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImagePatternBrick },
@@ -1070,6 +1093,8 @@ pub fn operation_list() -> Vec<OperationListItem> {
             // Physical-process simulation generators (see plan.md for the backlog).
             OperationListItem::Category { name: "simulation".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageSimulationHydraulicErosion },
+                OperationListItem::Operation { operation: Operation::OpImageSimulationRivers },
+                OperationListItem::Operation { operation: Operation::OpImageSimulationCarveRiver },
             ]},
             OperationListItem::Category { name: "cast".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageCastToImage },
@@ -1143,6 +1168,11 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpTextBase64Decode },
                 OperationListItem::Operation { operation: Operation::OpTextUrlEncode },
                 OperationListItem::Operation { operation: Operation::OpTextUrlDecode },
+            ]},
+        ]},
+        OperationListItem::Category { name: "curves".to_string(), operation_list_items: vec![
+            OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpCurveInputCurve },
             ]},
         ]},
     ];

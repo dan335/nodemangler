@@ -24,7 +24,6 @@
 //! Complements the thermal-only "erosion" noise node: thermal erosion relaxes
 //! slopes uniformly, while hydraulic erosion carves directional drainage.
 
-use rayon::prelude::*;
 use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -35,7 +34,6 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
-use noise::{NoiseFn, MultiFractal, Perlin, Fbm};
 
 /// Gravity constant converting a height drop into droplet acceleration.
 const GRAVITY: f64 = 4.0;
@@ -148,34 +146,6 @@ impl OpImageSimulationHydraulicErosion {
         ]
     }
 
-    /// Generates the starting terrain when no height map is connected: a
-    /// torus-mapped fBm heightmap so the fallback (and everything carved into
-    /// it) tiles seamlessly. Matches the erosion noise node's base terrain.
-    fn fallback_terrain(seed: u32, w: usize, h: usize, octaves: usize, frequency: f64) -> Vec<f64> {
-        let fbm = Fbm::<Perlin>::new(seed)
-            .set_frequency(frequency)
-            .set_octaves(octaves)
-            .set_lacunarity(2.094_395_2)
-            .set_persistence(0.5);
-        let fbm_ref = &fbm;
-
-        (0..h).into_par_iter().flat_map_iter(move |y| {
-            (0..w).map(move |x| {
-                let tau = std::f64::consts::TAU;
-                let u = x as f64 / w as f64;
-                let v = y as f64 / h as f64;
-                let r = 1.0 / tau;
-                let noise = fbm_ref.get([
-                    (tau * u).cos() * r,
-                    (tau * u).sin() * r,
-                    (tau * v).cos() * r,
-                    (tau * v).sin() * r,
-                ]);
-                noise * 0.5 + 0.5
-            })
-        }).collect()
-    }
-
     /// Runs the hydraulic erosion simulation.
     ///
     /// 1. Builds the starting terrain: the connected height map resampled to the
@@ -249,7 +219,7 @@ impl OpImageSimulationHydraulicErosion {
         // 1. Starting terrain: connected guidance map or seeded fBm fallback,
         // both in [0, 1].
         let mut heightmap: Vec<f64> = if super::is_unconnected(&map_data) {
-            Self::fallback_terrain(seed as u32, w, h, octaves, frequency)
+            super::fallback_terrain(seed as u32, w, h, octaves, frequency)
         } else {
             super::guidance_map_to_grid(&map_data, w, h)
         };

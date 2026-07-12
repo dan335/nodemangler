@@ -4,6 +4,7 @@ use image::imageops::FilterType;
 use mangler_core::{
     input::{Input, InputSettings},
     value::{ColorFormat, EdgeMode, ExportPreset, Value, TextHAlign, TextVAlign},
+    curve::{Curve, CurveInterpolation},
     ChangeNodeMessage,
     operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction,
     color::{color_spaces::ColorSpace, blend::BlendMode},
@@ -658,6 +659,18 @@ pub fn show(
 }
 
 
+/// Quiet one-line summary of a curve, e.g. `"3 pts · open · smooth"`. Shared by
+/// the input/output settings arms (the curve itself is edited in the 2D preview).
+pub(crate) fn curve_summary(curve: &Curve) -> String {
+    let closed = if curve.closed { "closed" } else { "open" };
+    let interp = match curve.interpolation {
+        CurveInterpolation::Linear => "linear",
+        CurveInterpolation::Smooth => "smooth",
+        CurveInterpolation::Bezier => "bezier",
+    };
+    format!("{} pts · {} · {}", curve.points.len(), closed, interp)
+}
+
 /// Display a read-only output value. Shows all Value types with appropriate formatting.
 ///
 /// Everything except the color swatch renders as monospace `text_faint` —
@@ -704,6 +717,7 @@ fn output_value(ui: &mut egui::Ui, value: &Value, theme: &Theme) {
         Value::TextHAlign(v) => mono(ui, format!("{:?}", v)),
         Value::TextVAlign(v) => mono(ui, format!("{:?}", v)),
         Value::ExportPreset(v) => mono(ui, format!("{:?}", v)),
+        Value::Curve(v) => mono(ui, curve_summary(v)),
     }
 }
 
@@ -1141,6 +1155,15 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                     input, input_index, node_id, tx_change_node,
                     |v| Value::TextVAlign(*v),
                 );
+            }
+        }
+        Value::Curve(a) => {
+            // No inline editor — a curve is drawn in the 2D preview overlay.
+            // Show a quiet summary; hint where to edit when it's unconnected.
+            let faint = theme.get().text_faint;
+            let resp = ui.add(Label::new(RichText::new(curve_summary(&a)).color(faint)));
+            if input.connection.is_none() {
+                resp.on_hover_text("drawn in the 2D preview panel");
             }
         }
     }

@@ -5,10 +5,11 @@
 //! non-tab content path of the old `ViewPanel::show_content`.
 
 use eframe::egui::{self, RichText};
+use epaint::{Stroke, StrokeKind};
 
 use crate::{graph::graph_node::GraphNode, themes::theme::Theme};
 
-use super::{color_viewer::ColorViewer, image_viewer::ImageViewer, text_viewer::TextViewer};
+use super::{color_viewer::ColorViewer, curve_overlay, image_viewer::ImageViewer, text_viewer::TextViewer};
 
 /// Render the given node output into `ui` using the supplied per-leaf image
 /// viewer for pan/zoom state. Pointer input is read from `ui`'s own context,
@@ -72,6 +73,27 @@ pub fn show(
         mangler_core::value::Value::TextHAlign(value) => TextViewer::show(ui, format!("{:?}", value)),
         mangler_core::value::Value::TextVAlign(value) => TextViewer::show(ui, format!("{:?}", value)),
         mangler_core::value::Value::ExportPreset(value) => TextViewer::show(ui, format!("{:?}", value)),
+        // Painted read-only canvas: a letterboxed square (matching the overlay
+        // editor's fallback rect, so a viewed-and-edited curve lines up) with a
+        // themed background/border and the curve drawn on top.
+        mangler_core::value::Value::Curve(value) => {
+            let colors = theme.get();
+            let canvas = curve_overlay::fallback_canvas_rect(ui.max_rect());
+            ui.painter().rect_filled(canvas, 4.0, colors.grid_bg);
+            ui.painter().rect_stroke(
+                canvas,
+                4.0,
+                Stroke::new(1.0, colors.grid_lines),
+                StrokeKind::Inside,
+            );
+            curve_overlay::draw_curve(
+                ui.painter(),
+                canvas,
+                value,
+                Stroke::new(2.0, colors.grid_connection_line),
+                theme,
+            );
+        }
         mangler_core::value::Value::Image { .. } => unreachable!(),
     }
 }
@@ -85,5 +107,28 @@ pub fn show_empty(ui: &mut egui::Ui, theme: &Theme) {
         "right-click a node output to view",
         egui::FontId::proportional(13.0),
         theme.get().text_faint,
+    );
+}
+
+/// Placeholder shown when a curve is being edited but nothing (or a non-image)
+/// is viewed to trace over. Frames the fallback canvas the overlay will draw
+/// on (same rect), so the [0,1]² drawing area is visible.
+pub fn show_curve_hint(ui: &mut egui::Ui, theme: &Theme) {
+    let rect = ui.max_rect();
+    let colors = theme.get();
+    let canvas = curve_overlay::fallback_canvas_rect(rect);
+    ui.painter().rect_filled(canvas, 4.0, colors.grid_bg);
+    ui.painter().rect_stroke(
+        canvas,
+        4.0,
+        Stroke::new(1.0, colors.grid_lines),
+        StrokeKind::Inside,
+    );
+    ui.painter().text(
+        rect.center_bottom() - egui::vec2(0.0, 14.0),
+        egui::Align2::CENTER_BOTTOM,
+        "drawing curve — right-click a node output to trace over it",
+        egui::FontId::proportional(13.0),
+        colors.text_faint,
     );
 }

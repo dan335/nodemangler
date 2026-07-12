@@ -1484,3 +1484,72 @@ fn test_text_thumbnail_truncation_respects_char_boundaries() {
         other => panic!("Expected Text thumbnail, got {:?}", other),
     }
 }
+
+// ── Curve value type ──────────────────────────────────────────────────────
+
+use crate::curve::{Curve, CurveInterpolation};
+
+#[test]
+fn test_value_type_curve() {
+    assert_eq!(Value::Curve(Curve::default()).value_type(), ValueType::Curve);
+}
+
+#[test]
+fn test_curve_json_round_trip() {
+    let curve = Curve {
+        points: vec![[0.1, 0.2], [0.5, 0.9], [0.8, 0.3]],
+        closed: true,
+        interpolation: CurveInterpolation::Smooth,
+        handles: vec![],
+    };
+    let json = serde_json::to_string(&Value::Curve(curve.clone())).unwrap();
+    let back: Value = serde_json::from_str(&json).unwrap();
+    match back {
+        Value::Curve(c) => {
+            assert_eq!(c.points, curve.points);
+            assert_eq!(c.closed, curve.closed);
+            assert_eq!(c.interpolation, curve.interpolation);
+        }
+        other => panic!("Expected Curve, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_curve_fingerprint_changes_and_stable() {
+    let base = Value::Curve(Curve::default());
+    assert_eq!(base.fingerprint(), base.clone().fingerprint());
+
+    let mut moved = Curve::default();
+    moved.points[0][0] += 0.25;
+    assert_ne!(base.fingerprint(), Value::Curve(moved).fingerprint());
+
+    let mut flipped = Curve::default();
+    flipped.closed = !flipped.closed;
+    assert_ne!(base.fingerprint(), Value::Curve(flipped).fingerprint());
+
+    let mut interp = Curve::default();
+    interp.interpolation = CurveInterpolation::Linear;
+    assert_ne!(base.fingerprint(), Value::Curve(interp).fingerprint());
+}
+
+#[test]
+fn test_curve_convert_identity_and_error() {
+    let v = Value::Curve(Curve::default());
+    assert!(v.try_convert_to(ValueType::Curve).is_ok());
+    // No implicit Curve → other-type conversions.
+    assert!(v.try_convert_to(ValueType::Decimal).is_err());
+    assert!(v.try_convert_to(ValueType::Image).is_err());
+}
+
+#[test]
+fn test_curve_thumbnail_is_image() {
+    let thumb = Value::Curve(Curve::default()).create_thumbnail().unwrap();
+    match thumb {
+        Thumbnail::Image(img) => {
+            assert_eq!(img.width(), THUMBNAIL_SIZE[0]);
+            assert_eq!(img.height(), THUMBNAIL_SIZE[1]);
+            assert!(!img.as_raw().is_empty());
+        }
+        other => panic!("Expected Image thumbnail, got {:?}", other),
+    }
+}

@@ -162,7 +162,10 @@ impl GraphEditor {
         // "F" to focus the camera on the selected nodes (or the whole graph if
         // nothing is selected), Maya-style. Only the hovered panel reframes, and
         // never while the node search is open or a text field has keyboard focus.
-        let typing = ui.ctx().egui_wants_keyboard_input();
+        // `text_edit_focused()` (not `egui_wants_keyboard_input()`, which is true
+        // whenever any widget has focus, including a selected node) so reframing
+        // still works with a node selected.
+        let typing = ui.ctx().text_edit_focused();
         if editor_rect.contains(cursor_position)
             && !is_popup_open
             && !typing

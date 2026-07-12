@@ -66,7 +66,7 @@ impl ImageViewer {
             }
         }
 
-        self.draw_image(node_id, output_index, change_id, float_image, ui, view_rect);
+        self.draw_image(node_id, output_index, change_id, float_image, ui, view_rect, theme);
 
         let view_rect_response = ui.allocate_rect(view_rect, egui::Sense::drag().union(egui::Sense::hover()));
 
@@ -103,7 +103,7 @@ impl ImageViewer {
     }
 
     /// Draws the image on the canvas, uploading a new GPU texture when the image changes.
-    fn draw_image(&mut self, node_id: String, output_index: usize, change_id: String, float_image: &FloatImage, ui: &mut egui::Ui, view_rect: Rect) {
+    fn draw_image(&mut self, node_id: String, output_index: usize, change_id: String, float_image: &FloatImage, ui: &mut egui::Ui, view_rect: Rect, theme: &Theme) {
         let needs_update = match &self.image_id_index {
             Some((image_node_id, image_output_index, image_change_id)) => {
                 image_node_id != &node_id || *image_output_index != output_index || image_change_id != &change_id
@@ -129,6 +129,15 @@ impl ImageViewer {
             );
             let uv = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0));
             ui.painter().image(texture_handle.id(), rect, uv, Color32::WHITE);
+            // Outline the image so its bounds stay visible against the grid
+            // (dark images otherwise blend into the background — and the curve
+            // overlay needs the [0,1]² extent to be legible).
+            ui.painter().rect_stroke(
+                rect,
+                CornerRadius::ZERO,
+                Stroke::new(1.0, theme.get().text_faint),
+                epaint::StrokeKind::Outside,
+            );
         }
     }
 

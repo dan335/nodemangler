@@ -63,7 +63,7 @@ Each crate README goes into detail on that component.
 ## Node Reference
 
 Every node in the graph editor's Add Node menu, by category and subcategory
-(308 operation nodes, plus subgraph nodes for composing whole pipelines).
+(310 operation nodes, plus subgraph nodes for composing whole pipelines).
 
 ### Numbers (98)
 
@@ -88,7 +88,11 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Harmony:** Analogous, Complementary, Double Split Comp, Monochromatic, Tetradic, Triadic
 - **Manipulation:** Adjust HSV, Blend, Clamp, Grayscale, Invert, Set Alpha
 
-### Images (173)
+### Curves (1)
+
+- **Input:** Curve
+
+### Images (176)
 
 - **Input:** Constant, From Clipboard, From Color, From File, From Gradient, From Text, From URL
 - **Output:** Material, To Clipboard, To File
@@ -107,8 +111,8 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Noise:** Anisotropic Noise, Billow Noise, Blue Noise, Caustics Noise, Checkerboard Noise, Cloud Noise, Concentric Rings, Craters, Crystal Noise, Curl Noise, Dirt Noise, Domain Warp, Erosion, Fault Terrain, FBM Noise, Fibers, Flow Noise, Gabor Noise, Growth Noise, Hybrid Multifractal Noise, Leaks Noise, Lightning Noise, Multifractal Noise, Open Simplex Noise, Peeling Noise, Perlin Noise, Phasor Noise, Plasma Noise, Reaction Diffusion, Ridged Multifractal Noise, Scales, Scratches, Smear Noise, Stains Noise, Super Simplex Noise, Truchet Tiles, Value Noise, Veins Noise, Voronoi Blend, Voronoi Crack Noise, Warped Rings Noise, Wave, White Noise, Worley Distance Noise, Worley Value Noise
 - **Patterns:** Brick, Flood Fill, Flood Fill Mapper, Hexagonal, Splatter, Tile Generator, Tile Sampler, Weave
 - **PBR:** AO From Height, Bevel, Curvature, Height Blend, Normal Blend, Normal Combine, Normal From Height, Normal Invert, Normal To Height
-- **Shapes:** Circle, Cone, Ellipse, Line, Paraboloid, Polygon, Pyramid, Rectangle, Star
-- **Simulation:** Hydraulic Erosion
+- **Shapes:** Circle, Cone, Ellipse, Line, Paraboloid, Polygon, Pyramid, Rasterize Curve, Rectangle, Star
+- **Simulation:** Carve River, Hydraulic Erosion, Rivers
 - **Transform:** Crop, Directional Warp, Flip Horizontal, Flip Vertical, Kaleidoscope, Make Tile, Mirror, Perspective, Polar Coordinates, Resize, Resize Exact, Resize Fill, Rotate, Rotate 180, Rotate 270, Rotate 90, Seam Carve, Spherize, Swirl, Transform, Warp
 
 ### Logic (22)
