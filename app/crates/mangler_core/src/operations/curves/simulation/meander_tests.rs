@@ -190,6 +190,41 @@ async fn test_cutoffs_produce_oxbows() {
 }
 
 #[tokio::test]
+async fn test_oxbows_render_at_channel_width() {
+    // Oxbow widths are captured from the simulation-scale widths array at
+    // cutoff time but must be rescaled to the visual channel width (index 7)
+    // before rasterizing — a thin drawn river keeps thin oxbows even when the
+    // meander scale driving the physics is larger. Same seed/scale in both
+    // runs = identical cutoff loops, so only the stroke width differs.
+    let base = || {
+        let mut inputs = make_inputs(128, 128, Some(line_curve()), None);
+        set(&mut inputs, 5, Value::Integer(800));
+        set(&mut inputs, 6, Value::Decimal(0.8));
+        inputs
+    };
+    let mut thin = base();
+    let mut thick = base();
+    set(&mut thin, 7, Value::Decimal(5.0));
+    set(&mut thick, 7, Value::Decimal(20.0));
+
+    let r_thin = OpCurveSimulationMeander::run(&mut thin).await.unwrap();
+    let r_thick = OpCurveSimulationMeander::run(&mut thick).await.unwrap();
+
+    let lit = |r: &OperationResponse| image_pixels(r, 2).iter().filter(|p| p[0] > 0.5).count();
+    let (ox_thin, ox_thick) = (lit(&r_thin), lit(&r_thick));
+    assert!(ox_thin > 0 && ox_thick > 0, "both runs should produce oxbows: {ox_thin} vs {ox_thick}");
+    // Before the rescale fix the two masks were pixel-identical (oxbows
+    // stroked at the meander scale regardless of channel width), so any real
+    // margin here is the regression signal. The factor is well under the 4x
+    // width ratio because the rasterizer's 0.5px minimum stroke radius props
+    // up the thin run at this output size.
+    assert!(
+        ox_thick as f64 > ox_thin as f64 * 1.3,
+        "oxbows should stroke at the channel width, not the meander scale: {ox_thin} lit at width 5 vs {ox_thick} at width 20"
+    );
+}
+
+#[tokio::test]
 async fn test_erodibility_modulates() {
     // All-black erodibility freezes migration: only the initial wobble
     // (fraction of a channel width) remains. Unconnected = uniform banks moves
@@ -389,7 +424,7 @@ async fn test_migration_map_ages() {
 #[tokio::test]
 #[ignore]
 async fn render_preview() {
-    let dir = "C:/Users/danph/AppData/Local/Temp/claude/D--rust-nodemangler-app/9bd8d98a-9b16-49b7-9152-6b179f8f514a/scratchpad";
+    let dir = "C:/Users/danph/AppData/Local/Temp/claude/D--rust-nodemangler-app/d341e4e9-15f9-4589-a1f7-5baff68d372a/scratchpad";
     let save = |result: &OperationResponse, index: usize, name: String| {
         match &result.responses[index].value {
             Value::Image { data, .. } => { data.to_dynamic().save(format!("{dir}/{name}.png")).unwrap(); }
@@ -413,4 +448,14 @@ async fn render_preview() {
             save(&result, 3, "meander_migration_0800".to_string());
         }
     }
+
+    // Mismatched scales: a thin rendered river (width 3) carrying broad
+    // meanders (scale 20) — the case where oxbows used to render at the
+    // meander scale and blob out ~7x thicker than the channel.
+    let mut inputs = make_inputs(512, 512, Some(line_curve()), None);
+    set(&mut inputs, 5, Value::Integer(800));
+    set(&mut inputs, 7, Value::Decimal(3.0));
+    set(&mut inputs, 8, Value::Decimal(20.0));
+    let result = OpCurveSimulationMeander::run(&mut inputs).await.unwrap();
+    save(&result, 1, "meander_mask_thin_channel_broad_scale".to_string());
 }

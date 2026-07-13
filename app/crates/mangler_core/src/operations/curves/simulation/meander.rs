@@ -453,16 +453,24 @@ fn find_cutoff(
 
 /// Splices the loop between `i` and `j` out of the channel and returns it as
 /// the oxbow — points plus the local channel widths it had when abandoned, so
-/// the lake renders at the width the river was there (its ends nearly touch,
-/// so it renders as a closed loop). The splice kink is healed by the next
+/// the lake renders at the width the river was there (it renders as an open
+/// horseshoe; the gap at the neck is the plug where the new channel cut
+/// through). `widths` carries the *simulation* scale
+/// (the physics need it for cutoff detection); `width_scale` converts each
+/// entry to the visual channel width so the stored oxbow strokes at the same
+/// render scale as the live channel. The splice kink is healed by the next
 /// iteration's resample + smoothing.
 fn apply_cutoff(
     points: &mut Vec<[f64; 2]>,
     widths: &[f64],
+    width_scale: f64,
     i: usize,
     j: usize,
 ) -> (Vec<[f64; 2]>, Vec<f64>) {
-    let oxbow = (points[i..=j].to_vec(), widths[i..=j].to_vec());
+    let oxbow = (
+        points[i..=j].to_vec(),
+        widths[i..=j].iter().map(|w| w * width_scale).collect(),
+    );
     points.drain(i + 1..j);
     oxbow
 }
@@ -653,13 +661,6 @@ fn rdp_decimate(points: &[[f64; 2]], mut tol: f64, max_points: usize) -> Vec<[f3
     }
 }
 
-/// Per-pixel max-composite of `src` into `dst`.
-fn max_composite(dst: &mut [f32], src: &[f32]) {
-    for (d, s) in dst.iter_mut().zip(src) {
-        *d = d.max(*s);
-    }
-}
-
 /// Wraps raw 1-channel pixels into an image output value. Raw linear mask
 /// values, no sRGB encode — matches rasterize curve, not the heightmap nodes.
 fn image_value(w: u32, h: u32, pixels: Vec<f32>) -> Value {
@@ -679,7 +680,7 @@ impl OpCurveSimulationMeander {
         NodeSettings {
             name: "meander".to_string(),
             description: "Evolves a drawn curve into a meandering river (Howard-Knutson bank migration): bends grow, translate downstream, and cut off into oxbow lakes.".to_string(),
-            help: "Evolves a drawn curve as a river centerline using the Howard & Knutson (1984) curvature-driven bank-migration model (the physics behind meanderpy): each point migrates along its normal at a rate set by an upstream-weighted average of curvature, so bends grow, translate downstream, and skew - and when a neck pinches shut, the loop is cut off and left behind as an oxbow lake. Step through iterations to watch the river age.\n\nOutputs the evolved centerline as a curve (feed it into rasterize curve or carve river), plus three masks: the river with its oxbow lakes, the oxbows alone, and a migration map - the age-graded corridor the channel swept over time (newer = brighter), the scroll-bar/point-bar scarring visible around real rivers.\n\nThe rendered river width (channel width) is separate from the meander scale that drives the shape, so you can draw a thin river with broad meanders or a wide river with tight ones. Meander scale is the characteristic channel width the physics assumes: the tightest possible bend, the meander wavelength (the bend wavelength input, in multiples of the scale), the cutoff neck distance, and the migration step all follow it. Both grow downstream, from upstream fraction x their value at the source to the full value at the mouth (like accumulating discharge), so the upstream reach forms small tight bends and the downstream reach big lazy loops. Bend widening and width noise vary the rendered masks only. Channel width and meander scale are both in pixels at a 1024px reference.\n\nA perfectly straight line has zero curvature and never evolves; initial wobble adds the perturbation that starts the process, and bank roughness keeps seeding new bends as old ones migrate downstream (vary the seed for different rivers from the same curve). The optional erodibility map scales migration spatially (bright = mobile banks, dark = resistant; unconnected = uniform). Endpoints stay pinned. Closed curves evolve as an open path with a pinned seam. Deterministic from the seed; the rasters do not tile. The curve output is the centerline only - width lives in the raster outputs.".to_string(),
+            help: "Evolves a drawn curve as a river centerline using the Howard & Knutson (1984) curvature-driven bank-migration model (the physics behind meanderpy): each point migrates along its normal at a rate set by an upstream-weighted average of curvature, so bends grow, translate downstream, and skew - and when a neck pinches shut, the loop is cut off and left behind as an oxbow lake. Step through iterations to watch the river age.\n\nOutputs the evolved centerline as a curve (feed it into rasterize curve or carve river), plus three masks: the live channel, the oxbow lakes (blend the two if you want both in one mask), and a migration map - the age-graded corridor the channel swept over time (newer = brighter), the scroll-bar/point-bar scarring visible around real rivers.\n\nThe rendered river width (channel width) is separate from the meander scale that drives the shape, so you can draw a thin river with broad meanders or a wide river with tight ones. Meander scale is the characteristic channel width the physics assumes: the tightest possible bend, the meander wavelength (the bend wavelength input, in multiples of the scale), the cutoff neck distance, and the migration step all follow it. Both grow downstream, from upstream fraction x their value at the source to the full value at the mouth (like accumulating discharge), so the upstream reach forms small tight bends and the downstream reach big lazy loops. Bend widening and width noise vary the rendered masks only. Channel width and meander scale are both in pixels at a 1024px reference.\n\nA perfectly straight line has zero curvature and never evolves; initial wobble adds the perturbation that starts the process, and bank roughness keeps seeding new bends as old ones migrate downstream (vary the seed for different rivers from the same curve). The optional erodibility map scales migration spatially (bright = mobile banks, dark = resistant; unconnected = uniform). Endpoints stay pinned. Closed curves evolve as an open path with a pinned seam. Deterministic from the seed; the rasters do not tile. The curve output is the centerline only - width lives in the raster outputs.".to_string(),
         }
     }
 
@@ -729,7 +730,7 @@ impl OpCurveSimulationMeander {
             Output::new("curve".to_string(), Value::Curve(Curve::default()), None)
                 .with_description("The evolved river centerline (main channel only; oxbows are in the rasters). Feed into rasterize curve or carve river."),
             Output::new("river mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
-                .with_description("The river at channel width, oxbow lakes included, white on black."),
+                .with_description("The live channel at channel width, white on black. Oxbow lakes are not included - blend in the oxbows output if you want both."),
             Output::new("oxbows".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
                 .with_description("Only the cut-off oxbow lakes, white on black; black when none have formed yet."),
             Output::new("migration map".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
@@ -910,7 +911,10 @@ impl OpCurveSimulationMeander {
             std::mem::swap(&mut pts, &mut buf);
 
             while let Some((i, j)) = find_cutoff(&pts, &widths, spacing, &params, &mut hash) {
-                let oxbow = apply_cutoff(&mut pts, &widths, i, j);
+                // widths is at the simulation scale; oxbows render at the
+                // visual channel width, so rescale by render/sim ratio.
+                let oxbow =
+                    apply_cutoff(&mut pts, &widths, params.render_w_norm / params.w_norm, i, j);
                 // The widths array is stale after the splice (it is positional)
                 // but is rebuilt at the top of the next iteration; the cutoff
                 // loop only needs it as a local length scale, where the error
@@ -955,16 +959,19 @@ impl OpCurveSimulationMeander {
             .collect();
 
         // Rasters: the main channel stroked at its local width, each oxbow as
-        // a closed *stroked* ring at the widths it was abandoned with (an
-        // oxbow lake is the old channel, not its filled interior),
-        // max-composed together for the river mask.
-        let mut river = rasterize_variable(&pts, &render_widths, w, h, false);
+        // an *open* stroked horseshoe at the widths it was abandoned with (an
+        // oxbow lake is the old channel, not its filled interior; its ends
+        // stop short of each other by the cutoff neck distance — the plug
+        // where the new channel cut through — and closing that gap with a
+        // chord draws a straight bar with hard corners). The two masks are
+        // separate: the river mask is the live channel only, oxbows have
+        // their own output (blend them back together downstream if wanted).
+        let river = rasterize_variable(&pts, &render_widths, w, h, false);
         let mut ox_field = vec![f32::NEG_INFINITY; (w * h) as usize];
         for (ox_pts, ox_widths) in &oxbows {
-            rasterize_segments_into(&mut ox_field, ox_pts, ox_widths, w, h, true);
+            rasterize_segments_into(&mut ox_field, ox_pts, ox_widths, w, h, false);
         }
         let oxbow_px = finalize_field(ox_field);
-        max_composite(&mut river, &oxbow_px);
 
         let out_curve = Curve {
             points: rdp_decimate(&pts, 0.5 * ds, MAX_OUTPUT_POINTS),
