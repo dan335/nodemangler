@@ -1,10 +1,11 @@
 //! Rolling hills noise image generator.
 //!
 //! Produces a grayscale heightmap of gentle, rounded hills: one smooth bump
-//! per jittered grid cell, summed where neighboring hills overlap. At low
-//! `size` values the hills stay separate mounds; above 1 they merge into
-//! continuous rolling terrain. Always tiles seamlessly by wrapping cell
-//! coordinates at grid boundaries.
+//! per jittered grid cell, combined where neighboring hills overlap (a
+//! merge slider blends tallest-wins into summing). At low `size` values the
+//! hills stay separate mounds; above 1 they overlap into continuous rolling
+//! terrain. Always tiles seamlessly by wrapping cell coordinates at grid
+//! boundaries.
 
 use rayon::prelude::*;
 use crate::float_image::FloatImage;
@@ -22,8 +23,8 @@ use std::time::Instant;
 /// Operation that generates a rolling hills heightmap image.
 ///
 /// Scatters one Hann-kernel bump per jittered grid cell (the same
-/// Worley-style construction as the craters node) and sums contributions
-/// where hills overlap, then min/max normalizes the result to [0, 1].
+/// Worley-style construction as the craters node), combines overlapping
+/// contributions per the merge input, then min/max normalizes to [0, 1].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpImageNoiseRollingHills {}
 
@@ -33,7 +34,7 @@ impl OpImageNoiseRollingHills {
         NodeSettings {
             name: "rolling hills".to_string(),
             description: "Gentle rounded hills from overlapping smooth bumps scattered on a jittered grid.".to_string(),
-            help: "Heuristic hill splatting: one smooth Hann-kernel bump per jittered grid cell, summed where hills overlap (the same Worley-style scatter construction as the craters node) - not a physical model.\n\nSeed picks the arrangement of hills. Width/height set the output resolution. Density controls how many hill cells fit across the tile (snapped to an integer so the pattern tiles). Size is each hill's radius in cell units - above 1 neighboring hills overlap and merge into continuous rolling terrain, below 1 they stay separate mounds. Size variation randomizes each hill's radius around that base size; height variation randomizes each hill's peak amplitude.\n\nTiles seamlessly. Deterministic from seed. For regional variation in hilliness, multiply the output with a low-frequency perlin or fbm noise downstream.".to_string(),
+            help: "Heuristic hill splatting: one smooth Hann-kernel bump per jittered grid cell, combined where hills overlap (the same Worley-style scatter construction as the craters node) - not a physical model.\n\nSeed picks the arrangement of hills. Width/height set the output resolution. Density controls how many hill cells fit across the tile (snapped to an integer so the pattern tiles). Size is each hill's radius in cell units - above 1 neighboring hills overlap into continuous rolling terrain, below 1 they stay separate mounds. Size variation randomizes each hill's radius around that base size; height variation randomizes each hill's peak amplitude. Peakiness reshapes the hill profile: below 1 gives flat-topped downs, above 1 pointier knolls. Merge sets how overlapping hills combine: 0 keeps each hill's silhouette distinct (the tallest wins), 1 sums overlaps into merged rolling terrain.\n\nTiles seamlessly. Deterministic from seed. For regional variation in hilliness, multiply the output with a low-frequency perlin or fbm noise downstream.".to_string(),
         }
     }
 
@@ -54,6 +55,10 @@ impl OpImageNoiseRollingHills {
                 .with_description("How much hill radii vary from the base size; 0 is uniform, 1 is most varied."),
             Input::new("height_variation".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("How much each hill's peak height varies; 0 is uniform, 1 is most varied."),
+            Input::new("peakiness".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.25, 4.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Hill profile exponent: below 1 gives flat-topped downs, 1 is a smooth dome, above 1 gives pointier knolls."),
+            Input::new("merge".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("How overlapping hills combine: 0 keeps each hill's silhouette distinct (tallest wins), 1 sums them into continuous rolling terrain."),
         ]
     }
 
@@ -82,6 +87,8 @@ impl OpImageNoiseRollingHills {
         let size_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
         let size_var_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
         let height_var_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
+        let peakiness_converted = convert_input(inputs, 7, ValueType::Decimal, &mut input_errors);
+        let merge_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
 
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
@@ -92,6 +99,8 @@ impl OpImageNoiseRollingHills {
         let Value::Decimal(size) = size_converted.unwrap() else { unreachable!() };
         let Value::Decimal(size_variation) = size_var_converted.unwrap() else { unreachable!() };
         let Value::Decimal(height_variation) = height_var_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(peakiness) = peakiness_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(merge) = merge_converted.unwrap() else { unreachable!() };
 
         width = width.max(4);
         height = height.max(4);
@@ -100,6 +109,8 @@ impl OpImageNoiseRollingHills {
         let size = (size as f64).clamp(0.5, 2.5);
         let size_variation = (size_variation as f64).clamp(0.0, 1.0);
         let height_variation = (height_variation as f64).clamp(0.0, 1.0);
+        let peakiness = (peakiness as f64).clamp(0.25, 4.0);
+        let merge = (merge as f64).clamp(0.0, 1.0);
 
         // Snap density to an integer grid so the pixel->grid mapping spans an
         // exact integer number of cells; a fractional density leaves a
@@ -124,6 +135,7 @@ impl OpImageNoiseRollingHills {
                 let cell_y = gy.floor() as i32;
 
                 let mut sum = 0.0_f64;
+                let mut tallest = 0.0_f64;
 
                 for dy in -search..=search {
                     for dx in -search..=search {
@@ -148,12 +160,18 @@ impl OpImageNoiseRollingHills {
                         let t = d2.sqrt() / r;
                         let amp = 1.0 - height_variation * cell_hash(wx, wy, seed_u32, 3);
 
-                        // Hann kernel: C1-smooth at both the peak (t=0) and the edge (t=1)
-                        sum += amp * (0.5 + 0.5 * (std::f64::consts::PI * t).cos());
+                        // Hann kernel: C1-smooth at both the peak (t=0) and the
+                        // edge (t=1). The peakiness exponent keeps those
+                        // properties for any positive power.
+                        let contribution = amp * (0.5 + 0.5 * (std::f64::consts::PI * t).cos()).powf(peakiness);
+                        sum += contribution;
+                        tallest = tallest.max(contribution);
                     }
                 }
 
-                sum
+                // Blend how overlaps combine: tallest-wins keeps silhouettes
+                // distinct, summing merges hills into continuous terrain.
+                tallest + merge * (sum - tallest)
             })
         }).collect();
 

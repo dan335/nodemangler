@@ -12,6 +12,8 @@ fn make_inputs(
     size: f32,
     size_variation: f32,
     height_variation: f32,
+    peakiness: f32,
+    merge: f32,
 ) -> Vec<Input> {
     vec![
         Input::new("seed".to_string(), Value::Integer(seed), None, None),
@@ -21,19 +23,21 @@ fn make_inputs(
         Input::new("size".to_string(), Value::Decimal(size), None, None),
         Input::new("size_variation".to_string(), Value::Decimal(size_variation), None, None),
         Input::new("height_variation".to_string(), Value::Decimal(height_variation), None, None),
+        Input::new("peakiness".to_string(), Value::Decimal(peakiness), None, None),
+        Input::new("merge".to_string(), Value::Decimal(merge), None, None),
     ]
 }
 
 /// Default inputs matching the operation defaults.
 fn default_inputs(seed: i32, width: i32, height: i32) -> Vec<Input> {
-    make_inputs(seed, width, height, 6.0, 1.4, 0.5, 0.5)
+    make_inputs(seed, width, height, 6.0, 1.4, 0.5, 0.5, 1.0, 1.0)
 }
 
 #[tokio::test]
 async fn test_settings() {
     let s = OpImageNoiseRollingHills::settings();
     assert_eq!(s.name, "rolling hills");
-    assert_eq!(OpImageNoiseRollingHills::create_inputs().len(), 7);
+    assert_eq!(OpImageNoiseRollingHills::create_inputs().len(), 9);
     assert_eq!(OpImageNoiseRollingHills::create_outputs().len(), 1);
 }
 
@@ -112,12 +116,48 @@ async fn test_normalized_full_range() {
 async fn test_zero_variation_still_hills() {
     // Uniform hills (no size or height variation) must still produce height
     // variation across the image from the hill shapes themselves.
-    let mut inputs = make_inputs(3, 64, 64, 6.0, 1.4, 0.0, 0.0);
+    let mut inputs = make_inputs(3, 64, 64, 6.0, 1.4, 0.0, 0.0, 1.0, 1.0);
     let result = OpImageNoiseRollingHills::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
         Value::Image { data, .. } => {
             let (min, max) = data.pixels().fold((1.0_f32, 0.0_f32), |(lo, hi), p| (lo.min(p[0]), hi.max(p[0])));
             assert!(max - min > 0.1, "expected height variation, got range {min}..{max}");
+        }
+        _ => panic!("Expected Image"),
+    }
+}
+
+#[tokio::test]
+async fn test_peakiness_changes_profile() {
+    // Flat-topped (0.25) and pointy (4.0) profiles must differ from the
+    // default dome for the same hill arrangement.
+    async fn pixels(peakiness: f32) -> Vec<f32> {
+        let r = OpImageNoiseRollingHills::run(&mut make_inputs(3, 32, 32, 6.0, 1.4, 0.5, 0.5, peakiness, 1.0)).await.unwrap();
+        match &r.responses[0].value {
+            Value::Image { data, .. } => data.pixels().map(|p| p[0]).collect(),
+            _ => panic!("Expected Image"),
+        }
+    }
+    let dome = pixels(1.0).await;
+    assert_ne!(dome, pixels(0.25).await, "flat-topped profile should differ from dome");
+    assert_ne!(dome, pixels(4.0).await, "pointy profile should differ from dome");
+}
+
+#[tokio::test]
+async fn test_merge_changes_composition() {
+    // Tallest-wins (0) and summed (1) overlap handling must differ when
+    // hills overlap, and tallest-wins must still produce a full-range image.
+    let r0 = OpImageNoiseRollingHills::run(&mut make_inputs(3, 32, 32, 6.0, 1.4, 0.5, 0.5, 1.0, 0.0)).await.unwrap();
+    let r1 = OpImageNoiseRollingHills::run(&mut make_inputs(3, 32, 32, 6.0, 1.4, 0.5, 0.5, 1.0, 1.0)).await.unwrap();
+    match (&r0.responses[0].value, &r1.responses[0].value) {
+        (Value::Image { data: d0, .. }, Value::Image { data: d1, .. }) => {
+            assert_ne!(
+                d0.pixels().collect::<Vec<_>>(),
+                d1.pixels().collect::<Vec<_>>(),
+                "merge 0 and merge 1 should compose overlaps differently"
+            );
+            let (min, max) = d0.pixels().fold((1.0_f32, 0.0_f32), |(lo, hi), p| (lo.min(p[0]), hi.max(p[0])));
+            assert!(min < 0.01 && max > 0.99, "tallest-wins output should still normalize to full range, got {min}..{max}");
         }
         _ => panic!("Expected Image"),
     }

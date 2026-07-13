@@ -164,7 +164,7 @@ cargo run -p mangler_cli  # Run the CLI tool
 - `noise/` — 47 generators in subdirectories mirroring the node-menu subcategories (`voronoi_common.rs` at the noise root is a shared helper, not a node; `pixel_hash`/`periodic_perlin_2d`/`periodic_value_2d`/`build_perm_tables` in `noise/mod.rs` are shared)
   - `basic/` — perlin, value, open_simplex, super_simplex, gabor, phasor, anisotropic, gaussian (white noise), blue_noise
   - `fractal/` — fbm, billow, ridged_multifractal, basic_multifractal, hybrid_multifractal, domain_warp_fbm, flow (rotated-gradient fbm with advection), curl (flow map, 3-channel), clouds, plasma
-  - `cellular/` — worley_distance, worley_value, voronoise, voronoi_crack, crystal, scales, craters, rolling_hills (Hann-kernel hill splatting, sums overlaps)
+  - `cellular/` — worley_distance, worley_value, voronoise, voronoi_crack, crystal, scales, craters, rolling_hills (Hann-kernel hill splatting; peakiness exponent reshapes the profile, merge slider blends tallest-wins→sum overlap composition)
   - `structural/` — checkerboard, cylinders, wave, truchet (truchet tiles), warped_rings (fbm-warped concentric rings, non-tiling), veins (warped vein stripes)
   - `grunge/` — dirt, scratches, fibers, leaks (drip streaks, alignment control), stains (coffee-ring rims), peeling (flaking-paint mask), smear (soft directional streaks), growth (clustered organic patches)
   - `process/` — erosion, fault_terrain, reaction_diffusion, caustics (refraction simulation), lightning (branching filaments, non-tiling), spectral_terrain (Voss random-phase spectral synthesis, integer wavevectors so it tiles exactly; row rotation recurrence instead of per-pixel cos)
