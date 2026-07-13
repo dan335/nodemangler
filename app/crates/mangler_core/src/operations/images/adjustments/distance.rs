@@ -1,9 +1,11 @@
 //! Distance field computation for images.
 //!
 //! Converts a grayscale image into a signed distance field by thresholding
-//! pixels into inside/outside regions, then computing the minimum Euclidean
-//! distance to the nearest boundary pixel. Output is normalized with 0.5 at
-//! the boundary, values above 0.5 for inside regions, and below 0.5 for outside.
+//! pixels into inside/outside regions, then computing the exact Euclidean
+//! distance to the nearest pixel of the opposite class with the shared
+//! Felzenszwalb-Huttenlocher transform (`simulation::distance_field_labeled`).
+//! Output is normalized with 0.5 at the boundary, values above 0.5 for inside
+//! regions, and below 0.5 for outside.
 
 use crate::float_image::FloatImage;
 use crate::get_id;
@@ -11,6 +13,7 @@ use crate::value::ValueType;
 use rayon::prelude::*;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
+use crate::operations::images::simulation::distance_field_labeled;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
@@ -28,7 +31,7 @@ impl OpImageAdjustmentDistance {
         NodeSettings {
             name: "distance field".to_string(),
             description: "Computes a signed distance field from a binary (black/white) image.".to_string(),
-            help: "Thresholds the input luminance (Rec. 709 for RGB, or single channel for grayscale) into inside/outside regions, then brute-force searches a square window of radius spread to find the nearest pixel of the opposite class.\n\nThe Euclidean distance is normalised by spread so the boundary becomes 0.5, inside pixels range from 0.5 to 1, and outside pixels from 0 to 0.5. Larger spread values produce smoother, softer fields but cost O(spread^2) per pixel; the loop short-circuits when it finds a neighbour at distance less than 1. Output is always a 4-channel grayscale RGBA image. Useful as a basis for glow, outline, or soft-mask effects.".to_string(),
+            help: "Thresholds the input luminance (Rec. 709 for RGB, or single channel for grayscale) into inside/outside regions, then computes the exact Euclidean distance from every pixel to the nearest pixel of the opposite class using a Felzenszwalb-Huttenlocher distance transform (O(1) per pixel, independent of spread).\n\nThe distance is normalised by spread so the boundary becomes 0.5, inside pixels range from 0.5 to 1, and outside pixels from 0 to 0.5; distances beyond spread clamp to the extremes. Output is always a 4-channel grayscale RGBA image. Useful as a basis for glow, outline, or soft-mask effects.".to_string(),
         }
     }
 
@@ -53,8 +56,8 @@ impl OpImageAdjustmentDistance {
         ]
     }
 
-    /// Executes the distance field computation using brute-force nearest-boundary search
-    /// within the spread radius.
+    /// Executes the distance field computation using an exact Euclidean distance
+    /// transform (two Felzenszwalb-Huttenlocher passes, one per class).
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
         let mut input_errors: Vec<(usize, String)> = vec![];
@@ -77,16 +80,13 @@ impl OpImageAdjustmentDistance {
         // actual image, so the field extends the same relative distance at any
         // resolution.
         let spread = scale_to_resolution(spread.max(0.0), data.width(), data.height()).max(1.0);
-        let width = data.width() as i32;
-        let height = data.height() as i32;
-        let w = width as usize;
-        let h = height as usize;
-        let spread_i = spread.ceil() as i32;
+        let w = data.width() as usize;
+        let h = data.height() as usize;
         let ch = data.channels() as usize;
 
         // threshold the image: compute binary mask from luminance
         let data_ref = &*data;
-        let inside: Vec<bool> = (0..h).flat_map(|y| {
+        let inside: Vec<bool> = (0..h).into_par_iter().flat_map_iter(|y| {
             (0..w).map(move |x| {
                 let px = data_ref.get_pixel(x as u32, y as u32);
                 let lum = if ch >= 3 {
@@ -98,48 +98,33 @@ impl OpImageAdjustmentDistance {
             })
         }).collect();
 
-        // Compute distance transform and output image in parallel
+        // Exact Euclidean distance to the nearest opposite-class pixel via two
+        // separable transforms: outside pixels read the distance-to-inside
+        // field, inside pixels the distance-to-outside field. O(w*h) total,
+        // independent of spread; an empty class leaves its field at the DT_INF
+        // sentinel, which the spread normalisation clamps to the extreme.
+        let outside: Vec<bool> = inside.iter().map(|b| !b).collect();
+        let (d2_to_inside, _) = distance_field_labeled(&inside, w, h);
+        let (d2_to_outside, _) = distance_field_labeled(&outside, w, h);
+
         let inside_ref = &inside;
+        let d2_in_ref = &d2_to_inside;
+        let d2_out_ref = &d2_to_outside;
+        let pixels: Vec<f32> = (0..w * h).into_par_iter().flat_map_iter(move |idx| {
+            let is_inside = inside_ref[idx];
+            let dist_sq = if is_inside { d2_out_ref[idx] } else { d2_in_ref[idx] };
+            let dist = (dist_sq as f32).sqrt();
+            let normalized_dist = (dist / spread).clamp(0.0, 1.0);
+            let result = if is_inside {
+                0.5 + normalized_dist / 2.0
+            } else {
+                0.5 - normalized_dist / 2.0
+            }.clamp(0.0, 1.0);
 
-        let pixels: Vec<f32> = (0..h).into_par_iter().flat_map_iter(move |y| {
-            (0..w).flat_map(move |x| {
-                let idx = y * w + x;
-                let is_inside = inside_ref[idx];
-                let mut min_dist_sq = spread * spread;
-
-                let y_start = (y as i32 - spread_i).max(0) as usize;
-                let y_end = ((y as i32 + spread_i).min(height - 1)) as usize;
-                let x_start = (x as i32 - spread_i).max(0) as usize;
-                let x_end = ((x as i32 + spread_i).min(width - 1)) as usize;
-
-                'outer: for sy in y_start..=y_end {
-                    for sx in x_start..=x_end {
-                        let sidx = sy * w + sx;
-                        if inside_ref[sidx] != is_inside {
-                            let ddx = (sx as f32) - (x as f32);
-                            let ddy = (sy as f32) - (y as f32);
-                            let dist_sq = ddx * ddx + ddy * ddy;
-                            if dist_sq < min_dist_sq {
-                                min_dist_sq = dist_sq;
-                                if dist_sq <= 1.0 { break 'outer; }
-                            }
-                        }
-                    }
-                }
-
-                let dist = min_dist_sq.sqrt();
-                let normalized_dist = (dist / spread).clamp(0.0, 1.0);
-                let result = if is_inside {
-                    0.5 + normalized_dist / 2.0
-                } else {
-                    0.5 - normalized_dist / 2.0
-                }.clamp(0.0, 1.0);
-
-                [result, result, result, 1.0]
-            })
+            [result, result, result, 1.0]
         }).collect();
 
-        let output = FloatImage::from_raw(width as u32, height as u32, 4, pixels)
+        let output = FloatImage::from_raw(w as u32, h as u32, 4, pixels)
             .expect("distance field pixel count mismatch");
 
         Ok(OperationResponse { 
