@@ -20,6 +20,8 @@ use noise::{NoiseFn, MultiFractal, Perlin, Fbm};
 pub mod hydraulic_erosion;
 /// Conforms a terrain to a user-drawn river path mask: valley carve + monotonic bed.
 pub mod carve_river;
+/// Nonlinear soil-creep diffusion (Roering et al. 1999): ages rough terrain into rolling hills.
+pub mod hillslope_diffusion;
 
 /// Returns true when an image-typed input still holds the 1x1 placeholder,
 /// i.e. nothing is connected. Simulation nodes use this to decide between a

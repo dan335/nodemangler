@@ -7,3 +7,4 @@ pub mod voronoi_crack;
 pub mod crystal;
 pub mod scales;
 pub mod craters;
+pub mod rolling_hills;

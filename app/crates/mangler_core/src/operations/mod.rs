@@ -522,10 +522,13 @@ operations! {
     OpImageNoiseVeins(crate::operations::images::noise::structural::veins::OpImageNoiseVeins),
     OpImageNoiseWarpedRings(crate::operations::images::noise::structural::warped_rings::OpImageNoiseWarpedRings),
     OpImageNoiseLightning(crate::operations::images::noise::process::lightning::OpImageNoiseLightning),
+    OpImageNoiseRollingHills(crate::operations::images::noise::cellular::rolling_hills::OpImageNoiseRollingHills),
+    OpImageNoiseSpectralTerrain(crate::operations::images::noise::process::spectral_terrain::OpImageNoiseSpectralTerrain),
 
     // simulation
     OpImageSimulationHydraulicErosion(crate::operations::images::simulation::hydraulic_erosion::OpImageSimulationHydraulicErosion),
     OpImageSimulationCarveRiver(crate::operations::images::simulation::carve_river::OpImageSimulationCarveRiver),
+    OpImageSimulationHillslopeDiffusion(crate::operations::images::simulation::hillslope_diffusion::OpImageSimulationHillslopeDiffusion),
 
     // shapes
     OpImageShapeRectangle(crate::operations::images::shapes::rectangle::OpImageShapeRectangle),
@@ -1063,6 +1066,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                     OperationListItem::Operation { operation: Operation::OpImageNoiseCrystal },
                     OperationListItem::Operation { operation: Operation::OpImageNoiseScales },
                     OperationListItem::Operation { operation: Operation::OpImageNoiseCraters },
+                    OperationListItem::Operation { operation: Operation::OpImageNoiseRollingHills },
                 ]},
                 OperationListItem::Category { name: "structural".to_string(), operation_list_items: vec![
                     OperationListItem::Operation { operation: Operation::OpImageNoiseCheckerboard },
@@ -1088,12 +1092,14 @@ pub fn operation_list() -> Vec<OperationListItem> {
                     OperationListItem::Operation { operation: Operation::OpImageNoiseReactionDiffusion },
                     OperationListItem::Operation { operation: Operation::OpImageNoiseCaustics },
                     OperationListItem::Operation { operation: Operation::OpImageNoiseLightning },
+                    OperationListItem::Operation { operation: Operation::OpImageNoiseSpectralTerrain },
                 ]},
             ]},
             // Physical-process simulation generators (see plan.md for the backlog).
             OperationListItem::Category { name: "simulation".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageSimulationHydraulicErosion },
                 OperationListItem::Operation { operation: Operation::OpImageSimulationCarveRiver },
+                OperationListItem::Operation { operation: Operation::OpImageSimulationHillslopeDiffusion },
             ]},
             OperationListItem::Category { name: "cast".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageCastToImage },
