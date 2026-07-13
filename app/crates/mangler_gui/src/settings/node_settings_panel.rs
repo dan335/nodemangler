@@ -13,7 +13,7 @@ use egui_extras::{TableBuilder, Column};
 use tokio::sync::mpsc::Sender;
 use crate::{
     graph::graph_node::GraphNode,
-    settings::{histogram_widget, section::{section_label, section_rule}},
+    settings::{histogram_widget, tone_curve_widget, section::{section_label, section_rule}},
     themes::theme::Theme,
 };
 
@@ -183,6 +183,11 @@ pub fn show(
     // starting directory of a Path input's file dialog when the input doesn't
     // pin one explicitly. `None` for an unsaved graph.
     default_dir: Option<&std::path::Path>,
+    // The image feeding this node's connected image input (data + change_id),
+    // resolved by the caller before the mutable node borrow. Drawn as the
+    // histogram behind the tone-curve editor; `None` when the node has no
+    // tone-curve input or its image input isn't connected.
+    upstream_image: Option<(std::sync::Arc<mangler_core::float_image::FloatImage>, String)>,
 ) -> NodeSettingsResponse {
     let mut node_settings_response = NodeSettingsResponse::new();
 
@@ -500,6 +505,55 @@ pub fn show(
         });
     });
 
+
+    // --- Tone curve editor section ---
+    // A `Value::Curve` input marked `InputSettings::ToneCurve` gets a dedicated
+    // Photoshop-style editing box here (its table row above just points at it).
+    // Connected inputs are driven by the upstream curve node, so no editor.
+    let tone_curve_index = node.inputs.iter().position(|i| {
+        matches!(i.settings, Some(InputSettings::ToneCurve)) && i.connection.is_none()
+    });
+    if let Some(input_index) = tone_curve_index {
+        section_rule(ui, theme);
+        section_label(ui, "curve");
+
+        // Keep the cached histogram of the upstream (source) image current;
+        // drop it when the image input is disconnected so the box goes clean.
+        match &upstream_image {
+            Some((data, change_id)) => {
+                let stale = node
+                    .input_histogram_cache
+                    .as_ref()
+                    .map_or(true, |c| c.image_change_id != *change_id);
+                if stale {
+                    let mut cache = histogram_widget::compute_histogram(data);
+                    cache.image_change_id = change_id.clone();
+                    node.input_histogram_cache = Some(cache);
+                }
+            }
+            None => node.input_histogram_cache = None,
+        }
+
+        if let Value::Curve(curve) = node.inputs[input_index].value.clone() {
+            let resp = tone_curve_widget::show(ui, &curve, node.input_histogram_cache.as_ref(), theme);
+            // Local mutate every frame for instant feedback; push to the
+            // engine only when the gesture completed, so heavy downstream
+            // nodes re-run once per drag (same pattern as the 2D overlay).
+            if let Some(new_curve) = resp.changed {
+                node.inputs[input_index].value = Value::Curve(new_curve);
+            }
+            if resp.commit {
+                let message = ChangeNodeMessage::SetInput {
+                    node_id: node.id.clone(),
+                    input_index,
+                    value: node.inputs[input_index].value.clone(),
+                };
+                if let Err(err) = tx_change_node.try_send(message) {
+                    println!("Error sending SetNodeInputMessage: {:?}", err);
+                }
+            }
+        }
+    }
 
     section_rule(ui, theme);
     section_label(ui, "outputs");
@@ -1158,12 +1212,18 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
             }
         }
         Value::Curve(a) => {
-            // No inline editor — a curve is drawn in the 2D preview overlay.
-            // Show a quiet summary; hint where to edit when it's unconnected.
+            // No inline editor in the table row. A tone-curve input is edited
+            // in the dedicated box below this table; a spatial curve is drawn
+            // in the 2D preview overlay. Show a quiet summary either way.
             let faint = theme.get().text_faint;
+            let is_tone_curve = matches!(input.settings, Some(InputSettings::ToneCurve));
             let resp = ui.add(Label::new(RichText::new(curve_summary(&a)).color(faint)));
             if input.connection.is_none() {
-                resp.on_hover_text("drawn in the 2D preview panel");
+                if is_tone_curve {
+                    resp.on_hover_text("edited in the curve box below");
+                } else {
+                    resp.on_hover_text("drawn in the 2D preview panel");
+                }
             }
         }
     }

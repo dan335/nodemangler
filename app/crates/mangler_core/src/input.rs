@@ -180,6 +180,13 @@ pub enum InputSettings {
     /// the value to `false`), rather than toggling a persistent checkbox. Drives
     /// the manual "save" button on the image output nodes.
     Button,
+    /// A Photoshop-style tone-curve editor. Used on a `Value::Curve` input that
+    /// represents a value-mapping *function* (x = input value, y-down so the
+    /// top edge = output 1.0) rather than a spatial path. The node settings
+    /// panel renders an embedded square editor (with the source image's
+    /// histogram behind it) instead of the read-only curve summary, and the
+    /// 2D preview's spatial curve-overlay editor skips these inputs.
+    ToneCurve,
 }
 
 /// The type of file dialog to present when an input uses `InputSettings::Path`.

@@ -68,6 +68,10 @@ pub struct GraphNode {
     /// Cached histograms for image outputs, keyed by output index.
     /// Recomputed automatically when the image's change_id differs from the cached one.
     pub histogram_cache: HashMap<usize, HistogramCache>,
+    /// Cached histogram of the *upstream* image feeding this node's image
+    /// input, drawn behind the settings panel's tone-curve editor. Recomputed
+    /// when the upstream image's change_id differs from the cached one.
+    pub input_histogram_cache: Option<HistogramCache>,
 }
 
 impl GraphNode {
@@ -102,6 +106,7 @@ impl GraphNode {
             custom_name,
             node_type,
             histogram_cache: HashMap::new(),
+            input_histogram_cache: None,
         }
     }
 

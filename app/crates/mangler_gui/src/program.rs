@@ -828,6 +828,37 @@ impl Program {
 
             // show node settings
             if let Some(editing_node_id) = &self.editing_node_id {
+                // Source image for the tone-curve editor's histogram: the
+                // upstream output feeding this node's first connected image
+                // input. Resolved before the mutable node borrow below (the
+                // upstream node lives in the same map), as a cheap Arc clone.
+                // `None` when the node has no editable tone-curve input.
+                let upstream_image = self
+                    .graph_editor
+                    .graph_nodes
+                    .get(editing_node_id)
+                    .filter(|node| {
+                        node.inputs.iter().any(|i| {
+                            matches!(i.settings, Some(mangler_core::input::InputSettings::ToneCurve))
+                                && i.connection.is_none()
+                        })
+                    })
+                    .and_then(|node| {
+                        node.inputs
+                            .iter()
+                            .find(|i| matches!(i.value, Value::Image { .. }) && i.connection.is_some())
+                            .and_then(|i| i.connection.as_ref())
+                            .and_then(|(nid, oidx)| {
+                                self.graph_editor.graph_nodes.get(nid)?.outputs.get(*oidx)
+                            })
+                            .and_then(|o| match &o.value {
+                                Value::Image { data, change_id } => {
+                                    Some((data.clone(), change_id.clone()))
+                                }
+                                _ => None,
+                            })
+                    });
+
                 if let Some(node) = self.graph_editor.graph_nodes.get_mut(editing_node_id) {
                     // Seed file-dialog directories with this graph's own
                     // folder, so a "save/open file" input starts next to the
@@ -841,6 +872,7 @@ impl Program {
                             &self.tx_change_node,
                             theme,
                             graph_dir,
+                            upstream_image,
                         );
                     show_graph_settings = false;
 
@@ -1062,14 +1094,23 @@ impl Program {
         // panel) node has an unconnected `Value::Curve` input. Resolved up front
         // (an immutable read that ends here via clone) so the mutable node
         // borrow below is sequential, and so the empty-panel branch can show the
-        // "draw a curve" hint instead of the generic placeholder.
+        // "draw a curve" hint instead of the generic placeholder. Tone-curve
+        // inputs are excluded — they map values, not space, and are edited in
+        // the node settings panel's embedded box instead.
         let editing_curve: Option<(String, usize, mangler_core::curve::Curve)> = editing_node_id
             .as_ref()
             .and_then(|id| graph_editor.graph_nodes.get(id))
             .and_then(|node| {
                 node.inputs
                     .iter()
-                    .position(|inp| matches!(inp.value, Value::Curve(_)) && inp.connection.is_none())
+                    .position(|inp| {
+                        matches!(inp.value, Value::Curve(_))
+                            && inp.connection.is_none()
+                            && !matches!(
+                                inp.settings,
+                                Some(mangler_core::input::InputSettings::ToneCurve)
+                            )
+                    })
                     .and_then(|idx| match &node.inputs[idx].value {
                         Value::Curve(c) => Some((node.id.clone(), idx, c.clone())),
                         _ => None,
