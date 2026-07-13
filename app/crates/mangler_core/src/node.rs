@@ -43,6 +43,9 @@ pub struct Node {
     #[serde(skip)]
     pub time: Option<Duration>,
     /// Whether this node needs to be re-run on the next graph execution pass.
+    /// Not serialized — transient execution state; every node is marked dirty
+    /// on load anyway, so deserialization defaults to `true`.
+    #[serde(skip_serializing, default = "default_true")]
     pub is_dirty: bool,
     /// 2D position on the graph editor canvas.
     pub position: Vec2,
@@ -111,11 +114,7 @@ impl Node {
             },
             AddNodeType::Subgraph => Node {
                 id,
-                settings: NodeSettings {
-                    name: "subgraph".to_string(),
-                    description: "A subgraph.".to_string(),
-                    help: "A subgraph embeds another graph as a single node. Inputs and outputs exposed on the child surface here as sockets on the parent, so the subgraph behaves like any other operation.\n\nPick the subgraph file from the settings panel; its exposed I/O rebuild automatically when the file changes.".to_string(),
-                },
+                settings: Node::subgraph_settings(),
                 inputs: Vec::new(),
                 outputs: Vec::new(),
                 time: None,
@@ -132,6 +131,17 @@ impl Node {
                 is_enabled: true,
                 custom_name: None,
             },
+        }
+    }
+
+    /// Display metadata for subgraph nodes. Used at creation and re-applied on
+    /// load (`description`/`help` only — the name tracks the child graph),
+    /// since `NodeSettings.description`/`help` are `#[serde(skip)]`.
+    pub fn subgraph_settings() -> NodeSettings {
+        NodeSettings {
+            name: "subgraph".to_string(),
+            description: "A subgraph.".to_string(),
+            help: "A subgraph embeds another graph as a single node. Inputs and outputs exposed on the child surface here as sockets on the parent, so the subgraph behaves like any other operation.\n\nPick the subgraph file from the settings panel; its exposed I/O rebuild automatically when the file changes.".to_string(),
         }
     }
 

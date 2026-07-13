@@ -642,6 +642,41 @@ async fn test_save_and_load_round_trip() {
     let _ = std::fs::remove_file(tmp_path);
 }
 
+// NodeSettings.description/help and Node.is_dirty are static/transient state
+// that must not bloat save files; they are re-derived from the operation
+// definition on load instead.
+#[tokio::test]
+async fn test_save_omits_derived_node_settings_and_dirty_flag() {
+    let mut graph = create_test_graph();
+    let node_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+
+    let tmp_path = std::env::temp_dir().join(format!("test_slim_save_{}.mangler.json", get_id()));
+    graph.set_save_path(tmp_path.clone());
+    graph.save_to_file().unwrap();
+
+    let raw: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&tmp_path).unwrap()).unwrap();
+    let saved_node = &raw["nodes"][&node_id];
+    assert!(saved_node.get("is_dirty").is_none(), "is_dirty must not be saved");
+    let settings = saved_node["settings"].as_object().unwrap();
+    assert!(settings.contains_key("name"));
+    assert!(!settings.contains_key("description"), "settings.description must not be saved");
+    assert!(!settings.contains_key("help"), "settings.help must not be saved");
+
+    // On load the skipped fields come back from the operation definition,
+    // and the node is dirty so it re-runs.
+    let loaded = Graph::load(tmp_path.clone(), None, None, false).unwrap();
+    let loaded_node = loaded.nodes.get(&node_id).unwrap();
+    let fresh = Operation::OpNumberMathAdd.settings();
+    assert_eq!(loaded_node.settings.description, fresh.description);
+    assert_eq!(loaded_node.settings.help, fresh.help);
+    assert!(loaded_node.is_dirty);
+
+    let _ = std::fs::remove_file(tmp_path);
+}
+
 // save_to_file serializes through a borrowing mirror of GraphSaveData
 // (GraphSaveRef); this guards the mirror staying in sync by checking the
 // written JSON carries the app version stamp.

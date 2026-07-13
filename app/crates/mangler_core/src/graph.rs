@@ -210,6 +210,24 @@ impl Graph {
                         // from the operation definition. These fields are #[serde(skip)]
                         // so they come back as their Default regardless of type
                         // until we re-derive them from create_inputs/create_outputs.
+                        // NodeSettings.description/help are #[serde(skip)] —
+                        // static text, re-derived here from the definition so
+                        // it is never stale. Unknown placeholders already got
+                        // theirs from `placeholder_from_raw`.
+                        match &node.node_type {
+                            NodeType::Operation { operation } => {
+                                node.settings = operation.settings();
+                            }
+                            NodeType::Subgraph { .. } => {
+                                // Keep the saved name — it tracks the child
+                                // graph and is re-set on subgraph rehydration.
+                                let subgraph = Node::subgraph_settings();
+                                node.settings.description = subgraph.description;
+                                node.settings.help = subgraph.help;
+                            }
+                            NodeType::Unknown { .. } => {}
+                        }
+
                         if let NodeType::Operation { operation } = &node.node_type {
                             // Rebuild inputs/outputs from the current schema so a
                             // graph saved by a build with a *different* input
