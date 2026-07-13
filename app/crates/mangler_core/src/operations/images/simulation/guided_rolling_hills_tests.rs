@@ -4,16 +4,15 @@ use crate::input::Input;
 use crate::operations::images::noise::cellular::rolling_hills::OpImageNoiseRollingHills;
 use crate::value::Value;
 
-/// Builds the 17 default inputs: no guidance map connected, mask mode, hill
-/// params matching rolling hills' own defaults (so the unconnected fallback
-/// can be compared pixel-for-pixel against that node).
+/// Builds the 16 default inputs: no guidance map connected, hill params
+/// matching rolling hills' own defaults (so the unconnected fallback can be
+/// compared pixel-for-pixel against that node).
 fn default_inputs(seed: i32, width: i32, height: i32) -> Vec<Input> {
     vec![
         Input::new("seed".to_string(), Value::Integer(seed), None, None),
         Input::new("width".to_string(), Value::Integer(width), None, None),
         Input::new("height".to_string(), Value::Integer(height), None, None),
         Input::new("guidance map".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None),
-        Input::new("map is distance field".to_string(), Value::Bool(false), None, None),
         Input::new("mask threshold".to_string(), Value::Decimal(0.5), None, None),
         Input::new("river width".to_string(), Value::Integer(8), None, None),
         Input::new("valley width".to_string(), Value::Integer(96), None, None),
@@ -39,24 +38,23 @@ fn set_image(inputs: &mut [Input], idx: usize, img: FloatImage) {
     set(inputs, idx, Value::Image { data: Arc::new(img), change_id: get_id() });
 }
 
-/// White single-pixel-wide vertical stripe at column `col` on an otherwise
-/// black image, used as a synthetic river mask.
-fn vertical_stripe_mask(width: u32, height: u32, col: u32) -> FloatImage {
+/// Uniform single-channel image filled with `value`.
+fn solid_image(width: u32, height: u32, value: f32) -> FloatImage {
     let mut img = FloatImage::new(width, height, 1);
     for y in 0..height {
-        img.put_pixel(col, y, &[1.0]);
+        for x in 0..width {
+            img.put_pixel(x, y, &[value]);
+        }
     }
     img
 }
 
-/// Horizontal gradient image: value = x / (width - 1) across every row, used
-/// as a synthetic precomputed distance field.
-fn horizontal_gradient(width: u32, height: u32) -> FloatImage {
-    let mut img = FloatImage::new(width, height, 1);
+/// Black (river) single-pixel-wide vertical stripe at column `col` on an
+/// otherwise white image, used as a synthetic river mask (dark = river).
+fn vertical_stripe_mask(width: u32, height: u32, col: u32) -> FloatImage {
+    let mut img = solid_image(width, height, 1.0);
     for y in 0..height {
-        for x in 0..width {
-            img.put_pixel(x, y, &[x as f32 / (width - 1) as f32]);
-        }
+        img.put_pixel(col, y, &[0.0]);
     }
     img
 }
@@ -78,7 +76,7 @@ fn pixel_at(result: &OperationResponse, index: usize, x: usize, y: usize, w: usi
 async fn test_settings() {
     let s = OpImageSimulationGuidedRollingHills::settings();
     assert_eq!(s.name, "guided rolling hills");
-    assert_eq!(OpImageSimulationGuidedRollingHills::create_inputs().len(), 17);
+    assert_eq!(OpImageSimulationGuidedRollingHills::create_inputs().len(), 16);
     assert_eq!(OpImageSimulationGuidedRollingHills::create_outputs().len(), 2);
 }
 
@@ -147,12 +145,29 @@ async fn test_empty_mask_falls_back() {
     let mut unconnected = default_inputs(5, 24, 24);
     let unconnected_result = OpImageSimulationGuidedRollingHills::run(&mut unconnected).await.unwrap();
 
-    let mut connected_black = default_inputs(5, 24, 24);
-    set_image(&mut connected_black, 3, FloatImage::new(24, 24, 1));
-    let connected_result = OpImageSimulationGuidedRollingHills::run(&mut connected_black).await.unwrap();
+    // All-white connected mask = no river pixels (dark = river now).
+    let mut connected_white = default_inputs(5, 24, 24);
+    set_image(&mut connected_white, 3, solid_image(24, 24, 1.0));
+    let connected_result = OpImageSimulationGuidedRollingHills::run(&mut connected_white).await.unwrap();
 
-    assert_eq!(image_pixels(&unconnected_result, 0), image_pixels(&connected_result, 0), "all-black connected mask should fall back to plain hills");
+    assert_eq!(image_pixels(&unconnected_result, 0), image_pixels(&connected_result, 0), "all-white connected mask should fall back to plain hills");
     assert_eq!(image_pixels(&unconnected_result, 1), image_pixels(&connected_result, 1), "channel mask should still be all black");
+}
+
+#[tokio::test]
+async fn test_all_river_mask_is_flat_bed() {
+    // All-black connected mask = the entire image is channel: flat zero bed,
+    // fully bright channel mask. (FloatImage::new is zero-filled = all-dark.)
+    let mut inputs = default_inputs(5, 24, 24);
+    set_image(&mut inputs, 3, FloatImage::new(24, 24, 1));
+    let result = OpImageSimulationGuidedRollingHills::run(&mut inputs).await.unwrap();
+
+    for p in image_pixels(&result, 0) {
+        assert_eq!(p[0], 0.0, "all-river mask should produce a flat zero bed");
+    }
+    for p in image_pixels(&result, 1) {
+        assert!(p[0] > 0.999, "channel mask should be fully bright everywhere, got {}", p[0]);
+    }
 }
 
 #[tokio::test]
@@ -164,13 +179,13 @@ async fn test_channel_low_and_flat() {
     let col = 64u32;
     let mut inputs = default_inputs(9, w as i32, h as i32);
     set_image(&mut inputs, 3, vertical_stripe_mask(w, h, col));
-    set(&mut inputs, 6, Value::Integer(16));
-    set(&mut inputs, 7, Value::Integer(128));
+    set(&mut inputs, 5, Value::Integer(16));
+    set(&mut inputs, 6, Value::Integer(128));
     let result = OpImageSimulationGuidedRollingHills::run(&mut inputs).await.unwrap();
     let height = image_pixels(&result, 0);
 
     // Channel pixels (within river width of the stripe) must be exactly 0:
-    // at d=0 the hill-modulation and levee terms both vanish regardless of
+    // at d=0 the wall, bank cut, and levee terms all vanish regardless of
     // river depth / bank height.
     for y in 0..h as usize {
         for dx in -2i32..=2 {
@@ -200,10 +215,10 @@ async fn test_valley_rises_monotonically() {
     let col = 64u32;
     let mut inputs = default_inputs(11, w as i32, h as i32);
     set_image(&mut inputs, 3, vertical_stripe_mask(w, h, col));
-    set(&mut inputs, 6, Value::Integer(8)); // river width -> 1px
-    set(&mut inputs, 7, Value::Integer(400)); // valley width -> 50px
-    set(&mut inputs, 9, Value::Decimal(1.0)); // river depth = 1: composed == ramp
-    set(&mut inputs, 10, Value::Decimal(0.0)); // bank height = 0: no levee bump
+    set(&mut inputs, 5, Value::Integer(8)); // river width -> 1px
+    set(&mut inputs, 6, Value::Integer(400)); // valley width -> 50px
+    set(&mut inputs, 8, Value::Decimal(1.0)); // river depth = 1: composed == wall
+    set(&mut inputs, 9, Value::Decimal(0.0)); // bank height = 0: no levee bump
     let result = OpImageSimulationGuidedRollingHills::run(&mut inputs).await.unwrap();
     let height = image_pixels(&result, 0);
 
@@ -217,6 +232,41 @@ async fn test_valley_rises_monotonically() {
 }
 
 #[tokio::test]
+async fn test_valley_wall_is_convex() {
+    // The wall profile must be convex terrain: steepest right at the bank,
+    // easing off toward the rim (never flattening out near the water). With
+    // river depth 1 / bank 0 the height IS the wall profile; sRGB encoding is
+    // an increasing concave transform, so the slope must still be
+    // non-increasing walking away from the channel.
+    let w = 128u32;
+    let h = 128u32;
+    let col = 64u32;
+    let mut inputs = default_inputs(21, w as i32, h as i32);
+    set_image(&mut inputs, 3, vertical_stripe_mask(w, h, col));
+    set(&mut inputs, 5, Value::Integer(8)); // river width -> 1px
+    set(&mut inputs, 6, Value::Integer(400)); // valley width -> 50px
+    set(&mut inputs, 8, Value::Decimal(1.0)); // river depth = 1: composed == wall
+    set(&mut inputs, 9, Value::Decimal(0.0)); // bank height = 0: no levee bump
+    let result = OpImageSimulationGuidedRollingHills::run(&mut inputs).await.unwrap();
+    let height = image_pixels(&result, 0);
+    let row = 64usize;
+
+    // Sample strictly inside the valley walls (d in (0, 1)): dist 2..=48.
+    let profile: Vec<f32> = (2..=48).map(|dist| height[row * w as usize + col as usize + dist][0]).collect();
+    let mut prev_slope = f32::INFINITY;
+    for i in 1..profile.len() {
+        let slope = profile[i] - profile[i - 1];
+        assert!(slope <= prev_slope + 1e-4, "wall slope should be non-increasing away from the channel at dist={}: {slope} > {prev_slope}", i + 2);
+        prev_slope = slope;
+    }
+    // And genuinely convex, not linear: the first step must clearly out-climb
+    // the last.
+    let first = profile[1] - profile[0];
+    let last = profile[profile.len() - 1] - profile[profile.len() - 2];
+    assert!(first > last + 1e-3, "wall should be steepest at the bank: first step {first} vs last step {last}");
+}
+
+#[tokio::test]
 async fn test_valley_shape_changes_profile() {
     let w = 128u32;
     let h = 128u32;
@@ -224,11 +274,11 @@ async fn test_valley_shape_changes_profile() {
     let build = |shape: f32| {
         let mut inputs = default_inputs(13, w as i32, h as i32);
         set_image(&mut inputs, 3, vertical_stripe_mask(w, h, col));
-        set(&mut inputs, 6, Value::Integer(8));
-        set(&mut inputs, 7, Value::Integer(400));
-        set(&mut inputs, 8, Value::Decimal(shape));
-        set(&mut inputs, 9, Value::Decimal(1.0));
-        set(&mut inputs, 10, Value::Decimal(0.0));
+        set(&mut inputs, 5, Value::Integer(8));
+        set(&mut inputs, 6, Value::Integer(400));
+        set(&mut inputs, 7, Value::Decimal(shape));
+        set(&mut inputs, 8, Value::Decimal(1.0));
+        set(&mut inputs, 9, Value::Decimal(0.0));
         inputs
     };
     let v_shape = OpImageSimulationGuidedRollingHills::run(&mut build(0.0)).await.unwrap();
@@ -246,9 +296,9 @@ async fn test_bank_height_raises_levee() {
     let build = |bank: f32| {
         let mut inputs = default_inputs(15, w as i32, h as i32);
         set_image(&mut inputs, 3, vertical_stripe_mask(w, h, col));
-        set(&mut inputs, 6, Value::Integer(8));
-        set(&mut inputs, 7, Value::Integer(400));
-        set(&mut inputs, 10, Value::Decimal(bank));
+        set(&mut inputs, 5, Value::Integer(8));
+        set(&mut inputs, 6, Value::Integer(400));
+        set(&mut inputs, 9, Value::Decimal(bank));
         inputs
     };
     let low = OpImageSimulationGuidedRollingHills::run(&mut build(0.0)).await.unwrap();
@@ -266,31 +316,76 @@ async fn test_bank_height_raises_levee() {
 }
 
 #[tokio::test]
-async fn test_distance_field_mode() {
-    let w = 32u32;
-    let h = 32u32;
-    let grad = horizontal_gradient(w, h);
-    let mut inputs = default_inputs(17, w as i32, h as i32);
-    set_image(&mut inputs, 3, grad.clone());
-    set(&mut inputs, 4, Value::Bool(true));
-    let result = OpImageSimulationGuidedRollingHills::run(&mut inputs).await.unwrap();
-    let row = 16usize;
+async fn test_hills_suppressed_near_channel() {
+    // Per-hill modulation, not a per-pixel fade: with river depth 0 and no
+    // levee the height is purely the (bank-cut) hill field, so near-bank
+    // hills must come out lower than the same hills unconnected, while
+    // pixels beyond rim + max hill radius must be BIT-IDENTICAL to the
+    // unconnected fallback (factor 1 past the rim + unmodulated-stats
+    // normalization).
+    let w = 128u32;
+    let h = 128u32;
+    let col = 64u32;
+    // Small hills so an untouched far zone exists: density 8 -> 16px cells,
+    // size 0.6 / variation 0 -> max radius 9.6px. River width 8 -> 1px,
+    // valley width 200 -> 25px: rim at dist 26, fully-untouched from
+    // dist >= 26 + 9.6 -> use 40 with slack.
+    let build = |connected: bool| {
+        let mut inputs = default_inputs(23, w as i32, h as i32);
+        if connected {
+            set_image(&mut inputs, 3, vertical_stripe_mask(w, h, col));
+        }
+        set(&mut inputs, 5, Value::Integer(8)); // river width -> 1px
+        set(&mut inputs, 6, Value::Integer(200)); // valley width -> 25px
+        set(&mut inputs, 8, Value::Decimal(0.0)); // river depth 0: hills only
+        set(&mut inputs, 9, Value::Decimal(0.0)); // no levee
+        set(&mut inputs, 10, Value::Decimal(8.0)); // density
+        set(&mut inputs, 11, Value::Decimal(0.6)); // size
+        set(&mut inputs, 12, Value::Decimal(0.0)); // size_variation
+        inputs
+    };
+    let guided = OpImageSimulationGuidedRollingHills::run(&mut build(true)).await.unwrap();
+    let fallback = OpImageSimulationGuidedRollingHills::run(&mut build(false)).await.unwrap();
+    let gh = image_pixels(&guided, 0);
+    let fh = image_pixels(&fallback, 0);
+    let row_stride = w as usize;
 
-    let bright = pixel_at(&result, 0, w as usize - 1, row, w as usize);
-    let dark = pixel_at(&result, 0, 0, row, w as usize);
-    assert!(bright < 0.05, "bright side (g~=1) should be near 0, got {bright}");
-    assert!(dark > bright + 0.1, "dark side (g~=0) should be substantially higher, got dark={dark} bright={bright}");
+    // (a) Channel pixels are cut to exactly 0 even with river depth 0.
+    for y in 0..h as usize {
+        for dx in -1i32..=1 {
+            let x = (col as i32 + dx) as usize;
+            assert_eq!(gh[y * row_stride + x][0], 0.0, "channel pixel ({x},{y}) should be cut to 0");
+        }
+    }
 
-    // Mask-mode-only params must have no effect in distance-field mode.
-    let mut inputs2 = default_inputs(17, w as i32, h as i32);
-    set_image(&mut inputs2, 3, grad);
-    set(&mut inputs2, 4, Value::Bool(true));
-    set(&mut inputs2, 5, Value::Decimal(0.9)); // mask threshold, ignored
-    set(&mut inputs2, 6, Value::Integer(64)); // river width, ignored
-    set(&mut inputs2, 7, Value::Integer(300)); // valley width, ignored
-    let result2 = OpImageSimulationGuidedRollingHills::run(&mut inputs2).await.unwrap();
-    assert_eq!(image_pixels(&result, 0), image_pixels(&result2, 0), "mask-only params should be ignored in distance-field mode");
-    assert_eq!(image_pixels(&result, 1), image_pixels(&result2, 1));
+    // (b) Near-bank hills are suppressed relative to the fallback.
+    let band_mean = |pixels: &Vec<Vec<f32>>| {
+        let mut sum = 0.0f64;
+        let mut count = 0usize;
+        for y in 0..h as usize {
+            for x in 0..w as usize {
+                let dist = (x as i32 - col as i32).abs();
+                if (4..=12).contains(&dist) {
+                    sum += pixels[y * row_stride + x][0] as f64;
+                    count += 1;
+                }
+            }
+        }
+        sum / count as f64
+    };
+    let guided_mean = band_mean(&gh);
+    let fallback_mean = band_mean(&fh);
+    assert!(guided_mean < fallback_mean - 0.05, "near-bank hills should be suppressed: guided {guided_mean} vs fallback {fallback_mean}");
+
+    // (c) Beyond rim + max hill radius the output is bit-identical to the
+    // fallback.
+    for y in 0..h as usize {
+        for x in 0..w as usize {
+            if (x as i32 - col as i32).abs() >= 40 {
+                assert_eq!(gh[y * row_stride + x][0], fh[y * row_stride + x][0], "pixel ({x},{y}) past the valley should match the fallback exactly");
+            }
+        }
+    }
 }
 
 #[tokio::test]
@@ -300,8 +395,8 @@ async fn test_channel_mask_output() {
     let col = 64u32;
     let mut inputs = default_inputs(19, w as i32, h as i32);
     set_image(&mut inputs, 3, vertical_stripe_mask(w, h, col));
-    set(&mut inputs, 6, Value::Integer(8)); // river width -> 1px
-    set(&mut inputs, 7, Value::Integer(400)); // valley width -> 50px
+    set(&mut inputs, 5, Value::Integer(8)); // river width -> 1px
+    set(&mut inputs, 6, Value::Integer(400)); // valley width -> 50px
     let result = OpImageSimulationGuidedRollingHills::run(&mut inputs).await.unwrap();
     let mask = image_pixels(&result, 1);
     let row = 64usize;
