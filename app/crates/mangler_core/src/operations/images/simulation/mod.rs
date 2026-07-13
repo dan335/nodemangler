@@ -18,8 +18,6 @@ use noise::{NoiseFn, MultiFractal, Perlin, Fbm};
 
 /// Droplet-based hydraulic erosion: gullies, ridges, sediment fans.
 pub mod hydraulic_erosion;
-/// Drainage-based river networks: priority-flood fill, D8 routing, stream-power carving.
-pub mod rivers;
 /// Conforms a terrain to a user-drawn river path mask: valley carve + monotonic bed.
 pub mod carve_river;
 

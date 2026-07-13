@@ -525,7 +525,6 @@ operations! {
 
     // simulation
     OpImageSimulationHydraulicErosion(crate::operations::images::simulation::hydraulic_erosion::OpImageSimulationHydraulicErosion),
-    OpImageSimulationRivers(crate::operations::images::simulation::rivers::OpImageSimulationRivers),
     OpImageSimulationCarveRiver(crate::operations::images::simulation::carve_river::OpImageSimulationCarveRiver),
 
     // shapes
@@ -1094,7 +1093,6 @@ pub fn operation_list() -> Vec<OperationListItem> {
             // Physical-process simulation generators (see plan.md for the backlog).
             OperationListItem::Category { name: "simulation".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageSimulationHydraulicErosion },
-                OperationListItem::Operation { operation: Operation::OpImageSimulationRivers },
                 OperationListItem::Operation { operation: Operation::OpImageSimulationCarveRiver },
             ]},
             OperationListItem::Category { name: "cast".to_string(), operation_list_items: vec![
