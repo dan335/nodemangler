@@ -3,8 +3,9 @@ use super::*;
 use crate::input::Input;
 use crate::value::Value;
 
-/// A near-straight horizontal test centerline; relies on seed wobble to start
-/// meandering (a perfectly straight line has zero curvature).
+/// A near-straight horizontal test centerline; relies on the initial wobble /
+/// bank roughness to start meandering (a perfectly straight line has zero
+/// curvature).
 fn line_curve() -> Curve {
     Curve {
         points: vec![[0.1, 0.5], [0.9, 0.5]],
@@ -14,7 +15,7 @@ fn line_curve() -> Curve {
     }
 }
 
-/// Builds the 11 default inputs. `curve` of `None` uses the default arc;
+/// Builds the 16 default inputs. `curve` of `None` uses the default arc;
 /// `erodibility` of `None` leaves the image input at its unconnected 1x1
 /// placeholder. Individual tests mutate entries by index afterwards.
 fn make_inputs(width: i32, height: i32, curve: Option<Curve>, erodibility: Option<FloatImage>) -> Vec<Input> {
@@ -28,14 +29,17 @@ fn make_inputs(width: i32, height: i32, curve: Option<Curve>, erodibility: Optio
         Input::new("height".to_string(), Value::Integer(height), None, None),
         Input::new("curve".to_string(), Value::Curve(curve.unwrap_or_default()), None, None),
         Input::new("erodibility".to_string(), erod_value, None, None),
-        Input::new("iterations".to_string(), Value::Integer(100), None, None),
+        Input::new("iterations".to_string(), Value::Integer(800), None, None),
         Input::new("migration rate".to_string(), Value::Decimal(0.4), None, None),
         Input::new("channel width".to_string(), Value::Decimal(10.0), None, None),
-        Input::new("upstream width".to_string(), Value::Decimal(0.35), None, None),
-        Input::new("width variation".to_string(), Value::Decimal(0.2), None, None),
-        Input::new("upstream lag".to_string(), Value::Decimal(1.5), None, None),
+        Input::new("meander scale".to_string(), Value::Decimal(10.0), None, None),
+        Input::new("upstream fraction".to_string(), Value::Decimal(0.35), None, None),
+        Input::new("bend widening".to_string(), Value::Decimal(0.1), None, None),
+        Input::new("width noise".to_string(), Value::Decimal(0.1), None, None),
+        Input::new("bend wavelength".to_string(), Value::Decimal(12.5), None, None),
         Input::new("cutoff distance".to_string(), Value::Decimal(1.5), None, None),
-        Input::new("seed wobble".to_string(), Value::Decimal(0.25), None, None),
+        Input::new("initial wobble".to_string(), Value::Decimal(0.25), None, None),
+        Input::new("bank roughness".to_string(), Value::Decimal(0.25), None, None),
     ]
 }
 
@@ -76,7 +80,7 @@ fn curve_length(c: &Curve) -> f32 {
 async fn test_settings() {
     let s = OpCurveSimulationMeander::settings();
     assert_eq!(s.name, "meander");
-    assert_eq!(OpCurveSimulationMeander::create_inputs().len(), 13);
+    assert_eq!(OpCurveSimulationMeander::create_inputs().len(), 16);
     assert_eq!(OpCurveSimulationMeander::create_outputs().len(), 4);
 }
 
@@ -244,6 +248,130 @@ async fn test_width_grows_downstream() {
 }
 
 #[tokio::test]
+async fn test_channel_width_is_render_only() {
+    // Channel width (index 7) is the visual stroke only; meander scale (index 8)
+    // drives the shape. Doubling channel width must widen the rendered river
+    // without moving the evolved centerline, while both stay deterministic.
+    let base = || {
+        let mut inputs = make_inputs(128, 128, Some(line_curve()), None);
+        set(&mut inputs, 5, Value::Integer(300));
+        inputs
+    };
+    let mut thin = base();
+    let mut thick = base();
+    set(&mut thick, 7, Value::Decimal(20.0)); // 2x the make_inputs channel width
+
+    let r_thin = OpCurveSimulationMeander::run(&mut thin).await.unwrap();
+    let r_thick = OpCurveSimulationMeander::run(&mut thick).await.unwrap();
+
+    // Same meander scale -> identical evolved centerline.
+    assert_eq!(
+        out_curve(&r_thin, 0).points,
+        out_curve(&r_thick, 0).points,
+        "channel width must not affect the evolved curve"
+    );
+    // Wider channel width -> more lit pixels in the river mask.
+    let lit = |r: &OperationResponse| image_pixels(r, 1).iter().filter(|p| p[0] > 0.5).count();
+    assert!(
+        lit(&r_thick) > lit(&r_thin),
+        "wider channel width should render a wider river: {} vs {}",
+        lit(&r_thick),
+        lit(&r_thin)
+    );
+}
+
+#[tokio::test]
+async fn test_meander_scale_drives_shape() {
+    // Meander scale (index 8) changes the evolved shape; channel width is held
+    // fixed. A different scale must produce a different centerline.
+    let base = || {
+        let mut inputs = make_inputs(128, 128, Some(line_curve()), None);
+        set(&mut inputs, 5, Value::Integer(300));
+        inputs
+    };
+    let mut small = base();
+    let mut large = base();
+    set(&mut large, 8, Value::Decimal(30.0)); // 3x the make_inputs meander scale
+
+    let r_small = OpCurveSimulationMeander::run(&mut small).await.unwrap();
+    let r_large = OpCurveSimulationMeander::run(&mut large).await.unwrap();
+
+    assert_ne!(
+        out_curve(&r_small, 0).points,
+        out_curve(&r_large, 0).points,
+        "meander scale should reshape the evolved curve"
+    );
+}
+
+#[tokio::test]
+async fn test_bank_roughness_alone_evolves() {
+    // No initial wobble: only the continuous bank noise can break the straight
+    // line's symmetry, and the convective instability amplifies it.
+    let input_curve = line_curve();
+    let mut inputs = make_inputs(64, 64, Some(input_curve.clone()), None);
+    set(&mut inputs, 5, Value::Integer(600));
+    set(&mut inputs, 14, Value::Decimal(0.0)); // initial wobble off
+    let result = OpCurveSimulationMeander::run(&mut inputs).await.unwrap();
+    let evolved = out_curve(&result, 0);
+    assert!(
+        curve_length(&evolved) > curve_length(&input_curve) * 1.01,
+        "bank roughness alone should seed meandering: {} vs {}",
+        curve_length(&evolved),
+        curve_length(&input_curve)
+    );
+}
+
+#[tokio::test]
+async fn test_initial_wobble_alone_evolves() {
+    // No continuous noise: the one-time perturbation is seeded in the growing
+    // wavelength band, so the instability still develops bends from it.
+    let input_curve = line_curve();
+    let mut inputs = make_inputs(64, 64, Some(input_curve.clone()), None);
+    set(&mut inputs, 5, Value::Integer(400));
+    set(&mut inputs, 15, Value::Decimal(0.0)); // bank roughness off
+    let result = OpCurveSimulationMeander::run(&mut inputs).await.unwrap();
+    let evolved = out_curve(&result, 0);
+    assert!(
+        curve_length(&evolved) > curve_length(&input_curve) * 1.01,
+        "initial wobble alone should grow meanders: {} vs {}",
+        curve_length(&evolved),
+        curve_length(&input_curve)
+    );
+}
+
+#[tokio::test]
+async fn test_bend_widening_is_render_only() {
+    // Bend widening (index 10) fattens the rendered stroke at bends without
+    // touching the evolved centerline.
+    let base = || {
+        let mut inputs = make_inputs(128, 128, Some(line_curve()), None);
+        set(&mut inputs, 5, Value::Integer(300));
+        set(&mut inputs, 11, Value::Decimal(0.0)); // width noise off in both
+        inputs
+    };
+    let mut plain = base();
+    let mut widened = base();
+    set(&mut plain, 10, Value::Decimal(0.0));
+    set(&mut widened, 10, Value::Decimal(1.5));
+
+    let r_plain = OpCurveSimulationMeander::run(&mut plain).await.unwrap();
+    let r_widened = OpCurveSimulationMeander::run(&mut widened).await.unwrap();
+
+    assert_eq!(
+        out_curve(&r_plain, 0).points,
+        out_curve(&r_widened, 0).points,
+        "bend widening must not affect the evolved curve"
+    );
+    let lit = |r: &OperationResponse| image_pixels(r, 1).iter().filter(|p| p[0] > 0.5).count();
+    assert!(
+        lit(&r_widened) > lit(&r_plain),
+        "bend widening should fatten the rendered river: {} vs {}",
+        lit(&r_widened),
+        lit(&r_plain)
+    );
+}
+
+#[tokio::test]
 async fn test_migration_map_ages() {
     let mut inputs = make_inputs(128, 128, Some(line_curve()), None);
     set(&mut inputs, 5, Value::Integer(600));
@@ -261,7 +389,7 @@ async fn test_migration_map_ages() {
 #[tokio::test]
 #[ignore]
 async fn render_preview() {
-    let dir = "/private/tmp/claude-501/-Users-danielphillips-rust-nodemangler/3b852131-e4f2-4f28-b9dc-44a01233050e/scratchpad";
+    let dir = "C:/Users/danph/AppData/Local/Temp/claude/D--rust-nodemangler-app/9bd8d98a-9b16-49b7-9152-6b179f8f514a/scratchpad";
     let save = |result: &OperationResponse, index: usize, name: String| {
         match &result.responses[index].value {
             Value::Image { data, .. } => { data.to_dynamic().save(format!("{dir}/{name}.png")).unwrap(); }

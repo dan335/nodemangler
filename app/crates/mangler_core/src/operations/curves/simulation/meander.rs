@@ -12,8 +12,9 @@
 //! the evolved curve is resolution-independent; only the raster outputs use
 //! the width/height inputs. Everything is deterministic from the seed: the
 //! only randomness is the initial perturbation that breaks the symmetry of a
-//! straight line (zero curvature never evolves), and the iteration loop is
-//! strictly serial.
+//! straight line (zero curvature never evolves — the "initial wobble" input)
+//! plus the continuous per-iteration bank noise ("bank roughness"), and the
+//! iteration loop is strictly serial.
 //!
 //! Stability (this is a growth instability): curvature is tanh-saturated at
 //! one over the channel width — a bend can't be tighter than the channel is
@@ -34,6 +35,7 @@ use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -59,18 +61,29 @@ const MAX_OXBOWS: usize = 200;
 /// lag, migration, and cutoff detection. What lives here is the width-
 /// independent coefficients.
 struct SimParams {
-    /// Upstream-lag length in channel widths (local L = lag * width).
+    /// Upstream-lag length in meander-scale widths (local L = lag * width).
+    /// Derived from the "bend wavelength" input: lag = wavelength / 8.3, the
+    /// fastest-growing-wavelength ratio of this exponential kernel.
     lag: f64,
     /// Migration-rate coefficient; local step = rate_coeff * width.
     /// The 0.2 calibrates the default rate to grow developed meanders in
-    /// ~150-250 iterations (set empirically from the render sweep; the
-    /// linear-stability estimate under-predicts the discrete gain).
+    /// ~800 iterations at the default meander scale (set empirically from the
+    /// render sweep — the displacement clamp caps growth on tight bends, so
+    /// raising the rate has diminishing returns).
     rate_coeff: f64,
     /// Per-step displacement clamp (half the sample spacing).
     max_disp: f64,
-    /// Downstream (maximum) channel width in normalized units.
+    /// Simulation length scale (the "meander scale" input), downstream
+    /// (maximum) value in normalized units: the characteristic channel width
+    /// the physics assumes. Drives bend tightness, meander wavelength, cutoff
+    /// necks, and migration step. Independent of the rendered width below.
     w_norm: f64,
-    /// Channel width at the upstream end, as a fraction of `w_norm`.
+    /// Visual channel width (the "channel width" input), downstream value in
+    /// normalized units. Used only when rasterizing the masks / migration map;
+    /// it never affects the evolved shape.
+    render_w_norm: f64,
+    /// Upstream-end width as a fraction of the downstream value. Applies to
+    /// both `w_norm` and `render_w_norm` (both taper the same way upstream).
     upstream_frac: f64,
     /// Bank-heterogeneity noise coefficient; local per-iteration noise
     /// amplitude = noise_coeff * width. Howard-Knutson is a convective
@@ -84,17 +97,20 @@ struct SimParams {
     taper_arc: f64,
 }
 
-/// Fills `widths` with the local channel width per point: sqrt growth from
-/// `upstream_frac * w_norm` at the source to `w_norm` at the mouth (width
-/// scales with the square root of discharge, and discharge grows roughly
-/// linearly downstream). Uniform spacing makes index fraction = arc fraction.
-fn widths_along(n: usize, p: &SimParams, widths: &mut Vec<f64>) {
+/// Fills `widths` with the local width per point for a given downstream scale
+/// `w_norm`: sqrt growth from `upstream_frac * w_norm` at the source to
+/// `w_norm` at the mouth (width scales with the square root of discharge, and
+/// discharge grows roughly linearly downstream). Uniform spacing makes index
+/// fraction = arc fraction. Called with the simulation scale for the physics
+/// and with the render scale for rasterizing — the two differ only by which
+/// `w_norm` is passed.
+fn widths_along(n: usize, w_norm: f64, upstream_frac: f64, widths: &mut Vec<f64>) {
     widths.clear();
     widths.reserve(n);
     let denom = (n.max(2) - 1) as f64;
     for i in 0..n {
         let t = i as f64 / denom;
-        widths.push(p.w_norm * (p.upstream_frac + (1.0 - p.upstream_frac) * t.sqrt()));
+        widths.push(w_norm * (upstream_frac + (1.0 - upstream_frac) * t.sqrt()));
     }
 }
 
@@ -125,6 +141,29 @@ impl ErodGrid {
     }
 }
 
+/// Trivial multiply-mix hasher for the cutoff spatial hash's (i32, i32) cell
+/// keys. `find_cutoff` rebuilds the hash every iteration, and the default
+/// SipHash dominated its cost; cell keys need no DoS resistance.
+#[derive(Default)]
+struct CellHasher(u64);
+
+impl Hasher for CellHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, _bytes: &[u8]) {
+        unreachable!("cell keys hash through write_i32");
+    }
+    fn write_i32(&mut self, v: i32) {
+        self.0 = (self.0.rotate_left(32) ^ v as u32 as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    }
+}
+
+/// The cutoff-detection spatial hash: cell -> point indices. Buckets are
+/// cleared in place between iterations (never dropped), so steady-state
+/// iterations allocate nothing.
+type CellMap = HashMap<(i32, i32), Vec<u32>, BuildHasherDefault<CellHasher>>;
+
 /// Euclidean distance between two points.
 fn dist(a: [f64; 2], b: [f64; 2]) -> f64 {
     let dx = b[0] - a[0];
@@ -144,20 +183,24 @@ fn smoothstep01(x: f64) -> f64 {
 }
 
 /// Resamples a polyline to uniform spacing as close to `ds` as divides the
-/// total length evenly (so index * spacing = arc position exactly). The first
-/// and last input points are preserved exactly. Spacing widens automatically
-/// when `ds` would exceed [`MAX_POINTS`]. Returns the points and the actual
+/// total length evenly (so index * spacing = arc position exactly), into the
+/// reusable `out` buffer (this runs every iteration; the caller swap-buffers
+/// it against the live points so steady-state iterations allocate nothing).
+/// The first and last input points are preserved exactly. Spacing widens
+/// automatically when `ds` would exceed [`MAX_POINTS`]. Returns the actual
 /// spacing used.
-fn resample(points: &[[f64; 2]], ds: f64) -> (Vec<[f64; 2]>, f64) {
+fn resample(points: &[[f64; 2]], ds: f64, out: &mut Vec<[f64; 2]>) -> f64 {
+    out.clear();
     let total = polyline_length(points);
     if points.len() < 2 || total <= 0.0 {
-        return (points.to_vec(), ds);
+        out.extend_from_slice(points);
+        return ds;
     }
     let ds = ds.max(total / MAX_POINTS as f64);
     let n_seg = (total / ds).round().max(1.0) as usize;
     let spacing = total / n_seg as f64;
 
-    let mut out = Vec::with_capacity(n_seg + 1);
+    out.reserve(n_seg + 1);
     out.push(points[0]);
     let mut target = spacing;
     let mut acc = 0.0;
@@ -177,7 +220,7 @@ fn resample(points: &[[f64; 2]], ds: f64) -> (Vec<[f64; 2]>, f64) {
         acc += len;
     }
     out.push(*points.last().unwrap());
-    (out, spacing)
+    spacing
 }
 
 /// Signed curvature per point from the turning angle between adjacent
@@ -360,14 +403,19 @@ fn find_cutoff(
     widths: &[f64],
     spacing: f64,
     p: &SimParams,
-    hash: &mut HashMap<(i32, i32), Vec<u32>>,
+    hash: &mut CellMap,
 ) -> Option<(usize, usize)> {
     let n = points.len();
     if n < 8 {
         return None;
     }
     let cell = p.cutoff * p.w_norm;
-    hash.clear();
+    // Clear buckets in place (points move a fraction of a cell per iteration,
+    // so the touched-cell set is stable); emptied cells linger as empty
+    // buckets, which the scan below skips over harmlessly.
+    for bucket in hash.values_mut() {
+        bucket.clear();
+    }
     for (i, pt) in points.iter().enumerate() {
         let key = ((pt[0] / cell).floor() as i32, (pt[1] / cell).floor() as i32);
         hash.entry(key).or_default().push(i as u32);
@@ -462,22 +510,22 @@ fn stamp_corridor(
     }
 }
 
-/// Rasterizes a polyline with a per-point stroke radius (in normalized width
-/// units, converted to pixels here) into a 1-channel [0,1] mask with a ~1px
-/// anti-aliased edge. The per-segment signed field `radius - distance` is
-/// max-composed, so joints between different-width segments blend smoothly.
-/// Cost is proportional to stroke area (per-segment padded bounding boxes),
-/// like `Curve::rasterize`.
-fn rasterize_variable(
+/// Max-composes a polyline's per-segment signed stroke field
+/// `radius - distance` (per-point radii in normalized width units, converted
+/// to pixels here) into an existing field buffer. Split out from
+/// [`rasterize_variable`] so all oxbows can share one field instead of each
+/// allocating and finalizing a full-image buffer (smoothstep is monotonic, so
+/// max-of-smoothsteps = smoothstep-of-max).
+fn rasterize_segments_into(
+    field: &mut [f32],
     points: &[[f64; 2]],
     widths: &[f64],
     gw: u32,
     gh: u32,
     closed: bool,
-) -> Vec<f32> {
+) {
     let w = gw as usize;
     let h = gh as usize;
-    let mut field = vec![f32::NEG_INFINITY; w * h];
     let n = points.len();
     if n >= 2 {
         let gmax = gw.max(gh) as f64;
@@ -518,6 +566,11 @@ fn rasterize_variable(
             }
         }
     }
+}
+
+/// Converts a signed stroke field into a [0,1] mask with a ~1px smoothstepped
+/// anti-aliased edge.
+fn finalize_field(field: Vec<f32>) -> Vec<f32> {
     field
         .into_iter()
         .map(|v| {
@@ -525,6 +578,21 @@ fn rasterize_variable(
             t * t * (3.0 - 2.0 * t)
         })
         .collect()
+}
+
+/// Rasterizes a polyline with a per-point stroke radius into a 1-channel
+/// [0,1] anti-aliased mask. Cost is proportional to stroke area (per-segment
+/// padded bounding boxes), like `Curve::rasterize`.
+fn rasterize_variable(
+    points: &[[f64; 2]],
+    widths: &[f64],
+    gw: u32,
+    gh: u32,
+    closed: bool,
+) -> Vec<f32> {
+    let mut field = vec![f32::NEG_INFINITY; (gw * gh) as usize];
+    rasterize_segments_into(&mut field, points, widths, gw, gh, closed);
+    finalize_field(field)
 }
 
 /// Shortest distance from point `p` to the segment `a`-`b` (f64 twin of the
@@ -611,7 +679,7 @@ impl OpCurveSimulationMeander {
         NodeSettings {
             name: "meander".to_string(),
             description: "Evolves a drawn curve into a meandering river (Howard-Knutson bank migration): bends grow, translate downstream, and cut off into oxbow lakes.".to_string(),
-            help: "Evolves a drawn curve as a river centerline using the Howard & Knutson (1984) curvature-driven bank-migration model (the physics behind meanderpy): each point migrates along its normal at a rate set by an upstream-weighted average of curvature, so bends grow, translate downstream, and skew - and when a neck pinches shut, the loop is cut off and left behind as an oxbow lake. Step through iterations to watch the river age.\n\nOutputs the evolved centerline as a curve (feed it into rasterize curve or carve river), plus three masks: the river with its oxbow lakes, the oxbows alone, and a migration map - the age-graded corridor the channel swept over time (newer = brighter), the scroll-bar/point-bar scarring visible around real rivers.\n\nThe channel is not constant width: it grows from upstream width x channel width at the source to the full channel width downstream (like accumulating discharge), and width variation adds bend widening plus gentle noise in the rendered masks. The local width is also the simulation's local physical scale - the tightest possible bend, the meander wavelength, the cutoff distance, and the migration step all follow it - so the upstream reach forms small tight bends and the downstream reach big lazy loops, like a real river. Channel width is in pixels at a 1024px reference.\n\nA perfectly straight line has zero curvature and never evolves; seed wobble adds the perturbation that starts the process (vary the seed for different rivers from the same curve). The optional erodibility map scales migration spatially (bright = mobile banks, dark = resistant; unconnected = uniform). Endpoints stay pinned. Closed curves evolve as an open path with a pinned seam. Deterministic from the seed; the rasters do not tile. The curve output is the centerline only - width lives in the raster outputs.".to_string(),
+            help: "Evolves a drawn curve as a river centerline using the Howard & Knutson (1984) curvature-driven bank-migration model (the physics behind meanderpy): each point migrates along its normal at a rate set by an upstream-weighted average of curvature, so bends grow, translate downstream, and skew - and when a neck pinches shut, the loop is cut off and left behind as an oxbow lake. Step through iterations to watch the river age.\n\nOutputs the evolved centerline as a curve (feed it into rasterize curve or carve river), plus three masks: the river with its oxbow lakes, the oxbows alone, and a migration map - the age-graded corridor the channel swept over time (newer = brighter), the scroll-bar/point-bar scarring visible around real rivers.\n\nThe rendered river width (channel width) is separate from the meander scale that drives the shape, so you can draw a thin river with broad meanders or a wide river with tight ones. Meander scale is the characteristic channel width the physics assumes: the tightest possible bend, the meander wavelength (the bend wavelength input, in multiples of the scale), the cutoff neck distance, and the migration step all follow it. Both grow downstream, from upstream fraction x their value at the source to the full value at the mouth (like accumulating discharge), so the upstream reach forms small tight bends and the downstream reach big lazy loops. Bend widening and width noise vary the rendered masks only. Channel width and meander scale are both in pixels at a 1024px reference.\n\nA perfectly straight line has zero curvature and never evolves; initial wobble adds the perturbation that starts the process, and bank roughness keeps seeding new bends as old ones migrate downstream (vary the seed for different rivers from the same curve). The optional erodibility map scales migration spatially (bright = mobile banks, dark = resistant; unconnected = uniform). Endpoints stay pinned. Closed curves evolve as an open path with a pinned seam. Deterministic from the seed; the rasters do not tile. The curve output is the centerline only - width lives in the raster outputs.".to_string(),
         }
     }
 
@@ -630,22 +698,28 @@ impl OpCurveSimulationMeander {
                 .with_description("The initial river centerline; usually connected from a curve node."),
             Input::new("erodibility".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
                 .with_description("Optional map scaling bank migration spatially: bright = mobile banks, dark = resistant. Uniform when unconnected."),
-            Input::new("iterations".to_string(), Value::Integer(100), Some(InputSettings::DragValue { clamp: Some((0.0, 2000.0)), speed: None }), None)
-                .with_description("Simulation steps; step through to watch the river age. 0 passes the curve through unchanged."),
+            Input::new("iterations".to_string(), Value::Integer(800), Some(InputSettings::DragValue { clamp: Some((0.0, 2000.0)), speed: None }), None)
+                .with_description("Simulation steps; step through to watch the river age. The default rate grows developed meanders in ~800 steps. 0 passes the curve through unchanged."),
             Input::new("migration rate".to_string(), Value::Decimal(0.4), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
-                .with_description("How far the banks migrate per iteration, as a fraction of the channel width."),
+                .with_description("How fast the banks migrate: each step moves a point by roughly 0.2 x this x the local meander scale (clamped for stability, so the top of the range saturates on tight bends). How developed the river looks is roughly rate x iterations."),
             Input::new("channel width".to_string(), Value::Decimal(10.0), Some(InputSettings::DragValue { clamp: Some((1.0, 128.0)), speed: Some(0.1) }), None)
-                .with_description("River width at the downstream end, in pixels at a 1024px reference (scales with output size). Also the simulation's local physical scale: bend tightness, meander wavelength, cutoff necks, and step size all follow the local width."),
-            Input::new("upstream width".to_string(), Value::Decimal(0.35), Some(InputSettings::Slider { range: (0.05, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
-                .with_description("Channel width at the source as a fraction of the downstream width; the river widens downstream like accumulating discharge (sqrt growth). 1 = constant width."),
-            Input::new("width variation".to_string(), Value::Decimal(0.2), Some(InputSettings::Slider { range: (0.0, 3.0), step_by: Some(0.01), clamp_to_range: true }), None)
-                .with_description("Local width irregularity in the rendered masks: wider at bends (cut bank + point bar) plus noise along the length. Subtle around 0.2; past ~1.5 the channel swells and pinches into pool-and-narrows beading."),
-            Input::new("upstream lag".to_string(), Value::Decimal(1.5), Some(InputSettings::Slider { range: (0.5, 8.0), step_by: Some(0.1), clamp_to_range: true }), None)
-                .with_description("How far upstream curvature influences migration, in channel widths. Sets the meander wavelength (~8x the lag) and the downstream translation of bends; longer lag = longer, slower-growing bends."),
+                .with_description("Rendered width of the river at the downstream end, in pixels at a 1024px reference (scales with output size). Purely visual - it does not affect the meander shape (see meander scale)."),
+            Input::new("meander scale".to_string(), Value::Decimal(10.0), Some(InputSettings::DragValue { clamp: Some((1.0, 128.0)), speed: Some(0.1) }), None)
+                .with_description("The characteristic channel width the meander physics assumes, in pixels at a 1024px reference. Sets bend tightness, meander wavelength (with bend wavelength), cutoff neck distance, and migration step - separate from the rendered channel width, so a thin river can carry broad meanders or a wide river tight ones."),
+            Input::new("upstream fraction".to_string(), Value::Decimal(0.35), Some(InputSettings::Slider { range: (0.05, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Width at the source as a fraction of the downstream value (applies to channel width and meander scale alike); the river widens downstream like accumulating discharge (sqrt growth). 1 = constant width."),
+            Input::new("bend widening".to_string(), Value::Decimal(0.1), Some(InputSettings::Slider { range: (0.0, 2.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Extra rendered width at bends (cut bank + point bar), keyed to the local curvature. Render-only; does not affect the meander shape."),
+            Input::new("width noise".to_string(), Value::Decimal(0.1), Some(InputSettings::Slider { range: (0.0, 1.5), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Seeded width irregularity along the rendered river. Subtle around 0.1; past ~0.6 the channel swells and pinches into pool-and-narrows beading. Render-only."),
+            Input::new("bend wavelength".to_string(), Value::Decimal(12.5), Some(InputSettings::Slider { range: (4.0, 65.0), step_by: Some(0.5), clamp_to_range: true }), None)
+                .with_description("Approximate meander wavelength, in multiples of the local meander scale. Longer = longer, lazier, slower-growing bends that translate further downstream."),
             Input::new("cutoff distance".to_string(), Value::Decimal(1.5), Some(InputSettings::Slider { range: (0.5, 4.0), step_by: Some(0.1), clamp_to_range: true }), None)
-                .with_description("Neck separation below which a loop is cut off into an oxbow, in channel widths."),
-            Input::new("seed wobble".to_string(), Value::Decimal(0.25), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
-                .with_description("Bank irregularity, in channel widths: the initial symmetry-breaking undulation plus a little continuous per-iteration noise that keeps seeding new bends (a straight line never meanders without it)."),
+                .with_description("Neck separation below which a loop is cut off into an oxbow, in meander-scale widths."),
+            Input::new("initial wobble".to_string(), Value::Decimal(0.25), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("One-time undulation that breaks a straight line's symmetry and sets the starting bend pattern, in meander-scale widths (a perfectly straight line never meanders on its own)."),
+            Input::new("bank roughness".to_string(), Value::Decimal(0.25), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
+                .with_description("Continuous per-iteration bank noise, in meander-scale widths: keeps seeding new bends as old ones migrate downstream. At 0 the pinned upstream end straightens out over time."),
         ]
     }
 
@@ -682,11 +756,14 @@ impl OpCurveSimulationMeander {
         let iterations_converted = convert_input(inputs, 5, ValueType::Integer, &mut input_errors);
         let rate_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
         let chan_width_converted = convert_input(inputs, 7, ValueType::Decimal, &mut input_errors);
-        let upstream_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
-        let variation_converted = convert_input(inputs, 9, ValueType::Decimal, &mut input_errors);
-        let lag_converted = convert_input(inputs, 10, ValueType::Decimal, &mut input_errors);
-        let cutoff_converted = convert_input(inputs, 11, ValueType::Decimal, &mut input_errors);
-        let wobble_converted = convert_input(inputs, 12, ValueType::Decimal, &mut input_errors);
+        let meander_scale_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
+        let upstream_converted = convert_input(inputs, 9, ValueType::Decimal, &mut input_errors);
+        let bend_widening_converted = convert_input(inputs, 10, ValueType::Decimal, &mut input_errors);
+        let width_noise_converted = convert_input(inputs, 11, ValueType::Decimal, &mut input_errors);
+        let wavelength_converted = convert_input(inputs, 12, ValueType::Decimal, &mut input_errors);
+        let cutoff_converted = convert_input(inputs, 13, ValueType::Decimal, &mut input_errors);
+        let init_wobble_converted = convert_input(inputs, 14, ValueType::Decimal, &mut input_errors);
+        let roughness_converted = convert_input(inputs, 15, ValueType::Decimal, &mut input_errors);
 
         if !input_errors.is_empty() {
             return Err(OperationError { input_errors, node_error: None });
@@ -700,24 +777,36 @@ impl OpCurveSimulationMeander {
         let Value::Integer(iterations) = iterations_converted.unwrap() else { unreachable!() };
         let Value::Decimal(migration_rate) = rate_converted.unwrap() else { unreachable!() };
         let Value::Decimal(channel_width) = chan_width_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(meander_scale) = meander_scale_converted.unwrap() else { unreachable!() };
         let Value::Decimal(upstream_frac) = upstream_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(variation) = variation_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(lag) = lag_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(bend_widening) = bend_widening_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(width_noise) = width_noise_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(wavelength) = wavelength_converted.unwrap() else { unreachable!() };
         let Value::Decimal(cutoff) = cutoff_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(wobble) = wobble_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(init_wobble) = init_wobble_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(roughness) = roughness_converted.unwrap() else { unreachable!() };
 
         let w = width.clamp(1, 4096) as u32;
         let h = height.clamp(1, 4096) as u32;
         let iterations = iterations.clamp(0, 2000) as usize;
         let migration_rate = migration_rate.clamp(0.0, 1.0) as f64;
         let channel_width = channel_width.clamp(1.0, 128.0);
+        let meander_scale = meander_scale.clamp(1.0, 128.0);
         let upstream_frac = upstream_frac.clamp(0.05, 1.0) as f64;
-        let variation = variation.clamp(0.0, 3.0) as f64;
-        let lag = lag.clamp(0.5, 8.0) as f64;
+        let bend_widening = bend_widening.clamp(0.0, 2.0) as f64;
+        let width_noise = width_noise.clamp(0.0, 1.5) as f64;
+        let wavelength = wavelength.clamp(4.0, 65.0) as f64;
         let cutoff = (cutoff.clamp(0.5, 4.0)) as f64;
-        let wobble = wobble.clamp(0.0, 1.0) as f64;
+        let init_wobble = init_wobble.clamp(0.0, 1.0) as f64;
+        let roughness = roughness.clamp(0.0, 1.0) as f64;
+        // The exponential upstream kernel's fastest-growing wavelength is
+        // ~8.3x its lag length; the input exposes the wavelength directly.
+        let lag = wavelength / 8.3;
 
-        let w_norm = channel_width as f64 / 1024.0;
+        // The physics run on the meander scale; the visual river width is a
+        // separate render-only scale. Both are pixels at a 1024px reference.
+        let w_norm = meander_scale as f64 / 1024.0;
+        let render_w_norm = channel_width as f64 / 1024.0;
         // Sample spacing follows the *narrowest* reach so upstream bends (whose
         // wavelength scales with the local width) stay resolved.
         let ds = (0.5 * w_norm * upstream_frac.max(0.25)).min(0.01);
@@ -726,8 +815,9 @@ impl OpCurveSimulationMeander {
             rate_coeff: 0.2 * migration_rate,
             max_disp: 0.5 * ds,
             w_norm,
+            render_w_norm,
             upstream_frac,
-            noise_coeff: 0.2 * wobble,
+            noise_coeff: 0.2 * roughness,
             cutoff,
             taper_arc: 8.0 * w_norm,
         };
@@ -744,14 +834,15 @@ impl OpCurveSimulationMeander {
         // Passthrough: degenerate input or zero iterations. The RNG is never
         // consumed, the curve passes through untouched, and the rasters stay
         // valid (the un-migrated corridor at its base width profile; no
-        // cosmetic width variation, which would need the RNG).
+        // cosmetic bend widening / width noise, which would need the RNG).
         if degenerate || iterations == 0 {
             let pixel_count = (w * h) as usize;
             let mask = if degenerate {
                 vec![0.0f32; pixel_count]
             } else {
-                let (pts, _) = resample(&poly, ds);
-                widths_along(pts.len(), &params, &mut widths);
+                let mut pts: Vec<[f64; 2]> = Vec::new();
+                resample(&poly, ds, &mut pts);
+                widths_along(pts.len(), params.render_w_norm, params.upstream_frac, &mut widths);
                 rasterize_variable(&pts, &widths, w, h, false)
             };
             return Ok(OperationResponse {
@@ -773,10 +864,13 @@ impl OpCurveSimulationMeander {
             Some(ErodGrid { data: guidance_map_to_grid(&erod_data, gw, gh), w: gw, h: gh })
         };
 
-        let mut rng = fastrand::Rng::with_seed(seed.max(1) as u64);
-        let (mut pts, mut spacing) = resample(&poly, ds);
-        let lambda_star = 8.3 * lag * w_norm;
-        seed_perturbation(&mut pts, &mut rng, wobble * w_norm, lambda_star, spacing, &params);
+        // Bit-cast so every integer seed (including 0 and negatives) is a
+        // distinct RNG stream.
+        let mut rng = fastrand::Rng::with_seed(seed as u64);
+        let mut pts: Vec<[f64; 2]> = Vec::new();
+        let mut spacing = resample(&poly, ds, &mut pts);
+        let lambda_star = wavelength * w_norm;
+        seed_perturbation(&mut pts, &mut rng, init_wobble * w_norm, lambda_star, spacing, &params);
         // Width-variation noise: three sinusoids with wavelengths pegged to
         // the channel scale (in multiples of the channel width, converted to
         // arc-fraction frequencies at render time), seeded amplitude + phase.
@@ -790,17 +884,26 @@ impl OpCurveSimulationMeander {
         let mut curv: Vec<f64> = Vec::new();
         let mut conv: Vec<f64> = Vec::new();
         let mut scratch: Vec<f64> = Vec::new();
+        // Render widths for the migration-map corridor; the visual scale, not
+        // the simulation scale in `widths`.
+        let mut corridor_widths: Vec<f64> = Vec::new();
         let mut buf: Vec<[f64; 2]> = Vec::new();
-        let mut hash: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
+        let mut hash = CellMap::default();
         let mut oxbows: Vec<(Vec<[f64; 2]>, Vec<f64>)> = Vec::new();
         let mut migration = vec![0.0f32; (w * h) as usize];
+        // Corridor stamping is capped at ~512 evenly spaced age samples: past
+        // that the extra age resolution is invisible, and stamping was a large
+        // share of high-iteration runs. Runs up to 512 iterations stamp every
+        // step, unchanged.
+        let stamp_stride = (iterations + 511) / 512;
 
         for it in 0..iterations {
-            (pts, spacing) = resample(&pts, ds);
+            spacing = resample(&pts, ds, &mut buf);
+            std::mem::swap(&mut pts, &mut buf);
             if pts.len() < 4 {
                 break; // cutoffs consumed the channel; freeze evolution
             }
-            widths_along(pts.len(), &params, &mut widths);
+            widths_along(pts.len(), params.w_norm, params.upstream_frac, &mut widths);
             signed_curvature(&pts, &widths, &mut curv, &mut scratch);
             upstream_filter(&curv, &widths, spacing, &params, &mut conv);
             migrate(&pts, &mut buf, &curv, &conv, &widths, spacing, &params, erod.as_ref(), &mut rng);
@@ -820,17 +923,22 @@ impl OpCurveSimulationMeander {
                 }
             }
 
-            let age = (it + 1) as f32 / iterations as f32;
-            widths_along(pts.len(), &params, &mut widths);
-            stamp_corridor(&mut migration, w as usize, h as usize, &pts, &widths, spacing, age);
+            if (it + 1) % stamp_stride == 0 || it + 1 == iterations {
+                let age = (it + 1) as f32 / iterations as f32;
+                widths_along(pts.len(), params.render_w_norm, params.upstream_frac, &mut corridor_widths);
+                stamp_corridor(&mut migration, w as usize, h as usize, &pts, &corridor_widths, spacing, age);
+            }
         }
 
-        // Rendered width profile: the base downstream widening plus the
-        // cosmetic variation — wider at bends (cut bank + point bar) and a
-        // gentle seeded noise along the length.
-        widths_along(pts.len(), &params, &mut widths);
+        // Rendered width profile: the base downstream widening (at the *render*
+        // scale) plus the cosmetic variation — wider at bends (cut bank + point
+        // bar) and a gentle seeded noise along the length. Curvature (a shape
+        // quantity) is taken from the simulation widths so bend widening keys
+        // off the actual bends, not the visual stroke.
+        widths_along(pts.len(), params.w_norm, params.upstream_frac, &mut widths);
         signed_curvature(&pts, &widths, &mut curv, &mut scratch);
-        let render_widths: Vec<f64> = widths
+        widths_along(pts.len(), params.render_w_norm, params.upstream_frac, &mut corridor_widths);
+        let render_widths: Vec<f64> = corridor_widths
             .iter()
             .enumerate()
             .map(|(i, &wi)| {
@@ -840,9 +948,9 @@ impl OpCurveSimulationMeander {
                     .map(|(a, wl, ph)| a * (arc / wl * std::f64::consts::TAU + ph).sin())
                     .sum::<f64>()
                     / width_waves.len() as f64;
-                // Floor at 0.1x so high variation pinches the channel into
+                // Floor at 0.1x so high width noise pinches the channel into
                 // pool-and-narrows beading instead of severing it entirely.
-                wi * (1.0 + variation * (0.6 * curv[i].abs() + 0.4 * noise)).max(0.1)
+                wi * (1.0 + bend_widening * curv[i].abs() + width_noise * noise).max(0.1)
             })
             .collect();
 
@@ -851,11 +959,11 @@ impl OpCurveSimulationMeander {
         // oxbow lake is the old channel, not its filled interior),
         // max-composed together for the river mask.
         let mut river = rasterize_variable(&pts, &render_widths, w, h, false);
-        let mut oxbow_px = vec![0.0f32; (w * h) as usize];
+        let mut ox_field = vec![f32::NEG_INFINITY; (w * h) as usize];
         for (ox_pts, ox_widths) in &oxbows {
-            let px = rasterize_variable(ox_pts, ox_widths, w, h, true);
-            max_composite(&mut oxbow_px, &px);
+            rasterize_segments_into(&mut ox_field, ox_pts, ox_widths, w, h, true);
         }
+        let oxbow_px = finalize_field(ox_field);
         max_composite(&mut river, &oxbow_px);
 
         let out_curve = Curve {
