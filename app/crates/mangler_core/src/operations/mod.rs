@@ -529,6 +529,7 @@ operations! {
     OpImageSimulationHydraulicErosion(crate::operations::images::simulation::hydraulic_erosion::OpImageSimulationHydraulicErosion),
     OpImageSimulationCarveRiver(crate::operations::images::simulation::carve_river::OpImageSimulationCarveRiver),
     OpImageSimulationHillslopeDiffusion(crate::operations::images::simulation::hillslope_diffusion::OpImageSimulationHillslopeDiffusion),
+    OpImageSimulationGuidedRollingHills(crate::operations::images::simulation::guided_rolling_hills::OpImageSimulationGuidedRollingHills),
 
     // shapes
     OpImageShapeRectangle(crate::operations::images::shapes::rectangle::OpImageShapeRectangle),
@@ -1100,6 +1101,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageSimulationHydraulicErosion },
                 OperationListItem::Operation { operation: Operation::OpImageSimulationCarveRiver },
                 OperationListItem::Operation { operation: Operation::OpImageSimulationHillslopeDiffusion },
+                OperationListItem::Operation { operation: Operation::OpImageSimulationGuidedRollingHills },
             ]},
             OperationListItem::Category { name: "cast".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageCastToImage },

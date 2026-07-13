@@ -10,7 +10,7 @@ Claude.
 
 ## Features
 
-- **382 nodes** across images, colors, numbers, logic, and text — see the full
+- **383 nodes** across images, colors, numbers, logic, and text — see the full
   [Node Reference](#node-reference) below.
 - **Procedural generation** — 45 noise generators.
 - **14 color spaces** with conversion between them: sRGB, Linear RGB, HSL, HSV, HWB,
@@ -93,7 +93,7 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Input:** Curve
 - **Simulation:** Meander
 
-### Images (179)
+### Images (180)
 
 - **Input:** Constant, From Clipboard, From Color, From File, From Gradient, From Text, From URL
 - **Output:** Material, To Clipboard, To File
@@ -113,7 +113,7 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Patterns:** Brick, Flood Fill, Flood Fill Mapper, Hexagonal, Splatter, Tile Generator, Tile Sampler, Weave
 - **PBR:** AO From Height, Bevel, Curvature, Height Blend, Normal Blend, Normal Combine, Normal From Height, Normal Invert, Normal To Height
 - **Shapes:** Circle, Cone, Ellipse, Line, Paraboloid, Polygon, Pyramid, Rasterize Curve, Rectangle, Star
-- **Simulation:** Carve River, Hillslope Diffusion, Hydraulic Erosion
+- **Simulation:** Carve River, Guided Rolling Hills, Hillslope Diffusion, Hydraulic Erosion
 - **Transform:** Crop, Directional Warp, Flip Horizontal, Flip Vertical, Kaleidoscope, Make Tile, Mirror, Perspective, Polar Coordinates, Resize, Resize Exact, Resize Fill, Rotate, Rotate 180, Rotate 270, Rotate 90, Seam Carve, Spherize, Swirl, Transform, Warp
 
 ### Logic (22)

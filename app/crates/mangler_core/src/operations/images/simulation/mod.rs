@@ -22,6 +22,8 @@ pub mod hydraulic_erosion;
 pub mod carve_river;
 /// Nonlinear soil-creep diffusion (Roering et al. 1999): ages rough terrain into rolling hills.
 pub mod hillslope_diffusion;
+/// Rolling hills shaped around a river mask or distance field: flat channel bed + rising banks.
+pub mod guided_rolling_hills;
 
 /// Returns true when an image-typed input still holds the 1x1 placeholder,
 /// i.e. nothing is connected. Simulation nodes use this to decide between a
