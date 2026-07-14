@@ -847,16 +847,18 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                             // still streams continuously — that path ignores this
                             // flag. Without this, typing "500" fires three
                             // SetInputs (5, 50, 500) and each runs a full decode.
-                            let mut drag = egui::DragValue::new(&mut x)
+                            // No .range(): typed values may exceed min/max as an
+                            // explicit override. Dragging is re-clamped below so the
+                            // drag interaction stays bounded as before.
+                            let drag = egui::DragValue::new(&mut x)
                                 .update_while_editing(false);
 
-                            drag = if let Some(clamp) = clamp {
-                                drag.range(clamp.0..=clamp.1)
-                            } else {
-                                drag
-                            };
-
-                            ui.add(drag);
+                            let response = ui.add(drag);
+                            if response.dragged() {
+                                if let Some(clamp) = clamp {
+                                    x = x.clamp(clamp.0 as i32, clamp.1 as i32);
+                                }
+                            }
                             // Compare against the captured starting value rather
                             // than trusting response.changed() — TextEdit inside
                             // DragValue fires .changed() on every keystroke even
@@ -865,9 +867,10 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                                 change_value(tx_change_node, node_id, input_index, input, Value::Integer(x));
                             }
                         },
-                        InputSettings::Slider { range, step_by: _, clamp_to_range } => {
-                            let clamping = if *clamp_to_range { egui::SliderClamping::Always } else { egui::SliderClamping::Never };
-                            if ui.add(egui::Slider::new(&mut x, range.0 as i32..=range.1 as i32).clamping(clamping)).changed() {
+                        InputSettings::Slider { range, step_by: _, clamp_to_range: _ } => {
+                            // SliderClamping::Never lets typed values exceed the range;
+                            // the handle drag is still limited to the track.
+                            if ui.add(egui::Slider::new(&mut x, range.0 as i32..=range.1 as i32).clamping(egui::SliderClamping::Never)).changed() {
                                 change_value(tx_change_node, node_id, input_index, input, Value::Integer(x));
                             }
                         },
@@ -887,24 +890,30 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         InputSettings::DragValue { speed, clamp } => {
                             // See Integer DragValue above for why update_while_editing(false)
                             // and x-compare instead of response.changed().
+                            // No .range(): typed values may exceed min/max as an
+                            // explicit override. Dragging is re-clamped below so the
+                            // drag interaction stays bounded as before.
                             let mut drag = egui::DragValue::new(&mut x)
                                 .update_while_editing(false);
 
                             if let Some(speed) = *speed {
                                 drag = drag.speed(speed);
                             }
-                            if let Some(clamp) = clamp {
-                                drag = drag.range(clamp.0..=clamp.1);
-                            }
 
-                            ui.add(drag);
+                            let response = ui.add(drag);
+                            if response.dragged() {
+                                if let Some(clamp) = clamp {
+                                    x = x.clamp(clamp.0, clamp.1);
+                                }
+                            }
                             if x != a {
                                 change_value(tx_change_node, node_id, input_index, input, Value::Decimal(x));
                             }
                         },
-                        InputSettings::Slider { range, step_by: _, clamp_to_range } => {
-                            let clamping = if *clamp_to_range { egui::SliderClamping::Always } else { egui::SliderClamping::Never };
-                            if ui.add(egui::Slider::new(&mut x, range.0..=range.1).clamping(clamping)).changed() {
+                        InputSettings::Slider { range, step_by: _, clamp_to_range: _ } => {
+                            // SliderClamping::Never lets typed values exceed the range;
+                            // the handle drag is still limited to the track.
+                            if ui.add(egui::Slider::new(&mut x, range.0..=range.1).clamping(egui::SliderClamping::Never)).changed() {
                                 change_value(tx_change_node, node_id, input_index, input, Value::Decimal(x));
                             }
                         },
