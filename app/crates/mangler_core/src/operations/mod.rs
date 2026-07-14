@@ -687,6 +687,14 @@ operations! {
     OpNumberImageDifference(crate::operations::numbers::image::image_difference::OpNumberImageDifference),
     OpNumberImagePerceptualHash(crate::operations::numbers::image::perceptual_hash::OpNumberImagePerceptualHash),
 
+    // curve (curve → number measurements)
+    OpNumberCurveLength(crate::operations::numbers::curve::length::OpNumberCurveLength),
+    OpNumberCurvePointCount(crate::operations::numbers::curve::point_count::OpNumberCurvePointCount),
+    OpNumberCurveBounds(crate::operations::numbers::curve::bounds::OpNumberCurveBounds),
+    OpNumberCurveCentroid(crate::operations::numbers::curve::centroid::OpNumberCurveCentroid),
+    OpNumberCurveArea(crate::operations::numbers::curve::area::OpNumberCurveArea),
+    OpNumberCurveSamplePoint(crate::operations::numbers::curve::sample_point::OpNumberCurveSamplePoint),
+
     // numbers ← text (measurements / parsing)
     OpNumberTextParseDecimal(crate::operations::numbers::text::parse_decimal::OpNumberTextParseDecimal),
     OpNumberTextParseInteger(crate::operations::numbers::text::parse_integer::OpNumberTextParseInteger),
@@ -815,6 +823,14 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpNumberImageAverageHue },
                 OperationListItem::Operation { operation: Operation::OpNumberImageDifference },
                 OperationListItem::Operation { operation: Operation::OpNumberImagePerceptualHash },
+            ]},
+            OperationListItem::Category { name: "curve".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpNumberCurveLength },
+                OperationListItem::Operation { operation: Operation::OpNumberCurvePointCount },
+                OperationListItem::Operation { operation: Operation::OpNumberCurveBounds },
+                OperationListItem::Operation { operation: Operation::OpNumberCurveCentroid },
+                OperationListItem::Operation { operation: Operation::OpNumberCurveArea },
+                OperationListItem::Operation { operation: Operation::OpNumberCurveSamplePoint },
             ]},
             OperationListItem::Category { name: "text".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpNumberTextParseDecimal },

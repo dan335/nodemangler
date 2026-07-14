@@ -23,5 +23,7 @@ pub mod trigonometry;
 pub mod bitwise;
 /// Image measurement operations that reduce an image to numbers.
 pub mod image;
+/// Curve measurement operations that reduce a curve to numbers.
+pub mod curve;
 /// Text measurement/parsing operations that reduce text to numbers.
 pub mod text;

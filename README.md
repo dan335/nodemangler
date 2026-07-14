@@ -63,15 +63,16 @@ Each crate README goes into detail on that component.
 ## Node Reference
 
 Every node in the graph editor's Add Node menu, by category and subcategory
-(333 operation nodes, plus subgraph nodes for composing whole pipelines).
+(339 operation nodes, plus subgraph nodes for composing whole pipelines).
 
-### Numbers (98)
+### Numbers (104)
 
 - **Input:** Decimal, E, Integer, Phi, Pi, Tau
 - **Algebraic:** Absolute Value, Cube Root, Distance 2D, Factorial, GCD, Hypot, LCM, Nth Root, Power, Square Root
 - **Arithmetic:** Add, Average, Ceil, Clamp, Decrement, Divide, Floor, Fractional Part, Increment, Max, Min, Modulus, Multiply, Negate, Ping Pong, Reciprocal, Round, Sign, Snap, Subtract, Truncate, Wrap
 - **Bitwise:** Bitwise And, Bitwise Not, Bitwise Or, Bitwise Xor, Shift Left, Shift Right
 - **Cast:** To Decimal, To Integer
+- **Curve:** Area, Bounds, Centroid, Length, Point Count, Sample Point
 - **Image:** Average Hue, Bounding Box, Centroid, Coverage, Dimensions, Edge Density, Entropy, Image Difference, Kurtosis, Mean, Median, Min Max, Percentile, Perceptual Hash, Sharpness, Skewness, Standard Deviation, Unique Colors
 - **Interpolation:** Lerp, Map Range, Smoothstep, Step
 - **Logarithmic:** Exp, Ln, Log, Log10, Log2
