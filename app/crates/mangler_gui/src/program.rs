@@ -110,6 +110,12 @@ pub struct Program {
     /// published by the window holding the mouse capture so every window can
     /// hit-test and draw the ghost node.
     menu_drag_pointer_screen: Option<Pos2>,
+    /// Image file being dragged out of the Libraries panel, if any. Set when
+    /// an image row's drag starts (via `LibraryAction::BeginImageDrag`) and
+    /// dropped onto a graph panel by `show_menu_drag`, which creates an "image
+    /// from file" node at the drop position — mirroring the node-list drag
+    /// (`dragging_menu_button`) but carrying a path instead of an operation.
+    dragging_library_image: Option<PathBuf>,
     /// Display name to show when this graph has no save path yet (a brand-new
     /// unsaved tab). Once a save path exists the name is derived purely from
     /// the file stem — see [`Self::display_name`].
@@ -177,6 +183,7 @@ impl Program {
                 main_graph_rects: Vec::new(),
                 graph_rects_screen: HashMap::new(),
                 menu_drag_pointer_screen: None,
+                dragging_library_image: None,
                 fallback_name: "new graph".to_string(),
                 graph_name_buffer: String::new(),
                 pending_open_graphs: Vec::new(),
@@ -263,7 +270,14 @@ impl Program {
         );
         let (zoom, position) = self.camera_at(screen);
         let graph_pos = view_to_graph_space_pos2(zoom, screen) - position.to_vec2();
+        self.add_image_from_file_at(path, graph_pos);
+    }
 
+    /// Creates an "image from file" input node wired to `path` at an explicit
+    /// graph-space position. Used by the Libraries-panel drag-and-drop handler,
+    /// which knows exactly where the user dropped the image;
+    /// `add_image_from_file` is the jittered-center wrapper over this.
+    pub fn add_image_from_file_at(&mut self, path: PathBuf, graph_pos: Pos2) {
         match self.add_node(
             AddNodeType::Operation(mangler_core::operations::Operation::OpImageInputFile),
             graph_pos,
@@ -283,6 +297,13 @@ impl Program {
             }
             Err(err) => println!("Error adding image node: {}", err.0),
         }
+    }
+
+    /// Begins dragging a Libraries-panel image into a graph. Records the path
+    /// so `show_menu_drag` can draw the ghost and drop an "image from file"
+    /// node wherever the drag ends over a graph panel.
+    pub fn begin_library_image_drag(&mut self, path: PathBuf) {
+        self.dragging_library_image = Some(path);
     }
 
     /// Takes (and clears) the `.mangler.json` files dropped onto this program's
@@ -1492,6 +1513,7 @@ impl Program {
 
         if !self.dragging_menu_button.subgraph_being_created
             && self.dragging_menu_button.operation_being_created.is_none()
+            && self.dragging_library_image.is_none()
         {
             return;
         }
@@ -1526,29 +1548,33 @@ impl Program {
                 .find(|(_, (screen_rect, _))| screen_rect.contains(pointer_screen))
                 .map(|(leaf, (_, target_origin))| (*leaf, *target_origin));
             if let Some((leaf, target_origin)) = target {
-                let node_type =
-                    if let Some(operation) = &self.dragging_menu_button.operation_being_created {
-                        AddNodeType::Operation(operation.clone())
-                    } else {
-                        AddNodeType::Subgraph
-                    };
                 // Graph-space position from the target window's local coords
                 // and the target panel's camera.
                 let local = pointer_screen - target_origin.to_vec2();
                 let (zoom, position) = self.camera_transform(Some(leaf));
+                let graph_pos = view_to_graph_space_pos2(zoom, local) - position.to_vec2();
                 //let node_position_view_space = Pos2::new(cursor_position.x - bottom_panel_rect.min.x, cursor_position.y - bottom_panel_rect.min.y);
-                if let Ok(node_id) = self.add_node(
-                    node_type,
-                    view_to_graph_space_pos2(zoom, local) - position.to_vec2(),
-                    true,
-                    None,
-                    Vec::new(),
-                ) {
-                    self.edit_node(node_id);
+                if let Some(path) = self.dragging_library_image.take() {
+                    // Dropped a Libraries image: create the "image from file"
+                    // node here, already wired to the dropped path.
+                    self.add_image_from_file_at(path, graph_pos);
+                } else {
+                    let node_type = if let Some(operation) =
+                        &self.dragging_menu_button.operation_being_created
+                    {
+                        AddNodeType::Operation(operation.clone())
+                    } else {
+                        AddNodeType::Subgraph
+                    };
+                    if let Ok(node_id) = self.add_node(node_type, graph_pos, true, None, Vec::new())
+                    {
+                        self.edit_node(node_id);
+                    }
                 }
             }
 
             self.dragging_menu_button = MenuItemsResult::default();
+            self.dragging_library_image = None;
             self.menu_drag_pointer_screen = None;
             return;
         }
@@ -1568,6 +1594,8 @@ impl Program {
             name = op.settings().name.clone();
         } else if self.dragging_menu_button.subgraph_being_created {
             name = "subgraph".to_string();
+        } else if self.dragging_library_image.is_some() {
+            name = "image".to_string();
         }
 
         let drag_rect = Rect::from_center_size(pointer, NODE_SIZE);

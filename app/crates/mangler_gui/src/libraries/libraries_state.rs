@@ -69,6 +69,11 @@ pub enum LibraryAction {
     /// focused program's graph (needs the programs map, which the panel can't
     /// touch — see `App::handle_library_action`).
     AddImageNode { path: PathBuf },
+    /// The user started dragging the image at `path` out of the panel. Records
+    /// it as the focused program's active image drag; the drop (and node
+    /// creation at the drop position) is handled by `Program::show_menu_drag`,
+    /// mirroring the node-list drag.
+    BeginImageDrag { path: PathBuf },
     /// Show the image at `path` in the focused program's 2D preview panel
     /// (loaded off the graph). Needs the programs map, so it's handled by
     /// `App::handle_library_action`.

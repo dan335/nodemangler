@@ -409,10 +409,20 @@ fn show_folder_contents(
     for image in &folder.images {
         // Image row: single-click previews the image in the 2D view (and the
         // row highlights while it's showing there); double-click (or the
-        // context menu) adds an "image from file" node to the current graph.
+        // context menu) adds an "image from file" node to the current graph;
+        // dragging the row drops that node wherever it's released on a graph
+        // panel (handled by the focused program, like a node-list drag).
         let is_previewed = previewed_image == Some(image.path.as_path());
         let label = format!("{}  {}", icons::IMAGE, image.name);
-        let response = ui.selectable_label(is_previewed, label);
+        let response = ui
+            .selectable_label(is_previewed, label)
+            .interact(egui::Sense::click_and_drag());
+
+        if response.drag_started() {
+            commands.actions.push(LibraryAction::BeginImageDrag {
+                path: image.path.clone(),
+            });
+        }
 
         if response.clicked() {
             commands.actions.push(LibraryAction::PreviewImage {

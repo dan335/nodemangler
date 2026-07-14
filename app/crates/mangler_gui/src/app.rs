@@ -668,6 +668,15 @@ impl App {
                     }
                 }
             }
+            LibraryAction::BeginImageDrag { path } => {
+                // Hand the drag to the focused program; it draws the ghost and
+                // drops the node when the drag ends over a graph panel.
+                if let Some(id) = self.current_program.clone() {
+                    if let Some(program) = self.programs.get_mut(&id) {
+                        program.begin_library_image_drag(path);
+                    }
+                }
+            }
             LibraryAction::PreviewImage { path } => {
                 // Show the image in the focused program's 2D preview panel.
                 if let Some(id) = self.current_program.clone() {
