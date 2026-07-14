@@ -22,10 +22,12 @@
 //! Unlike hydraulic erosion, the output does NOT tile: water drains at the
 //! image edges.
 
+use crate::curve::{Curve, CurveInterpolation};
 use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
+use crate::operations::images::tone_curve::{sample_lut, tone_curve_lut, TONE_LUT_SIZE};
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
@@ -38,6 +40,19 @@ use std::time::Instant;
 /// Downhill nudge applied each min-propagation step so the water line is
 /// strictly non-increasing along the channel toward every outlet.
 const EPS: f64 = 1e-7;
+
+/// Default valley-profile tone curve: a 5-point Smooth approximation of the
+/// previous scalar default (`valley shape` 0.5 → exponent q = 2, i.e. f(s) =
+/// s²). Decoded (output = 1 − y) the control points hit exactly 0, 0.0625,
+/// 0.25, 0.5625, 1 at s = 0, 0.25, 0.5, 0.75, 1 — the s² values.
+fn default_valley_profile() -> Curve {
+    Curve {
+        points: vec![[0.0, 1.0], [0.25, 0.9375], [0.5, 0.75], [0.75, 0.4375], [1.0, 0.0]],
+        closed: false,
+        interpolation: CurveInterpolation::Smooth,
+        handles: Vec::new(),
+    }
+}
 
 /// Encodes a normalized linear value to non-linear sRGB, matching the encoding
 /// hydraulic erosion uses for its height output.
@@ -109,7 +124,7 @@ impl OpImageSimulationCarveRiver {
         NodeSettings {
             name: "carve river".to_string(),
             description: "Conforms terrain to a hand-authored river path mask so water sits in a real valley instead of looking pasted on: distance-transform valley carve with a monotonic (never-uphill) bed.".to_string(),
-            help: "Conforms terrain to a hand-authored river path so water sits in a real valley instead of looking pasted on. A heuristic terrain-conditioning tool, not a flow simulation: the mask is thresholded, widened via an exact Euclidean distance transform (Felzenszwalb & Huttenlocher), and a valley profile carved that falls off from the bed to untouched terrain - terrain is only ever lowered, never raised.\n\nThe monotonic bed step orders channel pixels by along-channel distance from the outlets (border touches, or each disconnected blob's lowest point) and propagates the water line downstream so the bed never runs uphill - where the path crosses a ridge, a gorge is carved through it; untick monotonic bed to see the naive slapped-on carve. The height map is optional (fBm terrain from the seed when unconnected; octaves and frequency shape it, and are ignored otherwise). The river mask can come from the line, lightning, or veins nodes or any painted image.\n\nRiver width widens thin paths; valley width and valley shape control the V-to-U valley walls; bank smoothing softens the carve edges. Widths are authored at a 1024px reference and scale with the output size. Water drains at the image edges and the output does NOT tile (unlike hydraulic erosion). Deterministic. Outputs the carved height and a water-depth map.".to_string(),
+            help: "Conforms terrain to a hand-authored river path so water sits in a real valley instead of looking pasted on. A heuristic terrain-conditioning tool, not a flow simulation: the mask is thresholded, widened via an exact Euclidean distance transform (Felzenszwalb & Huttenlocher), and a valley profile carved that falls off from the bed to untouched terrain - terrain is only ever lowered, never raised.\n\nThe monotonic bed step orders channel pixels by along-channel distance from the outlets (border touches, or each disconnected blob's lowest point) and propagates the water line downstream so the bed never runs uphill - where the path crosses a ridge, a gorge is carved through it; untick monotonic bed to see the naive slapped-on carve. The height map is optional (fBm terrain from the seed when unconnected; octaves and frequency shape it, and are ignored otherwise). The river mask can come from the line, lightning, or veins nodes or any painted image.\n\nRiver width widens thin paths; valley width sets how far the walls reach and valley profile is a drawn curve for the valley cross-section (x = distance from the channel, 0 = bank; y = how much of the original terrain height remains, bottom = river bed - the default approximates a smooth V, hug the bottom longer for a flat-floored U); bank smoothing softens the carve edges. Widths are authored at a 1024px reference and scale with the output size. Water drains at the image edges and the output does NOT tile (unlike hydraulic erosion). Deterministic. Outputs the carved height and a water-depth map.".to_string(),
         }
     }
 
@@ -136,8 +151,8 @@ impl OpImageSimulationCarveRiver {
                 .with_description("Widens thin mask paths into a channel, in pixels at a 1024px reference (scales with output size); 0 carves only the exact mask pixels."),
             Input::new("valley width".to_string(), Value::Integer(48), Some(InputSettings::DragValue { clamp: Some((0.0, 512.0)), speed: None }), None)
                 .with_description("Width of the valley walls falling off from the channel to untouched terrain, in pixels at a 1024px reference (scales with output size)."),
-            Input::new("valley shape".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
-                .with_description("Valley wall profile: 0 = straight V walls, 1 = wide flat-floored U."),
+            Input::new("valley profile".to_string(), Value::Curve(default_valley_profile()), Some(InputSettings::ToneCurve), None)
+                .with_description("Valley cross-section: x = distance from the channel (0 = bank, 1 = valley rim), y = how much of the original terrain height remains (bottom = river bed). The default approximates a smooth V; hug the bottom edge longer for a wide flat-floored U."),
             Input::new("bank smoothing".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (0.0, 10.0), step_by: Some(1.0), clamp_to_range: true }), None)
                 .with_description("Number of box-blur passes softening the carve edges so the banks are not razor-sharp."),
             Input::new("monotonic bed".to_string(), Value::Bool(true), None, None)
@@ -180,7 +195,7 @@ impl OpImageSimulationCarveRiver {
         let carve_depth_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
         let river_width_converted = convert_input(inputs, 7, ValueType::Integer, &mut input_errors);
         let valley_width_converted = convert_input(inputs, 8, ValueType::Integer, &mut input_errors);
-        let valley_shape_converted = convert_input(inputs, 9, ValueType::Decimal, &mut input_errors);
+        let valley_profile_converted = convert_input(inputs, 9, ValueType::Curve, &mut input_errors);
         let bank_smoothing_converted = convert_input(inputs, 10, ValueType::Integer, &mut input_errors);
         let monotonic_converted = convert_input(inputs, 11, ValueType::Bool, &mut input_errors);
         let octaves_converted = convert_input(inputs, 12, ValueType::Integer, &mut input_errors);
@@ -197,7 +212,7 @@ impl OpImageSimulationCarveRiver {
         let Value::Decimal(carve_depth) = carve_depth_converted.unwrap() else { unreachable!() };
         let Value::Integer(river_width) = river_width_converted.unwrap() else { unreachable!() };
         let Value::Integer(valley_width) = valley_width_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(valley_shape) = valley_shape_converted.unwrap() else { unreachable!() };
+        let Value::Curve(valley_profile) = valley_profile_converted.unwrap() else { unreachable!() };
         let Value::Integer(bank_smoothing) = bank_smoothing_converted.unwrap() else { unreachable!() };
         let Value::Bool(monotonic) = monotonic_converted.unwrap() else { unreachable!() };
         let Value::Integer(octaves) = octaves_converted.unwrap() else { unreachable!() };
@@ -211,7 +226,6 @@ impl OpImageSimulationCarveRiver {
         let frequency = (frequency as f64).max(0.01);
         let threshold = (threshold as f64).clamp(0.0, 1.0);
         let carve_depth = (carve_depth as f64).clamp(0.0, 1.0);
-        let valley_shape = (valley_shape as f64).clamp(0.0, 1.0);
         let bank_smoothing = bank_smoothing.clamp(0, 10) as usize;
         // Widths are authored at a 1024px reference and scaled to the actual
         // output size, so the same value produces the same relative channel /
@@ -442,10 +456,17 @@ impl OpImageSimulationCarveRiver {
 
         // 7. Carve pass (rayon per pixel, order-independent). In-channel cells
         // drop to their own bed; valley cells interpolate from the nearest
-        // channel cell's bed up to the untouched terrain along a V-to-U
-        // profile; everything else is left alone. The outer min() with orig
-        // guarantees terrain is only ever lowered, never raised.
-        let q_exponent = 1.0 + 2.0 * valley_shape;
+        // channel cell's bed up to the untouched terrain along the drawn
+        // valley-profile curve f(s) (s = normalized distance from the
+        // channel, f = fraction of the original height remaining); everything
+        // else is left alone. LUT endpoint bins are exact, so the default
+        // profile keeps f(0) = 0 (bed at the bank) and f(1) = 1 (untouched at
+        // the rim); sample_lut clamps its output to [0, 1], so any user curve
+        // keeps the carve between the bed and the original terrain, and the
+        // outer min() with orig guarantees terrain is only ever lowered,
+        // never raised.
+        let profile_lut = tone_curve_lut(&valley_profile, TONE_LUT_SIZE);
+        let profile_lut_ref = &profile_lut;
         let orig_ref = &orig;
         let bed_ref = &bed;
         let label_ref = &label;
@@ -460,7 +481,8 @@ impl OpImageSimulationCarveRiver {
                     let c = label_ref[p] as usize;
                     let bed_c = bed_ref[c];
                     let s = dst / valley_width_px;
-                    orig_ref[p].min(bed_c + (orig_ref[p] - bed_c) * s.powf(q_exponent))
+                    let f = sample_lut(profile_lut_ref, s as f32) as f64;
+                    orig_ref[p].min(bed_c + (orig_ref[p] - bed_c) * f)
                 } else {
                     orig_ref[p]
                 }

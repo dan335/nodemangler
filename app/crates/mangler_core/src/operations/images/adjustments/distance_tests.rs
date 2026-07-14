@@ -2,11 +2,23 @@
 
 use super::*;
 
+use crate::curve::{Curve, CurveInterpolation};
 use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::Input;
+use crate::operations::images::tone_curve::identity_tone_curve;
 use crate::value::Value;
 use std::sync::Arc;
+
+/// A tone curve that crushes every input to output 0 (both control points at
+/// y=1 in y-down curve coordinates, i.e. output = 1 - y = 0 everywhere).
+fn crushing_curve() -> Curve {
+    Curve { points: vec![[0.0, 1.0], [1.0, 1.0]], closed: false, interpolation: CurveInterpolation::Smooth, handles: vec![] }
+}
+
+fn identity_remap_input() -> Input {
+    Input::new("remap".to_string(), Value::Curve(identity_tone_curve()), None, None)
+}
 
 fn test_image(w: u32, h: u32) -> Arc<FloatImage> {
     let mut img = FloatImage::new(w, h, 4);
@@ -28,9 +40,15 @@ fn image_input(w: u32, h: u32) -> Value {
 async fn test_distance_settings() {
     let s = OpImageAdjustmentDistance::settings();
     assert_eq!(s.name, "distance field");
-    assert_eq!(OpImageAdjustmentDistance::create_inputs().len(), 3);
+    assert_eq!(OpImageAdjustmentDistance::create_inputs().len(), 4);
     assert_eq!(OpImageAdjustmentDistance::create_outputs().len(), 1);
 }
+
+// Default identity `remap` curve reproduces the pre-existing (pre-curve)
+// behaviour exactly: `test_distance_basic`, `test_distance_output_range`,
+// `test_distance_matches_brute_force`, and `test_distance_all_white` below
+// all run through the identity curve and pin the same outputs as before this
+// input was added.
 
 #[tokio::test]
 async fn test_distance_basic() {
@@ -38,6 +56,7 @@ async fn test_distance_basic() {
         Input::new("image".to_string(), image_input(8, 8), None, None),
         Input::new("threshold".to_string(), Value::Decimal(0.5), None, None),
         Input::new("spread".to_string(), Value::Decimal(8.0), None, None),
+        identity_remap_input(),
     ];
     let result = OpImageAdjustmentDistance::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
@@ -56,6 +75,7 @@ async fn test_distance_1x1() {
         Input::new("image".to_string(), Value::Image { data: img, change_id: get_id() }, None, None),
         Input::new("threshold".to_string(), Value::Decimal(0.5), None, None),
         Input::new("spread".to_string(), Value::Decimal(4.0), None, None),
+        identity_remap_input(),
     ];
     let result = OpImageAdjustmentDistance::run(&mut inputs).await;
     assert!(result.is_ok(), "distance 1x1 failed: {:?}", result.err());
@@ -67,6 +87,7 @@ async fn test_distance_output_range() {
         Input::new("image".to_string(), image_input(8, 8), None, None),
         Input::new("threshold".to_string(), Value::Decimal(0.5), None, None),
         Input::new("spread".to_string(), Value::Decimal(8.0), None, None),
+        identity_remap_input(),
     ];
     let result = OpImageAdjustmentDistance::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
@@ -102,6 +123,7 @@ async fn test_distance_matches_brute_force() {
         Input::new("image".to_string(), Value::Image { data: Arc::new(img), change_id: get_id() }, None, None),
         Input::new("threshold".to_string(), Value::Decimal(0.5), None, None),
         Input::new("spread".to_string(), Value::Decimal(spread_input), None, None),
+        identity_remap_input(),
     ];
     let result = OpImageAdjustmentDistance::run(&mut inputs).await.unwrap();
     let Value::Image { data, .. } = &result.responses[0].value else { panic!("expected image") };
@@ -136,6 +158,7 @@ async fn test_distance_all_white() {
         Input::new("image".to_string(), Value::Image { data: white, change_id: get_id() }, None, None),
         Input::new("threshold".to_string(), Value::Decimal(0.5), None, None),
         Input::new("spread".to_string(), Value::Decimal(8.0), None, None),
+        identity_remap_input(),
     ];
     let result = OpImageAdjustmentDistance::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
@@ -145,4 +168,17 @@ async fn test_distance_all_white() {
         }
         other => panic!("Expected Image, got {:?}", other),
     }
+}
+
+#[tokio::test]
+async fn test_distance_crushing_remap_zeroes_output() {
+    let mut inputs = vec![
+        Input::new("image".to_string(), image_input(8, 8), None, None),
+        Input::new("threshold".to_string(), Value::Decimal(0.5), None, None),
+        Input::new("spread".to_string(), Value::Decimal(8.0), None, None),
+        Input::new("remap".to_string(), Value::Curve(crushing_curve()), None, None),
+    ];
+    let result = OpImageAdjustmentDistance::run(&mut inputs).await.unwrap();
+    let Value::Image { data, .. } = &result.responses[0].value else { panic!() };
+    assert!(data.pixels().all(|p| p[0] < 1e-5), "crushing remap curve should zero every output pixel");
 }

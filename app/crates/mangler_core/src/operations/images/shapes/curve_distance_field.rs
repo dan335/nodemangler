@@ -11,6 +11,7 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::simulation::distance_field_labeled;
+use crate::operations::images::tone_curve::{optional_lut, sample_lut, tone_curve_input};
 use crate::operations::{convert_input, default_image, scale_to_resolution, OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
@@ -32,11 +33,16 @@ impl OpImageShapeCurveDistanceField {
         NodeSettings {
             name: "curve distance field".to_string(),
             description: "Grayscale distance field radiating out from a curve.".to_string(),
-            help: "Rasterizes the curve into a thin mask, then computes each pixel's distance to the nearest point on the curve. The output is white (1) on the curve and fades to black over 'falloff' pixels (at a 1024px reference, scaled with resolution). Turn on 'normalize' to fade over the image's own maximum distance instead of a fixed falloff, and 'invert' to flip white and black.\n\nA degenerate or empty curve produces a black image. Pairs with 'curve gradient' and feeds masks or height blends.".to_string(),
+            help: "Rasterizes the curve into a thin mask, then computes each pixel's distance to the nearest point on the curve. The output is white (1) on the curve and fades to black over 'falloff' pixels (at a 1024px reference, scaled with resolution). Turn on 'normalize' to fade over the image's own maximum distance instead of a fixed falloff, and 'invert' to flip white and black.\n\nA degenerate or empty curve produces a black image. Pairs with 'curve gradient' and feeds masks or height blends.\n\n'profile' reshapes the falloff ramp itself, after normalize/falloff but before invert (x: 0 = far from the curve, 1 = on the curve) — a Photoshop-contour-style shaping curve. The default diagonal leaves the linear ramp unchanged.".to_string(),
         }
     }
 
-    /// Creates the default inputs: curve, width, height, falloff, normalize, invert.
+    /// Creates the default inputs: curve, width, height, falloff, normalize, invert, profile.
+    ///
+    /// Two different `Value::Curve` editors coexist on this node: `curve` is a
+    /// *spatial* path edited via the Preview2D overlay (see the Curve bullet in
+    /// CLAUDE.md), while `profile` is a *tone* curve — a value-mapping function
+    /// edited as an embedded box in the settings panel (`InputSettings::ToneCurve`).
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("curve".to_string(), Value::Curve(Curve::default()), None, None)
@@ -51,6 +57,7 @@ impl OpImageShapeCurveDistanceField {
                 .with_description("Fade over the image's maximum distance instead of the fixed falloff."),
             Input::new("invert".to_string(), Value::Bool(false), None, None)
                 .with_description("Flip the ramp: black on the curve fading to white."),
+            tone_curve_input("profile", "Reshapes the falloff ramp, applied after falloff/normalize but before invert (x: 0 = far from the curve, 1 = on the curve). Default diagonal leaves the linear ramp unchanged."),
         ]
     }
 
@@ -73,6 +80,7 @@ impl OpImageShapeCurveDistanceField {
         let falloff_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
         let normalize_converted = convert_input(inputs, 4, ValueType::Bool, &mut input_errors);
         let invert_converted = convert_input(inputs, 5, ValueType::Bool, &mut input_errors);
+        let profile_converted = convert_input(inputs, 6, ValueType::Curve, &mut input_errors);
 
         if !input_errors.is_empty() {
             return Err(OperationError { input_errors, node_error: None });
@@ -84,6 +92,8 @@ impl OpImageShapeCurveDistanceField {
         let Value::Decimal(falloff) = falloff_converted.unwrap() else { unreachable!() };
         let Value::Bool(normalize) = normalize_converted.unwrap() else { unreachable!() };
         let Value::Bool(invert) = invert_converted.unwrap() else { unreachable!() };
+        let Value::Curve(profile_curve) = profile_converted.unwrap() else { unreachable!() };
+        let lut = optional_lut(&profile_curve);
 
         width = width.max(1);
         height = height.max(1);
@@ -108,6 +118,9 @@ impl OpImageShapeCurveDistanceField {
             for (out, &dd) in pixels.iter_mut().zip(d2.iter()) {
                 let d = dd.sqrt();
                 let mut val = 1.0 - (d / denom).clamp(0.0, 1.0);
+                if let Some(lut) = &lut {
+                    val = sample_lut(lut, val as f32) as f64;
+                }
                 if invert {
                     val = 1.0 - val;
                 }

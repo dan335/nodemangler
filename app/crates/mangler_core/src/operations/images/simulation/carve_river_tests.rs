@@ -30,7 +30,7 @@ fn make_inputs(
         Input::new("carve depth".to_string(), Value::Decimal(0.15), None, None),
         Input::new("river width".to_string(), Value::Integer(6), None, None),
         Input::new("valley width".to_string(), Value::Integer(48), None, None),
-        Input::new("valley shape".to_string(), Value::Decimal(0.5), None, None),
+        Input::new("valley profile".to_string(), Value::Curve(default_valley_profile()), None, None),
         Input::new("bank smoothing".to_string(), Value::Integer(2), None, None),
         Input::new("monotonic bed".to_string(), Value::Bool(true), None, None),
         Input::new("octaves".to_string(), Value::Integer(6), None, None),
@@ -285,6 +285,45 @@ async fn test_water_depth_only_in_channel() {
         }
     }
     assert!(any_positive, "expected some positive water depth inside the channel");
+}
+
+#[tokio::test]
+async fn test_flat_floored_profile_differs() {
+    // A flat-floored U profile (hugging the bed until 60% of the way out)
+    // must carve a different valley than the default smooth-V profile, while
+    // both stay at or below the passthrough (never-raise invariant).
+    let w = 32usize;
+    let h = 32usize;
+    let row = 16u32;
+    let build = |profile: Curve| {
+        let ramp = ramp_image(32, 32);
+        let mask = horizontal_line_mask(32, 32, row);
+        let mut inputs = make_inputs(32, 32, Some(ramp), Some(mask));
+        set(&mut inputs, 7, Value::Integer(0)); // river width 0 (exact pixels)
+        set(&mut inputs, 8, Value::Integer(320)); // valley width -> 10px
+        set(&mut inputs, 9, Value::Curve(profile));
+        set(&mut inputs, 10, Value::Integer(0)); // bank smoothing off
+        inputs
+    };
+    let u_profile = Curve {
+        points: vec![[0.0, 1.0], [0.6, 0.95], [1.0, 0.0]],
+        closed: false,
+        interpolation: CurveInterpolation::Smooth,
+        handles: Vec::new(),
+    };
+    let default_run = OpImageSimulationCarveRiver::run(&mut build(default_valley_profile())).await.unwrap();
+    let u_run = OpImageSimulationCarveRiver::run(&mut build(u_profile)).await.unwrap();
+    let default_px = image_pixels(&default_run, 0);
+    let u_px = image_pixels(&u_run, 0);
+    assert_ne!(default_px, u_px, "a flat-floored valley profile should carve differently than the default");
+
+    // Mid-wall (~half the valley width from the channel) the U profile keeps
+    // the terrain closer to the bed than the default smooth V.
+    let x = 16usize;
+    let y = row as usize + 5;
+    assert!(u_px[y * w + x][0] < default_px[y * w + x][0],
+        "flat-floored profile should sit lower mid-wall: {} vs {}", u_px[y * w + x][0], default_px[y * w + x][0]);
+    let _ = h;
 }
 
 /// Renders a 512x512 carve over fallback terrain with a bent (sine) river path

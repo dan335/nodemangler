@@ -4,6 +4,7 @@ use super::*;
 use crate::curve::{Curve, CurveInterpolation};
 use crate::float_image::FloatImage;
 use crate::input::Input;
+use crate::operations::images::tone_curve::identity_tone_curve;
 use crate::value::Value;
 use std::sync::Arc;
 
@@ -17,7 +18,17 @@ fn horizontal_line() -> Curve {
     }
 }
 
+/// A tone curve that crushes every input to output 0 (both control points at
+/// y=1 in y-down curve coordinates, i.e. output = 1 - y = 0 everywhere).
+fn crushing_curve() -> Curve {
+    Curve { points: vec![[0.0, 1.0], [1.0, 1.0]], closed: false, interpolation: CurveInterpolation::Smooth, handles: vec![] }
+}
+
 fn mk_inputs(curve: Curve, w: i32, h: i32, falloff: f32, normalize: bool, invert: bool) -> Vec<Input> {
+    mk_inputs_with_profile(curve, w, h, falloff, normalize, invert, identity_tone_curve())
+}
+
+fn mk_inputs_with_profile(curve: Curve, w: i32, h: i32, falloff: f32, normalize: bool, invert: bool, profile: Curve) -> Vec<Input> {
     vec![
         Input::new("curve".into(), Value::Curve(curve), None, None),
         Input::new("width".into(), Value::Integer(w), None, None),
@@ -25,6 +36,7 @@ fn mk_inputs(curve: Curve, w: i32, h: i32, falloff: f32, normalize: bool, invert
         Input::new("falloff".into(), Value::Decimal(falloff), None, None),
         Input::new("normalize".into(), Value::Bool(normalize), None, None),
         Input::new("invert".into(), Value::Bool(invert), None, None),
+        Input::new("profile".into(), Value::Curve(profile), None, None),
     ]
 }
 
@@ -33,6 +45,11 @@ async fn run(inputs: &mut Vec<Input>) -> Arc<FloatImage> {
     let Value::Image { data, .. } = &r.responses[0].value else { panic!() };
     data.clone()
 }
+
+// Default identity `profile` curve reproduces the pre-existing (pre-curve)
+// behaviour exactly: every test below goes through `mk_inputs`, which passes
+// the identity curve, and pins the same outputs as before this input was
+// added.
 
 #[tokio::test]
 async fn white_on_curve_and_monotone_decay() {
@@ -99,4 +116,11 @@ async fn degenerate_curve_is_black() {
     let img = run(&mut inputs).await;
     let sum: f32 = img.pixels().map(|p| p[0]).sum();
     assert!(sum < 1e-4, "single-point curve should yield a black image");
+}
+
+#[tokio::test]
+async fn crushing_profile_curve_zeroes_field() {
+    let mut inputs = mk_inputs_with_profile(horizontal_line(), 128, 128, 128.0, false, false, crushing_curve());
+    let img = run(&mut inputs).await;
+    assert!(img.pixels().all(|p| p[0] < 1e-5), "crushing profile curve should zero the whole field, including on the curve");
 }

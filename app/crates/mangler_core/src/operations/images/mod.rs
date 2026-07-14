@@ -8,6 +8,8 @@
 //! manipulation), shapes (vector shape generation), patterns (procedural
 //! patterns), and PBR (physically-based rendering maps).
 
+/// Shared tone-curve helpers: LUT building/sampling for `InputSettings::ToneCurve` inputs.
+pub mod tone_curve;
 /// Image source operations: file, URL, clipboard, color fill, and gradient.
 pub mod inputs;
 /// Image export operations: saving to file or clipboard.

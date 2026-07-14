@@ -6,6 +6,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
+use crate::operations::images::tone_curve::{anti_diagonal_tone_curve, sample_lut, tone_curve_lut, TONE_LUT_SIZE};
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
@@ -23,7 +24,7 @@ impl OpImageShapeCone {
         NodeSettings {
             name: "cone".to_string(),
             description: "Cone height shape. `truncate` flattens the peak to produce a frustum.".to_string(),
-            help: "Produces a 1-channel greyscale height field where value equals linear falloff from the center of a circular base, reaching 1.0 at the apex and 0.0 outside the radius. size is the base radius in normalised (-1..1) coordinates and caps at 0.001 to avoid division-by-zero.\n\nRaising truncate clips the top of the cone and renormalises so the remaining plateau still peaks at 1.0, giving a frustum. Ideal as a height input for normal_from_height and ao_from_height downstream; values are linear, not sRGB.".to_string(),
+            help: "Produces a 1-channel greyscale height field where value equals linear falloff from the center of a circular base, reaching 1.0 at the apex and 0.0 outside the radius. size is the base radius in normalised (-1..1) coordinates and caps at 0.001 to avoid division-by-zero.\n\nRaising truncate clips the top of the cone and renormalises so the remaining plateau still peaks at 1.0, giving a frustum. Ideal as a height input for normal_from_height and ao_from_height downstream; values are linear, not sRGB.\n\nprofile is a tone curve mapping normalised distance from the apex (x = 0) to the base edge (x = 1) onto height; the drawn curve reads left-to-right as the cone's silhouette from peak to rim. The default is a straight descending ramp, reproducing the plain linear cone. Regardless of the curve, height is hard 0 past the base radius — a curve whose value at x = 1 is above 0 creates a visible cliff at the edge instead of a smooth taper.".to_string(),
         }
     }
 
@@ -37,6 +38,8 @@ impl OpImageShapeCone {
                 .with_description("Radius of the cone's circular base in normalised units."),
             Input::new("truncate".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Cuts off the top of the cone to create a flat-topped frustum."),
+            Input::new("profile".to_string(), Value::Curve(anti_diagonal_tone_curve()), Some(InputSettings::ToneCurve), None)
+                .with_description("Height profile from apex (x = 0) to base edge (x = 1); default is a straight linear falloff."),
         ]
     }
 
@@ -55,6 +58,7 @@ impl OpImageShapeCone {
         let h_c = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
         let size_c = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
         let trunc_c = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
+        let profile_c = convert_input(inputs, 4, ValueType::Curve, &mut input_errors);
 
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
@@ -62,11 +66,14 @@ impl OpImageShapeCone {
         let Value::Integer(mut height) = h_c.unwrap() else { unreachable!() };
         let Value::Decimal(size) = size_c.unwrap() else { unreachable!() };
         let Value::Decimal(truncate) = trunc_c.unwrap() else { unreachable!() };
+        let Value::Curve(profile) = profile_c.unwrap() else { unreachable!() };
 
         width = width.max(1);
         height = height.max(1);
         let size = (size as f64).max(0.001);
         let truncate = (truncate as f64).clamp(0.0, 0.99);
+        let lut = tone_curve_lut(&profile, TONE_LUT_SIZE);
+        let lut = &lut;
 
         let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |y| {
             let ny = (y as f64 / (height as f64 - 1.0).max(1.0)) * 2.0 - 1.0;
@@ -76,9 +83,9 @@ impl OpImageShapeCone {
                 let h = if d >= 1.0 {
                     0.0
                 } else {
-                    // 1-d is the raw cone; truncating lops off the top and re-normalises
-                    // so the plateau still reaches 1.0.
-                    let raw = (1.0 - d).min(1.0 - truncate);
+                    // sample_lut(d) is the raw profiled cone; truncating lops off the
+                    // top and re-normalises so the plateau still reaches 1.0.
+                    let raw = (sample_lut(lut, d as f32) as f64).min(1.0 - truncate);
                     if truncate >= 1.0 { 0.0 } else { raw / (1.0 - truncate) }
                 };
                 h as f32

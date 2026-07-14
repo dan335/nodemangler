@@ -506,19 +506,25 @@ pub fn show(
     });
 
 
-    // --- Tone curve editor section ---
-    // A `Value::Curve` input marked `InputSettings::ToneCurve` gets a dedicated
-    // Photoshop-style editing box here (its table row above just points at it).
-    // Connected inputs are driven by the upstream curve node, so no editor.
-    let tone_curve_index = node.inputs.iter().position(|i| {
-        matches!(i.settings, Some(InputSettings::ToneCurve)) && i.connection.is_none()
-    });
-    if let Some(input_index) = tone_curve_index {
-        section_rule(ui, theme);
-        section_label(ui, "curve");
-
+    // --- Tone curve editor sections ---
+    // Every `Value::Curve` input marked `InputSettings::ToneCurve` gets a
+    // dedicated Photoshop-style editing box here (its table row above just
+    // points at it); a node can have several (e.g. guided rolling hills'
+    // valley profile + hill profile). Connected inputs are driven by the
+    // upstream curve node, so no editor.
+    let tone_curve_indices: Vec<usize> = node
+        .inputs
+        .iter()
+        .enumerate()
+        .filter(|(_, i)| {
+            matches!(i.settings, Some(InputSettings::ToneCurve)) && i.connection.is_none()
+        })
+        .map(|(idx, _)| idx)
+        .collect();
+    if !tone_curve_indices.is_empty() {
         // Keep the cached histogram of the upstream (source) image current;
         // drop it when the image input is disconnected so the box goes clean.
+        // One cache serves every editor on the node (same upstream image).
         match &upstream_image {
             Some((data, change_id)) => {
                 let stale = node
@@ -534,22 +540,33 @@ pub fn show(
             None => node.input_histogram_cache = None,
         }
 
-        if let Value::Curve(curve) = node.inputs[input_index].value.clone() {
-            let resp = tone_curve_widget::show(ui, &curve, node.input_histogram_cache.as_ref(), theme);
-            // Local mutate every frame for instant feedback; push to the
-            // engine only when the gesture completed, so heavy downstream
-            // nodes re-run once per drag (same pattern as the 2D overlay).
-            if let Some(new_curve) = resp.changed {
-                node.inputs[input_index].value = Value::Curve(new_curve);
-            }
-            if resp.commit {
-                let message = ChangeNodeMessage::SetInput {
-                    node_id: node.id.clone(),
-                    input_index,
-                    value: node.inputs[input_index].value.clone(),
-                };
-                if let Err(err) = tx_change_node.try_send(message) {
-                    println!("Error sending SetNodeInputMessage: {:?}", err);
+        for input_index in tone_curve_indices {
+            section_rule(ui, theme);
+            section_label(ui, &node.inputs[input_index].name.clone());
+
+            if let Value::Curve(curve) = node.inputs[input_index].value.clone() {
+                // The widget keys its interactions off `ui.id()`, so give each
+                // editor its own id scope to keep drags from cross-talking.
+                let resp = ui
+                    .push_id(("tone_curve_editor", input_index), |ui| {
+                        tone_curve_widget::show(ui, &curve, node.input_histogram_cache.as_ref(), theme)
+                    })
+                    .inner;
+                // Local mutate every frame for instant feedback; push to the
+                // engine only when the gesture completed, so heavy downstream
+                // nodes re-run once per drag (same pattern as the 2D overlay).
+                if let Some(new_curve) = resp.changed {
+                    node.inputs[input_index].value = Value::Curve(new_curve);
+                }
+                if resp.commit {
+                    let message = ChangeNodeMessage::SetInput {
+                        node_id: node.id.clone(),
+                        input_index,
+                        value: node.inputs[input_index].value.clone(),
+                    };
+                    if let Err(err) = tx_change_node.try_send(message) {
+                        println!("Error sending SetNodeInputMessage: {:?}", err);
+                    }
                 }
             }
         }

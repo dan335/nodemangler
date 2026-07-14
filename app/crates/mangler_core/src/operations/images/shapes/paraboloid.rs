@@ -7,6 +7,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
+use crate::operations::images::tone_curve::{anti_diagonal_tone_curve, sample_lut, tone_curve_lut, TONE_LUT_SIZE};
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
@@ -24,7 +25,7 @@ impl OpImageShapeParaboloid {
         NodeSettings {
             name: "paraboloid".to_string(),
             description: "Paraboloid dome height shape centered in the image. h = 1 - (d/size)^2.".to_string(),
-            help: "Generates a smooth 1-channel greyscale dome whose height falls off with the power of the normalised radial distance. size sets the radius in normalised units; falloff is the exponent applied to distance, where 2.0 gives a true paraboloid and higher values produce a flatter plateau with steeper shoulders.\n\nValues sit in linear space and peak at 1.0, making this a clean source for normal_from_height, AO, or blob-style masks. Pixels outside the radius are clamped to 0.".to_string(),
+            help: "Generates a smooth 1-channel greyscale dome whose height falls off with the power of the normalised radial distance. size sets the radius in normalised units; falloff is the exponent applied to distance, where 2.0 gives a true paraboloid and higher values produce a flatter plateau with steeper shoulders.\n\nValues sit in linear space and peak at 1.0, making this a clean source for normal_from_height, AO, or blob-style masks. Pixels outside the radius are clamped to 0.\n\nprofile is a tone curve mapping the falloff-exponentiated normalised distance from the apex (x = 0) to the base edge (x = 1) onto height; the drawn curve reads left-to-right as the dome's silhouette from peak to rim. The default is a straight descending ramp, which combined with falloff reproduces the plain h = 1 - (d/size)^falloff dome for any falloff value. Regardless of the curve, height is hard 0 past the radius — a curve whose value at x = 1 is above 0 creates a visible cliff at the edge instead of a smooth taper.".to_string(),
         }
     }
 
@@ -38,6 +39,8 @@ impl OpImageShapeParaboloid {
                 .with_description("Radius of the paraboloid dome in normalised units."),
             Input::new("falloff".to_string(), Value::Decimal(2.0), Some(InputSettings::Slider { range: (0.5, 6.0), step_by: Some(0.1), clamp_to_range: false }), None)
                 .with_description("Power controlling the sharpness of the dome; 2.0 is standard."),
+            Input::new("profile".to_string(), Value::Curve(anti_diagonal_tone_curve()), Some(InputSettings::ToneCurve), None)
+                .with_description("Height profile from apex (x = 0) to base edge (x = 1); default is a straight linear falloff."),
         ]
     }
 
@@ -56,6 +59,7 @@ impl OpImageShapeParaboloid {
         let h_c = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
         let size_c = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
         let falloff_c = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
+        let profile_c = convert_input(inputs, 4, ValueType::Curve, &mut input_errors);
 
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
@@ -63,11 +67,14 @@ impl OpImageShapeParaboloid {
         let Value::Integer(mut height) = h_c.unwrap() else { unreachable!() };
         let Value::Decimal(size) = size_c.unwrap() else { unreachable!() };
         let Value::Decimal(falloff) = falloff_c.unwrap() else { unreachable!() };
+        let Value::Curve(profile) = profile_c.unwrap() else { unreachable!() };
 
         width = width.max(1);
         height = height.max(1);
         let size = (size as f64).max(0.001);
         let falloff = (falloff as f64).max(0.1);
+        let lut = tone_curve_lut(&profile, TONE_LUT_SIZE);
+        let lut = &lut;
 
         let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |y| {
             // Normalise to [-1, 1] square. Distance measured from centre.
@@ -76,8 +83,9 @@ impl OpImageShapeParaboloid {
                 let nx = (x as f64 / (width as f64 - 1.0).max(1.0)) * 2.0 - 1.0;
                 let d = (nx * nx + ny * ny).sqrt() / size;
                 let h = if d >= 1.0 { 0.0 } else {
-                    // falloff controls sharpness — 2.0 is the standard paraboloid.
-                    (1.0 - d.powf(falloff)).max(0.0)
+                    // falloff pre-warps the curve's x-axis — 2.0 is the standard paraboloid.
+                    let dn = (d.powf(falloff) as f32).clamp(0.0, 1.0);
+                    (sample_lut(lut, dn) as f64).max(0.0)
                 };
                 h as f32
             })

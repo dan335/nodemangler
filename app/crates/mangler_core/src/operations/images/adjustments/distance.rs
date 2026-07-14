@@ -14,6 +14,7 @@ use rayon::prelude::*;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::simulation::distance_field_labeled;
+use crate::operations::images::tone_curve::{optional_lut, sample_lut, tone_curve_input};
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::Value;
@@ -31,7 +32,7 @@ impl OpImageAdjustmentDistance {
         NodeSettings {
             name: "distance field".to_string(),
             description: "Computes a signed distance field from a binary (black/white) image.".to_string(),
-            help: "Thresholds the input luminance (Rec. 709 for RGB, or single channel for grayscale) into inside/outside regions, then computes the exact Euclidean distance from every pixel to the nearest pixel of the opposite class using a Felzenszwalb-Huttenlocher distance transform (O(1) per pixel, independent of spread).\n\nThe distance is normalised by spread so the boundary becomes 0.5, inside pixels range from 0.5 to 1, and outside pixels from 0 to 0.5; distances beyond spread clamp to the extremes. Output is always a 4-channel grayscale RGBA image. Useful as a basis for glow, outline, or soft-mask effects.".to_string(),
+            help: "Thresholds the input luminance (Rec. 709 for RGB, or single channel for grayscale) into inside/outside regions, then computes the exact Euclidean distance from every pixel to the nearest pixel of the opposite class using a Felzenszwalb-Huttenlocher distance transform (O(1) per pixel, independent of spread).\n\nThe distance is normalised by spread so the boundary becomes 0.5, inside pixels range from 0.5 to 1, and outside pixels from 0 to 0.5; distances beyond spread clamp to the extremes. Output is always a 4-channel grayscale RGBA image. Useful as a basis for glow, outline, or soft-mask effects.\n\n`remap` reshapes the final normalised value (x: 0 = `spread` pixels outside the shape, 0.5 = the boundary, 1 = `spread` pixels inside); threshold and spread still act upstream to build the raw field. The default diagonal leaves the field unchanged.".to_string(),
         }
     }
 
@@ -45,6 +46,7 @@ impl OpImageAdjustmentDistance {
                 .with_description("Luminance cutoff separating inside (above) from outside (below)."),
             Input::new("spread".to_string(), Value::Decimal(32.0), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 256.0)) }), None)
                 .with_description("Maximum search radius in pixels at a 1024px reference (scales with image size); caps how far the distance field extends."),
+            tone_curve_input("remap", "Reshapes the normalised distance (x: 0 = spread px outside, 0.5 = boundary, 1 = spread px inside). Default diagonal leaves the field unchanged."),
         ]
     }
 
@@ -66,6 +68,7 @@ impl OpImageAdjustmentDistance {
         let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
         let threshold_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
         let spread_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
+        let remap_converted = convert_input(inputs, 3, ValueType::Curve, &mut input_errors);
 
         // return if error
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
@@ -74,6 +77,8 @@ impl OpImageAdjustmentDistance {
         let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
         let Value::Decimal(threshold) = threshold_converted.unwrap() else { unreachable!() };
         let Value::Decimal(spread) = spread_converted.unwrap() else { unreachable!() };
+        let Value::Curve(remap_curve) = remap_converted.unwrap() else { unreachable!() };
+        let lut = optional_lut(&remap_curve);
 
         // run node — work directly on FloatImage data
         // Spread is authored in reference pixels (at 1024px) and scaled to the
@@ -115,11 +120,14 @@ impl OpImageAdjustmentDistance {
             let dist_sq = if is_inside { d2_out_ref[idx] } else { d2_in_ref[idx] };
             let dist = (dist_sq as f32).sqrt();
             let normalized_dist = (dist / spread).clamp(0.0, 1.0);
-            let result = if is_inside {
+            let mut result = if is_inside {
                 0.5 + normalized_dist / 2.0
             } else {
                 0.5 - normalized_dist / 2.0
             }.clamp(0.0, 1.0);
+            if let Some(lut) = &lut {
+                result = sample_lut(lut, result);
+            }
 
             [result, result, result, 1.0]
         }).collect();

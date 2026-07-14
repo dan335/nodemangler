@@ -6,6 +6,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
+use crate::operations::images::tone_curve::{anti_diagonal_tone_curve, sample_lut, tone_curve_lut, TONE_LUT_SIZE};
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
@@ -23,7 +24,7 @@ impl OpImageShapePyramid {
         NodeSettings {
             name: "pyramid".to_string(),
             description: "Square pyramid height shape. Optional step count produces a banded, Mayan-style stepped pyramid.".to_string(),
-            help: "Emits a 1-channel greyscale height shape whose value falls off linearly with the Chebyshev (max-axis) distance from the centre, giving a pyramid with a square footprint. size is the half-extent of the base; pixels outside it clamp to 0 and the apex sits at 1.0.\n\nSetting steps above 0 quantises the continuous slope into that many bands, producing a stepped, Mayan-style pyramid. Rotation is applied in sample space so the pyramid rotates in place around its peak. Output is linear, ready for normal or AO generation.".to_string(),
+            help: "Emits a 1-channel greyscale height shape whose value falls off linearly with the Chebyshev (max-axis) distance from the centre, giving a pyramid with a square footprint. size is the half-extent of the base; pixels outside it clamp to 0 and the apex sits at 1.0.\n\nSetting steps above 0 quantises the continuous slope into that many bands, producing a stepped, Mayan-style pyramid. Rotation is applied in sample space so the pyramid rotates in place around its peak. Output is linear, ready for normal or AO generation.\n\nprofile is a tone curve mapping normalised Chebyshev distance from the apex (x = 0) to the base edge (x = 1) onto height, applied before step quantisation; the drawn curve reads left-to-right as the pyramid's silhouette from peak to rim. The default is a straight descending ramp, reproducing the plain linear pyramid. Regardless of the curve, height is hard 0 past the base edge — a curve whose value at x = 1 is above 0 creates a visible cliff at the edge instead of a smooth taper.".to_string(),
         }
     }
 
@@ -39,6 +40,8 @@ impl OpImageShapePyramid {
                 .with_description("Number of stepped bands; 0 produces a smooth slope."),
             Input::new("rotation".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: None, clamp_to_range: false }), None)
                 .with_description("Rotation of the pyramid around its center in degrees."),
+            Input::new("profile".to_string(), Value::Curve(anti_diagonal_tone_curve()), Some(InputSettings::ToneCurve), None)
+                .with_description("Height profile from apex (x = 0) to base edge (x = 1); default is a straight linear falloff."),
         ]
     }
 
@@ -58,6 +61,7 @@ impl OpImageShapePyramid {
         let size_c = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
         let steps_c = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
         let rot_c = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
+        let profile_c = convert_input(inputs, 5, ValueType::Curve, &mut input_errors);
 
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
@@ -66,6 +70,7 @@ impl OpImageShapePyramid {
         let Value::Decimal(size) = size_c.unwrap() else { unreachable!() };
         let Value::Integer(steps) = steps_c.unwrap() else { unreachable!() };
         let Value::Decimal(rotation) = rot_c.unwrap() else { unreachable!() };
+        let Value::Curve(profile) = profile_c.unwrap() else { unreachable!() };
 
         width = width.max(1);
         height = height.max(1);
@@ -73,6 +78,8 @@ impl OpImageShapePyramid {
         let angle = (rotation as f64).to_radians();
         let cos_a = angle.cos();
         let sin_a = angle.sin();
+        let lut = tone_curve_lut(&profile, TONE_LUT_SIZE);
+        let lut = &lut;
 
         let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |y| {
             let ny = (y as f64 / (height as f64 - 1.0).max(1.0)) * 2.0 - 1.0;
@@ -81,7 +88,7 @@ impl OpImageShapePyramid {
                 let rx = nx * cos_a + ny * sin_a;
                 let ry = -nx * sin_a + ny * cos_a;
                 let d = rx.abs().max(ry.abs()) / size;
-                let mut h = if d >= 1.0 { 0.0 } else { 1.0 - d };
+                let mut h = if d >= 1.0 { 0.0 } else { sample_lut(lut, d as f32) as f64 };
                 if steps > 0 && h > 0.0 {
                     // Quantise to `steps` bands.
                     let s = steps as f64;

@@ -2,6 +2,7 @@
 
 use super::*;
 
+use crate::curve::CurveInterpolation;
 use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::Input;

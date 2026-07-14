@@ -12,6 +12,7 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::images::tone_curve::{optional_lut, sample_lut, tone_curve_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -32,11 +33,12 @@ impl OpImageInputGradient {
         NodeSettings {
             name: "from gradient".to_string(),
             description: "Creates an image from a gradient.".to_string(),
-            help: "Generates a vertical gradient by linearly interpolating between color A (top) and color B (bottom). Each row is blended once and replicated horizontally, so output cost is proportional to height rather than total pixel count.\n\nThe color space selector controls where the interpolation happens: Lab and LCH produce perceptually smoother ramps, HSL/HSV can cycle hue, and Linear RGB avoids the gamma-induced darkening seen with sRGB blending. The result is a 4-channel FloatImage in sRGB regardless of the interpolation space.".to_string(),
+            help: "Generates a vertical gradient by linearly interpolating between color A (top) and color B (bottom). Each row is blended once and replicated horizontally, so output cost is proportional to height rather than total pixel count.\n\nThe color space selector controls where the interpolation happens: Lab and LCH produce perceptually smoother ramps, HSL/HSV can cycle hue, and Linear RGB avoids the gamma-induced darkening seen with sRGB blending. The result is a 4-channel FloatImage in sRGB regardless of the interpolation space.\n\nThe easing curve remaps the blend factor: x is the position along the gradient (0 = top, 1 = bottom) and y is the blend amount fed to the color interpolation. The default diagonal leaves the ramp linear; an S-curve eases in and out, a crushed curve holds one color longer. For a colored ramp along a drawn path, compose curve gradient into gradient map instead.".to_string(),
         }
     }
 
-    /// Creates the input definitions: two colors (a and b), width, height, and color space.
+    /// Creates the input definitions: two colors (a and b), width, height,
+    /// color space, and an easing tone curve remapping the blend factor.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("a".to_string(), Value::Color(Color::default()), None, None)
@@ -49,6 +51,7 @@ impl OpImageInputGradient {
                 .with_description("Height of the generated gradient image in pixels."),
             Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Lab), None, None)
                 .with_description("Color space used to interpolate between A and B."),
+            tone_curve_input("easing", "Remaps the blend factor (x: position along the gradient, y: blend amount). Default diagonal keeps the ramp linear."),
         ]
     }
 
@@ -78,6 +81,7 @@ impl OpImageInputGradient {
         let width_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
         let height_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
         let color_space_converted = convert_input(inputs, 4, ValueType::ColorSpace, &mut input_errors);
+        let easing_converted = convert_input(inputs, 5, ValueType::Curve, &mut input_errors);
 
 
         // return if error
@@ -89,6 +93,11 @@ impl OpImageInputGradient {
         let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
         let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
         let Value::ColorSpace(color_space) = color_space_converted.unwrap() else { unreachable!() };
+        let Value::Curve(easing_curve) = easing_converted.unwrap() else { unreachable!() };
+        // None while the easing curve is the untouched identity default —
+        // rows then use the raw linear blend factor, bit-identical to the
+        // pre-easing behaviour.
+        let lut = optional_lut(&easing_curve);
 
         // run node
         width = width.max(1);
@@ -125,7 +134,10 @@ impl OpImageInputGradient {
         // bottom row would never equal B. `.max(1)` guards a 1px-tall image.
         let denom = (height - 1).max(1) as f32;
         for (y, row) in data.chunks_exact_mut(w * 4).enumerate() {
-            let blended = blend_fn(a, b, &blend_mode, y as f32 / denom);
+            let f = y as f32 / denom;
+            // Ease the blend factor through the tone-curve LUT when drawn.
+            let f = if let Some(lut) = &lut { sample_lut(lut, f) } else { f };
+            let blended = blend_fn(a, b, &blend_mode, f);
             let srgb = blended.to_srgb_float();
             let pixel = [srgb.0, srgb.1, srgb.2, srgb.3];
             row[..4].copy_from_slice(&pixel);

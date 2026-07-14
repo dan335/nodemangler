@@ -1,9 +1,12 @@
 use super::*;
 
+use crate::curve::{Curve, CurveInterpolation};
 use crate::input::Input;
+use crate::operations::images::tone_curve::identity_tone_curve;
 use crate::value::Value;
 
-/// Helper to create inputs with the given parameters.
+/// Helper to create inputs with the given parameters (profile left at the
+/// identity default).
 fn make_inputs(
     seed: i32,
     width: i32,
@@ -25,6 +28,7 @@ fn make_inputs(
         Input::new("height_variation".to_string(), Value::Decimal(height_variation), None, None),
         Input::new("peakiness".to_string(), Value::Decimal(peakiness), None, None),
         Input::new("merge".to_string(), Value::Decimal(merge), None, None),
+        Input::new("profile".to_string(), Value::Curve(identity_tone_curve()), None, None),
     ]
 }
 
@@ -37,7 +41,7 @@ fn default_inputs(seed: i32, width: i32, height: i32) -> Vec<Input> {
 async fn test_settings() {
     let s = OpImageNoiseRollingHills::settings();
     assert_eq!(s.name, "rolling hills");
-    assert_eq!(OpImageNoiseRollingHills::create_inputs().len(), 9);
+    assert_eq!(OpImageNoiseRollingHills::create_inputs().len(), 10);
     assert_eq!(OpImageNoiseRollingHills::create_outputs().len(), 1);
 }
 
@@ -161,6 +165,69 @@ async fn test_merge_changes_composition() {
         }
         _ => panic!("Expected Image"),
     }
+}
+
+/// Runs with the given profile curve set on input 9 and returns the pixels.
+async fn pixels_with_profile(profile: Curve) -> Vec<f32> {
+    let mut inputs = default_inputs(3, 32, 32);
+    inputs[9] = Input::new("profile".to_string(), Value::Curve(profile), None, None);
+    let r = OpImageNoiseRollingHills::run(&mut inputs).await.unwrap();
+    match &r.responses[0].value {
+        Value::Image { data, .. } => data.pixels().map(|p| p[0]).collect(),
+        _ => panic!("Expected Image"),
+    }
+}
+
+#[tokio::test]
+async fn test_default_profile_is_identity() {
+    // The default (untouched identity) profile and an explicitly-set identity
+    // curve must produce the same output: the fast path (optional_lut = None)
+    // is exercised by both, so the default graph stays bit-identical to the
+    // pre-profile behaviour.
+    let via_defaults = {
+        let mut inputs = OpImageNoiseRollingHills::create_inputs();
+        inputs[0] = Input::new("seed".to_string(), Value::Integer(3), None, None);
+        inputs[1] = Input::new("width".to_string(), Value::Integer(32), None, None);
+        inputs[2] = Input::new("height".to_string(), Value::Integer(32), None, None);
+        let r = OpImageNoiseRollingHills::run(&mut inputs).await.unwrap();
+        match &r.responses[0].value {
+            Value::Image { data, .. } => data.pixels().map(|p| p[0]).collect::<Vec<f32>>(),
+            _ => panic!("Expected Image"),
+        }
+    };
+    let via_identity = pixels_with_profile(identity_tone_curve()).await;
+    assert_eq!(via_defaults, via_identity, "default profile should behave as identity");
+}
+
+#[tokio::test]
+async fn test_profile_curve_changes_output() {
+    // A steep-at-the-rim shaping curve (dome heights pushed up) must change
+    // the output relative to the identity default.
+    let shaped = Curve {
+        points: vec![[0.0, 1.0], [0.5, 0.2], [1.0, 0.0]],
+        closed: false,
+        interpolation: CurveInterpolation::Smooth,
+        handles: Vec::new(),
+    };
+    let identity = pixels_with_profile(identity_tone_curve()).await;
+    let remapped = pixels_with_profile(shaped).await;
+    assert_ne!(identity, remapped, "a non-identity profile should change the output");
+}
+
+#[tokio::test]
+async fn test_crushing_profile_flattens_field() {
+    // A constant-0 profile (y-down: both points on the bottom edge) crushes
+    // every hill contribution to zero, so the pre-normalization field is
+    // uniformly zero and the output collapses to a flat image.
+    let crush = Curve {
+        points: vec![[0.0, 1.0], [1.0, 1.0]],
+        closed: false,
+        interpolation: CurveInterpolation::Smooth,
+        handles: Vec::new(),
+    };
+    let flat = pixels_with_profile(crush).await;
+    let first = flat[0];
+    assert!(flat.iter().all(|&v| v == first), "constant-0 profile should produce a flat image");
 }
 
 /// Renders the default rolling hills heightmap and reports the render time,

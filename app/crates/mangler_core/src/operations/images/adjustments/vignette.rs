@@ -8,6 +8,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
+use crate::operations::images::tone_curve::{optional_lut, sample_lut, tone_curve_input};
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
 use crate::output::Output;
 use crate::value::Value;
@@ -26,7 +27,7 @@ impl OpImageAdjustmentVignette {
         NodeSettings {
             name: "vignette".to_string(),
             description: "Darkens the image toward its edges with a soft radial falloff.".to_string(),
-            help: "For each pixel a normalized distance from the centre is computed in the unit square (0 at the centre, ~1 at the corners). A smoothstep ramp from `radius` to `radius + softness` drives the falloff `t`, and colour channels are multiplied by `1 - amount * t`. Inside `radius` the image is untouched; beyond it brightness rolls off to `1 - amount` at the corners.\n\nAmount controls strength (1 fully darkens the corners to black), radius sets the clean inner region, and softness sets how gradually the darkening ramps in. Alpha is left unchanged. The distance is normalized per axis, so the vignette tracks the image aspect ratio rather than assuming a square.".to_string(),
+            help: "For each pixel a normalized distance from the centre is computed in the unit square (0 at the centre, ~1 at the corners). A smoothstep ramp from `radius` to `radius + softness` drives the falloff `t`, and colour channels are multiplied by `1 - amount * t`. Inside `radius` the image is untouched; beyond it brightness rolls off to `1 - amount` at the corners.\n\nAmount controls strength (1 fully darkens the corners to black), radius sets the clean inner region, and softness sets how gradually the darkening ramps in. Alpha is left unchanged. The distance is normalized per axis, so the vignette tracks the image aspect ratio rather than assuming a square.\n\n`falloff` reshapes the smoothstep ramp itself before it drives the darkening (x: 0 = inside radius/untouched, 1 = at the outer edge of the softness band). The default diagonal leaves the plain smoothstep falloff unchanged.".to_string(),
         }
     }
 
@@ -41,6 +42,7 @@ impl OpImageAdjustmentVignette {
                 .with_description("Normalized inner radius left untouched before falloff starts."),
             Input::new("softness".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Width of the falloff ramp from the inner radius outward."),
+            tone_curve_input("falloff", "Reshapes the darkening ramp (x: 0 = inside radius, 1 = outer edge of the softness band). Default diagonal leaves the smoothstep falloff unchanged."),
         ]
     }
 
@@ -61,6 +63,7 @@ impl OpImageAdjustmentVignette {
         let amount_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
         let radius_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
         let softness_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
+        let falloff_converted = convert_input(inputs, 4, ValueType::Curve, &mut input_errors);
 
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
@@ -68,6 +71,8 @@ impl OpImageAdjustmentVignette {
         let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
         let Value::Decimal(radius) = radius_converted.unwrap() else { unreachable!() };
         let Value::Decimal(softness) = softness_converted.unwrap() else { unreachable!() };
+        let Value::Curve(falloff_curve) = falloff_converted.unwrap() else { unreachable!() };
+        let lut = optional_lut(&falloff_curve);
 
         let (w, h) = data.dimensions();
         let ch = data.channels();
@@ -83,7 +88,10 @@ impl OpImageAdjustmentVignette {
             let dy = ((y as f32 + 0.5) / h as f32) * 2.0 - 1.0;
             // Normalize so the corner sits at ~1.0.
             let dist = (dx * dx + dy * dy).sqrt() / std::f32::consts::SQRT_2;
-            let t = smoothstep(radius, end, dist);
+            let mut t = smoothstep(radius, end, dist);
+            if let Some(lut) = &lut {
+                t = sample_lut(lut, t);
+            }
             let mul = 1.0 - amount * t;
             for val in pixel.iter_mut().take(color_ch) {
                 *val *= mul;

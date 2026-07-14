@@ -1,12 +1,27 @@
 use super::*;
 
+use crate::curve::{Curve, CurveInterpolation};
 use crate::input::Input;
 use crate::operations::images::noise::cellular::rolling_hills::OpImageNoiseRollingHills;
+use crate::operations::images::tone_curve::identity_tone_curve;
 use crate::value::Value;
 
-/// Builds the 16 default inputs: no guidance map connected, hill params
+/// A valley-profile / dome-profile curve that bows up steeply near x = 0:
+/// decoded output at x = 0.5 is 0.8 (vs the identity diagonal's 0.5), the
+/// drawn-curve analogue of the old convex `valley shape` scalar.
+fn convex_curve() -> Curve {
+    Curve {
+        points: vec![[0.0, 1.0], [0.5, 0.2], [1.0, 0.0]],
+        closed: false,
+        interpolation: CurveInterpolation::Smooth,
+        handles: Vec::new(),
+    }
+}
+
+/// Builds the 17 default inputs: no guidance map connected, hill params
 /// matching rolling hills' own defaults (so the unconnected fallback can be
-/// compared pixel-for-pixel against that node).
+/// compared pixel-for-pixel against that node), identity tone curves for the
+/// valley profile (straight V wall) and the hill dome profile.
 fn default_inputs(seed: i32, width: i32, height: i32) -> Vec<Input> {
     vec![
         Input::new("seed".to_string(), Value::Integer(seed), None, None),
@@ -16,7 +31,7 @@ fn default_inputs(seed: i32, width: i32, height: i32) -> Vec<Input> {
         Input::new("mask threshold".to_string(), Value::Decimal(0.5), None, None),
         Input::new("river width".to_string(), Value::Integer(8), None, None),
         Input::new("valley width".to_string(), Value::Integer(96), None, None),
-        Input::new("valley shape".to_string(), Value::Decimal(0.5), None, None),
+        Input::new("valley profile".to_string(), Value::Curve(identity_tone_curve()), None, None),
         Input::new("river depth".to_string(), Value::Decimal(0.35), None, None),
         Input::new("bank height".to_string(), Value::Decimal(0.1), None, None),
         Input::new("density".to_string(), Value::Decimal(6.0), None, None),
@@ -25,6 +40,7 @@ fn default_inputs(seed: i32, width: i32, height: i32) -> Vec<Input> {
         Input::new("height_variation".to_string(), Value::Decimal(0.5), None, None),
         Input::new("peakiness".to_string(), Value::Decimal(1.0), None, None),
         Input::new("merge".to_string(), Value::Decimal(1.0), None, None),
+        Input::new("profile".to_string(), Value::Curve(identity_tone_curve()), None, None),
     ]
 }
 
@@ -76,7 +92,7 @@ fn pixel_at(result: &OperationResponse, index: usize, x: usize, y: usize, w: usi
 async fn test_settings() {
     let s = OpImageSimulationGuidedRollingHills::settings();
     assert_eq!(s.name, "guided rolling hills");
-    assert_eq!(OpImageSimulationGuidedRollingHills::create_inputs().len(), 16);
+    assert_eq!(OpImageSimulationGuidedRollingHills::create_inputs().len(), 17);
     assert_eq!(OpImageSimulationGuidedRollingHills::create_outputs().len(), 2);
 }
 
@@ -131,6 +147,7 @@ async fn test_unconnected_matches_rolling_hills() {
         Input::new("height_variation".to_string(), Value::Decimal(0.5), None, None),
         Input::new("peakiness".to_string(), Value::Decimal(1.0), None, None),
         Input::new("merge".to_string(), Value::Decimal(1.0), None, None),
+        Input::new("profile".to_string(), Value::Curve(identity_tone_curve()), None, None),
     ];
     let rh_result = OpImageNoiseRollingHills::run(&mut rh_inputs).await.unwrap();
 
@@ -232,58 +249,66 @@ async fn test_valley_rises_monotonically() {
 }
 
 #[tokio::test]
-async fn test_valley_wall_is_convex() {
-    // The wall profile must be convex terrain: steepest right at the bank,
-    // easing off toward the rim (never flattening out near the water). With
-    // river depth 1 / bank 0 the height IS the wall profile; sRGB encoding is
-    // an increasing concave transform, so the slope must still be
-    // non-increasing walking away from the channel.
+async fn test_valley_profile_shapes_wall() {
+    // With river depth 1 / bank 0 the height IS the wall profile. The
+    // identity valley profile decodes to wall = dv (a straight V), while the
+    // convex curve passes through decoded 0.8 at dv = 0.5 — so mid-valley the
+    // convex wall must sit clearly higher, and the channel mask (1 - wall)
+    // clearly lower.
     let w = 128u32;
     let h = 128u32;
     let col = 64u32;
-    let mut inputs = default_inputs(21, w as i32, h as i32);
-    set_image(&mut inputs, 3, vertical_stripe_mask(w, h, col));
-    set(&mut inputs, 5, Value::Integer(8)); // river width -> 1px
-    set(&mut inputs, 6, Value::Integer(400)); // valley width -> 50px
-    set(&mut inputs, 8, Value::Decimal(1.0)); // river depth = 1: composed == wall
-    set(&mut inputs, 9, Value::Decimal(0.0)); // bank height = 0: no levee bump
-    let result = OpImageSimulationGuidedRollingHills::run(&mut inputs).await.unwrap();
-    let height = image_pixels(&result, 0);
-    let row = 64usize;
+    let build = |profile: Curve| {
+        let mut inputs = default_inputs(21, w as i32, h as i32);
+        set_image(&mut inputs, 3, vertical_stripe_mask(w, h, col));
+        set(&mut inputs, 5, Value::Integer(8)); // river width -> 1px
+        set(&mut inputs, 6, Value::Integer(400)); // valley width -> 50px
+        set(&mut inputs, 7, Value::Curve(profile));
+        set(&mut inputs, 8, Value::Decimal(1.0)); // river depth = 1: composed == wall
+        set(&mut inputs, 9, Value::Decimal(0.0)); // bank height = 0: no levee bump
+        inputs
+    };
+    let identity = OpImageSimulationGuidedRollingHills::run(&mut build(identity_tone_curve())).await.unwrap();
+    let convex = OpImageSimulationGuidedRollingHills::run(&mut build(convex_curve())).await.unwrap();
+    assert_ne!(image_pixels(&identity, 0), image_pixels(&convex, 0), "valley profile should change the falloff profile");
 
-    // Sample strictly inside the valley walls (d in (0, 1)): dist 2..=48.
-    let profile: Vec<f32> = (2..=48).map(|dist| height[row * w as usize + col as usize + dist][0]).collect();
-    let mut prev_slope = f32::INFINITY;
-    for i in 1..profile.len() {
-        let slope = profile[i] - profile[i - 1];
-        assert!(slope <= prev_slope + 1e-4, "wall slope should be non-increasing away from the channel at dist={}: {slope} > {prev_slope}", i + 2);
-        prev_slope = slope;
-    }
-    // And genuinely convex, not linear: the first step must clearly out-climb
-    // the last.
-    let first = profile[1] - profile[0];
-    let last = profile[profile.len() - 1] - profile[profile.len() - 2];
-    assert!(first > last + 1e-3, "wall should be steepest at the bank: first step {first} vs last step {last}");
+    // Mid-valley sample: dist 26 from the stripe -> dv = (26-1)/50 = 0.5.
+    let row = 64usize;
+    let mid_x = col as usize + 26;
+    let identity_mid = pixel_at(&identity, 0, mid_x, row, w as usize);
+    let convex_mid = pixel_at(&convex, 0, mid_x, row, w as usize);
+    assert!(convex_mid > identity_mid + 0.05, "convex profile should raise the mid-valley wall: {convex_mid} vs {identity_mid}");
+
+    let identity_mask_mid = pixel_at(&identity, 1, mid_x, row, w as usize);
+    let convex_mask_mid = pixel_at(&convex, 1, mid_x, row, w as usize);
+    assert!(convex_mask_mid < identity_mask_mid - 0.05, "convex profile should darken the mid-valley channel mask: {convex_mask_mid} vs {identity_mask_mid}");
+
+    // Endpoint bins are exact: the channel stays fully carved (wall = 0) and
+    // past the rim the wall reaches full height for both profiles.
+    assert_eq!(pixel_at(&convex, 0, col as usize, row, w as usize), 0.0, "channel should stay at the bed with a drawn profile");
 }
 
 #[tokio::test]
-async fn test_valley_shape_changes_profile() {
-    let w = 128u32;
-    let h = 128u32;
-    let col = 64u32;
-    let build = |shape: f32| {
-        let mut inputs = default_inputs(13, w as i32, h as i32);
-        set_image(&mut inputs, 3, vertical_stripe_mask(w, h, col));
-        set(&mut inputs, 5, Value::Integer(8));
-        set(&mut inputs, 6, Value::Integer(400));
-        set(&mut inputs, 7, Value::Decimal(shape));
-        set(&mut inputs, 8, Value::Decimal(1.0));
-        set(&mut inputs, 9, Value::Decimal(0.0));
+async fn test_dome_profile_changes_hills() {
+    // A non-identity dome profile must change the hill field on both the
+    // unconnected fallback path and the mask-connected (modulated) path.
+    let build = |connected: bool, dome: Option<Curve>| {
+        let mut inputs = default_inputs(13, 64, 64);
+        if connected {
+            set_image(&mut inputs, 3, vertical_stripe_mask(64, 64, 32));
+        }
+        if let Some(curve) = dome {
+            set(&mut inputs, 16, Value::Curve(curve));
+        }
         inputs
     };
-    let v_shape = OpImageSimulationGuidedRollingHills::run(&mut build(0.0)).await.unwrap();
-    let u_shape = OpImageSimulationGuidedRollingHills::run(&mut build(1.0)).await.unwrap();
-    assert_ne!(image_pixels(&v_shape, 0), image_pixels(&u_shape, 0), "valley shape should change the falloff profile");
+    let plain_fallback = OpImageSimulationGuidedRollingHills::run(&mut build(false, None)).await.unwrap();
+    let domed_fallback = OpImageSimulationGuidedRollingHills::run(&mut build(false, Some(convex_curve()))).await.unwrap();
+    assert_ne!(image_pixels(&plain_fallback, 0), image_pixels(&domed_fallback, 0), "dome profile should change the unconnected hill field");
+
+    let plain_guided = OpImageSimulationGuidedRollingHills::run(&mut build(true, None)).await.unwrap();
+    let domed_guided = OpImageSimulationGuidedRollingHills::run(&mut build(true, Some(convex_curve()))).await.unwrap();
+    assert_ne!(image_pixels(&plain_guided, 0), image_pixels(&domed_guided, 0), "dome profile should change the modulated hill field");
 }
 
 #[tokio::test]

@@ -11,6 +11,7 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::blur::blur::gaussian_blur_image;
 use crate::operations::images::filter::morphology::erode::separable_morphology;
+use crate::operations::images::tone_curve::{optional_lut, sample_lut, tone_curve_input};
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
@@ -31,7 +32,7 @@ impl OpImageFxOuterGlow {
         NodeSettings {
             name: "outer glow".to_string(),
             description: "Glow extending outside a mask — dilate, subtract, blur, tint.".to_string(),
-            help: "Collapses the input to a single-channel mask field, dilates it by `radius` pixels using a separable max-morphology pass, and subtracts the original mask to isolate a ring that extends outward from the silhouette. That ring is then Gaussian-blurred with sigma = radius/2 and tinted with the chosen colour.\n\nOutput is an RGBA halo layer whose alpha is glow * intensity * color.a clamped to 0-1, designed to be composited above the source. Intensity can exceed 1 for bloomed looks. Because both the dilation and blur scale with radius, raising the radius expands the halo while keeping its soft-edged character. `radius` is expressed in pixels at a 1024px reference and is scaled to the actual image size, so the glow reads the same at any resolution.".to_string(),
+            help: "Collapses the input to a single-channel mask field, dilates it by `radius` pixels using a separable max-morphology pass, and subtracts the original mask to isolate a ring that extends outward from the silhouette. That ring is then Gaussian-blurred with sigma = radius/2 and tinted with the chosen colour.\n\nOutput is an RGBA halo layer whose alpha is glow * intensity * color.a clamped to 0-1, designed to be composited above the source. Intensity can exceed 1 for bloomed looks. Because both the dilation and blur scale with radius, raising the radius expands the halo while keeping its soft-edged character. `radius` is expressed in pixels at a 1024px reference and is scaled to the actual image size, so the glow reads the same at any resolution.\n\n`falloff` remaps the blurred glow strength before it's tinted (0 = beyond the halo, 1 = strongest, right at the mask's outside edge) — a Photoshop-contour-style shaping curve, not a spatial distance field. The default diagonal leaves the glow's natural blur profile unchanged.".to_string(),
         }
     }
 
@@ -45,6 +46,7 @@ impl OpImageFxOuterGlow {
                 .with_description("Brightness multiplier applied to the glow's alpha."),
             Input::new("color".to_string(), Value::Color(Color::from_srgb_float(1.0, 1.0, 1.0, 1.0)), None, None)
                 .with_description("Colour the glow ring is tinted with."),
+            tone_curve_input("falloff", "Remaps glow strength before tinting (x: 0 = beyond the halo, 1 = strongest at the outside edge). Default diagonal leaves the glow unchanged."),
         ]
     }
 
@@ -63,6 +65,7 @@ impl OpImageFxOuterGlow {
         let radius_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
         let intensity_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
         let color_converted = convert_input(inputs, 3, ValueType::Color, &mut input_errors);
+        let falloff_converted = convert_input(inputs, 4, ValueType::Curve, &mut input_errors);
 
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
@@ -70,6 +73,8 @@ impl OpImageFxOuterGlow {
         let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
         let Value::Decimal(intensity) = intensity_converted.unwrap() else { unreachable!() };
         let Value::Color(color) = color_converted.unwrap() else { unreachable!() };
+        let Value::Curve(falloff_curve) = falloff_converted.unwrap() else { unreachable!() };
+        let lut = optional_lut(&falloff_curve);
 
         let (width, height) = data.dimensions();
         let mask_field = to_mask_field(&data);
@@ -81,7 +86,12 @@ impl OpImageFxOuterGlow {
 
         // Ring = dilated - original (clamped to non-negative).
         let ring = subtract_fields(&dilated, &mask_field, width, height);
-        let glow = gaussian_blur_image(&ring, (radius as f32) * 0.5);
+        let mut glow = gaussian_blur_image(&ring, (radius as f32) * 0.5);
+        if let Some(lut) = &lut {
+            for v in glow.as_raw_mut() {
+                *v = sample_lut(lut, *v);
+            }
+        }
 
         let (cr, cg, cb, ca) = color.to_srgb_float();
         let output = tint_field(&glow, [cr, cg, cb], intensity, ca);

@@ -6,7 +6,7 @@
 //! node settings panel (see `InputSettings::ToneCurve`), with the source
 //! image's histogram drawn behind it.
 
-use crate::curve::{Curve, CurveInterpolation};
+use crate::curve::Curve;
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -18,14 +18,11 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
-/// Number of entries in the lookup table built from the curve. 1024 keeps
-/// interpolation error invisible on f32 images while staying cheap to build.
-const LUT_SIZE: usize = 1024;
-
-/// Samples per spline segment when flattening the curve for LUT rasterization.
-/// Matches `Curve`'s standard tolerance; far denser than the LUT bin spacing
-/// for typical point counts, so no interior bins are left unfilled.
-const FLATTEN_SAMPLES: usize = 48;
+// The LUT machinery lives in the shared module (other operations remap
+// values through tone curves too); re-exported here so existing callers
+// keep compiling.
+pub use crate::operations::images::tone_curve::{sample_lut, tone_curve_lut, TONE_LUT_SIZE};
+use crate::operations::images::tone_curve::identity_tone_curve;
 
 /// Tone curve adjustment mapping pixel values through a user-drawn spline.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,12 +42,7 @@ impl OpImageAdjustmentCurves {
     /// (bottom-left in y-down curve coordinates is `[0, 1]`) to input 1 →
     /// output 1 (`[1, 0]`). Applying it leaves the image unchanged.
     pub fn identity_curve() -> Curve {
-        Curve {
-            points: vec![[0.0, 1.0], [1.0, 0.0]],
-            closed: false,
-            interpolation: CurveInterpolation::Smooth,
-            handles: Vec::new(),
-        }
+        identity_tone_curve()
     }
 
     /// Creates the input ports: image and the tone curve.
@@ -89,7 +81,7 @@ impl OpImageAdjustmentCurves {
         let Value::Curve(curve) = curve_converted.unwrap() else { unreachable!() };
 
         // run node — build the LUT once, then remap every colour channel.
-        let lut = tone_curve_lut(&curve, LUT_SIZE);
+        let lut = tone_curve_lut(&curve, TONE_LUT_SIZE);
         let mut result = (*data).clone();
         let ch = result.channels() as usize;
         let color_ch = if ch == 2 || ch == 4 { ch - 1 } else { ch };
@@ -108,87 +100,6 @@ impl OpImageAdjustmentCurves {
             ],
         })
     }
-}
-
-/// Build an `n`-entry lookup table (input value → output value, both in
-/// `[0,1]`) from a tone curve.
-///
-/// The curve is in y-down `[0,1]²` coordinates, so `output = 1 - y`. The
-/// flattened spline is rasterized into bins: entry `i` samples the curve at
-/// input `i / (n-1)`. Bins left of the first point / right of the last are
-/// filled flat with the nearest endpoint's output (Photoshop's clamp
-/// behaviour). A locally x-reversed spline (possible with extreme control
-/// points) stays a function — later segments simply overwrite earlier bins.
-/// Degenerate curves fall back gracefully: no points → identity ramp, a
-/// single point → a constant.
-pub fn tone_curve_lut(curve: &Curve, n: usize) -> Vec<f32> {
-    debug_assert!(n >= 2);
-    let poly = curve.flatten(FLATTEN_SAMPLES);
-
-    if poly.is_empty() {
-        // No curve at all — identity ramp.
-        return (0..n).map(|i| i as f32 / (n - 1) as f32).collect();
-    }
-    if poly.len() == 1 {
-        // A single point maps everything to its output value.
-        return vec![(1.0 - poly[0][1]).clamp(0.0, 1.0); n];
-    }
-
-    // NaN marks "not yet written"; filled from the segments, then extended.
-    let mut lut = vec![f32::NAN; n];
-    let last_bin = (n - 1) as f32;
-
-    for seg in poly.windows(2) {
-        // Convert to (input x, output value) with the y-down flip.
-        let (mut x0, mut v0) = (seg[0][0], 1.0 - seg[0][1]);
-        let (mut x1, mut v1) = (seg[1][0], 1.0 - seg[1][1]);
-        if x1 < x0 {
-            // Walk every segment left→right so the bin fill below is a
-            // simple ascending range regardless of spline direction.
-            std::mem::swap(&mut x0, &mut x1);
-            std::mem::swap(&mut v0, &mut v1);
-        }
-
-        // Bins whose sample position i/(n-1) falls inside [x0, x1].
-        let i0 = (x0.clamp(0.0, 1.0) * last_bin).ceil() as usize;
-        let i1 = (x1.clamp(0.0, 1.0) * last_bin).floor() as usize;
-        for i in i0..=i1.min(n - 1) {
-            let x = i as f32 / last_bin;
-            // Degenerate (vertical) segments write the far endpoint's value.
-            let t = if x1 > x0 { (x - x0) / (x1 - x0) } else { 1.0 };
-            lut[i] = (v0 + t * (v1 - v0)).clamp(0.0, 1.0);
-        }
-    }
-
-    // Extend flat past the curve's ends, and paper over any interior gap by
-    // carrying the previous value (gaps can only appear if the flattening is
-    // coarser than the bin spacing, which the constants above prevent).
-    let first_valid = lut.iter().copied().find(|v| !v.is_nan());
-    let Some(first_valid) = first_valid else {
-        // Nothing landed in [0,1] at all — identity ramp.
-        return (0..n).map(|i| i as f32 / (n - 1) as f32).collect();
-    };
-    let mut prev = first_valid;
-    for v in lut.iter_mut() {
-        if v.is_nan() {
-            *v = prev;
-        } else {
-            prev = *v;
-        }
-    }
-    lut
-}
-
-/// Sample a LUT built by [`tone_curve_lut`] at input `val` (clamped to
-/// `[0,1]`), linearly interpolating between adjacent entries.
-pub fn sample_lut(lut: &[f32], val: f32) -> f32 {
-    let last = lut.len() - 1;
-    let t = val.clamp(0.0, 1.0) * last as f32;
-    let i = (t.floor() as usize).min(last);
-    let f = t - i as f32;
-    let a = lut[i];
-    let b = lut[(i + 1).min(last)];
-    a + f * (b - a)
 }
 
 #[cfg(test)]
