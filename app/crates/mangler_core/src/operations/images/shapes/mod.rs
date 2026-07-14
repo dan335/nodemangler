@@ -7,6 +7,8 @@
 
 pub mod circle;
 pub mod cone;
+pub mod curve_distance_field;
+pub mod curve_gradient;
 pub mod ellipse;
 pub mod line;
 pub mod paraboloid;

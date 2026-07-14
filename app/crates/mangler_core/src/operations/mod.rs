@@ -542,10 +542,13 @@ operations! {
     OpImageShapeCone(crate::operations::images::shapes::cone::OpImageShapeCone),
     OpImageShapesCircle(crate::operations::images::shapes::circle::OpImageShapesCircle),
     OpImageShapeRasterizeCurve(crate::operations::images::shapes::rasterize_curve::OpImageShapeRasterizeCurve),
+    OpImageShapeCurveDistanceField(crate::operations::images::shapes::curve_distance_field::OpImageShapeCurveDistanceField),
+    OpImageShapeCurveGradient(crate::operations::images::shapes::curve_gradient::OpImageShapeCurveGradient),
 
     // curves
     OpCurveInputCurve(crate::operations::curves::inputs::curve::OpCurveInputCurve),
     OpCurveSimulationMeander(crate::operations::curves::simulation::meander::OpCurveSimulationMeander),
+    OpCurveFromImageTraceContour(crate::operations::curves::from_image::trace_contour::OpCurveFromImageTraceContour),
 
     // curves / generators
     OpCurveGeneratorEllipse(crate::operations::curves::generators::ellipse::OpCurveGeneratorEllipse),
@@ -583,6 +586,7 @@ operations! {
     OpImagePatternFloodFill(crate::operations::images::patterns::flood_fill::OpImagePatternFloodFill),
     OpImagePatternFloodFillMapper(crate::operations::images::patterns::flood_fill_mapper::OpImagePatternFloodFillMapper),
     OpImagePatternSplatter(crate::operations::images::patterns::splatter::OpImagePatternSplatter),
+    OpImagePatternScatterOnCurve(crate::operations::images::patterns::scatter_on_curve::OpImagePatternScatterOnCurve),
     OpImagePatternTileGenerator(crate::operations::images::patterns::tile_generator::OpImagePatternTileGenerator),
 
     // pbr
@@ -1068,6 +1072,8 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageShapeCone },
                 OperationListItem::Operation { operation: Operation::OpImageShapesCircle },
                 OperationListItem::Operation { operation: Operation::OpImageShapeRasterizeCurve },
+                OperationListItem::Operation { operation: Operation::OpImageShapeCurveDistanceField },
+                OperationListItem::Operation { operation: Operation::OpImageShapeCurveGradient },
             ]},
             OperationListItem::Category { name: "patterns".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImagePatternBrick },
@@ -1076,6 +1082,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImagePatternTileSampler },
                 OperationListItem::Operation { operation: Operation::OpImagePatternTileGenerator },
                 OperationListItem::Operation { operation: Operation::OpImagePatternSplatter },
+                OperationListItem::Operation { operation: Operation::OpImagePatternScatterOnCurve },
                 OperationListItem::Operation { operation: Operation::OpImagePatternFloodFill },
                 OperationListItem::Operation { operation: Operation::OpImagePatternFloodFillMapper },
             ]},
@@ -1239,6 +1246,9 @@ pub fn operation_list() -> Vec<OperationListItem> {
             ]},
             OperationListItem::Category { name: "simulation".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpCurveSimulationMeander },
+            ]},
+            OperationListItem::Category { name: "from image".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpCurveFromImageTraceContour },
             ]},
             OperationListItem::Category { name: "modify".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpCurveModifyTransform },

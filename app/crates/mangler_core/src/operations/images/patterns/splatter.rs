@@ -9,6 +9,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
+use crate::operations::images::patterns::{draw_stamp, StampPlacement};
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
@@ -26,20 +27,6 @@ fn lcg_float(seed: u64) -> (f64, u64) {
     let next = lcg(seed);
     let val = (next >> 33) as f64 / (1u64 << 31) as f64;
     (val, next)
-}
-
-/// Precomputed placement of a single stamp.
-struct Stamp {
-    center_x: f64,
-    center_y: f64,
-    cos_a: f64,
-    sin_a: f64,
-    draw: f64,
-    tint: [f64; 3],
-    sx: i32,
-    ex: i32,
-    sy: i32,
-    ey: i32,
 }
 
 /// Free-placement pattern splatter.
@@ -122,13 +109,11 @@ impl OpImagePatternSplatter {
         let color_variation = color_variation.clamp(0.0, 1.0) as f64;
 
         let pat_channels = pattern.channels();
-        let pat_w = pattern.width() as f64;
-        let pat_h = pattern.height() as f64;
 
         // Precompute every stamp's placement serially so the RNG draw order is
         // identical to the original per-stamp loop.
         let mut rng_state = lcg(seed as u64 ^ 0xDEADBEEF);
-        let mut stamps: Vec<Stamp> = Vec::with_capacity(count as usize);
+        let mut stamps: Vec<StampPlacement> = Vec::with_capacity(count as usize);
 
         for _ in 0..count {
             let (rx, s) = lcg_float(rng_state);
@@ -168,7 +153,7 @@ impl OpImagePatternSplatter {
                 if wy > max_y { max_y = wy; }
             }
 
-            stamps.push(Stamp {
+            stamps.push(StampPlacement {
                 center_x,
                 center_y,
                 cos_a,
@@ -191,26 +176,7 @@ impl OpImagePatternSplatter {
         let pixels: Vec<f32> = (0..height).into_par_iter().flat_map_iter(move |py| {
             let mut row = vec![0.0f32; width as usize * ch];
             for stamp in stamps_ref {
-                if py < stamp.sy || py >= stamp.ey { continue; }
-                for px in stamp.sx..stamp.ex {
-                    // Inverse transform: output px → local coords → pattern UV.
-                    let dx = px as f64 - stamp.center_x;
-                    let dy = py as f64 - stamp.center_y;
-                    let lx = stamp.cos_a * dx + stamp.sin_a * dy;
-                    let ly = -stamp.sin_a * dx + stamp.cos_a * dy;
-                    let u = (lx / stamp.draw + 0.5) * pat_w;
-                    let v = (ly / stamp.draw + 0.5) * pat_h;
-                    if u < 0.0 || u >= pat_w || v < 0.0 || v >= pat_h {
-                        continue;
-                    }
-                    let src = pattern_ref.get_pixel(u as u32, v as u32);
-                    let base = px as usize * ch;
-                    // Max composite with per-channel tint applied first.
-                    for c in 0..ch {
-                        let t = if c < 3 { stamp.tint[c] as f32 } else { 1.0 };
-                        row[base + c] = row[base + c].max(src[c] * t);
-                    }
-                }
+                draw_stamp(&mut row, py, stamp, pattern_ref, ch);
             }
             row
         }).collect();

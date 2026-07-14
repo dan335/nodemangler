@@ -4,6 +4,7 @@
 
 pub mod combine;
 pub(crate) mod common;
+pub mod from_image;
 pub mod generators;
 pub mod inputs;
 pub mod modify;
