@@ -3,5 +3,6 @@
 //! here emits a `Value::Curve`.
 
 pub(crate) mod common;
+pub mod generators;
 pub mod inputs;
 pub mod simulation;

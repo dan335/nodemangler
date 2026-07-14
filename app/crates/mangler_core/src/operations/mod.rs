@@ -547,6 +547,18 @@ operations! {
     OpCurveInputCurve(crate::operations::curves::inputs::curve::OpCurveInputCurve),
     OpCurveSimulationMeander(crate::operations::curves::simulation::meander::OpCurveSimulationMeander),
 
+    // curves / generators
+    OpCurveGeneratorEllipse(crate::operations::curves::generators::ellipse::OpCurveGeneratorEllipse),
+    OpCurveGeneratorPolygon(crate::operations::curves::generators::polygon::OpCurveGeneratorPolygon),
+    OpCurveGeneratorStar(crate::operations::curves::generators::star::OpCurveGeneratorStar),
+    OpCurveGeneratorArc(crate::operations::curves::generators::arc::OpCurveGeneratorArc),
+    OpCurveGeneratorSpiral(crate::operations::curves::generators::spiral::OpCurveGeneratorSpiral),
+    OpCurveGeneratorSuperellipse(crate::operations::curves::generators::superellipse::OpCurveGeneratorSuperellipse),
+    OpCurveGeneratorWave(crate::operations::curves::generators::wave::OpCurveGeneratorWave),
+    OpCurveGeneratorLissajous(crate::operations::curves::generators::lissajous::OpCurveGeneratorLissajous),
+    OpCurveGeneratorRandomWalk(crate::operations::curves::generators::random_walk::OpCurveGeneratorRandomWalk),
+    OpCurveGeneratorFractalLine(crate::operations::curves::generators::fractal_line::OpCurveGeneratorFractalLine),
+
     // patterns
     OpImagePatternBrick(crate::operations::images::patterns::brick::OpImagePatternBrick),
     OpImagePatternHexagonal(crate::operations::images::patterns::hexagonal::OpImagePatternHexagonal),
@@ -1180,6 +1192,18 @@ pub fn operation_list() -> Vec<OperationListItem> {
         OperationListItem::Category { name: "curves".to_string(), operation_list_items: vec![
             OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpCurveInputCurve },
+            ]},
+            OperationListItem::Category { name: "generators".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpCurveGeneratorEllipse },
+                OperationListItem::Operation { operation: Operation::OpCurveGeneratorPolygon },
+                OperationListItem::Operation { operation: Operation::OpCurveGeneratorStar },
+                OperationListItem::Operation { operation: Operation::OpCurveGeneratorArc },
+                OperationListItem::Operation { operation: Operation::OpCurveGeneratorSpiral },
+                OperationListItem::Operation { operation: Operation::OpCurveGeneratorSuperellipse },
+                OperationListItem::Operation { operation: Operation::OpCurveGeneratorWave },
+                OperationListItem::Operation { operation: Operation::OpCurveGeneratorLissajous },
+                OperationListItem::Operation { operation: Operation::OpCurveGeneratorRandomWalk },
+                OperationListItem::Operation { operation: Operation::OpCurveGeneratorFractalLine },
             ]},
             OperationListItem::Category { name: "simulation".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpCurveSimulationMeander },
