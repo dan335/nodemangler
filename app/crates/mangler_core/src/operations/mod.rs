@@ -559,6 +559,22 @@ operations! {
     OpCurveGeneratorRandomWalk(crate::operations::curves::generators::random_walk::OpCurveGeneratorRandomWalk),
     OpCurveGeneratorFractalLine(crate::operations::curves::generators::fractal_line::OpCurveGeneratorFractalLine),
 
+    // curves / modify
+    OpCurveModifyTransform(crate::operations::curves::modify::transform::OpCurveModifyTransform),
+    OpCurveModifySmooth(crate::operations::curves::modify::smooth::OpCurveModifySmooth),
+    OpCurveModifySimplify(crate::operations::curves::modify::simplify::OpCurveModifySimplify),
+    OpCurveModifyResample(crate::operations::curves::modify::resample::OpCurveModifyResample),
+    OpCurveModifyJitter(crate::operations::curves::modify::jitter::OpCurveModifyJitter),
+    OpCurveModifyOffset(crate::operations::curves::modify::offset::OpCurveModifyOffset),
+    OpCurveModifyTrim(crate::operations::curves::modify::trim::OpCurveModifyTrim),
+    OpCurveModifyRoundCorners(crate::operations::curves::modify::round_corners::OpCurveModifyRoundCorners),
+    OpCurveModifyMirror(crate::operations::curves::modify::mirror::OpCurveModifyMirror),
+    OpCurveModifyReverse(crate::operations::curves::modify::reverse::OpCurveModifyReverse),
+
+    // curves / combine
+    OpCurveCombineJoin(crate::operations::curves::combine::join::OpCurveCombineJoin),
+    OpCurveCombineMorph(crate::operations::curves::combine::morph::OpCurveCombineMorph),
+
     // patterns
     OpImagePatternBrick(crate::operations::images::patterns::brick::OpImagePatternBrick),
     OpImagePatternHexagonal(crate::operations::images::patterns::hexagonal::OpImagePatternHexagonal),
@@ -1207,6 +1223,22 @@ pub fn operation_list() -> Vec<OperationListItem> {
             ]},
             OperationListItem::Category { name: "simulation".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpCurveSimulationMeander },
+            ]},
+            OperationListItem::Category { name: "modify".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpCurveModifyTransform },
+                OperationListItem::Operation { operation: Operation::OpCurveModifySmooth },
+                OperationListItem::Operation { operation: Operation::OpCurveModifySimplify },
+                OperationListItem::Operation { operation: Operation::OpCurveModifyResample },
+                OperationListItem::Operation { operation: Operation::OpCurveModifyJitter },
+                OperationListItem::Operation { operation: Operation::OpCurveModifyOffset },
+                OperationListItem::Operation { operation: Operation::OpCurveModifyTrim },
+                OperationListItem::Operation { operation: Operation::OpCurveModifyRoundCorners },
+                OperationListItem::Operation { operation: Operation::OpCurveModifyMirror },
+                OperationListItem::Operation { operation: Operation::OpCurveModifyReverse },
+            ]},
+            OperationListItem::Category { name: "combine".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpCurveCombineJoin },
+                OperationListItem::Operation { operation: Operation::OpCurveCombineMorph },
             ]},
         ]},
     ];

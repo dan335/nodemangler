@@ -123,3 +123,53 @@ fn rdp_decimate_keeps_under_two() {
     let kept = rdp_decimate(&pts, 0.01, 4000);
     assert_eq!(kept, vec![[0.3f32, 0.4f32]]);
 }
+
+// ── drop_closing_duplicate ───────────────────────────────────────────────────
+
+#[test]
+fn drop_closing_duplicate_removes_last_when_closed() {
+    let mut pts = vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 0.0]];
+    drop_closing_duplicate(&mut pts, true);
+    assert_eq!(pts, vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]);
+}
+
+#[test]
+fn drop_closing_duplicate_noop_when_open_or_short() {
+    let mut pts = vec![[0.0, 0.0], [1.0, 0.0], [0.0, 0.0]];
+    drop_closing_duplicate(&mut pts, false);
+    assert_eq!(pts.len(), 3);
+
+    let mut single = vec![[0.5, 0.5]];
+    drop_closing_duplicate(&mut single, true);
+    assert_eq!(single.len(), 1);
+}
+
+// ── laplacian_smooth_once ────────────────────────────────────────────────────
+
+#[test]
+fn laplacian_smooth_pins_open_endpoints() {
+    let pts = [[0.0, 0.0], [0.5, 1.0], [1.0, 0.0]];
+    let out = laplacian_smooth_once(&pts, false);
+    assert_eq!(out[0], pts[0]);
+    assert_eq!(out[2], pts[2]);
+    // Interior point moves toward the average of its neighbors.
+    assert!(approx(out[1][1], 0.5, 1e-9));
+}
+
+#[test]
+fn laplacian_smooth_wraps_when_closed() {
+    // A square: every vertex has two neighbors even at index 0.
+    let pts = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+    let out = laplacian_smooth_once(&pts, true);
+    // Vertex 0 = (0,0); neighbors are index 3 = (0,1) and index 1 = (1,0).
+    // 0.5*(0,0) + 0.25*(0,1) + 0.25*(1,0) = (0.25, 0.25).
+    assert!(approx(out[0][0], 0.25, 1e-9));
+    assert!(approx(out[0][1], 0.25, 1e-9));
+}
+
+#[test]
+fn laplacian_smooth_short_input_is_noop() {
+    let pts = [[0.1, 0.2], [0.3, 0.4]];
+    let out = laplacian_smooth_once(&pts, false);
+    assert_eq!(out, pts.to_vec());
+}

@@ -127,8 +127,6 @@ pub(crate) fn rdp_decimate(points: &[[f64; 2]], mut tol: f64, max_points: usize)
 /// Flatten a curve into an `f64` polyline in normalized `[0,1]²` coordinates
 /// (the `f64` twin of [`Curve::flatten`], the working precision for the curve
 /// geometry ops).
-// Consumed by the generator/modifier nodes landing in later phases.
-#[allow(dead_code)]
 pub(crate) fn flatten_f64(curve: &Curve, samples_per_segment: usize) -> Vec<[f64; 2]> {
     curve
         .flatten(samples_per_segment)
@@ -152,8 +150,6 @@ pub(crate) fn linear_curve(points: Vec<[f32; 2]>, closed: bool) -> Curve {
 /// `out[i] == out[i-1] + dist(points[i-1], points[i])`, so `out.len() ==
 /// points.len()` and the last entry is the total polyline length. Clears `out`
 /// first.
-// Consumed by the modifier/analysis nodes landing in later phases.
-#[allow(dead_code)]
 pub(crate) fn cumulative_arc(points: &[[f64; 2]], out: &mut Vec<f64>) {
     out.clear();
     out.reserve(points.len());
@@ -170,8 +166,11 @@ pub(crate) fn cumulative_arc(points: &[[f64; 2]], out: &mut Vec<f64>) {
 /// (`points[i+1] - points[i-1]`), falling back to a forward/backward difference
 /// at the endpoints. Degenerate (fewer than 2 points, out-of-range index, or a
 /// zero-length difference) returns `[1.0, 0.0]`.
-// Consumed by the modifier nodes (jitter, offset) landing in later phases.
-#[allow(dead_code)]
+///
+/// Note: this is not wrap-aware — it always treats index 0 and the last index
+/// as endpoints, even for a closed ring. Callers that resample a closed curve
+/// (jitter, offset) accept the resulting seam-vertex tangent as a minor
+/// heuristic artifact rather than threading closedness through here.
 pub(crate) fn vertex_tangent(points: &[[f64; 2]], i: usize) -> [f64; 2] {
     let n = points.len();
     if n < 2 || i >= n {
@@ -192,6 +191,44 @@ pub(crate) fn vertex_tangent(points: &[[f64; 2]], i: usize) -> [f64; 2] {
     } else {
         [dx / len, dy / len]
     }
+}
+
+/// Removes the trailing point [`flatten_f64`] appends for a closed curve (a
+/// copy of the first point, so length/decimation math correctly accounts for
+/// the closing segment). [`resample`]/[`rdp_decimate`] always preserve the
+/// first and last point of whatever polyline they're given, so that
+/// duplicate survives into their output and must be stripped before the
+/// result is stored back into a `Curve`'s `points` — which, like the
+/// generator nodes, never repeats the closing vertex. No-op when `closed` is
+/// false or fewer than 2 points remain.
+pub(crate) fn drop_closing_duplicate<T>(points: &mut Vec<T>, closed: bool) {
+    if closed && points.len() > 1 {
+        points.pop();
+    }
+}
+
+/// One iteration of 1-2-1 Laplacian smoothing: each point moves halfway
+/// toward the average of its neighbors (`0.5*p + 0.25*prev + 0.25*next`).
+/// Open curves pin both endpoints (they only have one neighbor); closed
+/// curves wrap around. Fewer than 3 points is a no-op (nothing to average).
+pub(crate) fn laplacian_smooth_once(points: &[[f64; 2]], closed: bool) -> Vec<[f64; 2]> {
+    let n = points.len();
+    if n < 3 {
+        return points.to_vec();
+    }
+    let mut out = points.to_vec();
+    for i in 0..n {
+        if !closed && (i == 0 || i == n - 1) {
+            continue;
+        }
+        let prev = points[(i + n - 1) % n];
+        let next = points[(i + 1) % n];
+        out[i] = [
+            0.5 * points[i][0] + 0.25 * prev[0] + 0.25 * next[0],
+            0.5 * points[i][1] + 0.25 * prev[1] + 0.25 * next[1],
+        ];
+    }
+    out
 }
 
 #[cfg(test)]

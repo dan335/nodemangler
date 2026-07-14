@@ -63,7 +63,7 @@ Each crate README goes into detail on that component.
 ## Node Reference
 
 Every node in the graph editor's Add Node menu, by category and subcategory
-(321 operation nodes, plus subgraph nodes for composing whole pipelines).
+(333 operation nodes, plus subgraph nodes for composing whole pipelines).
 
 ### Numbers (98)
 
@@ -88,10 +88,12 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Harmony:** Analogous, Complementary, Double Split Comp, Monochromatic, Tetradic, Triadic
 - **Manipulation:** Adjust HSV, Blend, Clamp, Grayscale, Invert, Set Alpha
 
-### Curves (12)
+### Curves (24)
 
 - **Input:** Curve
+- **Combine:** Join, Morph
 - **Generators:** Arc, Ellipse, Fractal Line, Lissajous, Polygon, Random Walk, Spiral, Star, Superellipse, Wave
+- **Modify:** Jitter, Mirror, Offset, Resample, Reverse, Round Corners, Simplify, Smooth, Transform, Trim
 - **Simulation:** Meander
 
 ### Images (180)
