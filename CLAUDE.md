@@ -97,6 +97,7 @@ cargo run -p mangler_cli  # Run the CLI tool
 4. Add it to the `operation_list()` function in the same file for it to appear in the node menu
 5. Add `pub mod` in the parent category `mod.rs`
 6. Add tests in a separate `{operation_name}_tests.rs` file, linked via `#[cfg(test)] #[path = "..."] mod tests;`
+7. List the node in `README.md`'s `## Node Reference` section — `operations_tests.rs` has hard gates (`test_all_operations_documented_in_readme` / `test_no_stale_operations_in_readme`) that fail the build if the README and `operation_list()` disagree (name membership only; the prose counts are unchecked and have drifted)
 
 ## Operation Categories
 
