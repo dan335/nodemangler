@@ -2,6 +2,7 @@
 //!
 //! Works directly on [`FloatImage`] pixel data for channel-agnostic blending.
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
@@ -68,8 +69,6 @@ impl OpImageTransformMakeTile {
 
         let (w, h) = src_data.dimensions();
         let ch = src_data.channels() as usize;
-        // Start with a copy of the source image
-        let mut output = (*src_data).clone();
 
         // Compute the pixel-space blend region sizes from the normalized blend fraction
         let blend_size = blend_size.clamp(0.01, 0.5);
@@ -77,13 +76,31 @@ impl OpImageTransformMakeTile {
         let blend_h = (h as f32 * blend_size) as u32;
 
         if blend_w == 0 || blend_h == 0 {
-            return Ok(OperationResponse { 
+            // Degenerate blend region: pass the original image through untouched
+            // (no premultiply round-trip so nothing is altered).
+            return Ok(OperationResponse {
                 time: Instant::now().duration_since(start_time),
                 responses: vec![
-                    OutputResponse { value: Value::Image { data: Arc::new(output), change_id: get_id() } },
+                    OutputResponse { value: Value::Image { data: Arc::new((*src_data).clone()), change_id: get_id() } },
                 ],
             });
         }
+
+        // Premultiply so transparent pixels' hidden colour can't bleed into the
+        // cross-faded edge/corner pixels (white fringe around dark shapes). The
+        // whole output starts as this premultiplied copy and is unpremultiplied
+        // at the end, so the untouched interior round-trips too (opaque exact,
+        // fully-transparent colour collapses to 0, which is fine).
+        let premul = src_data.has_alpha();
+        let premul_img;
+        let src: &FloatImage = if premul {
+            premul_img = src_data.premultiply_alpha();
+            &premul_img
+        } else {
+            &*src_data
+        };
+        // Start with a copy of the (premultiplied) source image
+        let mut output = src.clone();
 
         // Phase 1: Blend corners using bilinear interpolation of all 4 source quadrants.
         // The same blended value is written to all 4 mirrored positions to ensure
@@ -93,10 +110,10 @@ impl OpImageTransformMakeTile {
             for bx in 0..blend_w {
                 let tx = bx as f32 / blend_w as f32;
 
-                let tl = src_data.get_pixel(bx, by);
-                let tr = src_data.get_pixel(w - blend_w + bx, by);
-                let bl = src_data.get_pixel(bx, h - blend_h + by);
-                let br = src_data.get_pixel(w - blend_w + bx, h - blend_h + by);
+                let tl = src.get_pixel(bx, by);
+                let tr = src.get_pixel(w - blend_w + bx, by);
+                let bl = src.get_pixel(bx, h - blend_h + by);
+                let br = src.get_pixel(w - blend_w + bx, h - blend_h + by);
 
                 // Bilinear blend of the four corner pixels
                 let blended = bilinear_blend_f32(tl, tr, bl, br, tx, ty, ch);
@@ -113,8 +130,8 @@ impl OpImageTransformMakeTile {
         for y in blend_h..(h - blend_h) {
             for bx in 0..blend_w {
                 let t = bx as f32 / blend_w as f32;
-                let left = src_data.get_pixel(bx, y);
-                let right = src_data.get_pixel(w - blend_w + bx, y);
+                let left = src.get_pixel(bx, y);
+                let right = src.get_pixel(w - blend_w + bx, y);
                 let blended = blend_pixels_f32(left, right, t, ch);
                 output.put_pixel(bx, y, &blended);
                 output.put_pixel(w - blend_w + bx, y, &blended);
@@ -126,15 +143,18 @@ impl OpImageTransformMakeTile {
         for x in blend_w..(w - blend_w) {
             for by in 0..blend_h {
                 let t = by as f32 / blend_h as f32;
-                let top = src_data.get_pixel(x, by);
-                let bottom = src_data.get_pixel(x, h - blend_h + by);
+                let top = src.get_pixel(x, by);
+                let bottom = src.get_pixel(x, h - blend_h + by);
                 let blended = blend_pixels_f32(top, bottom, t, ch);
                 output.put_pixel(x, by, &blended);
                 output.put_pixel(x, h - blend_h + by, &blended);
             }
         }
 
-        Ok(OperationResponse { 
+        // Back to straight alpha for downstream nodes / display.
+        if premul { output.unpremultiply_alpha(); }
+
+        Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Image { data: Arc::new(output), change_id: get_id() } },

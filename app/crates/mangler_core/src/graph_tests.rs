@@ -2858,30 +2858,63 @@ async fn test_save_to_file_updates_last_synced_mtime() {
 }
 
 #[tokio::test]
-async fn test_disk_is_newer_detects_external_rewrite() {
+async fn test_disk_conflicts_detects_external_rewrite() {
     let mut graph = create_test_graph();
     let tmp_path = std::env::temp_dir().join(format!("mangler_disk_newer_{}.mangler.json", get_id()));
     graph.set_save_path(tmp_path.clone());
     graph.save_to_file().unwrap();
 
-    assert!(!graph.disk_is_newer(), "no external edit has happened yet");
+    assert!(!graph.disk_conflicts(), "no external edit has happened yet");
 
     // mtime granularity can be 1s on some filesystems; sleep across it so the
     // external rewrite is guaranteed to produce a strictly later mtime.
     std::thread::sleep(std::time::Duration::from_millis(1100));
     std::fs::write(&tmp_path, "{}").unwrap();
 
-    assert!(graph.disk_is_newer(), "an external rewrite after our last sync should be detected");
+    assert!(graph.disk_conflicts(), "an external rewrite after our last sync should be detected");
+
+    let _ = std::fs::remove_file(tmp_path);
+}
+
+/// A newer mtime with *unchanged* content — what Google Drive/OneDrive/Dropbox
+/// do to a file after uploading our own save — must NOT count as a conflict,
+/// and must refresh the mtime baseline so subsequent checks are cheap again.
+#[tokio::test]
+async fn test_disk_conflicts_ignores_sync_client_touch() {
+    let mut graph = create_test_graph();
+    let tmp_path = std::env::temp_dir().join(format!("mangler_disk_touch_{}.mangler.json", get_id()));
+    graph.set_save_path(tmp_path.clone());
+    graph.save_to_file().unwrap();
+
+    // Simulate the sync client re-stamping the file: same bytes, future mtime.
+    let future = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+    filetime::set_file_mtime(&tmp_path, filetime::FileTime::from_system_time(future)).unwrap();
+
+    assert!(
+        !graph.disk_conflicts(),
+        "identical content with a newer mtime is a sync-client touch, not a conflict"
+    );
+    assert_eq!(
+        graph.last_synced_mtime,
+        std::fs::metadata(&tmp_path).and_then(|m| m.modified()).ok(),
+        "the touched mtime must be adopted as the new baseline"
+    );
+
+    // ...and a real edit after the touch is still caught.
+    std::fs::write(&tmp_path, "{}").unwrap();
+    let later = std::time::SystemTime::now() + std::time::Duration::from_secs(10);
+    filetime::set_file_mtime(&tmp_path, filetime::FileTime::from_system_time(later)).unwrap();
+    assert!(graph.disk_conflicts(), "a genuine external rewrite must still be detected");
 
     let _ = std::fs::remove_file(tmp_path);
 }
 
 #[test]
-fn test_disk_is_newer_false_when_no_save_path() {
+fn test_disk_conflicts_false_when_no_save_path() {
     let (tx_gc, _) = mpsc::channel::<GraphChangedMessage>(32);
     let (tx_nc, _) = mpsc::channel::<NodeChangedMessage>(32);
-    let graph = Graph::new(get_id(), tx_nc, tx_gc, false).unwrap();
-    assert!(!graph.disk_is_newer());
+    let mut graph = Graph::new(get_id(), tx_nc, tx_gc, false).unwrap();
+    assert!(!graph.disk_conflicts());
 }
 
 #[tokio::test]
@@ -2969,7 +3002,7 @@ async fn test_subgraph_bogus_path_emits_error_message_not_just_println() {
 
 // Happy path: the file is physically moved, save_path and name follow the new
 // stem, and last_synced_mtime is re-stat'd from the new path so a follow-up
-// disk_is_newer() check does NOT see a spurious conflict.
+// disk_conflicts() check does NOT see a spurious conflict.
 #[test]
 fn test_rename_file_moves_file_and_updates_state() {
     use std::fs;
@@ -2998,7 +3031,7 @@ fn test_rename_file_moves_file_and_updates_state() {
     assert_eq!(graph.name, "renamed graph");
 
     // Baseline was re-stat'd from the new path, so no spurious conflict.
-    assert!(!graph.disk_is_newer(), "disk_is_newer must be false right after rename");
+    assert!(!graph.disk_conflicts(), "disk_conflicts must be false right after rename");
 
     let _ = fs::remove_file(&new_path);
 }

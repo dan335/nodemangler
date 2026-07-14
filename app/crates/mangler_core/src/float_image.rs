@@ -485,6 +485,84 @@ impl FloatImage {
         self.resize(new_w, new_h)
     }
 
+    /// True when the image stores an alpha channel (2 = gray+alpha, 4 = RGBA).
+    #[inline]
+    pub fn has_alpha(&self) -> bool {
+        self.channels == 2 || self.channels == 4
+    }
+
+    /// Returns a copy with the colour channels multiplied by alpha
+    /// (premultiplied / associated alpha). Images without an alpha channel
+    /// are returned as a plain clone.
+    ///
+    /// All resampling (resize, rotate, warp, edge blending) must happen in
+    /// premultiplied space: interpolating straight RGBA weights every tap's
+    /// colour equally regardless of its alpha, so fully transparent pixels
+    /// leak their invisible "hidden" colour into semi-transparent edge pixels
+    /// (the classic white fringe around dark glyphs on a transparent
+    /// background). The pattern is premultiply → resample →
+    /// [`Self::unpremultiply_alpha`].
+    pub fn premultiply_alpha(&self) -> Self {
+        let mut out = self.clone();
+        if !self.has_alpha() {
+            return out;
+        }
+        let ch = self.channels as usize;
+        for px in out.data.chunks_exact_mut(ch) {
+            let a = px[ch - 1];
+            for c in &mut px[..ch - 1] {
+                *c *= a;
+            }
+        }
+        out
+    }
+
+    /// Divides the colour channels by alpha in place, undoing
+    /// [`Self::premultiply_alpha`] after resampling. Pixels with (near-)zero
+    /// alpha keep their colour at zero — the original hidden colour is not
+    /// recoverable, and zero is the one choice that can never bleed. No-op
+    /// for images without an alpha channel.
+    pub fn unpremultiply_alpha(&mut self) {
+        if !self.has_alpha() {
+            return;
+        }
+        let ch = self.channels as usize;
+        for px in self.data.chunks_exact_mut(ch) {
+            let a = px[ch - 1];
+            // Threshold rather than != 0.0: dividing by a denormal-scale alpha
+            // amplifies interpolation noise into huge colour values.
+            if a > 1e-6 {
+                for c in &mut px[..ch - 1] {
+                    *c /= a;
+                }
+            }
+        }
+    }
+
+    /// [`Self::resize`] performed in premultiplied-alpha space so transparent
+    /// pixels cannot bleed their hidden colour into edges. Identical to
+    /// `resize` for images without an alpha channel.
+    pub fn resize_premultiplied(&self, new_w: u32, new_h: u32) -> Self {
+        if !self.has_alpha() {
+            return self.resize(new_w, new_h);
+        }
+        let mut out = self.premultiply_alpha().resize(new_w, new_h);
+        out.unpremultiply_alpha();
+        out
+    }
+
+    /// [`Self::resize_fit`] performed in premultiplied-alpha space (see
+    /// [`Self::resize_premultiplied`]). Used by the thumbnail paths so
+    /// previews match what alpha-aware resampling produces.
+    pub fn resize_fit_premultiplied(&self, max_w: u32, max_h: u32) -> Self {
+        if !self.has_alpha() {
+            return self.resize_fit(max_w, max_h);
+        }
+        let mut out = self.premultiply_alpha().resize_fit(max_w, max_h);
+        out.unpremultiply_alpha();
+        out
+    }
+
     /// Returns the byte offset into `self.data` for pixel (x, y).
     #[inline]
     fn pixel_offset(&self, x: u32, y: u32) -> usize {

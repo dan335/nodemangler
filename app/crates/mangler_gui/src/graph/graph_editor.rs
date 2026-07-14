@@ -156,7 +156,13 @@ impl GraphEditor {
 
         // Scroll-to-zoom about the cursor (shared with the 2D preview).
         if editor_rect.contains(cursor_position) && !is_popup_open {
-            pan_zoom::zoom_about_cursor(ui, &mut camera.position, &mut camera.zoom, cursor_position);
+            pan_zoom::zoom_about_cursor(
+                ui,
+                &mut camera.position,
+                &mut camera.zoom,
+                cursor_position,
+                pan_zoom::ZOOM_BOUNDS,
+            );
         }
 
         // "F" to focus the camera on the selected nodes (or the whole graph if

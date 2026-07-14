@@ -134,11 +134,23 @@ pub struct Program {
     /// [`LibraryImagePreview`]). When set, it takes precedence over
     /// `viewing_node_id_index` in the 2D preview.
     library_image_preview: Option<LibraryImagePreview>,
+    /// Fit-request counter for the 2D preview panels: bumped whenever the user
+    /// explicitly picks something to view (right-clicks a node output, clicks
+    /// a library image), so each per-leaf [`ImageViewer`] centers and frames
+    /// the image once (it remembers the last value it consumed).
+    view_fit_seq: u64,
     /// Set when the engine confirms a `SetSavePath`-triggered write
     /// ([`GraphChangedMessage::SavedTo`]). `App`'s deferred-close state
     /// machine takes it via [`Self::take_confirmed_save`] to complete a
     /// close that was waiting on the save.
     confirmed_save: Option<PathBuf>,
+    /// State of an in-progress batch run over a "from folder" node's images:
+    /// `(node_id, completed, total)`. Driven by the engine's
+    /// [`GraphChangedMessage::BatchProgress`] stream and cleared on
+    /// [`GraphChangedMessage::BatchFinished`]. Per-`Program` (each tab has its
+    /// own engine), so no app-global state is needed. Used to render the node
+    /// settings panel's batch progress bar for the matching node.
+    batch_run: Option<(String, usize, usize)>,
 }
 
 impl Program {
@@ -188,7 +200,9 @@ impl Program {
                 graph_name_buffer: String::new(),
                 pending_open_graphs: Vec::new(),
                 library_image_preview: None,
+                view_fit_seq: 0,
                 confirmed_save: None,
+                batch_run: None,
             }),
             Err(error) => Err(NewGraphError(format!(
                 "Error creating program. {:?}",
@@ -278,24 +292,19 @@ impl Program {
     /// which knows exactly where the user dropped the image;
     /// `add_image_from_file` is the jittered-center wrapper over this.
     pub fn add_image_from_file_at(&mut self, path: PathBuf, graph_pos: Pos2) {
-        match self.add_node(
+        // The path goes through `AddNode`'s initial input values (not a
+        // follow-up `SetInput`) so the engine's `AddedNode` echo — which the
+        // GUI builds its local node from — already carries it. A `SetInput`
+        // sent after `AddNode` is never echoed back, leaving the settings
+        // panel showing an empty path even though the engine loaded the file.
+        if let Err(err) = self.add_node(
             AddNodeType::Operation(mangler_core::operations::Operation::OpImageInputFile),
             graph_pos,
             true,
             None,
-            Vec::new(),
+            vec![(0, Value::Path(path))],
         ) {
-            Ok(node_id) => {
-                let message = ChangeNodeMessage::SetInput {
-                    node_id,
-                    input_index: 0,
-                    value: Value::Path(path),
-                };
-                if let Err(err) = self.tx_change_node.try_send(message) {
-                    println!("Error sending graph_message: {:?}", err);
-                }
-            }
-            Err(err) => println!("Error adding image node: {}", err.0),
+            println!("Error adding image node: {}", err.0);
         }
     }
 
@@ -565,6 +574,36 @@ impl Program {
                     // state machine waits on before aborting the engine task.
                     self.app.save_path = Some(path.clone());
                     self.confirmed_save = Some(path);
+                }
+                GraphChangedMessage::BatchProgress {
+                    node_id,
+                    completed,
+                    total,
+                } => {
+                    // One iteration of the active batch finished; remember the
+                    // latest progress so the node settings panel can draw its
+                    // bar. Arrives once per item, in order.
+                    self.batch_run = Some((node_id, completed, total));
+                }
+                GraphChangedMessage::BatchFinished {
+                    node_id: _,
+                    completed,
+                    total,
+                    cancelled,
+                } => {
+                    // The batch ended — clear the running state and surface a
+                    // fading status message describing the outcome. A cancel
+                    // with total == 0 means it never started (no images found /
+                    // bad folder / wrong node).
+                    self.batch_run = None;
+                    let text = if !cancelled {
+                        format!("batch finished: {completed} images")
+                    } else if total > 0 {
+                        format!("batch cancelled at {completed}/{total}")
+                    } else {
+                        "batch: no images found in the folder".to_string()
+                    };
+                    self.status_message = Some((text, std::time::Instant::now()));
                 }
             }
         }
@@ -880,6 +919,13 @@ impl Program {
                             })
                     });
 
+                // Batch progress for the panel: `Some` only when a batch is
+                // running for *this* node. Resolved before the mutable node
+                // borrow below (immutable read of the disjoint `batch_run`).
+                let batch_progress = self.batch_run.as_ref().and_then(|(id, c, t)| {
+                    (id == editing_node_id).then_some((*c, *t))
+                });
+
                 if let Some(node) = self.graph_editor.graph_nodes.get_mut(editing_node_id) {
                     // Seed file-dialog directories with this graph's own
                     // folder, so a "save/open file" input starts next to the
@@ -894,8 +940,30 @@ impl Program {
                             theme,
                             graph_dir,
                             upstream_image,
+                            batch_progress,
                         );
                     show_graph_settings = false;
+
+                    // Start a batch run over this from-folder node's images.
+                    // Handled before the deselect below, which nulls
+                    // `editing_node_id` (whose borrow this clone still needs).
+                    if node_settings_response.run_batch {
+                        let message = ChangeGraphMessage::RunBatch {
+                            node_id: editing_node_id.clone(),
+                        };
+                        if let Err(err) = self.tx_change_graph.try_send(message) {
+                            println!("Error sending graph_message: {:?}", err);
+                        }
+                    }
+
+                    // Cancel the active batch run after the in-flight item.
+                    if node_settings_response.cancel_batch {
+                        if let Err(err) =
+                            self.tx_change_graph.try_send(ChangeGraphMessage::CancelBatch)
+                        {
+                            println!("Error sending graph_message: {:?}", err);
+                        }
+                    }
 
                     if node_settings_response.deselect_node {
                         self.graph_editor.selected_node_ids.remove(editing_node_id);
@@ -1100,10 +1168,12 @@ impl Program {
             graph_editor,
             viewing_node_id_index,
             library_image_preview,
+            view_fit_seq,
             editing_node_id,
             tx_change_node,
             ..
         } = self;
+        let view_fit_seq = *view_fit_seq;
 
         let viewer = viewers_2d.entry(leaf_id).or_insert_with(ImageViewer::new);
 
@@ -1153,12 +1223,13 @@ impl Program {
                 preview.path.to_string_lossy().into_owned(),
                 &preview.image,
                 true, // fit each newly-opened library image to the view
+                view_fit_seq,
                 theme,
             );
             displayed_dims = Some((preview.image.width() as f32, preview.image.height() as f32));
         } else if let Some((viewing_node_id, output_index)) = viewing_node_id_index.as_ref() {
             if let Some(graph_node) = graph_editor.graph_nodes.get(viewing_node_id) {
-                preview_2d::show(ui, viewer, graph_node, *output_index, theme);
+                preview_2d::show(ui, viewer, graph_node, *output_index, view_fit_seq, theme);
                 if let Some(output) = graph_node.outputs.get(*output_index) {
                     if let Value::Image { data, .. } = &output.value {
                         displayed_dims = Some((data.width() as f32, data.height() as f32));
@@ -1702,6 +1773,9 @@ impl Program {
         // A node output replaces any library image being previewed (last
         // action wins), so the 2D panel shows what the user just picked.
         self.library_image_preview = None;
+        // Explicitly viewing an output always re-frames it, even if it was
+        // already showing (the user may have panned/zoomed it out of view).
+        self.view_fit_seq += 1;
         if !self.has_preview_2d_panel {
             self.status_message = Some((
                 "no 2D preview panel open — use a panel's corner menu to add one".to_string(),
@@ -1720,6 +1794,8 @@ impl Program {
             path,
             image: Arc::new(image),
         });
+        // Re-frame even when re-clicking the image already being previewed.
+        self.view_fit_seq += 1;
         if !self.has_preview_2d_panel {
             self.status_message = Some((
                 "no 2D preview panel open — use a panel's corner menu to add one".to_string(),

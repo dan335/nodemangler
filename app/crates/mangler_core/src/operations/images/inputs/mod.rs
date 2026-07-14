@@ -8,6 +8,8 @@
 pub mod url;
 /// Loads an image from a file path on disk.
 pub mod file;
+/// Loads one image at a time from a folder of images, selected by index.
+pub mod from_folder;
 /// Grabs an image from the system clipboard.
 pub mod clipboard;
 /// Generates a solid-color image of a specified size.

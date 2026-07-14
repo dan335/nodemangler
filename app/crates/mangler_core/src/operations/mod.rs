@@ -360,6 +360,7 @@ operations! {
     OpImageInputClipboard(crate::operations::images::inputs::clipboard::OpImageInputClipboard),
     OpImageInputColor(crate::operations::images::inputs::color::OpImageInputColor),
     OpImageInputFile(crate::operations::images::inputs::file::OpImageInputFile),
+    OpImageInputFromFolder(crate::operations::images::inputs::from_folder::OpImageInputFromFolder),
     OpImageInputGradient(crate::operations::images::inputs::gradient::OpImageInputGradient),
     OpImageInputText(crate::operations::images::inputs::text::OpImageInputText),
     OpImageInputConstant(crate::operations::images::inputs::constant::OpImageInputConstant),
@@ -924,6 +925,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
         OperationListItem::Category { name: "images".to_string(), operation_list_items: vec![
             OperationListItem::Category { name: "input".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageInputFile },
+                OperationListItem::Operation { operation: Operation::OpImageInputFromFolder },
                 OperationListItem::Operation { operation: Operation::OpImageInputUrl },
                 OperationListItem::Operation { operation: Operation::OpImageInputClipboard },
                 OperationListItem::Operation { operation: Operation::OpImageInputColor },

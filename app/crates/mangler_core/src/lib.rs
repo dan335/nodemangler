@@ -295,6 +295,24 @@ pub enum ChangeGraphMessage {
         /// debounce purposes.
         keep_ours: bool,
     },
+    /// Start a batch run over a "from folder" node: run the graph once per
+    /// image file in that node's folder, stepping the node's `index` input
+    /// from 0 to count-1 (one iteration per engine tick, so the UI stays
+    /// responsive and thumbnails stream live) with output saving forced on
+    /// for each iteration. Progress is reported via
+    /// [`GraphChangedMessage::BatchProgress`] and the run ends with
+    /// [`GraphChangedMessage::BatchFinished`]. Ignored if a batch is already
+    /// running. Like [`ChangeGraphMessage::ResolveFileConflict`], this is not
+    /// itself an edit — it does not trigger the auto-save debounce.
+    RunBatch {
+        /// The "from folder" node whose folder is iterated.
+        node_id: String,
+    },
+    /// Stop the active batch run after the in-flight iteration completes.
+    /// The engine restores the from-folder node's `index` input to its
+    /// pre-batch value and replies with [`GraphChangedMessage::BatchFinished`]
+    /// (`cancelled: true`). A no-op when no batch is running.
+    CancelBatch,
 }
 
 /// Messages sent from the engine to the UI when graph structure changes.
@@ -408,6 +426,36 @@ pub enum GraphChangedMessage {
         path: PathBuf,
         /// Human-readable error description.
         message: String,
+    },
+    /// One iteration of an active batch run (see
+    /// [`ChangeGraphMessage::RunBatch`]) finished: the graph has fully run
+    /// with the from-folder node's `index` at `completed - 1` and any output
+    /// nodes have written their files for that item. Sent once per item, in
+    /// order.
+    BatchProgress {
+        /// The "from folder" node being iterated.
+        node_id: String,
+        /// Number of iterations finished so far (1-based; equals `total` on
+        /// the last progress message).
+        completed: usize,
+        /// Total number of image files in the batch.
+        total: usize,
+    },
+    /// The batch run ended — every file was processed, the user cancelled,
+    /// the iterated node was deleted mid-run, or the run could not start at
+    /// all (no valid from-folder node / empty or unreadable folder — reported
+    /// as `cancelled: true` with `total: 0`). The node's `index` input has
+    /// been restored to its pre-batch value and forced saving is off again.
+    BatchFinished {
+        /// The "from folder" node that was iterated.
+        node_id: String,
+        /// Number of iterations that fully completed.
+        completed: usize,
+        /// Total number of image files the batch set out to process.
+        total: usize,
+        /// `true` when the run ended early (user cancel, node deleted, or
+        /// failure to start) rather than by finishing every file.
+        cancelled: bool,
     },
 }
 

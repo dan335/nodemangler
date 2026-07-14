@@ -285,6 +285,7 @@ async fn test_file_output_defaults_name_to_graph_name() {
         graph_dir: Some(dir.clone()),
         graph_name: "my graph".to_string(),
         force_save: false,
+        batch_item_stem: None,
     });
     let result = OpImageOutputFile::run(&mut inputs).await.unwrap();
     drop(_guard);
@@ -307,6 +308,7 @@ async fn test_file_output_relative_folder_resolves_against_graph_dir() {
         graph_dir: Some(base.clone()),
         graph_name: "g".to_string(),
         force_save: false,
+        batch_item_stem: None,
     });
     let result = OpImageOutputFile::run(&mut inputs).await.unwrap();
     drop(_guard);

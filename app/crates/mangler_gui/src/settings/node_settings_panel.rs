@@ -5,7 +5,8 @@ use mangler_core::{
     input::{Input, InputSettings},
     value::{ColorFormat, EdgeMode, ExportPreset, Value, TextHAlign, TextVAlign},
     curve::{Curve, CurveInterpolation},
-    ChangeNodeMessage,
+    AddNodeType, ChangeNodeMessage,
+    operations::Operation,
     operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction,
     color::{color_spaces::ColorSpace, blend::BlendMode},
 };
@@ -188,6 +189,11 @@ pub fn show(
     // histogram behind the tone-curve editor; `None` when the node has no
     // tone-curve input or its image input isn't connected.
     upstream_image: Option<(std::sync::Arc<mangler_core::float_image::FloatImage>, String)>,
+    // `(completed, total)` of an in-progress batch run — but *only* when the
+    // batch is iterating this very node. `None` when no batch is running, or
+    // one is running for a different from-folder node. Drives the batch
+    // section's idle-vs-running rendering below.
+    batch_progress: Option<(usize, usize)>,
 ) -> NodeSettingsResponse {
     let mut node_settings_response = NodeSettingsResponse::new();
 
@@ -631,6 +637,70 @@ pub fn show(
                 }
             });
     });
+
+    // --- Batch run section ---
+    // Only the "from folder" image input node can drive a batch: the engine
+    // iterates its folder, running the whole graph once per image file and
+    // force-saving every output node's file each iteration (see
+    // `ChangeGraphMessage::RunBatch`). `batch_progress` is `Some` only while a
+    // batch is active *for this node*, which flips the section from an idle
+    // "run" button to a live progress bar + cancel.
+    let is_from_folder = matches!(
+        node.node_type,
+        Some(AddNodeType::Operation(Operation::OpImageInputFromFolder))
+    );
+    if is_from_folder {
+        section_rule(ui, theme);
+        section_label(ui, "batch");
+
+        match batch_progress {
+            None => {
+                // Idle. Label the button with the image count when the node's
+                // `count` output (output index 3) currently holds a positive
+                // Integer — otherwise the folder is empty/unresolved and we
+                // fall back to a bare "run batch".
+                let count = match node.outputs.get(3).map(|o| &o.value) {
+                    Some(Value::Integer(n)) if *n > 0 => Some(*n),
+                    _ => None,
+                };
+                let label = match count {
+                    Some(n) => format!("run batch ({} images)", n),
+                    None => "run batch".to_string(),
+                };
+                // Full-width button so it reads as the section's primary action.
+                if ui
+                    .add_sized([ui.available_width(), 24.0], egui::Button::new(label))
+                    .clicked()
+                {
+                    node_settings_response.run_batch = true;
+                }
+                ui.add_space(4.0);
+                // Muted one-line explanation in the theme's weak text color.
+                ui.label(
+                    RichText::new("runs the graph once per image in the folder, saving each output")
+                        .color(theme.get().text_faint)
+                        .size(12.0),
+                );
+            }
+            Some((completed, total)) => {
+                // Running. Guard against total == 0 (shouldn't happen once a
+                // batch is genuinely underway, but avoids a NaN fraction).
+                let fraction = if total > 0 {
+                    completed as f32 / total as f32
+                } else {
+                    0.0
+                };
+                ui.add(
+                    egui::ProgressBar::new(fraction)
+                        .text(format!("{} / {}", completed, total)),
+                );
+                ui.add_space(4.0);
+                if ui.button("cancel").clicked() {
+                    node_settings_response.cancel_batch = true;
+                }
+            }
+        }
+    }
 
     // --- Visualizations section ---
     // Show for nodes that have at least one image output.
@@ -1258,12 +1328,20 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
 
 pub struct NodeSettingsResponse {
     pub deselect_node: bool,
+    /// The "run batch" button was clicked this frame (only ever set for the
+    /// from-folder node). The caller sends `ChangeGraphMessage::RunBatch`.
+    pub run_batch: bool,
+    /// The batch "cancel" button was clicked this frame. The caller sends
+    /// `ChangeGraphMessage::CancelBatch`.
+    pub cancel_batch: bool,
 }
 
 impl NodeSettingsResponse {
     pub fn new() -> Self {
         Self {
             deselect_node: false,
+            run_batch: false,
+            cancel_batch: false,
         }
     }
 }

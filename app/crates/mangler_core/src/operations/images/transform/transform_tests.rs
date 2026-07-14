@@ -177,3 +177,32 @@ async fn scale_up_magnifies_about_center() {
     assert_rg(out.get_pixel(2, 2), 2.0, 2.0); // centre fixed
     assert_rg(out.get_pixel(3, 2), 2.5, 2.0); // halfway between source cols 2 and 3
 }
+
+// ---- premultiplied-alpha resampling ----
+
+#[tokio::test]
+async fn transparent_hidden_colour_does_not_bleed() {
+    // Left half opaque black, right half fully transparent white. A straight
+    // (non-premultiplied) bilinear resample would pull the hidden white RGB into
+    // the visible boundary pixels; premultiplied resampling must not.
+    let mut img = FloatImage::new(16, 16, 4);
+    for y in 0..16 {
+        for x in 0..16 {
+            if x < 8 {
+                img.put_pixel(x, y, &[0.0, 0.0, 0.0, 1.0]);
+            } else {
+                img.put_pixel(x, y, &[1.0, 1.0, 1.0, 0.0]);
+            }
+        }
+    }
+    // A fractional rotation forces interpolation across the boundary.
+    let out = run(Arc::new(img), 0.0, 0.0, 30.0, 1.0, 1.0, EdgeMode::Extend, transparent()).await;
+    for (x, y, px) in out.enumerate_pixels() {
+        if px[3] > 0.01 {
+            assert!(
+                px[0] < 0.05 && px[1] < 0.05 && px[2] < 0.05,
+                "hidden colour bled into visible pixel at ({x},{y}): {px:?}"
+            );
+        }
+    }
+}

@@ -141,8 +141,12 @@ impl OpImageTransformPerspective {
             d * hh - e * g, b * g - a * hh, a * e - b * d,
         ];
 
+        // Premultiply so transparent pixels' hidden colour can't bleed into
+        // interpolated edge pixels (white fringe around dark shapes).
+        let premul = data.has_alpha();
+        let src_img = if premul { Arc::new(data.premultiply_alpha()) } else { Arc::clone(&data) };
         let mut out = FloatImage::new(w, h, data.channels());
-        let src = &*data;
+        let src = &*src_img;
         let inv_ref = &inv;
         let row_len = (w as usize * ch).max(1);
 
@@ -169,6 +173,9 @@ impl OpImageTransformPerspective {
                 dst.copy_from_slice(&sp);
             }
         });
+
+        // Back to straight alpha for downstream nodes / display.
+        if premul { out.unpremultiply_alpha(); }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

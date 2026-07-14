@@ -226,3 +226,91 @@ fn test_pixels_mut() {
         assert!((px[0] - 0.42).abs() < 1e-6);
     }
 }
+
+#[test]
+/// premultiply_alpha should scale colour channels by alpha and leave alpha itself untouched.
+fn test_premultiply_alpha_rgba() {
+    let mut img = FloatImage::new(2, 1, 4);
+    img.put_pixel(0, 0, &[1.0, 0.8, 0.6, 0.5]); // half-transparent colour
+    img.put_pixel(1, 0, &[1.0, 1.0, 1.0, 0.0]); // fully transparent white (hidden colour)
+    let pre = img.premultiply_alpha();
+    assert_eq!(pre.get_pixel(0, 0), &[0.5, 0.4, 0.3, 0.5]);
+    // The hidden colour of a fully transparent pixel is zeroed — it can no longer bleed.
+    assert_eq!(pre.get_pixel(1, 0), &[0.0, 0.0, 0.0, 0.0]);
+}
+
+#[test]
+/// premultiply then unpremultiply should round-trip colours where alpha > 0.
+fn test_premultiply_unpremultiply_round_trip() {
+    let mut img = FloatImage::new(2, 1, 4);
+    img.put_pixel(0, 0, &[0.9, 0.5, 0.25, 0.4]);
+    img.put_pixel(1, 0, &[0.1, 0.2, 0.3, 1.0]);
+    let mut round = img.premultiply_alpha();
+    round.unpremultiply_alpha();
+    for (a, b) in round.as_raw().iter().zip(img.as_raw().iter()) {
+        assert!((a - b).abs() < 1e-6, "round trip mismatch: {} vs {}", a, b);
+    }
+}
+
+#[test]
+/// unpremultiply_alpha should leave zero-alpha pixels at zero colour instead of dividing.
+fn test_unpremultiply_zero_alpha() {
+    let mut img = FloatImage::new(1, 1, 4);
+    img.put_pixel(0, 0, &[0.0, 0.0, 0.0, 0.0]);
+    img.unpremultiply_alpha();
+    assert_eq!(img.get_pixel(0, 0), &[0.0, 0.0, 0.0, 0.0]);
+}
+
+#[test]
+/// Alpha helpers are no-ops for images without an alpha channel (1 and 3 channels).
+fn test_premultiply_no_alpha_channels() {
+    for ch in [1u32, 3u32] {
+        let pixel: Vec<f32> = (0..ch).map(|i| 0.25 * (i + 1) as f32).collect();
+        let img = FloatImage::from_pixel(2, 2, ch, &pixel);
+        let pre = img.premultiply_alpha();
+        assert_eq!(pre.as_raw(), img.as_raw());
+        let mut un = img.clone();
+        un.unpremultiply_alpha();
+        assert_eq!(un.as_raw(), img.as_raw());
+    }
+}
+
+#[test]
+/// The 2-channel (gray + alpha) layout premultiplies its single colour channel.
+fn test_premultiply_alpha_gray_alpha() {
+    let mut img = FloatImage::new(1, 1, 2);
+    img.put_pixel(0, 0, &[0.8, 0.5]);
+    let pre = img.premultiply_alpha();
+    assert_eq!(pre.get_pixel(0, 0), &[0.4, 0.5]);
+}
+
+#[test]
+/// resize_premultiplied must not bleed a transparent pixel's hidden colour into
+/// opaque neighbours: black text on hidden-white transparent background stays
+/// black at the edges (the bug_02 white-fringe regression).
+fn test_resize_premultiplied_no_hidden_color_bleed() {
+    // Left half: opaque black. Right half: fully transparent, hidden colour white.
+    let mut img = FloatImage::new(16, 16, 4);
+    for y in 0..16 {
+        for x in 0..16 {
+            if x < 8 {
+                img.put_pixel(x, y, &[0.0, 0.0, 0.0, 1.0]);
+            } else {
+                img.put_pixel(x, y, &[1.0, 1.0, 1.0, 0.0]);
+            }
+        }
+    }
+    let small = img.resize_premultiplied(4, 4);
+    // Every pixel with any visible coverage must still be black — a straight
+    // (non-premultiplied) resize turns the boundary column light grey.
+    for (x, y, px) in small.enumerate_pixels() {
+        let (r, g, b, a) = (px[0], px[1], px[2], px[3]);
+        if a > 0.01 {
+            assert!(
+                r < 0.05 && g < 0.05 && b < 0.05,
+                "hidden colour bled into visible pixel at ({}, {}): {:?}",
+                x, y, px
+            );
+        }
+    }
+}

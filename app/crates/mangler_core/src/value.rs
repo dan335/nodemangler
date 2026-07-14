@@ -121,7 +121,7 @@ impl Value {
                 Some(Thumbnail::Image(img))
             }
             Value::Image { data, change_id: _ } => Some(Thumbnail::Image(
-                data.resize_fit(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]).to_rgba8(),
+                data.resize_fit_premultiplied(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1]).to_rgba8(),
             )),
             Value::Bool(value) => Some(Thumbnail::Text(value.to_string())),
             Value::Integer(value) => Some(Thumbnail::Text(value.to_string())),

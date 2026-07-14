@@ -88,7 +88,12 @@ impl OpImageTransformDirectionalWarp {
 
         let map_ch = map_data.channels() as usize;
         let src_ch = src_data.channels() as usize;
-        let src = &*src_data;
+        // Premultiply only the warped source so transparent pixels' hidden
+        // colour can't bleed into interpolated edge pixels; the intensity map is
+        // guidance data and must stay untouched.
+        let premul = src_data.has_alpha();
+        let src_img = if premul { Arc::new(src_data.premultiply_alpha()) } else { Arc::clone(&src_data) };
+        let src = &*src_img;
         let map = &*map_data;
         let map_w = map.width() as f32;
         let map_h = map.height() as f32;
@@ -122,7 +127,10 @@ impl OpImageTransformDirectionalWarp {
             }
         });
 
-        Ok(OperationResponse { 
+        // Back to straight alpha for downstream nodes / display.
+        if premul { output.unpremultiply_alpha(); }
+
+        Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Image { data: Arc::new(output), change_id: get_id() } },

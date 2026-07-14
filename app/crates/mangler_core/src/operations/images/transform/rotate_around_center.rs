@@ -75,9 +75,16 @@ impl OpImageTransformRotateAroundCenter {
 
         let (w, h) = data.dimensions();
         let ch = data.channels() as usize;
+        // Premultiply so transparent pixels' hidden colour can't bleed into
+        // interpolated edge pixels (white fringe around dark shapes). The whole
+        // output round-trips through premultiplied space, so the background
+        // fill is premultiplied too (colour *= alpha) to survive the final
+        // unpremultiply unchanged.
+        let premul = data.has_alpha();
+        let src_img = if premul { Arc::new(data.premultiply_alpha()) } else { Arc::clone(&data) };
         // Background in sRGB floats (RGBA), matching the previous RGBA fill.
         let (bg_r, bg_g, bg_b, bg_a) = bg_color.to_srgb_float();
-        let bg = [bg_r, bg_g, bg_b, bg_a];
+        let bg = if premul { [bg_r * bg_a, bg_g * bg_a, bg_b * bg_a, bg_a] } else { [bg_r, bg_g, bg_b, bg_a] };
 
         // Precompute the inverse rotation once. Sampling at cx + dx*c + dy*s,
         // cy - dx*s + dy*c undoes a rotation by `degrees` about the center.
@@ -86,7 +93,7 @@ impl OpImageTransformRotateAroundCenter {
         let cy = (h as f32 - 1.0) / 2.0;
         let wm1 = (w.max(1) - 1) as f32;
         let hm1 = (h.max(1) - 1) as f32;
-        let src = &*data;
+        let src = &*src_img;
 
         // Output is always 4-channel RGBA (as with the previous imageproc
         // path); lower channel counts expand like `to_rgba8` but in f32.
@@ -111,7 +118,9 @@ impl OpImageTransformRotateAroundCenter {
             })
         }).collect();
 
-        let output = FloatImage::from_raw(w, h, 4, pixels).unwrap();
+        let mut output = FloatImage::from_raw(w, h, 4, pixels).unwrap();
+        // Back to straight alpha for downstream nodes / display.
+        if premul { output.unpremultiply_alpha(); }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

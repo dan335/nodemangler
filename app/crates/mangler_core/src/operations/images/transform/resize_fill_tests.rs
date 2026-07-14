@@ -97,3 +97,43 @@ async fn test_resize_fill_outputs_width_height() {
         other => panic!("Expected Integer height output, got {:?}", other),
     }
 }
+
+#[tokio::test]
+/// resize_fill must not bleed a transparent pixel's hidden colour into
+/// opaque neighbours: black on hidden-white transparent background stays
+/// black at the edges (the bug_02 white-fringe regression).
+async fn test_resize_fill_no_hidden_color_bleed() {
+    // Left half: opaque black. Right half: fully transparent, hidden colour white.
+    let mut img = FloatImage::new(16, 16, 4);
+    for y in 0..16 {
+        for x in 0..16 {
+            if x < 8 {
+                img.put_pixel(x, y, &[0.0, 0.0, 0.0, 1.0]);
+            } else {
+                img.put_pixel(x, y, &[1.0, 1.0, 1.0, 0.0]);
+            }
+        }
+    }
+    let mut inputs = vec![
+        Input::new("image".to_string(), Value::Image { data: Arc::new(img), change_id: get_id() }, None, None),
+        Input::new("width".to_string(), Value::Integer(8), None, None),
+        Input::new("height".to_string(), Value::Integer(4), None, None),
+        Input::new("filter type".to_string(), Value::FilterType(image::imageops::FilterType::Gaussian), None, None),
+    ];
+    let result = OpImageTransformResizeFill::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Image { data, .. } => {
+            for (x, y, px) in data.enumerate_pixels() {
+                let (r, g, b, a) = (px[0], px[1], px[2], px[3]);
+                if a > 0.01 {
+                    assert!(
+                        r < 0.05 && g < 0.05 && b < 0.05,
+                        "hidden colour bled into visible pixel at ({}, {}): {:?}",
+                        x, y, px
+                    );
+                }
+            }
+        }
+        other => panic!("Expected Image, got {:?}", other),
+    }
+}

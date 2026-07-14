@@ -26,12 +26,18 @@ use std::io::{BufWriter, Write};
 /// actually write on this run, and consume the one-shot manual-save pulse.
 ///
 /// `auto_save_idx` holds the `Value::Bool` auto-save toggle (off by default);
-/// `save_idx` holds the `Value::Bool` fired by the manual "save" button. A write
-/// happens when **any** of these is true:
+/// `save_idx` holds the `Value::Bool` fired by the manual "save" button.
+/// `honor_force` controls whether the engine's headless force-save flag (see
+/// below) counts at all — `to file`/`material` always pass `true` so a
+/// headless `graph.run()` still emits files with no user around to click
+/// "save", but `to clipboard` passes `false` while a batch run is iterating
+/// (see [`crate::run_context::RunContext::batch_item_stem`]) so a 200-image
+/// batch doesn't rewrite the clipboard 200 times over. A write happens when
+/// **any** of these is true:
 /// - auto-save is on,
 /// - the save button was just clicked (the pulse is `true`), or
-/// - the engine forced saving for this run (a headless CLI `graph.run()`, via
-///   [`crate::run_context`]).
+/// - `honor_force` is true and the engine forced saving for this run (a
+///   headless CLI `graph.run()`, via [`crate::run_context`]).
 ///
 /// The save pulse is reset to `false` here so a click writes exactly once: a
 /// later reactive run (e.g. the image input changing) then sees `false` and
@@ -43,6 +49,7 @@ pub(crate) fn should_save_and_consume(
     inputs: &mut [Input],
     auto_save_idx: usize,
     save_idx: usize,
+    honor_force: bool,
 ) -> bool {
     let auto = matches!(inputs.get(auto_save_idx).map(|i| &i.value), Some(Value::Bool(true)));
     let pulse = matches!(inputs.get(save_idx).map(|i| &i.value), Some(Value::Bool(true)));
@@ -53,7 +60,7 @@ pub(crate) fn should_save_and_consume(
         }
     }
 
-    let forced = crate::run_context::current().map(|c| c.force_save).unwrap_or(false);
+    let forced = honor_force && crate::run_context::current().map(|c| c.force_save).unwrap_or(false);
     auto || pulse || forced
 }
 
@@ -74,20 +81,36 @@ pub(crate) fn save_gate_inputs() -> [Input; 2] {
 
 /// Resolve an output node's `folder` + `file name` inputs into a concrete
 /// destination directory and a sanitized file stem, using the graph's
-/// [`run_context`](crate::run_context) for the base directory and default name.
+/// [`run_context`](crate::run_context) for the base directory, default name,
+/// and in-progress batch item.
 ///
 /// Shared by the `to file` and `material` nodes so both resolve paths
 /// identically: an absolute folder is used as-is, a relative one joins the
-/// graph's own directory, and an empty one means the graph's directory itself;
-/// an empty file name falls back to the graph's name. The returned stem is
-/// always sanitized. Does **not** touch the filesystem — the caller creates the
-/// directory when it is ready to write. `folder_idx` / `file_name_idx` are used
-/// only to attribute errors to the right input.
+/// graph's own directory, and an empty one means the graph's directory itself.
+/// The file name follows this rule (evaluated before the one-time
+/// [`sanitize_name`](crate::naming::sanitize_name) pass, so the composed
+/// result is sanitized exactly once):
+/// - a non-empty, **connected** `file_name` (e.g. wired from a from-folder
+///   node's `file name` output) is used verbatim — the user explicitly chose
+///   this name per-run, so it is never decorated, batch or not;
+/// - a non-empty, unwired `file_name` is used as-is outside a batch run, but
+///   gets `_{item}` appended during a batch iteration — an unwired name is a
+///   template typed once (often pre-filled with the graph's own name) and
+///   reused by every output node on every iteration, so without the suffix
+///   every iteration would overwrite the last;
+/// - an empty `file_name` falls back to the batch item's stem during a batch
+///   iteration, or the graph's name otherwise, exactly as before batching
+///   existed.
+///
+/// Does **not** touch the filesystem — the caller creates the directory when
+/// it is ready to write. `folder_idx` / `file_name_idx` are used only to
+/// attribute errors to the right input.
 pub(crate) fn resolve_output_dir_and_stem(
     folder: &std::path::Path,
     file_name: &str,
     folder_idx: usize,
     file_name_idx: usize,
+    file_name_connected: bool,
 ) -> Result<(std::path::PathBuf, String), crate::operations::OperationError> {
     use crate::operations::OperationError;
 
@@ -110,9 +133,23 @@ pub(crate) fn resolve_output_dir_and_stem(
         return Err(OperationError { input_errors: vec![(folder_idx, msg.clone())], node_error: Some(msg) });
     }
 
-    // An empty name falls back to the graph's name; sanitize either way.
-    let raw_stem = if file_name.trim().is_empty() { ctx.graph_name.as_str() } else { file_name };
-    let stem = crate::naming::sanitize_name(raw_stem);
+    // Compose the raw (unsanitized) stem per the rule documented above.
+    let raw_stem = if file_name.trim().is_empty() {
+        match &ctx.batch_item_stem {
+            Some(item) => item.clone(),
+            None => ctx.graph_name.clone(),
+        }
+    } else if file_name_connected {
+        file_name.to_string()
+    } else {
+        match &ctx.batch_item_stem {
+            Some(item) => format!("{file_name}_{item}"),
+            None => file_name.to_string(),
+        }
+    };
+
+    // Sanitize the composed name exactly once.
+    let stem = crate::naming::sanitize_name(&raw_stem);
     if stem.is_empty() {
         let msg = "File name is empty (and the graph has no name to fall back to).".to_string();
         return Err(OperationError { input_errors: vec![(file_name_idx, msg.clone())], node_error: Some(msg) });

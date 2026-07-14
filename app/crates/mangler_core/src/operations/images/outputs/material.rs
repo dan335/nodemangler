@@ -48,7 +48,7 @@ impl OpImageOutputMaterial {
         NodeSettings {
             name: "material".to_string(),
             description: "Exports channel-packed PBR textures for a game engine.".to_string(),
-            help: "Packs the standard PBR maps into the file set a target engine expects and writes them into the chosen folder as `{file name}_{suffix}.{ext}` (e.g. file name `material` writes `material_orm.png`). The folder is resolved relative to where the graph is saved (so a graph and its textures move together) unless you give an absolute path; leave it empty to write next to the graph file, and it is created if it doesn't exist. The file name defaults to the graph's name when left blank. A map input counts as connected when it is wired or holds a real (non-1×1) image; only textures that reference at least one connected map are written, and every unconnected map falls back to a neutral constant: albedo 1, opacity 1, normal (0.5, 0.5, 1), roughness 1, metallic 0, ao 1, height 0.5, emission 0. Pixel values are written exactly as stored (sRGB floats, same as the `to file` node); no color-space conversion is applied.\n\nPresets:\n• Godot — albedo (+A=opacity), orm (R=ao, G=roughness, B=metallic), normal (OpenGL Y+, 16-bit), emission, height (16-bit gray).\n• Unity — albedo (+A=opacity), metallic (RGB=metallic, A=1−roughness smoothness, always RGBA), normal (OpenGL Y+, 16-bit), ao (8-bit gray), emission, height (16-bit gray).\n• Unreal — basecolor (+A=opacity), orm, normal (DirectX Y−: green channel inverted, 16-bit), emissive, height (16-bit gray).\n• Custom — four free-form slots: a suffix plus R/G/B/A source dropdowns. An R/G/B source of \"none\" writes 0; an alpha of \"none\" makes a 3-channel file; a \"1 - x\" option inverts. Empty-suffix slots are ignored and duplicate suffixes are an error. The slot inputs are inert under the built-in presets.\n\nThe format dropdown chooses the image format (and file extension) shared by every exported texture — supported: png, jpg/jpeg, gif, webp, pnm, tiff, tga, bmp, ico, hdr, exr, ff (farbfeld), avif, qoi. A texture's preferred 16-bit depth is silently degraded to 8-bit when the chosen format can't hold it; a still-incompatible format (e.g. an alpha texture into JPEG) is rejected before any file is written. Encoding uses fixed defaults (quality 85, PNG fast). The destination folder is returned as an output for chaining.\n\nExport is off by default: turn on auto save to write whenever an input changes, or leave it off and press the save button to export once. Headless `mangle run` always exports regardless of the toggle.".to_string(),
+            help: "Packs the standard PBR maps into the file set a target engine expects and writes them into the chosen folder as `{file name}_{suffix}.{ext}` (e.g. file name `material` writes `material_orm.png`). The folder is resolved relative to where the graph is saved (so a graph and its textures move together) unless you give an absolute path; leave it empty to write next to the graph file, and it is created if it doesn't exist. The file name defaults to the graph's name when left blank. A map input counts as connected when it is wired or holds a real (non-1×1) image; only textures that reference at least one connected map are written, and every unconnected map falls back to a neutral constant: albedo 1, opacity 1, normal (0.5, 0.5, 1), roughness 1, metallic 0, ao 1, height 0.5, emission 0. Pixel values are written exactly as stored (sRGB floats, same as the `to file` node); no color-space conversion is applied.\n\nPresets:\n• Godot — albedo (+A=opacity), orm (R=ao, G=roughness, B=metallic), normal (OpenGL Y+, 16-bit), emission, height (16-bit gray).\n• Unity — albedo (+A=opacity), metallic (RGB=metallic, A=1−roughness smoothness, always RGBA), normal (OpenGL Y+, 16-bit), ao (8-bit gray), emission, height (16-bit gray).\n• Unreal — basecolor (+A=opacity), orm, normal (DirectX Y−: green channel inverted, 16-bit), emissive, height (16-bit gray).\n• Custom — four free-form slots: a suffix plus R/G/B/A source dropdowns. An R/G/B source of \"none\" writes 0; an alpha of \"none\" makes a 3-channel file; a \"1 - x\" option inverts. Empty-suffix slots are ignored and duplicate suffixes are an error. The slot inputs are inert under the built-in presets.\n\nThe format dropdown chooses the image format (and file extension) shared by every exported texture — supported: png, jpg/jpeg, gif, webp, pnm, tiff, tga, bmp, ico, hdr, exr, ff (farbfeld), avif, qoi. A texture's preferred 16-bit depth is silently degraded to 8-bit when the chosen format can't hold it; a still-incompatible format (e.g. an alpha texture into JPEG) is rejected before any file is written. Encoding uses fixed defaults (quality 85, PNG fast). The destination folder is returned as an output for chaining.\n\nExport is off by default: turn on auto save to write whenever an input changes, or leave it off and press the save button to export once. Headless `mangle run` always exports regardless of the toggle, and so does each iteration of a from-folder batch run — during a batch, an unwired file name gets the current source image's name appended (or is replaced by it when blank) so every image exports its own texture set, while a wired file name is always used verbatim.".to_string(),
         }
     }
 
@@ -131,8 +131,9 @@ impl OpImageOutputMaterial {
 
         // Gate writing on auto-save / the save button / a forced headless run,
         // consuming the one-shot save pulse. Nothing is written (and no
-        // validation runs) when idle in manual mode.
-        if !should_save_and_consume(inputs, AUTO_SAVE, SAVE) {
+        // validation runs) when idle in manual mode. `material` always
+        // honors a forced headless run, like `to file`.
+        if !should_save_and_consume(inputs, AUTO_SAVE, SAVE, true) {
             return Ok(OperationResponse {
                 time: Instant::now().duration_since(start_time),
                 responses: vec![OutputResponse { value: Value::Path(PathBuf::new()) }],
@@ -175,7 +176,9 @@ impl OpImageOutputMaterial {
 
         // Resolve the destination folder + base file stem from the graph context
         // (shared with the `to file` node), then create the folder.
-        let (folder, base_stem) = super::resolve_output_dir_and_stem(&folder_input, &file_name, FOLDER, FILE_NAME)?;
+        let file_name_connected = inputs[FILE_NAME].connection.is_some();
+        let (folder, base_stem) =
+            super::resolve_output_dir_and_stem(&folder_input, &file_name, FOLDER, FILE_NAME, file_name_connected)?;
         if let Err(e) = std::fs::create_dir_all(&folder) {
             let msg = format!("Could not create folder '{}': {}", folder.display(), e);
             return Err(OperationError { input_errors: vec![(FOLDER, msg.clone())], node_error: Some(msg) });
@@ -191,7 +194,7 @@ impl OpImageOutputMaterial {
             maps[m] = if data.dimensions() == (out_w, out_h) {
                 Some(Arc::clone(data))
             } else {
-                Some(Arc::new(data.resize(out_w, out_h)))
+                Some(Arc::new(data.resize_premultiplied(out_w, out_h)))
             };
         }
 

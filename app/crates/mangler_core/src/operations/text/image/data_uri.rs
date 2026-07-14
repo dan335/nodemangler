@@ -64,7 +64,7 @@ impl OpTextImageDataUri {
 
         let (w, h) = data.dimensions();
         let maxd = max_size.clamp(16, 4096) as u32;
-        let img = if w.max(h) > maxd { data.resize_fit(maxd, maxd) } else { (*data).clone() };
+        let img = if w.max(h) > maxd { data.resize_fit_premultiplied(maxd, maxd) } else { (*data).clone() };
 
         let dynimg = DynamicImage::ImageRgba8(img.to_rgba8());
         let mut buf: Vec<u8> = Vec::new();

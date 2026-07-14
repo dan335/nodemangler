@@ -39,6 +39,18 @@ fn output_node_path_inputs(op: &crate::operations::Operation) -> Option<(usize, 
     }
 }
 
+/// Hash of a save file's content, as recorded in `Graph::last_synced_hash`
+/// and compared by [`Graph::disk_conflicts`]. Not a cryptographic hash — it
+/// only distinguishes "the bytes we last synced" from "somebody else's edit",
+/// where an accidental collision merely downgrades conflict detection to a
+/// missed warning (best-effort, same as the mtime check itself).
+fn content_hash(content: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    content.hash(&mut hasher);
+    hasher.finish()
+}
+
 /// The node graph engine that owns all nodes, manages connections, and
 /// orchestrates the processing pipeline.
 ///
@@ -72,11 +84,20 @@ pub struct Graph {
     /// Modification time of `save_path`'s file at the moment this graph last
     /// read (`load`) or wrote (`save_to_file`) it — i.e. the mtime this
     /// in-memory graph is "in sync" with. Compared against the file's
-    /// current mtime by [`Graph::disk_is_newer`] to detect a concurrent
+    /// current mtime by [`Graph::disk_conflicts`] to detect a concurrent
     /// external edit before auto-save would blindly overwrite it. `None`
     /// before any load/save has happened, or if the filesystem didn't report
     /// an mtime.
     pub last_synced_mtime: Option<SystemTime>,
+    /// Hash of the file *content* this graph last read (`load`) or wrote
+    /// (`save_to_file`). A newer mtime alone is not proof of a foreign edit:
+    /// cloud-sync clients (Google Drive, OneDrive, Dropbox) re-stamp a file
+    /// after uploading it, so on a synced folder every auto-save would
+    /// otherwise be followed by a spurious "file changed on disk" conflict.
+    /// [`Graph::disk_conflicts`] uses this to tell a sync-client touch (same
+    /// bytes, new mtime — not a conflict) from a real external edit
+    /// (different bytes). `None` before any load/save has happened.
+    pub last_synced_hash: Option<u64>,
     /// When true, side-effecting output nodes (`to file`, `material`, `to
     /// clipboard`) write on every run regardless of their per-node auto-save
     /// toggle. The interactive GUI leaves this `false` (auto-save is opt-in and
@@ -84,6 +105,14 @@ pub struct Graph {
     /// emit their files with no user around to click "save". Not persisted —
     /// it's a property of *this* execution, not of the saved graph.
     pub force_save_outputs: bool,
+    /// File stem of the source image currently driving a batch-run iteration,
+    /// or `None` outside a batch run. Set (and cleared) only by the engine's
+    /// batch driver for the duration of one iteration's `run()` call; output
+    /// ops read it via `RunContext::batch_item_stem` to name files per-item
+    /// instead of overwriting one file every iteration. Not persisted — like
+    /// `force_save_outputs`, a property of *this* execution, not of the saved
+    /// graph.
+    pub batch_item_stem: Option<String>,
 }
 
 impl Graph {
@@ -111,7 +140,9 @@ impl Graph {
             // A brand-new graph was never loaded from a file.
             load_report: None,
             last_synced_mtime: None,
+            last_synced_hash: None,
             force_save_outputs: false,
+            batch_item_stem: None,
         })
     }
 
@@ -128,13 +159,17 @@ impl Graph {
         match fs::read_to_string(&save_path) {
             Ok(data) => match serde_json::from_str::<GraphSaveData>(&data) {
                 Ok(json) => {
-                    // Stat the file right after reading it so `disk_is_newer`
+                    // Stat the file right after reading it so `disk_conflicts`
                     // has a baseline to compare future external edits
                     // against. A failed stat (rare — e.g. a filesystem that
                     // doesn't report mtimes) falls back to `None`, which
-                    // `disk_is_newer` treats as "no evidence of a conflict"
+                    // `disk_conflicts` treats as "no evidence of a conflict"
                     // rather than a false positive.
                     let load_mtime = std::fs::metadata(&save_path).and_then(|m| m.modified()).ok();
+                    // Hash the exact bytes just read, so a later mtime bump
+                    // with identical content (a cloud-sync touch) is
+                    // recognizable as a non-conflict.
+                    let load_hash = content_hash(&data);
 
                     let thumbnail_service = tx_node_changed
                         .as_ref()
@@ -177,7 +212,9 @@ impl Graph {
                         thumbnail_service,
                         load_report: Some(load_report),
                         last_synced_mtime: load_mtime,
+                        last_synced_hash: Some(load_hash),
                         force_save_outputs: false,
+                        batch_item_stem: None,
                     };
 
                     // Surface load anomalies to the UI *before* the
@@ -1061,8 +1098,9 @@ impl Graph {
     /// [`crate::naming::graph_file_name`]. The file is physically moved with
     /// `fs::rename`; on success `save_path` and `name` follow it and
     /// `last_synced_mtime` is re-stat'd from the *new* path so the next
-    /// [`Self::disk_is_newer`] check compares against a fresh baseline (not the
+    /// [`Self::disk_conflicts`] check compares against a fresh baseline (not the
     /// stale one from the old path, which would trip a spurious FileConflict).
+    /// The content hash needs no refresh: a rename moves the same bytes.
     ///
     /// Returns the new path on success. Errors: no save path set yet; a file
     /// with the target name already exists (never clobbered).
@@ -1130,10 +1168,14 @@ impl Graph {
             thumbnail_service: None,
             load_report: self.load_report.clone(),
             // The snapshot's save_path is cleared above, so there is
-            // nothing for disk_is_newer to compare against.
+            // nothing for disk_conflicts to compare against.
             last_synced_mtime: None,
+            last_synced_hash: None,
             // A detached render should still emit its files.
             force_save_outputs: self.force_save_outputs,
+            // Carry the in-progress batch item stem (if any) so a detached
+            // render triggered mid-batch still names its output per-item.
+            batch_item_stem: self.batch_item_stem.clone(),
         };
         // Cloning the nodes dropped every subgraph node's loaded child graph and
         // readback channel to None (see NodeType::clone), so the snapshot would
@@ -1152,9 +1194,12 @@ impl Graph {
         // Graph context handed to each node's operation for this run (via a
         // thread-local; see `crate::run_context`). Output ops use `graph_dir`
         // to resolve relative folder inputs, `graph_name` as the default output
-        // file name, and `force_save` to write even when their own auto-save
-        // toggle is off (headless CLI runs). Computed once here from the graph's
-        // save location so per-node cloning is cheap.
+        // file name, `force_save` to write even when their own auto-save
+        // toggle is off (headless CLI runs), and `batch_item_stem` (set only
+        // by the engine's batch driver, for the duration of one iteration) to
+        // name per-item files instead of overwriting one file every
+        // iteration. Computed once here from the graph's save location so
+        // per-node cloning is cheap.
         let run_ctx = crate::run_context::RunContext {
             graph_dir: self
                 .save_path
@@ -1163,6 +1208,7 @@ impl Graph {
                 .map(|d| d.to_path_buf()),
             graph_name: self.name.clone(),
             force_save: self.force_save_outputs,
+            batch_item_stem: self.batch_item_stem.clone(),
         };
 
         let mut dirty_nodes: HashSet<String> = HashSet::new();
@@ -1443,9 +1489,10 @@ impl Graph {
     ///
     /// No-op if this is a subgraph (subgraphs are saved separately) or if
     /// no save path has been set. On a successful write, records the file's
-    /// new modification time in `last_synced_mtime` — this save *is* the
-    /// most recent sync point — so a later `disk_is_newer` check compares
-    /// against a fresh baseline instead of the one from load time.
+    /// new modification time in `last_synced_mtime` and the written bytes'
+    /// hash in `last_synced_hash` — this save *is* the most recent sync
+    /// point — so a later `disk_conflicts` check compares against a fresh
+    /// baseline instead of the one from load time.
     ///
     /// `&mut self` (rather than `&self`) purely to store that mtime; this
     /// does not otherwise mutate graph content. Callers that used to hold a
@@ -1493,7 +1540,7 @@ impl Graph {
 
             match serde_json::to_string(&data) {
                 Ok(data_string) => {
-                    if let Err(error) = fs::write(save_path, data_string) {
+                    if let Err(error) = fs::write(save_path, &data_string) {
                         return Err(format!(
                             "Error writing graph save file {:?}: {}",
                             save_path, error
@@ -1501,6 +1548,11 @@ impl Graph {
                     } else {
                         self.last_synced_mtime =
                             std::fs::metadata(save_path).and_then(|m| m.modified()).ok();
+                        // Remember what we wrote, so a later mtime bump with
+                        // these same bytes (a cloud-sync client re-stamping
+                        // the file after upload) isn't mistaken for a
+                        // foreign edit.
+                        self.last_synced_hash = Some(content_hash(&data_string));
                     }
                 }
                 Err(error) => {
@@ -1512,25 +1564,50 @@ impl Graph {
         Ok(())
     }
 
-    /// Returns `true` if this graph's `save_path` file has a modification
-    /// time newer than `last_synced_mtime` (the mtime recorded the last time
-    /// this graph read or wrote that file). Used by the engine's auto-save
-    /// loop to detect a concurrent external edit — another tab, or someone
-    /// else's copy of the file on a network share — *before* blindly
-    /// overwriting it.
+    /// Returns `true` if this graph's `save_path` file was genuinely changed
+    /// by someone else since this graph last read or wrote it. Used by the
+    /// engine's auto-save loop to detect a concurrent external edit — another
+    /// tab, or someone else's copy of the file on a network share — *before*
+    /// blindly overwriting it.
+    ///
+    /// Detection is two-stage. The cheap mtime comparison against
+    /// `last_synced_mtime` runs every time; only when the mtime looks newer
+    /// is the file actually read and its content compared against
+    /// `last_synced_hash`. A newer mtime with *identical* content is a
+    /// cloud-sync client (Google Drive, OneDrive, Dropbox) re-stamping the
+    /// file after uploading our own save — not a conflict; the new mtime is
+    /// adopted as the baseline (the reason this takes `&mut self`) so the
+    /// file isn't re-read on every subsequent check.
     ///
     /// Returns `false` — "no evidence of a conflict" — if there is no save
     /// path, the file is missing, its metadata can't be read, or this graph
     /// has never synced with a file. Missing evidence is deliberately not
     /// treated as a conflict: this is best-effort detection, not a lock.
-    pub fn disk_is_newer(&self) -> bool {
+    pub fn disk_conflicts(&mut self) -> bool {
         let Some(save_path) = &self.save_path else { return false; };
         let Some(disk_mtime) = std::fs::metadata(save_path).and_then(|m| m.modified()).ok() else {
             return false;
         };
-        match self.last_synced_mtime {
-            Some(known) => disk_mtime > known,
-            None => false,
+        let Some(known_mtime) = self.last_synced_mtime else { return false; };
+        if disk_mtime <= known_mtime {
+            return false;
+        }
+
+        // The mtime moved — check whether the bytes did too.
+        match (std::fs::read_to_string(save_path).ok(), self.last_synced_hash) {
+            (Some(content), Some(known_hash)) if content_hash(&content) == known_hash => {
+                // Same bytes we last wrote/read: a sync-client touch, not an
+                // edit. Adopt the new mtime so this stays a cheap stat-only
+                // check until the file actually changes again.
+                self.last_synced_mtime = Some(disk_mtime);
+                false
+            }
+            // The file became unreadable between the stat and the read:
+            // missing evidence, per the policy above.
+            (None, _) => false,
+            // Different content (or no known hash to compare against, which
+            // can't normally happen once mtime is Some): a real conflict.
+            _ => true,
         }
     }
 

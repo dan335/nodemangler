@@ -59,6 +59,38 @@ async fn test_rotate_around_center_1x1() {
 }
 
 #[tokio::test]
+async fn test_rotate_premultiplied_no_hidden_color_bleed() {
+    // Left half opaque black, right half fully transparent white. A straight
+    // bilinear rotation would drag the hidden white RGB into the visible
+    // boundary pixels; premultiplied resampling must keep them black.
+    let mut img = FloatImage::new(16, 16, 4);
+    for y in 0..16 {
+        for x in 0..16 {
+            if x < 8 {
+                img.put_pixel(x, y, &[0.0, 0.0, 0.0, 1.0]);
+            } else {
+                img.put_pixel(x, y, &[1.0, 1.0, 1.0, 0.0]);
+            }
+        }
+    }
+    let mut inputs = vec![
+        Input::new("image".to_string(), Value::Image { data: Arc::new(img), change_id: get_id() }, None, None),
+        Input::new("degrees".to_string(), Value::Decimal(30.0), None, None),
+        Input::new("background color".to_string(), Value::Color(Color::from_srgb_u8(0, 0, 0, 0)), None, None),
+    ];
+    let result = OpImageTransformRotateAroundCenter::run(&mut inputs).await.unwrap();
+    let Value::Image { data, .. } = &result.responses[0].value else { panic!() };
+    for (x, y, px) in data.enumerate_pixels() {
+        if px[3] > 0.01 {
+            assert!(
+                px[0] < 0.05 && px[1] < 0.05 && px[2] < 0.05,
+                "hidden colour bled into visible pixel at ({x},{y}): {px:?}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn test_rotate_around_center_zero_degrees() {
     // 0-degree rotation should preserve dimensions and roughly preserve center pixel
     let mut img = FloatImage::new(8, 8, 4);

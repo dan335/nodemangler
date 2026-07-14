@@ -14,11 +14,15 @@ use super::{color_viewer::ColorViewer, curve_overlay, image_viewer::ImageViewer,
 /// Render the given node output into `ui` using the supplied per-leaf image
 /// viewer for pan/zoom state. Pointer input is read from `ui`'s own context,
 /// so this works identically in secondary OS windows.
+///
+/// `fit_seq` is the program's fit-request counter (bumped when the user picks
+/// something to view); the viewer frames the image once per new value.
 pub fn show(
     ui: &mut egui::Ui,
     viewer: &mut ImageViewer,
     graph_node: &GraphNode,
     output_index: usize,
+    fit_seq: u64,
     theme: &Theme,
 ) {
     let Some(output) = graph_node.outputs.get(output_index) else {
@@ -36,6 +40,7 @@ pub fn show(
             change_id.clone(),
             data,
             false, // node outputs re-run constantly; don't reset the user's pan/zoom
+            fit_seq,
             theme,
         );
         return;

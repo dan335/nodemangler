@@ -10,6 +10,11 @@
 //! - `to file`, `material`, and `to clipboard` honour a "force save" flag so a
 //!   headless `graph.run()` (the CLI's `mangle run`) writes every output even
 //!   though the interactive auto-save toggle defaults to off.
+//! - During a batch run (one run per source image in a folder), `to file` and
+//!   `material` derive per-item file names from `batch_item_stem` so
+//!   successive iterations don't overwrite each other's output, while
+//!   `to clipboard` uses its presence to opt out of the force-save write
+//!   (nobody wants the clipboard rewritten hundreds of times in a row).
 //!
 //! Threading a context parameter through the macro-generated dispatch would
 //! mean touching every operation's `run` signature. Instead the engine stashes
@@ -37,6 +42,11 @@ pub struct RunContext {
     /// auto-save toggle. Set by headless CLI runs so `mangle run` still emits
     /// files even though auto-save is off by default in the GUI.
     pub force_save: bool,
+    /// File stem of the batch item currently driving this run, when a batch
+    /// run is iterating a from-folder node. Output ops use it to derive
+    /// per-item file names, and `to clipboard` uses it to skip forced writes
+    /// during a batch.
+    pub batch_item_stem: Option<String>,
 }
 
 thread_local! {

@@ -100,7 +100,7 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 
 ### Images (183)
 
-- **Input:** Constant, From Clipboard, From Color, From File, From Gradient, From Text, From URL
+- **Input:** Constant, From Clipboard, From Color, From File, From Folder, From Gradient, From Text, From URL
 - **Output:** Material, To Clipboard, To File
 - **Adjustments:** Auto Levels, Black And White, Brighten, Clarity, Color Balance, Color Lookup, Color Match, Color To Mask, Contrast, Curves, Dehaze, Dither, Exposure, Frequency Split, Gradient Dynamic, Gradient Map, Grain, Grayscale, Histogram Range, Histogram Scan, Histogram Select, HSL, Hue Shift, Invert, Levels, Photo Filter, Posterize, Replace Color, Saturation, Selective Color, Threshold, Vibrance, Vignette, White Balance
 - **Blur:** Blur, Directional Blur, Non-Uniform Blur, Radial Blur, Slope Blur

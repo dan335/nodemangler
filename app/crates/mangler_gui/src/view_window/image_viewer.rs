@@ -15,6 +15,9 @@ pub struct ImageViewer {
     pub zoom: f32,
     /// Shared drag-to-pan state machine (same controller as the graph editor).
     pan_zoom: PanZoomController,
+    /// Last consumed value of `show`'s `fit_seq` — a viewer fits once per new
+    /// sequence value, so one bump refits every 2D panel exactly once.
+    last_fit_seq: u64,
 }
 
 impl ImageViewer {
@@ -25,6 +28,7 @@ impl ImageViewer {
             position: Pos2::ZERO,
             zoom: 1.0,
             pan_zoom: PanZoomController::new(),
+            last_fit_seq: 0,
         }
     }
 
@@ -35,7 +39,13 @@ impl ImageViewer {
     /// where each freshly-opened image should frame itself. Node-output views
     /// pass false, since their `change_id` changes every graph run and fitting
     /// would fight the user's pan/zoom.
-    pub fn show(&mut self, ui: &mut egui::Ui, node_id: String, output_index: usize, change_id: String, float_image: &FloatImage, fit_on_change: bool, theme: &Theme) {
+    ///
+    /// `fit_seq` is a fit *request* counter (owned by `Program`, bumped when
+    /// the user picks something to view, e.g. right-clicks a node output): any
+    /// value different from the last one this viewer consumed triggers a fit,
+    /// so an explicit "view this" always centers and frames the image even if
+    /// the same output was already showing.
+    pub fn show(&mut self, ui: &mut egui::Ui, node_id: String, output_index: usize, change_id: String, float_image: &FloatImage, fit_on_change: bool, fit_seq: u64, theme: &Theme) {
 
         let view_rect = Rect::from_min_size(
             ui.cursor().left_top(),
@@ -66,6 +76,13 @@ impl ImageViewer {
             }
         }
 
+        // Explicit fit request (e.g. right-clicked a node output to view it):
+        // consume each new sequence value with one fit.
+        if fit_seq != self.last_fit_seq {
+            self.last_fit_seq = fit_seq;
+            self.fit_to_view(view_rect, float_image.width() as f32, float_image.height() as f32);
+        }
+
         self.draw_image(node_id, output_index, change_id, float_image, ui, view_rect, theme);
 
         let view_rect_response = ui.allocate_rect(view_rect, egui::Sense::drag().union(egui::Sense::hover()));
@@ -87,9 +104,16 @@ impl ImageViewer {
             self.fit_to_view(view_rect, float_image.width() as f32, float_image.height() as f32);
         }
 
-        // Scroll-to-zoom about the cursor (shared with the graph editor).
+        // Scroll-to-zoom about the cursor (shared with the graph editor, but
+        // with the wider image bounds so large images can zoom out to fit).
         if view_rect.contains(cursor_position) {
-            pan_zoom::zoom_about_cursor(ui, &mut self.position, &mut self.zoom, cursor_position);
+            pan_zoom::zoom_about_cursor(
+                ui,
+                &mut self.position,
+                &mut self.zoom,
+                cursor_position,
+                pan_zoom::IMAGE_ZOOM_BOUNDS,
+            );
         }
 
         // Drag-to-pan (shared state machine with the graph editor).
@@ -175,7 +199,7 @@ impl ImageViewer {
         // so pick the axis where the image is most oversized relative to the view.
         let zoom = (img_width / view_width)
             .max(img_height / view_height)
-            .clamp(pan_zoom::ZOOM_BOUNDS[0], pan_zoom::ZOOM_BOUNDS[1]);
+            .clamp(pan_zoom::IMAGE_ZOOM_BOUNDS[0], pan_zoom::IMAGE_ZOOM_BOUNDS[1]);
 
         // Center the image: screen center = (graph_position + position) / zoom
         // graph_position used in draw_image = (view_rect.left() + w/2, view_rect.top() + h/2)

@@ -80,7 +80,12 @@ impl OpImageTransformWarp {
 
         let disp_ch = disp_data.channels() as usize;
         let src_ch = src_data.channels() as usize;
-        let src = &*src_data;
+        // Premultiply only the sampled source so transparent pixels' hidden
+        // colour can't bleed into interpolated edge pixels; the displacement map
+        // is guidance data and must stay untouched.
+        let premul = src_data.has_alpha();
+        let src_img = if premul { Arc::new(src_data.premultiply_alpha()) } else { Arc::clone(&src_data) };
+        let src = &*src_img;
         let disp = &*disp_data;
         let disp_w = disp.width() as f32;
         let disp_h = disp.height() as f32;
@@ -111,7 +116,10 @@ impl OpImageTransformWarp {
             }
         });
 
-        Ok(OperationResponse { 
+        // Back to straight alpha for downstream nodes / display.
+        if premul { output.unpremultiply_alpha(); }
+
+        Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
                 OutputResponse { value: Value::Image { data: Arc::new(output), change_id: get_id() } },

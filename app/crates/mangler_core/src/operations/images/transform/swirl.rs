@@ -75,8 +75,12 @@ impl OpImageTransformSwirl {
         let eff = (radius * max_r).max(1e-3);
         let ang = angle_deg.to_radians();
 
+        // Premultiply so transparent pixels' hidden colour can't bleed into
+        // interpolated edge pixels (white fringe around dark shapes).
+        let premul = data.has_alpha();
+        let src_img = if premul { Arc::new(data.premultiply_alpha()) } else { Arc::clone(&data) };
         let mut out = FloatImage::new(w, h, data.channels());
-        let src = &*data;
+        let src = &*src_img;
         let row_len = (w as usize * ch).max(1);
 
         out.as_raw_mut().par_chunks_mut(row_len).enumerate().for_each(|(y, row)| {
@@ -96,6 +100,9 @@ impl OpImageTransformSwirl {
                 row[x * ch..(x + 1) * ch].copy_from_slice(&sp);
             }
         });
+
+        // Back to straight alpha for downstream nodes / display.
+        if premul { out.unpremultiply_alpha(); }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

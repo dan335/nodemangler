@@ -17,8 +17,13 @@ use crate::view_to_graph_space_pos2;
 
 /// Scroll-wheel-to-zoom speed.
 pub const ZOOM_MULTIPLIER: f32 = 0.001;
-/// Min/max zoom. Larger zoom = smaller on screen (`view = graph / zoom`).
+/// Min/max zoom for the graph editor. Larger zoom = smaller on screen
+/// (`view = graph / zoom`).
 pub const ZOOM_BOUNDS: [f32; 2] = [0.15, 5.0];
+/// Min/max zoom for the 2D image preview. Images can be far larger than a
+/// panel (a 4K render in a small split), so the zoom-out ceiling is much
+/// higher than the graph editor's, and the floor allows pixel-peeping.
+pub const IMAGE_ZOOM_BOUNDS: [f32; 2] = [0.02, 100.0];
 
 /// The pointer position in the viewport this `ui` is rendering into, or a
 /// far-offscreen point when the pointer is over another OS window (egui sends
@@ -38,10 +43,18 @@ pub fn viewport_cursor(ui: &egui::Ui) -> Pos2 {
 ///
 /// The caller gates this on "cursor inside my rect" (and any popup-open
 /// checks) — this function only reads the scroll delta and applies the zoom.
-pub fn zoom_about_cursor(ui: &egui::Ui, position: &mut Pos2, zoom: &mut f32, cursor: Pos2) {
+/// `bounds` is the caller's min/max zoom ([`ZOOM_BOUNDS`] for the graph
+/// editor, [`IMAGE_ZOOM_BOUNDS`] for the image preview).
+pub fn zoom_about_cursor(
+    ui: &egui::Ui,
+    position: &mut Pos2,
+    zoom: &mut f32,
+    cursor: Pos2,
+    bounds: [f32; 2],
+) {
     ui.ctx().input(|input_state| {
         let new_zoom = (*zoom * (1.0 + input_state.smooth_scroll_delta.y * ZOOM_MULTIPLIER))
-            .clamp(ZOOM_BOUNDS[0], ZOOM_BOUNDS[1]);
+            .clamp(bounds[0], bounds[1]);
         *position += cursor.to_vec2() * (new_zoom - *zoom);
         *zoom = new_zoom;
     });

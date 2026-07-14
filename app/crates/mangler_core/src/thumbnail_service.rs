@@ -1,6 +1,6 @@
 //! Async thumbnail service.
 //!
-//! Image thumbnails (`FloatImage::resize_fit(...).to_rgba8()`) cost 15-50ms
+//! Image thumbnails (`FloatImage::resize_fit_premultiplied(...).to_rgba8()`) cost 15-50ms
 //! on large frames — computing them inline inside the engine's graph-run loop
 //! pushes that straight onto the decode pipeline's critical path and makes
 //! scrubbing feel stuttery. This service runs the CPU work on a dedicated
@@ -199,7 +199,7 @@ async fn worker_loop(
             let compute = tokio::task::spawn_blocking(move || {
                 Thumbnail::Image(
                     float_image
-                        .resize_fit(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1])
+                        .resize_fit_premultiplied(THUMBNAIL_SIZE[0], THUMBNAIL_SIZE[1])
                         .to_rgba8(),
                 )
             });

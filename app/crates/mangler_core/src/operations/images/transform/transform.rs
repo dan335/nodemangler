@@ -92,12 +92,24 @@ impl OpImageTransformAffine {
         // The fill colour reduced to the source's channel layout so exposed
         // space matches the image's storage (see `help`).
         let luma = 0.2126 * fill.r + 0.7152 * fill.g + 0.0722 * fill.b;
-        let fill_px: Vec<f32> = match nch {
+        let mut fill_px: Vec<f32> = match nch {
             1 => vec![luma],
             2 => vec![luma, fill.a],
             3 => vec![fill.r, fill.g, fill.b],
             _ => vec![fill.r, fill.g, fill.b, fill.a],
         };
+
+        // Premultiply so transparent pixels' hidden colour can't bleed into
+        // interpolated edge pixels (white fringe around dark shapes). The fill
+        // colour is a source tap too, so it must live in the same premultiplied
+        // space (colour components *= fill alpha); 1/3-channel fills have no
+        // alpha and are left untouched.
+        let premul = data.has_alpha();
+        let src = if premul { Arc::new(data.premultiply_alpha()) } else { Arc::clone(&data) };
+        if premul {
+            let a = *fill_px.last().unwrap();
+            for c in &mut fill_px[..nch - 1] { *c *= a; }
+        }
 
         // Guard against a zero scale (division below); keep the sign so the
         // near-degenerate case still degrades gracefully rather than dividing by 0.
@@ -132,10 +144,13 @@ impl OpImageTransformAffine {
                 let src_x = cx + ux - 0.5;
                 let src_y = cy + uy - 0.5;
 
-                sample_bilinear(&data, src_x, src_y, edge, &fill_px, &mut acc);
+                sample_bilinear(&src, src_x, src_y, edge, &fill_px, &mut acc);
                 output.put_pixel(x, y, &acc);
             }
         }
+
+        // Back to straight alpha for downstream nodes / display.
+        if premul { output.unpremultiply_alpha(); }
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

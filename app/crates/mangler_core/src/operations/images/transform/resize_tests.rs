@@ -60,6 +60,64 @@ async fn test_resize_1x1() {
     assert!(result.is_ok(), "resize to 1x1 failed: {:?}", result.err());
 }
 
+/// Both dimensions at 0 (the defaults) pass the image through unchanged.
+#[tokio::test]
+async fn test_resize_zero_zero_passthrough() {
+    let mut inputs = vec![
+        Input::new("image".to_string(), image_input(8, 6), None, None),
+        Input::new("width".to_string(), Value::Integer(0), None, None),
+        Input::new("height".to_string(), Value::Integer(0), None, None),
+        Input::new("filter type".to_string(), Value::FilterType(image::imageops::FilterType::Nearest), None, None),
+    ];
+    let result = OpImageTransformResize::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Image { data, .. } => {
+            assert_eq!((data.width(), data.height()), (8, 6));
+            // Passthrough keeps the source channel count (no DynamicImage round-trip).
+            assert_eq!(data.channels(), 4);
+        }
+        other => panic!("Expected Image, got {:?}", other),
+    }
+    assert!(matches!(result.responses[1].value, Value::Integer(8)));
+    assert!(matches!(result.responses[2].value, Value::Integer(6)));
+}
+
+/// Width set with height 0 scales to that exact width, preserving aspect.
+#[tokio::test]
+async fn test_resize_width_only() {
+    let mut inputs = vec![
+        Input::new("image".to_string(), image_input(8, 4), None, None),
+        Input::new("width".to_string(), Value::Integer(4), None, None),
+        Input::new("height".to_string(), Value::Integer(0), None, None),
+        Input::new("filter type".to_string(), Value::FilterType(image::imageops::FilterType::Nearest), None, None),
+    ];
+    let result = OpImageTransformResize::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Image { data, .. } => {
+            assert_eq!((data.width(), data.height()), (4, 2));
+        }
+        other => panic!("Expected Image, got {:?}", other),
+    }
+}
+
+/// Height set with width 0 scales to that exact height, preserving aspect.
+#[tokio::test]
+async fn test_resize_height_only() {
+    let mut inputs = vec![
+        Input::new("image".to_string(), image_input(8, 4), None, None),
+        Input::new("width".to_string(), Value::Integer(0), None, None),
+        Input::new("height".to_string(), Value::Integer(2), None, None),
+        Input::new("filter type".to_string(), Value::FilterType(image::imageops::FilterType::Nearest), None, None),
+    ];
+    let result = OpImageTransformResize::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Image { data, .. } => {
+            assert_eq!((data.width(), data.height()), (4, 2));
+        }
+        other => panic!("Expected Image, got {:?}", other),
+    }
+}
+
 #[tokio::test]
 async fn test_resize_upscale() {
     let mut inputs = vec![

@@ -85,11 +85,15 @@ impl OpImageTransformResizeFill {
         width = width.max(1);
         height = height.max(1);
 
-        // Convert to DynamicImage for the image crate's resize-to-fill algorithm
-        let dyn_img = data.to_dynamic();
+        // Resample in premultiplied-alpha space: the image crate interpolates
+        // straight RGBA, which lets fully transparent pixels bleed their hidden
+        // colour into semi-transparent edges (white fringe around dark glyphs
+        // on a transparent background).
+        let dyn_img = data.premultiply_alpha().to_dynamic();
         let resized = dyn_img.resize_to_fill(width as u32, height as u32, filter_type);
-        // Convert back to FloatImage
-        let output = FloatImage::from_dynamic(&resized);
+        // Convert back to FloatImage and back to straight alpha
+        let mut output = FloatImage::from_dynamic(&resized);
+        output.unpremultiply_alpha();
 
         let value_width = Value::Integer(output.width() as i32);
         let value_height = Value::Integer(output.height() as i32);

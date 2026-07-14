@@ -1,6 +1,10 @@
 use std::{path::PathBuf, time::Duration};
 use tokio::{sync::mpsc, time::Instant, task::JoinHandle};
 use crate::{ChangeGraphMessage, ChangeNodeMessage, NodeChangedMessage, GraphChangedMessage, graph::Graph, get_id};
+use crate::node_type::NodeType;
+use crate::operations::images::inputs::from_folder;
+use crate::operations::Operation;
+use crate::value::Value;
 
 /// Engine-side application wrapper. Owns a `Graph` and runs it on a dedicated
 /// tokio task, continuously draining UI change messages and re-executing dirty
@@ -68,6 +72,12 @@ impl App {
                 // against re-sending `FileConflict` every tick while the user
                 // decides; cleared when `ResolveFileConflict` is handled.
                 let mut conflict_pending = false;
+                // Active batch run, if any (see `ChangeGraphMessage::RunBatch`
+                // and `BatchState`). One iteration is armed per tick — before
+                // the tick's `graph.run()` — and completed right after it, so
+                // the loop keeps draining messages (cancel, live edits)
+                // between iterations instead of blocking for the whole batch.
+                let mut batch: Option<BatchState> = None;
 
                 // Main engine loop: drain messages, execute graph, auto-save
                 let thread_handle = tokio::spawn(async move {
@@ -152,7 +162,7 @@ impl App {
                                         // tab") aborts this task right after,
                                         // which would race a deferred write.
                                         // Deliberately not gated on
-                                        // disk_is_newer(): the target was chosen
+                                        // disk_conflicts(): the target was chosen
                                         // by the user through a save dialog
                                         // (which already confirms overwrites).
                                         match graph.save_to_file() {
@@ -238,7 +248,7 @@ impl App {
                                         // Overwrite: write our in-memory graph.
                                         // save_to_file() refreshes
                                         // last_synced_mtime, so the next
-                                        // disk_is_newer check has a fresh
+                                        // disk_conflicts check has a fresh
                                         // baseline.
                                         if let Err(message) = graph.save_to_file() {
                                             if let Some(tx) = &graph.tx_graph_changed {
@@ -290,6 +300,26 @@ impl App {
                                     }
                                     needs_to_save = false;
                                     conflict_pending = false;
+                                }
+                                ChangeGraphMessage::RunBatch { node_id } => {
+                                    // Starting a batch is an action, not an
+                                    // edit — it must not set `needs_to_save`
+                                    // (the index stepping below is transient
+                                    // state that is restored when the batch
+                                    // ends). A second RunBatch while one is
+                                    // active is ignored rather than queued.
+                                    if batch.is_none() {
+                                        batch = start_batch(&graph, node_id);
+                                    }
+                                }
+                                ChangeGraphMessage::CancelBatch => {
+                                    // Honored between iterations: the arming
+                                    // step below runs after this drain, so a
+                                    // cancel always lands before the next
+                                    // file starts. No-op when idle.
+                                    if let Some(state) = batch.take() {
+                                        finish_batch(&mut graph, state, true);
+                                    }
                                 }
                             }
                         }
@@ -396,8 +426,68 @@ impl App {
                             }
                         }
 
+                        // ── batch run: arm the next iteration ──────────────
+                        // Placed after both message drains so a RunBatch
+                        // received this tick starts immediately and a
+                        // CancelBatch is honored before another file begins.
+                        if batch.as_ref().is_some_and(|b| !graph.nodes.contains_key(&b.node_id)) {
+                            // The iterated node was deleted mid-batch. Abort
+                            // cleanly (finish_batch skips the index restore
+                            // for a missing node).
+                            let state = batch.take().expect("batch checked Some above");
+                            finish_batch(&mut graph, state, true);
+                        }
+                        if let Some(state) = &batch {
+                            // Point the from-folder node at this iteration's
+                            // file and force output saving on for the run
+                            // below. `set_input` marks the node dirty and
+                            // clears its input hash, so the run can neither
+                            // early-out nor hash-skip the iteration.
+                            let file = &state.files[state.next];
+                            let stem = file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                            graph.batch_item_stem = Some(stem);
+                            graph.force_save_outputs = true;
+                            let value = Value::Integer(state.next as i32);
+                            graph.set_input(state.node_id.clone(), from_folder::INDEX, value.clone());
+                            // `set_input` itself notifies nobody — echo the
+                            // stepped value so the GUI's mirror of the input
+                            // stays in sync (the settings panel's index field
+                            // visibly counts up during the batch).
+                            if let Some(tx) = &graph.tx_node_changed {
+                                if let Err(err) = tx.try_send(NodeChangedMessage::InputChanged {
+                                    node_id: state.node_id.clone(),
+                                    input_index: from_folder::INDEX,
+                                    value,
+                                }) {
+                                    println!("Error sending InputChanged: {:?}", err);
+                                }
+                            }
+                        }
+
                         // Execute any dirty nodes in the graph
                         graph.run().await;
+
+                        // ── batch run: complete the iteration armed above ──
+                        // `graph.run()` only returns once every dirty node has
+                        // fully executed, so at this point the current file
+                        // has flowed through the whole graph and any output
+                        // nodes have written their (force-saved) files.
+                        if let Some(state) = &mut batch {
+                            state.next += 1;
+                            if let Some(tx) = &graph.tx_graph_changed {
+                                if let Err(err) = tx.try_send(GraphChangedMessage::BatchProgress {
+                                    node_id: state.node_id.clone(),
+                                    completed: state.next,
+                                    total: state.files.len(),
+                                }) {
+                                    println!("Error sending BatchProgress: {:?}", err);
+                                }
+                            }
+                            if state.next >= state.files.len() {
+                                let state = batch.take().expect("batch matched Some above");
+                                finish_batch(&mut graph, state, false);
+                            }
+                        }
 
                         // Auto-save policy: debounced to at most one write per
                         // AUTO_SAVE_INTERVAL. When a mutation is pending and the
@@ -415,7 +505,7 @@ impl App {
                         // been detected and reported, until
                         // `ResolveFileConflict` clears it.
                         if needs_to_save && !hold_saves && !conflict_pending && last_save.elapsed() >= AUTO_SAVE_INTERVAL {
-                            if graph.disk_is_newer() {
+                            if graph.disk_conflicts() {
                                 // Someone else — another tab, another machine
                                 // on a network share — has written this file
                                 // since we last read/wrote it. Overwriting
@@ -467,6 +557,112 @@ impl App {
     }
 }
 
+
+/// State of an active batch run (see [`ChangeGraphMessage::RunBatch`]): the
+/// engine loop steps `next` through `files`, one full graph run per tick.
+struct BatchState {
+    /// The "from folder" node whose `index` input is being stepped.
+    node_id: String,
+    /// Snapshot of the folder's image files, taken when the batch started
+    /// with the same deterministic listing the node's own `run()` uses
+    /// ([`from_folder::list_image_files`]), so driver and node agree on both
+    /// set and order whenever the folder is stable. If files are added or
+    /// removed mid-batch the node re-lists and clamps, so items may repeat or
+    /// be skipped — a documented caveat of editing the folder during a run.
+    files: Vec<PathBuf>,
+    /// Index of the next file to process — also the count completed so far.
+    next: usize,
+    /// The `index` input's value before the batch started; restored on finish
+    /// so the user gets back the image they were previewing.
+    original_index: Value,
+}
+
+/// Validate a [`ChangeGraphMessage::RunBatch`] request and snapshot its work
+/// list. Returns the armed state, or `None` after reporting the failure to
+/// the UI as a `BatchFinished { total: 0, cancelled: true }` — the node
+/// doesn't exist, isn't a "from folder" node, or its folder is unset,
+/// unreadable, or holds no image files.
+fn start_batch(graph: &Graph, node_id: String) -> Option<BatchState> {
+    // One reporting path for every way the batch can fail to start; the GUI
+    // surfaces it as a status message.
+    let fail = |graph: &Graph, node_id: String| {
+        if let Some(tx) = &graph.tx_graph_changed {
+            if let Err(err) = tx.try_send(GraphChangedMessage::BatchFinished {
+                node_id,
+                completed: 0,
+                total: 0,
+                cancelled: true,
+            }) {
+                println!("Error sending BatchFinished: {:?}", err);
+            }
+        }
+        None
+    };
+
+    let Some(node) = graph.nodes.get(&node_id) else {
+        return fail(graph, node_id);
+    };
+    if !matches!(node.node_type, NodeType::Operation { operation: Operation::OpImageInputFromFolder }) {
+        return fail(graph, node_id);
+    }
+    // Read the folder straight off the input value (also correct when the
+    // input is connection-driven: propagated values land in `input.value`).
+    let Some(Value::Path(folder)) = node.inputs.get(from_folder::FOLDER).map(|i| i.value.clone()) else {
+        return fail(graph, node_id);
+    };
+    // Same folder resolution the node's run() applies via its RunContext.
+    let graph_dir = graph.save_path.as_ref().and_then(|p| p.parent().map(|d| d.to_path_buf()));
+    let Some(dir) = from_folder::resolve_folder(&folder, graph_dir.as_deref()) else {
+        return fail(graph, node_id);
+    };
+    let files = match from_folder::list_image_files(&dir) {
+        Ok(files) if !files.is_empty() => files,
+        _ => return fail(graph, node_id),
+    };
+    let original_index = node
+        .inputs
+        .get(from_folder::INDEX)
+        .map(|i| i.value.clone())
+        .unwrap_or(Value::Integer(0));
+
+    Some(BatchState { node_id, files, next: 0, original_index })
+}
+
+/// Tear down a batch run — completed, cancelled, failed to start, or aborted
+/// because the node vanished: switch the per-iteration forced-save flags back
+/// off, restore the from-folder node's `index` input to its pre-batch value
+/// (via `set_input`, which marks the node dirty — the next tick re-runs the
+/// graph on the original image with the save gates off again, so nothing is
+/// written by the restore), echo the restored value to the UI, and report the
+/// final outcome.
+fn finish_batch(graph: &mut Graph, state: BatchState, cancelled: bool) {
+    graph.force_save_outputs = false;
+    graph.batch_item_stem = None;
+
+    if graph.nodes.contains_key(&state.node_id) {
+        graph.set_input(state.node_id.clone(), from_folder::INDEX, state.original_index.clone());
+        if let Some(tx) = &graph.tx_node_changed {
+            if let Err(err) = tx.try_send(NodeChangedMessage::InputChanged {
+                node_id: state.node_id.clone(),
+                input_index: from_folder::INDEX,
+                value: state.original_index.clone(),
+            }) {
+                println!("Error sending InputChanged: {:?}", err);
+            }
+        }
+    }
+
+    if let Some(tx) = &graph.tx_graph_changed {
+        if let Err(err) = tx.try_send(GraphChangedMessage::BatchFinished {
+            node_id: state.node_id,
+            completed: state.next,
+            total: state.files.len(),
+            cancelled,
+        }) {
+            println!("Error sending BatchFinished: {:?}", err);
+        }
+    }
+}
 
 /// Error returned when graph creation or loading fails during `App::new`.
 #[derive(Debug)]

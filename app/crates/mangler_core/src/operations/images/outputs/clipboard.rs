@@ -63,8 +63,13 @@ impl OpImageOutputClipboard {
         let start_time = Instant::now();
 
         // Decide whether to copy this run, consuming the one-shot save pulse
-        // (mutable borrow — must precede the conversions below).
-        let should_copy = should_save_and_consume(inputs, AUTO_SAVE, SAVE);
+        // (mutable borrow — must precede the conversions below). Unlike
+        // `to file`/`material`, `to clipboard` only honors a forced headless
+        // run when there's no batch item in flight: plain `mangle run` should
+        // still force a single clipboard write, but a batch run driving many
+        // iterations must not rewrite the clipboard on every single one.
+        let honor_force = crate::run_context::current().map_or(true, |c| c.batch_item_stem.is_none());
+        let should_copy = should_save_and_consume(inputs, AUTO_SAVE, SAVE, honor_force);
 
         let mut input_errors: Vec<(usize, String)> = vec![];
 

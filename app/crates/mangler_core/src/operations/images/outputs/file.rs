@@ -54,7 +54,7 @@ impl OpImageOutputFile {
         NodeSettings {
             name: "to file".to_string(),
             description: "Saves an image to a file.".to_string(),
-            help: "Writes the input image to `{folder}/{file name}.{format}`. The folder is resolved relative to where the graph is saved (so a graph and its outputs move together) unless you give an absolute path; leave it empty to write next to the graph file. The folder is created if it doesn't exist. The file name defaults to the graph's name when left blank. The format dropdown chooses the image format and the file extension — supported: png, jpg/jpeg, gif, webp, pnm, tiff, tga, bmp, ico, hdr, exr, ff (farbfeld), avif, qoi; it defaults to jpg.\n\nThe color format selector controls the output bit depth and channel layout (Gray8/16, GrayA8/16, Rgb8/16/32F, Rgba8/16/32F). The quality slider applies to the lossy formats (JPEG and AVIF), and the png compression selector only to PNG (all PNG settings produce identical pixels — only file size and encode time differ). WebP is always encoded losslessly; Radiance HDR writes from the Rgb32F color format; the remaining formats have no encoder settings. An incompatible format/color-format combination (for example an RGBA channel layout into a JPEG) is rejected before any file is written, and the full saved path is returned as an output for chaining.\n\nWriting is off by default: turn on auto save to write whenever an input changes, or leave it off and press the save button to write once. Headless `mangle run` always writes regardless of the toggle.".to_string(),
+            help: "Writes the input image to `{folder}/{file name}.{format}`. The folder is resolved relative to where the graph is saved (so a graph and its outputs move together) unless you give an absolute path; leave it empty to write next to the graph file. The folder is created if it doesn't exist. The file name defaults to the graph's name when left blank. The format dropdown chooses the image format and the file extension — supported: png, jpg/jpeg, gif, webp, pnm, tiff, tga, bmp, ico, hdr, exr, ff (farbfeld), avif, qoi; it defaults to jpg.\n\nThe color format selector controls the output bit depth and channel layout (Gray8/16, GrayA8/16, Rgb8/16/32F, Rgba8/16/32F). The quality slider applies to the lossy formats (JPEG and AVIF), and the png compression selector only to PNG (all PNG settings produce identical pixels — only file size and encode time differ). WebP is always encoded losslessly; Radiance HDR writes from the Rgb32F color format; the remaining formats have no encoder settings. An incompatible format/color-format combination (for example an RGBA channel layout into a JPEG) is rejected before any file is written, and the full saved path is returned as an output for chaining.\n\nWriting is off by default: turn on auto save to write whenever an input changes, or leave it off and press the save button to write once. Headless `mangle run` always writes regardless of the toggle, and so does each iteration of a from-folder batch run — during a batch, an unwired file name gets the current source image's name appended (or is replaced by it when blank) so every image writes to its own file, while a wired file name is always used verbatim.".to_string(),
         }
     }
 
@@ -110,8 +110,8 @@ impl OpImageOutputFile {
 
         // Decide up front whether to write, consuming the one-shot save pulse
         // (mutably borrows `inputs`, so it must precede the immutable
-        // conversions below).
-        let should_save = should_save_and_consume(inputs, AUTO_SAVE, SAVE);
+        // conversions below). `to file` always honors a forced headless run.
+        let should_save = should_save_and_consume(inputs, AUTO_SAVE, SAVE, true);
 
         let mut input_errors: Vec<(usize, String)> = vec![];
         let image_converted = convert_input(inputs, IMAGE, ValueType::Image, &mut input_errors);
@@ -144,8 +144,13 @@ impl OpImageOutputFile {
         let Value::Text(png_compression_text) = png_compression_converted.unwrap() else { unreachable!() };
 
         // Resolve the destination folder and file stem from the graph context
-        // (shared with the `material` node so both behave identically).
-        let (resolved_dir, stem) = super::resolve_output_dir_and_stem(&folder, &file_name, FOLDER, FILE_NAME)?;
+        // (shared with the `material` node so both behave identically). Read
+        // the connection flag first — it's a plain immutable borrow of
+        // `inputs`, but keeping it right next to its one use avoids any risk
+        // of straddling a later mutable borrow.
+        let file_name_connected = inputs[FILE_NAME].connection.is_some();
+        let (resolved_dir, stem) =
+            super::resolve_output_dir_and_stem(&folder, &file_name, FOLDER, FILE_NAME, file_name_connected)?;
 
         // Validate the color format against the chosen image format before
         // touching the filesystem.

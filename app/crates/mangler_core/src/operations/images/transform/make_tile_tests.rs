@@ -76,6 +76,37 @@ async fn test_make_tile_preserves_dimensions() {
 }
 
 #[tokio::test]
+async fn test_make_tile_premultiplied_no_hidden_color_bleed() {
+    // Left half opaque black, right half fully transparent white. The edge/corner
+    // cross-fades pull in the transparent side; without premultiplied blending the
+    // hidden white RGB would tint the visible boundary strips grey.
+    let mut img = FloatImage::new(16, 16, 4);
+    for y in 0..16 {
+        for x in 0..16 {
+            if x < 8 {
+                img.put_pixel(x, y, &[0.0, 0.0, 0.0, 1.0]);
+            } else {
+                img.put_pixel(x, y, &[1.0, 1.0, 1.0, 0.0]);
+            }
+        }
+    }
+    let mut inputs = vec![
+        Input::new("image".to_string(), Value::Image { data: Arc::new(img), change_id: get_id() }, None, None),
+        Input::new("blend size".to_string(), Value::Decimal(0.25), None, None),
+    ];
+    let result = OpImageTransformMakeTile::run(&mut inputs).await.unwrap();
+    let Value::Image { data, .. } = &result.responses[0].value else { panic!() };
+    for (x, y, px) in data.enumerate_pixels() {
+        if px[3] > 0.01 {
+            assert!(
+                px[0] < 0.05 && px[1] < 0.05 && px[2] < 0.05,
+                "hidden colour bled into visible pixel at ({x},{y}): {px:?}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn test_make_tile_uniform_image_unchanged() {
     // A uniform image tiled should remain the same uniform color
     let img = Arc::new(FloatImage::from_pixel(8, 8, 4, &[0.39, 0.59, 0.78, 1.0]));
