@@ -277,6 +277,82 @@ fn length_of_unit_square() {
     assert!(approx(c.length(), 4.0, 1e-4));
 }
 
+// ── bounds / signed_area / tangent_at ───────────────────────────────────────
+
+#[test]
+fn bounds_of_known_square() {
+    let c = Curve {
+        points: vec![[0.2, 0.3], [0.6, 0.3], [0.6, 0.8], [0.2, 0.8]],
+        closed: true,
+        interpolation: CurveInterpolation::Linear,
+        handles: vec![],
+    };
+    let b = c.bounds().unwrap();
+    assert!(approx(b[0], 0.2, 1e-6), "min_x {}", b[0]);
+    assert!(approx(b[1], 0.3, 1e-6), "min_y {}", b[1]);
+    assert!(approx(b[2], 0.4, 1e-6), "width {}", b[2]);
+    assert!(approx(b[3], 0.5, 1e-6), "height {}", b[3]);
+}
+
+#[test]
+fn bounds_empty_is_none() {
+    let c = Curve { points: vec![], closed: false, interpolation: CurveInterpolation::Linear, handles: vec![] };
+    assert!(c.bounds().is_none());
+}
+
+#[test]
+fn signed_area_clockwise_on_screen_is_positive() {
+    // A 0.25×0.25 square wound clockwise on screen (y-down): top-left →
+    // top-right → bottom-right → bottom-left. Positive area per the docs.
+    let cw = Curve {
+        points: vec![[0.0, 0.0], [0.25, 0.0], [0.25, 0.25], [0.0, 0.25]],
+        closed: true,
+        interpolation: CurveInterpolation::Linear,
+        handles: vec![],
+    };
+    assert!(approx(cw.signed_area(), 0.0625, 1e-5), "cw area {}", cw.signed_area());
+
+    // Reversed winding (counter-clockwise on screen) flips the sign.
+    let ccw = Curve {
+        points: vec![[0.0, 0.0], [0.0, 0.25], [0.25, 0.25], [0.25, 0.0]],
+        ..cw.clone()
+    };
+    assert!(approx(ccw.signed_area(), -0.0625, 1e-5), "ccw area {}", ccw.signed_area());
+}
+
+#[test]
+fn signed_area_open_curve_implicitly_closes() {
+    // The same square, but marked open — implicit close gives the same area.
+    let open = Curve {
+        points: vec![[0.0, 0.0], [0.25, 0.0], [0.25, 0.25], [0.0, 0.25]],
+        closed: false,
+        interpolation: CurveInterpolation::Linear,
+        handles: vec![],
+    };
+    assert!(approx(open.signed_area(), 0.0625, 1e-5), "open area {}", open.signed_area());
+}
+
+#[test]
+fn tangent_at_horizontal_line() {
+    let c = Curve {
+        points: vec![[0.1, 0.5], [0.9, 0.5]],
+        closed: false,
+        interpolation: CurveInterpolation::Linear,
+        handles: vec![],
+    };
+    let t = c.tangent_at(0.5);
+    assert!(approx(t[0], 1.0, 1e-4) && approx(t[1], 0.0, 1e-4), "tangent {:?}", t);
+}
+
+#[test]
+fn tangent_at_degenerate_fallback() {
+    let empty = Curve { points: vec![], closed: false, interpolation: CurveInterpolation::Linear, handles: vec![] };
+    assert_eq!(empty.tangent_at(0.5), [1.0, 0.0]);
+
+    let single = Curve { points: vec![[0.4, 0.4]], closed: false, interpolation: CurveInterpolation::Linear, handles: vec![] };
+    assert_eq!(single.tangent_at(0.5), [1.0, 0.0]);
+}
+
 // ── rasterize ─────────────────────────────────────────────────────────────
 
 fn at(gray: &[f32], w: usize, x: usize, y: usize) -> f32 {

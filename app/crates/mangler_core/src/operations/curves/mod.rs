@@ -2,5 +2,6 @@
 //! values (see [`crate::curve::Curve`]). Categorized by output type — every op
 //! here emits a `Value::Curve`.
 
+pub(crate) mod common;
 pub mod inputs;
 pub mod simulation;

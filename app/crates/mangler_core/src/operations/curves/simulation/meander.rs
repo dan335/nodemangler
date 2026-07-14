@@ -22,11 +22,17 @@
 //! centerline is resampled to uniform spacing with a 1-2-1 curvature smoothing
 //! pass every iteration.
 
-use crate::curve::{Curve, CurveInterpolation};
+use crate::curve::Curve;
+// Re-exported to `meander_tests.rs` via its `use super::*`.
+#[cfg(test)]
+use crate::curve::CurveInterpolation;
 use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
+use crate::operations::curves::common::{
+    linear_curve, polyline_length, rdp_decimate, resample, MAX_OUTPUT_POINTS,
+};
 use crate::operations::images::simulation::{guidance_map_to_grid, is_unconnected};
 use crate::operations::{
     convert_input, default_image, OperationError, OperationResponse, OutputResponse,
@@ -47,8 +53,6 @@ const OMEGA: f64 = -1.0;
 const GAMMA: f64 = 2.5;
 /// Hard cap on live centerline points; the resample spacing widens to hold it.
 const MAX_POINTS: usize = 8000;
-/// Cap on points in the output Curve value (persisted as JSON in graph saves).
-const MAX_OUTPUT_POINTS: usize = 4000;
 /// Cap on stored oxbow loops; later cutoffs still shorten the channel but are
 /// no longer rendered (their trace survives in the migration map).
 const MAX_OXBOWS: usize = 200;
@@ -164,63 +168,10 @@ impl Hasher for CellHasher {
 /// iterations allocate nothing.
 type CellMap = HashMap<(i32, i32), Vec<u32>, BuildHasherDefault<CellHasher>>;
 
-/// Euclidean distance between two points.
-fn dist(a: [f64; 2], b: [f64; 2]) -> f64 {
-    let dx = b[0] - a[0];
-    let dy = b[1] - a[1];
-    (dx * dx + dy * dy).sqrt()
-}
-
-/// Total arc length of a polyline.
-fn polyline_length(points: &[[f64; 2]]) -> f64 {
-    points.windows(2).map(|s| dist(s[0], s[1])).sum()
-}
-
 /// Hermite smoothstep of `x` clamped to [0,1].
 fn smoothstep01(x: f64) -> f64 {
     let t = x.clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
-}
-
-/// Resamples a polyline to uniform spacing as close to `ds` as divides the
-/// total length evenly (so index * spacing = arc position exactly), into the
-/// reusable `out` buffer (this runs every iteration; the caller swap-buffers
-/// it against the live points so steady-state iterations allocate nothing).
-/// The first and last input points are preserved exactly. Spacing widens
-/// automatically when `ds` would exceed [`MAX_POINTS`]. Returns the actual
-/// spacing used.
-fn resample(points: &[[f64; 2]], ds: f64, out: &mut Vec<[f64; 2]>) -> f64 {
-    out.clear();
-    let total = polyline_length(points);
-    if points.len() < 2 || total <= 0.0 {
-        out.extend_from_slice(points);
-        return ds;
-    }
-    let ds = ds.max(total / MAX_POINTS as f64);
-    let n_seg = (total / ds).round().max(1.0) as usize;
-    let spacing = total / n_seg as f64;
-
-    out.reserve(n_seg + 1);
-    out.push(points[0]);
-    let mut target = spacing;
-    let mut acc = 0.0;
-    for seg in points.windows(2) {
-        let len = dist(seg[0], seg[1]);
-        if len <= 0.0 {
-            continue;
-        }
-        while target <= acc + len && out.len() < n_seg {
-            let t = (target - acc) / len;
-            out.push([
-                seg[0][0] + t * (seg[1][0] - seg[0][0]),
-                seg[0][1] + t * (seg[1][1] - seg[0][1]),
-            ]);
-            target += spacing;
-        }
-        acc += len;
-    }
-    out.push(*points.last().unwrap());
-    spacing
 }
 
 /// Signed curvature per point from the turning angle between adjacent
@@ -603,64 +554,6 @@ fn rasterize_variable(
     finalize_field(field)
 }
 
-/// Shortest distance from point `p` to the segment `a`-`b` (f64 twin of the
-/// curve rasterizer's helper).
-fn point_segment_distance(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
-    let dx = b[0] - a[0];
-    let dy = b[1] - a[1];
-    let len_sq = dx * dx + dy * dy;
-    if len_sq < 1e-24 {
-        return dist(p, a);
-    }
-    let t = (((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len_sq).clamp(0.0, 1.0);
-    dist(p, [a[0] + t * dx, a[1] + t * dy])
-}
-
-/// Ramer-Douglas-Peucker decimation (iterative stack), doubling the tolerance
-/// until the result fits `max_points`. Keeps the persisted output Curve small
-/// — its points serialize into every graph save.
-fn rdp_decimate(points: &[[f64; 2]], mut tol: f64, max_points: usize) -> Vec<[f32; 2]> {
-    let n = points.len();
-    if n <= 2 {
-        return points.iter().map(|p| [p[0] as f32, p[1] as f32]).collect();
-    }
-    loop {
-        let mut keep = vec![false; n];
-        keep[0] = true;
-        keep[n - 1] = true;
-        let mut stack = vec![(0usize, n - 1)];
-        while let Some((s, e)) = stack.pop() {
-            if e <= s + 1 {
-                continue;
-            }
-            let mut d_max = 0.0;
-            let mut i_max = s;
-            for i in s + 1..e {
-                let d = point_segment_distance(points[i], points[s], points[e]);
-                if d > d_max {
-                    d_max = d;
-                    i_max = i;
-                }
-            }
-            if d_max > tol {
-                keep[i_max] = true;
-                stack.push((s, i_max));
-                stack.push((i_max, e));
-            }
-        }
-        let kept: Vec<[f32; 2]> = points
-            .iter()
-            .zip(&keep)
-            .filter(|(_, &k)| k)
-            .map(|(p, _)| [p[0] as f32, p[1] as f32])
-            .collect();
-        if kept.len() <= max_points {
-            return kept;
-        }
-        tol *= 2.0;
-    }
-}
-
 /// Wraps raw 1-channel pixels into an image output value. Raw linear mask
 /// values, no sRGB encode — matches rasterize curve, not the heightmap nodes.
 fn image_value(w: u32, h: u32, pixels: Vec<f32>) -> Value {
@@ -842,7 +735,7 @@ impl OpCurveSimulationMeander {
                 vec![0.0f32; pixel_count]
             } else {
                 let mut pts: Vec<[f64; 2]> = Vec::new();
-                resample(&poly, ds, &mut pts);
+                resample(&poly, ds, MAX_POINTS, &mut pts);
                 widths_along(pts.len(), params.render_w_norm, params.upstream_frac, &mut widths);
                 rasterize_variable(&pts, &widths, w, h, false)
             };
@@ -869,7 +762,7 @@ impl OpCurveSimulationMeander {
         // distinct RNG stream.
         let mut rng = fastrand::Rng::with_seed(seed as u64);
         let mut pts: Vec<[f64; 2]> = Vec::new();
-        let mut spacing = resample(&poly, ds, &mut pts);
+        let mut spacing = resample(&poly, ds, MAX_POINTS, &mut pts);
         let lambda_star = wavelength * w_norm;
         seed_perturbation(&mut pts, &mut rng, init_wobble * w_norm, lambda_star, spacing, &params);
         // Width-variation noise: three sinusoids with wavelengths pegged to
@@ -899,7 +792,7 @@ impl OpCurveSimulationMeander {
         let stamp_stride = (iterations + 511) / 512;
 
         for it in 0..iterations {
-            spacing = resample(&pts, ds, &mut buf);
+            spacing = resample(&pts, ds, MAX_POINTS, &mut buf);
             std::mem::swap(&mut pts, &mut buf);
             if pts.len() < 4 {
                 break; // cutoffs consumed the channel; freeze evolution
@@ -973,12 +866,7 @@ impl OpCurveSimulationMeander {
         }
         let oxbow_px = finalize_field(ox_field);
 
-        let out_curve = Curve {
-            points: rdp_decimate(&pts, 0.5 * ds, MAX_OUTPUT_POINTS),
-            closed: false,
-            interpolation: CurveInterpolation::Linear,
-            handles: Vec::new(),
-        };
+        let out_curve = linear_curve(rdp_decimate(&pts, 0.5 * ds, MAX_OUTPUT_POINTS), false);
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

@@ -266,6 +266,76 @@ impl Curve {
         *poly.last().unwrap()
     }
 
+    /// Axis-aligned bounding box of the flattened curve as
+    /// `[min_x, min_y, width, height]` in normalized `[0,1]²` units. Returns
+    /// `None` when the curve has no points (a single point yields a zero-size
+    /// box at that point).
+    pub fn bounds(&self) -> Option<[f32; 4]> {
+        let poly = self.flatten(STANDARD_SAMPLES_PER_SEGMENT);
+        let mut it = poly.iter();
+        let first = it.next()?;
+        let (mut min_x, mut min_y) = (first[0], first[1]);
+        let (mut max_x, mut max_y) = (first[0], first[1]);
+        for p in it {
+            min_x = min_x.min(p[0]);
+            min_y = min_y.min(p[1]);
+            max_x = max_x.max(p[0]);
+            max_y = max_y.max(p[1]);
+        }
+        Some([min_x, min_y, max_x - min_x, max_y - min_y])
+    }
+
+    /// Shoelace-formula signed area of the flattened polyline, treated as
+    /// *implicitly closed* (open curves are measured as if a segment joined the
+    /// last point back to the first). Fewer than 3 points → 0.
+    ///
+    /// Sign convention: coordinates are y-down (image convention), so a
+    /// **positive** area corresponds to a **clockwise** winding on screen (the
+    /// opposite of the y-up mathematical convention).
+    pub fn signed_area(&self) -> f32 {
+        let poly = self.flatten(STANDARD_SAMPLES_PER_SEGMENT);
+        let n = poly.len();
+        if n < 3 {
+            return 0.0;
+        }
+        let mut area = 0.0f32;
+        for i in 0..n {
+            let a = poly[i];
+            let b = poly[(i + 1) % n];
+            area += a[0] * b[1] - b[0] * a[1];
+        }
+        area * 0.5
+    }
+
+    /// Unit tangent at normalized arc-length parameter `t` in `[0,1]`, by a
+    /// finite difference of [`Curve::sample`] either side of `t` (so it shares
+    /// that method's arc-length parameterization). Degenerate or zero-length
+    /// curves return `[1.0, 0.0]`.
+    pub fn tangent_at(&self, t: f32) -> [f32; 2] {
+        if self.length() <= 0.0 {
+            return [1.0, 0.0];
+        }
+        let eps = 1e-3;
+        let t = t.clamp(0.0, 1.0);
+        let (t0, t1) = if t < eps {
+            (t, t + eps)
+        } else if t > 1.0 - eps {
+            (t - eps, t)
+        } else {
+            (t - eps, t + eps)
+        };
+        let a = self.sample(t0);
+        let b = self.sample(t1);
+        let dx = b[0] - a[0];
+        let dy = b[1] - a[1];
+        let len = (dx * dx + dy * dy).sqrt();
+        if len <= 1e-12 {
+            [1.0, 0.0]
+        } else {
+            [dx / len, dy / len]
+        }
+    }
+
     /// Rasterize the curve into a 1-channel grayscale mask (`width * height`
     /// f32 values in `[0,1]`, row-major, white line on black background).
     ///
