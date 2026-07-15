@@ -5,7 +5,11 @@
 //! quarter grid and identity diagonal, with the curve drawn on top and its
 //! control points draggable. Interactions match the 2D preview's curve
 //! overlay: drag points to move them, click the box to insert a point, double-
-//! or right-click a point to delete it (floor of 2 points).
+//! or right-click a point to delete it (floor of 2 points), and drag a point's
+//! mirrored tangent knob to shape the slope through it — including at the
+//! endpoints, so the curve can leave/enter the box at any angle. The first
+//! knob drag switches the curve from `Smooth` to `Bezier`; knobs stay
+//! constrained so the curve remains a left-to-right function of the input.
 //!
 //! Unlike the spatial overlay, points here are a *function* of x — dragging
 //! keeps each point's x between its neighbours (Photoshop behaviour), so the
@@ -20,7 +24,7 @@
 
 use eframe::egui::{self, Pos2, Rect, Sense, Stroke, Vec2};
 use epaint::StrokeKind;
-use mangler_core::curve::Curve;
+use mangler_core::curve::{Curve, CurveInterpolation};
 
 use crate::graph::graph_node::HistogramCache;
 use crate::themes::theme::Theme;
@@ -38,6 +42,10 @@ pub struct ToneCurveResponse {
 
 /// Half-width of a control point's interaction rect, in screen pixels.
 const POINT_HIT_HALF: f32 = 8.0;
+/// Half-width of a bezier tangent knob's interaction rect, in screen pixels.
+/// Smaller than the anchors', and knobs are registered *before* the anchors,
+/// so an anchor wins when a short handle sits on top of it.
+const KNOB_HIT_HALF: f32 = 6.0;
 /// Minimum horizontal spacing kept between neighbouring points while dragging,
 /// in curve units (~half a 8-bit step keeps near-vertical curves possible
 /// without ever letting points cross).
@@ -111,6 +119,68 @@ pub fn show(
     // click winner; the topmost — the handles below — wins).
     let catcher = ui.interact(rect, ui.id().with("tone_curve_catcher"), Sense::click());
 
+    // Bezier tangent knobs: one per *used* tangent side (endpoints show only
+    // their inward side, so no knob dangles off the box). Registered before the
+    // anchor handles below so an anchor wins when a near-zero knob overlaps it.
+    // Dragging a knob writes the anchor's mirrored offset and flips the curve to
+    // Bezier, constrained so it stays a left-to-right function.
+    let show_handles = working.interpolation != CurveInterpolation::Linear;
+    if show_handles {
+        // Materialize silently so a drag can write `handles[i]` directly; in
+        // Smooth mode the concrete tangents equal the auto ones (curve unchanged
+        // until a knob actually moves), and Smooth ignores handles when drawing.
+        working.materialize_handles();
+        let n = working.points.len();
+        for i in 0..n {
+            let anchor = norm_to_screen(rect, working.points[i]);
+            let has_in = working.closed || i > 0;
+            let has_out = working.closed || i + 1 < n;
+            // side 1.0 = out-knob (anchor + h), side -1.0 = in-knob (anchor − h).
+            for (side_idx, sign, used) in [(0u8, 1.0f32, has_out), (1, -1.0, has_in)] {
+                if !used {
+                    continue;
+                }
+                let h = working.handles[i];
+                let knob = anchor + Vec2::new(h[0] * rect.width(), h[1] * rect.height()) * sign;
+                let hit = Rect::from_center_size(knob, Vec2::splat(KNOB_HIT_HALF * 2.0));
+                let resp =
+                    ui.interact(hit, ui.id().with(("tone_curve_knob", i, side_idx)), Sense::drag());
+                if resp.dragged() {
+                    if let Some(pos) = resp.interact_pointer_pos() {
+                        // Keep the knob inside the box so it can't overrun the
+                        // panel; a steep slope is made with a short handle, not a
+                        // long one, so this doesn't limit the reachable angle.
+                        let px = pos.x.clamp(rect.left(), rect.right());
+                        let py = pos.y.clamp(rect.top(), rect.bottom());
+                        let mut nh = [
+                            (px - anchor.x) / rect.width().max(1e-6) * sign,
+                            (py - anchor.y) / rect.height().max(1e-6) * sign,
+                        ];
+                        // Function guard: the tangent points right (h.x ≥ 0) and
+                        // neither mirrored control passes a neighbouring anchor.
+                        let right = if i + 1 < n {
+                            working.points[i + 1][0] - working.points[i][0]
+                        } else {
+                            f32::INFINITY
+                        };
+                        let left = if i > 0 {
+                            working.points[i][0] - working.points[i - 1][0]
+                        } else {
+                            f32::INFINITY
+                        };
+                        nh[0] = nh[0].clamp(0.0, right.min(left));
+                        working.handles[i] = nh;
+                        working.interpolation = CurveInterpolation::Bezier;
+                        changed = true;
+                    }
+                }
+                if resp.drag_stopped() {
+                    commit = true;
+                }
+            }
+        }
+    }
+
     // Point handles. Deletion changes indices, so defer it past the loop.
     let mut delete_index: Option<usize> = None;
     let mut dragged_index: Option<usize> = None;
@@ -177,6 +247,34 @@ pub fn show(
 
     // --- curve + points on top of everything ---
     draw_tone_curve(&painter, rect, &working, Stroke::new(2.0, colors.grid_connection_line));
+
+    // Tangent knobs, under the anchors so an overlapping anchor stays legible.
+    // Drawn through the unclipped painter (knobs sit on the box edge).
+    if show_handles {
+        let n = working.points.len();
+        for i in 0..n {
+            let anchor = norm_to_screen(rect, working.points[i]);
+            let h = working.handles[i];
+            let has_in = working.closed || i > 0;
+            let has_out = working.closed || i + 1 < n;
+            for (sign, used) in [(1.0f32, has_out), (-1.0, has_in)] {
+                if !used {
+                    continue;
+                }
+                let knob = anchor + Vec2::new(h[0] * rect.width(), h[1] * rect.height()) * sign;
+                let hovered =
+                    ui.rect_contains_pointer(Rect::from_center_size(knob, Vec2::splat(KNOB_HIT_HALF * 2.0)));
+                let radius = if hovered { 4.0 } else { 2.75 };
+                ui.painter().line_segment([anchor, knob], Stroke::new(1.0, colors.text_faint));
+                ui.painter().circle(
+                    knob,
+                    radius,
+                    colors.panel_fill,
+                    Stroke::new(1.5, colors.node_header_selected_border),
+                );
+            }
+        }
+    }
 
     for (i, p) in working.points.iter().enumerate() {
         let center = norm_to_screen(rect, *p);
