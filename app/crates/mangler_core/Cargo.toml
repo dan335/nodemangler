@@ -26,9 +26,8 @@ rayon = "1"
 dashmap = "6"
 jxl-oxide = "0.12.6"
 psd = "0.3.5"
-# Pure-Rust HEIC/HEIF decode (our own library; switch to the crates.io
-# version once published).
-heif-oxide = { git = "https://github.com/dan335/heif-oxide", rev = "86d722e46da3292cc5d777aaa99198fdc516f0c5" }
+# Pure-Rust HEIC/HEIF decode (our own library: github.com/dan335/heif-oxide).
+heif-oxide = "0.1.0"
 sanitize-filename = "0.6"
 
 [dev-dependencies]
