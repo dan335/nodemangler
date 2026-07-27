@@ -17,9 +17,10 @@ Claude.
   Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YUV, YCbCr.
 - **Floating-point pipeline** — images stay 1–4 channel `f32` from input to output;
   conversion only happens at I/O.
-- **16 file formats** — PNG, JPEG, GIF, WebP, TIFF, TGA, BMP, ICO, PNM, QOI, Farbfeld,
-  Radiance HDR, OpenEXR, JPEG XL, PSD, and AVIF (JPEG XL and PSD are read-only, AVIF
-  write-only) and 8/16/32-bit-float output color formats.
+- **17 file formats** — PNG, JPEG, GIF, WebP, TIFF, TGA, BMP, ICO, PNM, QOI, Farbfeld,
+  Radiance HDR, OpenEXR, JPEG XL, PSD, HEIC/HEIF, and AVIF (JPEG XL, PSD, and
+  HEIC/HEIF — iPhone photos — are read-only, AVIF write-only) and 8/16/32-bit-float
+  output color formats.
 - **Subgraphs** — package an entire pipeline into a single reusable node.
 - **GUI and CLI** — build graphs visually in the desktop app or headless from the
   command line. Both share the same JSON graph format, and the CLI is designed to be

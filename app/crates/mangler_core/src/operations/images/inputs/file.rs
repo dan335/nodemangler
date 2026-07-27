@@ -4,8 +4,9 @@
 //! along with its width and height. Most formats decode through the image
 //! crate into a `DynamicImage`, converted to a `FloatImage` via
 //! [`FloatImage::from_dynamic`], preserving the original channel count
-//! (grayscale stays 1ch, RGB 3ch, etc.). JPEG XL (via jxl-oxide) and PSD
-//! (via psd, flattened composite) are decoded by dedicated pure-Rust crates.
+//! (grayscale stays 1ch, RGB 3ch, etc.). JPEG XL (via jxl-oxide), PSD
+//! (via psd, flattened composite) and HEIC/HEIF (via heif-oxide) are
+//! decoded by dedicated pure-Rust crates.
 
 use crate::float_image::FloatImage;
 use crate::get_id;
@@ -33,7 +34,7 @@ impl OpImageInputFile {
         NodeSettings {
             name: "from file".to_string(),
             description: "Grabs an image from a file.".to_string(),
-            help: "Decodes an image file from disk and converts it into a FloatImage, preserving the source channel count (grayscale stays 1ch, RGB 3ch, RGBA 4ch). The path input uses a picker filtered to the supported image extensions. JPEG XL files are decoded with jxl-oxide and PSD files with the psd crate (the flattened composite image; individual layers are not exposed).\n\nErrors if the file cannot be opened or the format is unsupported. Note that pixel values are interpreted as sRGB by default; connect a linear-RGB conversion downstream if the file holds linear data like a normal or height map.".to_string(),
+            help: "Decodes an image file from disk and converts it into a FloatImage, preserving the source channel count (grayscale stays 1ch, RGB 3ch, RGBA 4ch). The path input uses a picker filtered to the supported image extensions. JPEG XL files are decoded with jxl-oxide, PSD files with the psd crate (the flattened composite image; individual layers are not exposed), and HEIC/HEIF files (iPhone photos) with heif-oxide — grid tiles, rotation, and Display P3 color are handled; output is sRGB.\n\nErrors if the file cannot be opened or the format is unsupported. Note that pixel values are interpreted as sRGB by default; connect a linear-RGB conversion downstream if the file holds linear data like a normal or height map.".to_string(),
         }
     }
 
@@ -130,12 +131,27 @@ impl OpImageInputFile {
         FloatImage::from_raw(width, height, 4, data)
             .ok_or_else(|| "PSD decode produced a mismatched buffer size.".to_string())
     }
+
+    /// Decodes a HEIC/HEIF file with heif-oxide (pure Rust: HEIF container +
+    /// rust_h265 HEVC decode).
+    ///
+    /// iPhone-style grid images, irot/imir/clap orientation, and Display P3 →
+    /// sRGB conversion are handled by the library; output arrives as
+    /// interleaved 0..1 floats in the source's channel count (3ch RGB, or
+    /// 4ch when the file carries a decodable alpha auxiliary image).
+    pub(crate) fn decode_heif(path: &std::path::Path) -> Result<FloatImage, String> {
+        let decoded = heif_oxide::decode_file(path).map_err(|e| e.to_string())?;
+        let (width, height, channels) = (decoded.width, decoded.height, decoded.channels());
+        FloatImage::from_raw(width, height, channels, decoded.to_f32_interleaved())
+            .ok_or_else(|| "HEIC decode produced a mismatched buffer size.".to_string())
+    }
 }
 
 /// Decodes an image file at `path` into a [`FloatImage`], preserving its
-/// channel count. JPEG XL and PSD use dedicated decoders; everything else goes
-/// through the `image` crate. Shared by the image-from-file node and the GUI's
-/// library image preview so both accept exactly the same formats.
+/// channel count. JPEG XL, PSD and HEIC/HEIF use dedicated decoders;
+/// everything else goes through the `image` crate. Shared by the
+/// image-from-file node and the GUI's library image preview so both accept
+/// exactly the same formats.
 pub fn load_image_from_path(path: &std::path::Path) -> Result<FloatImage, String> {
     let extension = path
         .extension()
@@ -144,6 +160,7 @@ pub fn load_image_from_path(path: &std::path::Path) -> Result<FloatImage, String
     match extension.as_deref() {
         Some("jxl") => OpImageInputFile::decode_jxl(path),
         Some("psd") => OpImageInputFile::decode_psd(path),
+        Some("heic") | Some("heif") => OpImageInputFile::decode_heif(path),
         _ => ImageReader::open(path)
             .map_err(|e| e.to_string())
             .and_then(|reader| reader.decode().map_err(|e| e.to_string()))

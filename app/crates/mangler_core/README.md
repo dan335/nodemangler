@@ -102,9 +102,10 @@ enum and every dispatch `match` arm. The categories:
 | **images** | `inputs`, `outputs`, `transform`, `adjustments`, `blur`, `filter`, `fx`, `combine`, `channels`, `shapes`, `patterns`, `pbr`, `noise` (45 generators), `simulation` (physical-process generators: hydraulic erosion), `cast` |
 
 The image file ops read PNG, JPEG, GIF, WebP, TIFF, TGA, BMP, ICO, PNM, QOI, Farbfeld,
-Radiance HDR, and OpenEXR through the `image` crate, plus JPEG XL (`jxl-oxide`) and PSD
-(`psd`, flattened composite) through dedicated pure-Rust decoders. Writing supports the
-same `image`-crate formats plus AVIF (JPEG XL and PSD are read-only; AVIF is
+Radiance HDR, and OpenEXR through the `image` crate, plus JPEG XL (`jxl-oxide`), PSD
+(`psd`, flattened composite) and HEIC/HEIF (`heif-oxide` — iPhone photos: grid tiles,
+orientation, Display P3 → sRGB) through dedicated pure-Rust decoders. Writing supports
+the `image`-crate formats plus AVIF (JPEG XL, PSD and HEIC/HEIF are read-only; AVIF is
 write-only), with a shared quality input for JPEG/AVIF, a compression-level selector
 for PNG, and 8/16/32-bit-float color formats validated per container (e.g. JPEG is
 8-bit no-alpha, OpenEXR is float-only, HDR writes from `Rgb32F`).
@@ -162,6 +163,7 @@ is renamed or removed.
 - `image` — image load/save/processing
 - `jxl-oxide` — JPEG XL decoding (pure Rust)
 - `psd` — Photoshop PSD decoding (flattened composite)
+- `heif-oxide` — HEIC/HEIF decoding (pure Rust, our own library)
 - `tokio` — async runtime for graph execution
 - `serde` / `serde_json` — save/load serialization
 - `glam` — 2D vector math (node positions)

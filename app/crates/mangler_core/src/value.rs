@@ -605,9 +605,12 @@ impl ValueType {
                 }
 
                 // Formats decoded outside the image crate (see the image
-                // "from file" operation): JPEG XL via jxl-oxide, PSD via psd.
+                // "from file" operation): JPEG XL via jxl-oxide, PSD via psd,
+                // HEIC/HEIF (iPhone photos) via heif-oxide.
                 list.push("jxl".to_string());
                 list.push("psd".to_string());
+                list.push("heic".to_string());
+                list.push("heif".to_string());
 
                 list
             }

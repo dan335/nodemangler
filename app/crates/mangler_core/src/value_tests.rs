@@ -1443,9 +1443,11 @@ fn test_image_file_extensions_reflect_decodability() {
     // AVIF is write-only (decoding needs a C library), so the open dialog
     // must not offer it.
     assert!(!extensions.contains(&"avif".to_string()));
-    // JPEG XL and PSD decode through dedicated pure-Rust crates.
+    // JPEG XL, PSD and HEIC/HEIF decode through dedicated pure-Rust crates.
     assert!(extensions.contains(&"jxl".to_string()));
     assert!(extensions.contains(&"psd".to_string()));
+    assert!(extensions.contains(&"heic".to_string()));
+    assert!(extensions.contains(&"heif".to_string()));
     assert!(extensions.contains(&"hdr".to_string()));
 }
 
