@@ -1,0 +1,27 @@
+# NodeMangler
+
+> Free, open-source node-based image editor and procedural texture generator written in Rust. A Substance Designer / Material Maker alternative that is not built on a game engine. Desktop GUI plus a headless CLI that share the same JSON graph format, designed to be easy for scripts and LLMs to drive.
+
+Key facts (as of v1.0.7, 2026-07-27):
+
+- 429 nodes across 6 categories — Images (199), Numbers (104), Colors (53), Text (26), Curves (25), Logic (22) — plus subgraph nodes for packaging a pipeline into one reusable node.
+- 47 procedural noise generators (basic, fractal, cellular, structural, grunge, process) plus a simulation category (hydraulic erosion, river meandering, hillslope diffusion, and more).
+- PBR material authoring: normal / AO / curvature / bevel from height maps, a live 3D material preview, and channel-packed export presets for Godot, Unity, and Unreal.
+- 14 color spaces (sRGB, Linear RGB, HSL, HSV, HWB, Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YCbCr, YUV) and 17 blend modes.
+- 17 image file formats, including HEIC/HEIF read (iPhone photos) via a pure-Rust decoder, JPEG XL and PSD read, and AVIF / OpenEXR / Radiance HDR write.
+- Floating-point pipeline: images stay 1–4 channel f32 from input to output; conversion happens only at I/O.
+- Resolution-independent spatial parameters: design at 512px, render at 4K, same relative result.
+- Batch runs: sweep a folder of images through a graph, saving outputs per file.
+- Runs on Windows, macOS (Apple Silicon and Intel), and Linux. Licensed MIT OR Apache-2.0.
+
+Graphs are plain JSON files (`.mangler.json`). The CLI (`mangler_cli`) runs them headless: build a graph in the GUI, then automate it from scripts or agents.
+
+## Docs
+
+- [Full node reference and README](https://raw.githubusercontent.com/dan335/nodemangler/main/README.md): always-current list of every node, organized by category
+- [Source code](https://github.com/dan335/nodemangler): GitHub repository (Rust, Cargo workspace under `app/`)
+
+## Download
+
+- [Latest release](https://github.com/dan335/nodemangler/releases/latest): prebuilt binaries for Windows, macOS, and Linux
+- [itch.io page](https://dan335.itch.io/nodemangler): alternative download

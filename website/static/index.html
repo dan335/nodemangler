@@ -4,16 +4,66 @@
   <meta charset="utf-8">
   <title>NodeMangler — node-based image editor & texture generator</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="A node-based image editor and procedural texture generator.">
+  <meta name="description" content="Free, open-source node-based image editor and procedural texture generator written in Rust. A Substance Designer alternative with a desktop GUI and headless CLI.">
+
+  <!-- One page, one canonical URL (ServeDir also answers /index.html — this
+       tells crawlers both are the same document). -->
+  <link rel="canonical" href="https://nodemangler.com/">
 
   <!-- Open Graph preview (link unfurls in chat apps, social, etc). -->
   <meta property="og:title" content="NodeMangler — node-based image editor & texture generator">
-  <meta property="og:description" content="A node-based image editor and procedural texture generator.">
-  <meta property="og:image" content="https://raw.githubusercontent.com/dan335/nodemangler/main/screenshot.jpg">
+  <meta property="og:description" content="Free, open-source node-based image editor and procedural texture generator written in Rust. Desktop GUI plus headless CLI for Windows, macOS, and Linux.">
+  <meta property="og:url" content="https://nodemangler.com/">
+  <meta property="og:site_name" content="NodeMangler">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:image" content="https://nodemangler.com/screenshot.jpg">
+  <meta property="og:image:width" content="1121">
+  <meta property="og:image:height" content="753">
+  <meta property="og:image:alt" content="NodeMangler graph editor showing a node graph and image previews">
   <meta property="og:type" content="website">
 
+  <!-- X/Twitter card: summary_large_image so the screenshot renders as a
+       full-width card instead of a small square thumbnail. -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="NodeMangler — node-based image editor & texture generator">
+  <meta name="twitter:description" content="Free, open-source node-based image editor and procedural texture generator written in Rust. Desktop GUI plus headless CLI for Windows, macOS, and Linux.">
+  <meta name="twitter:image" content="https://nodemangler.com/screenshot.jpg">
+
+  <!-- Mobile browser chrome color, matching the page's light/dark bg vars. -->
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fbfaf8">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#14161a">
+
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+
+  <!-- Fonts load from the head (was a render-blocking @import chain inside
+       style.css); preconnects let the browser open both font origins while
+       the stylesheets are still downloading. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="/style.css">
+
+  <!-- Structured data for search engines: free desktop software. -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "NodeMangler",
+    "url": "https://nodemangler.com/",
+    "description": "Free, open-source node-based image editor and procedural texture generator written in Rust. A Substance Designer alternative with a desktop GUI and a headless CLI that share the same JSON graph format.",
+    "applicationCategory": ["MultimediaApplication", "DesignApplication"],
+    "operatingSystem": "Windows, macOS, Linux",
+    "softwareVersion": "1.0.7",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "license": "https://github.com/dan335/nodemangler/blob/main/LICENSE.md",
+    "screenshot": "https://nodemangler.com/screenshot.jpg",
+    "downloadUrl": "https://github.com/dan335/nodemangler/releases/latest",
+    "sameAs": [
+      "https://github.com/dan335/nodemangler",
+      "https://dan335.itch.io/nodemangler"
+    ]
+  }
+  </script>
 </head>
 <body>
   <div class="page">
@@ -39,7 +89,9 @@
 
       <!-- screenshot -->
       <div class="screenshot">
-        <img src="/screenshot.jpg" alt="NodeMangler graph editor" loading="lazy">
+        <!-- Explicit dimensions reserve layout space (no CLS); the hero image
+             is the LCP element, so it loads eagerly at high priority. -->
+        <img src="/screenshot.jpg" alt="NodeMangler graph editor" width="1121" height="753" fetchpriority="high">
       </div>
       <div class="screenshot-caption">the graph editor</div>
 
@@ -54,34 +106,34 @@
       <!-- what it does -->
       <div class="features">
         <div>
-          <div class="eyebrow">Procedural</div>
+          <h2 class="eyebrow">Procedural</h2>
           <p class="feature-desc">Noise, patterns, shapes, and generators for building textures from nothing — fractal, cellular, grunge, and simulation-based.</p>
         </div>
         <div>
-          <div class="eyebrow">PBR materials</div>
+          <h2 class="eyebrow">PBR materials</h2>
           <p class="feature-desc">Normal, AO, curvature, and bevel from height maps, a live 3D material preview, and channel-packed export presets for Godot, Unity, and Unreal.</p>
         </div>
         <div>
-          <div class="eyebrow">Image editing</div>
+          <h2 class="eyebrow">Image editing</h2>
           <p class="feature-desc">Adjustments, filters, morphology, blurs, and transforms in a floating-point pipeline — images stay f32 from input to output.</p>
         </div>
         <div>
-          <div class="eyebrow">Color</div>
+          <h2 class="eyebrow">Color</h2>
           <p class="feature-desc">Construct, convert, and analyze colors across every major color space, with harmony and blend-mode nodes.</p>
         </div>
         <div>
-          <div class="eyebrow">Resolution independent</div>
+          <h2 class="eyebrow">Resolution independent</h2>
           <p class="feature-desc">Spatial parameters scale with output size: design at 512px, render at 4K, same result — don't touch the numbers.</p>
         </div>
         <div>
-          <div class="eyebrow">Scriptable</div>
+          <h2 class="eyebrow">Scriptable</h2>
           <p class="feature-desc">The CLI runs graphs headless and is easy for scripts and LLMs to drive. Graphs round-trip freely between GUI and CLI, and pipelines package into reusable subgraph nodes.</p>
         </div>
       </div>
 
       <!-- download -->
       <div class="download-section">
-        <div class="eyebrow">Download</div>
+        <h2 class="eyebrow">Download</h2>
         <div class="download-actions">
           <a href="https://dan335.itch.io/nodemangler" class="btn btn-primary">Download on itch.io</a>
           <a href="https://github.com/dan335/nodemangler/releases/latest" class="btn btn-primary">Download on GitHub</a>

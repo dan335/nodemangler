@@ -10,9 +10,9 @@ Claude.
 
 ## Features
 
-- **387 nodes** across images, colors, numbers, logic, and text — see the full
-  [Node Reference](#node-reference) below.
-- **Procedural generation** — 45 noise generators.
+- **429 nodes** across images, colors, curves, numbers, logic, and text — see the
+  full [Node Reference](#node-reference) below.
+- **Procedural generation** — 47 noise generators.
 - **14 color spaces** with conversion between them: sRGB, Linear RGB, HSL, HSV, HWB,
   Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YUV, YCbCr.
 - **Floating-point pipeline** — images stay 1–4 channel `f32` from input to output;
@@ -51,7 +51,7 @@ internals.
 ## Repository structure
 
 - `app/` — Rust application (Cargo workspace)
-- `website/` — Website (future)
+- `website/` — Project website ([nodemangler.com](https://nodemangler.com))
 
 | Crate | Path | Purpose |
 |-------|------|---------|
@@ -64,7 +64,7 @@ Each crate README goes into detail on that component.
 ## Node Reference
 
 Every node in the graph editor's Add Node menu, by category and subcategory
-(343 operation nodes, plus subgraph nodes for composing whole pipelines).
+(429 operation nodes, plus subgraph nodes for composing whole pipelines).
 
 ### Numbers (104)
 
@@ -99,7 +99,7 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Modify:** Jitter, Mirror, Offset, Resample, Reverse, Round Corners, Simplify, Smooth, Transform, Trim
 - **Simulation:** Meander
 
-### Images (183)
+### Images (199)
 
 - **Input:** Constant, From Clipboard, From Color, From File, From Folder, From Gradient, From Text, From URL
 - **Output:** Material, To Clipboard, To File

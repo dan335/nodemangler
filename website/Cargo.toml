@@ -7,9 +7,11 @@ edition = "2024"
 # since this is a separate deployable (a tiny static-file web server) with no
 # code dependency on the mangler_core/mangler_cli/mangler_gui crates.
 [dependencies]
-# Minimal web server: axum for routing, tower-http for the static-file service.
+# Minimal web server: axum for routing, tower-http for the static-file service
+# plus response compression (gzip + brotli, negotiated via Accept-Encoding).
 axum = "0.8"
 # Only the tokio features the server actually needs (mirrors the trimmed
 # feature list used elsewhere in the repo, e.g. mangler_cli's Cargo.toml).
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
-tower-http = { version = "0.7", features = ["fs"] }
+# `fs` is also used directly (tokio::fs) to read the 404 page at runtime.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "fs"] }
+tower-http = { version = "0.7", features = ["fs", "compression-gzip", "compression-br"] }
