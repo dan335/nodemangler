@@ -475,6 +475,11 @@ operations! {
     OpImageAdjustmentDehaze(crate::operations::images::adjustments::dehaze::OpImageAdjustmentDehaze),
     OpImageAdjustmentColorLookup(crate::operations::images::adjustments::color_lookup::OpImageAdjustmentColorLookup),
     OpImageAdjustmentToneMap(crate::operations::images::adjustments::tone_map::OpImageAdjustmentToneMap),
+    OpImageAdjustmentShadowsHighlights(crate::operations::images::adjustments::shadows_highlights::OpImageAdjustmentShadowsHighlights),
+    OpImageAdjustmentHslMixer(crate::operations::images::adjustments::hsl_mixer::OpImageAdjustmentHslMixer),
+    OpImageAdjustmentColorGrade(crate::operations::images::adjustments::color_grade::OpImageAdjustmentColorGrade),
+    OpImageAdjustmentNegadoctor(crate::operations::images::adjustments::negadoctor::OpImageAdjustmentNegadoctor),
+    OpImageAdjustmentDefringe(crate::operations::images::adjustments::defringe::OpImageAdjustmentDefringe),
 
     // mask fx
     OpImageFxDropShadow(crate::operations::images::fx::drop_shadow::OpImageFxDropShadow),
@@ -1003,6 +1008,11 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentReplaceColor },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentFrequencySplit },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentToneMap },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentShadowsHighlights },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentHslMixer },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentColorGrade },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentNegadoctor },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentDefringe },
             ]},
             OperationListItem::Category { name: "blur".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentBlur },
