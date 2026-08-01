@@ -474,6 +474,7 @@ operations! {
     OpImageAdjustmentClarity(crate::operations::images::adjustments::clarity::OpImageAdjustmentClarity),
     OpImageAdjustmentDehaze(crate::operations::images::adjustments::dehaze::OpImageAdjustmentDehaze),
     OpImageAdjustmentColorLookup(crate::operations::images::adjustments::color_lookup::OpImageAdjustmentColorLookup),
+    OpImageAdjustmentToneMap(crate::operations::images::adjustments::tone_map::OpImageAdjustmentToneMap),
 
     // mask fx
     OpImageFxDropShadow(crate::operations::images::fx::drop_shadow::OpImageFxDropShadow),
@@ -1001,6 +1002,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentColorToMask },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentReplaceColor },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentFrequencySplit },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentToneMap },
             ]},
             OperationListItem::Category { name: "blur".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentBlur },

@@ -98,6 +98,8 @@ pub enum Value {
     ExportPreset(ExportPreset),
     /// A user-drawn 2D curve (open path or closed shape) in normalized coords.
     Curve(Curve),
+    /// A tone-mapping operator for compressing HDR values into displayable range.
+    ToneMapOperator(ToneMapOperator),
 }
 
 impl Default for Value {
@@ -143,6 +145,7 @@ impl Value {
             Value::TextHAlign(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::TextVAlign(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::ExportPreset(value) => Some(Thumbnail::Text(format!("{:?}", value))),
+            Value::ToneMapOperator(value) => Some(Thumbnail::Text(format!("{:?}", value))),
             Value::Curve(curve) => {
                 // Rasterize a small preview: fill closed shapes, stroke open
                 // paths. White line composited over a dark background.
@@ -195,6 +198,7 @@ impl Value {
             Value::TextHAlign(v) => std::mem::discriminant(v).hash(&mut h),
             Value::TextVAlign(v) => std::mem::discriminant(v).hash(&mut h),
             Value::ExportPreset(v) => std::mem::discriminant(v).hash(&mut h),
+            Value::ToneMapOperator(v) => std::mem::discriminant(v).hash(&mut h),
             Value::Curve(c) => c.fingerprint_into(&mut h),
         }
         h.finish()
@@ -225,6 +229,7 @@ impl Value {
             Value::TextHAlign(_) => ValueType::TextHAlign,
             Value::TextVAlign(_) => ValueType::TextVAlign,
             Value::ExportPreset(_) => ValueType::ExportPreset,
+            Value::ToneMapOperator(_) => ValueType::ToneMapOperator,
             Value::Curve(_) => ValueType::Curve,
         }
     }
@@ -420,6 +425,10 @@ impl Value {
                 ValueType::ExportPreset => Ok(Value::ExportPreset(*a)),
                 _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
             },
+            Value::ToneMapOperator(a) => match other {
+                ValueType::ToneMapOperator => Ok(Value::ToneMapOperator(*a)),
+                _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
+            },
             // Identity only — rasterizing a curve to an image needs parameters
             // (size, stroke, fill), so it's an explicit node, not an implicit
             // conversion.
@@ -511,6 +520,8 @@ pub enum ValueType {
     ExportPreset,
     /// User-drawn 2D curve type.
     Curve,
+    /// Tone-mapping operator type.
+    ToneMapOperator,
 }
 
 impl ValueType {
@@ -560,6 +571,7 @@ impl ValueType {
             ValueType::TextVAlign => Value::TextVAlign(TextVAlign::Middle),
             ValueType::ExportPreset => Value::ExportPreset(ExportPreset::Godot),
             ValueType::Curve => Value::Curve(Curve::default()),
+            ValueType::ToneMapOperator => Value::ToneMapOperator(ToneMapOperator::Reinhard),
         }
     }
 
@@ -585,6 +597,7 @@ impl ValueType {
             ValueType::TextVAlign => "text v-align".to_string(),
             ValueType::ExportPreset => "export preset".to_string(),
             ValueType::Curve => "curve".to_string(),
+            ValueType::ToneMapOperator => "tone map operator".to_string(),
         }
     }
 
@@ -682,6 +695,7 @@ impl ValueType {
             ValueType::TextVAlign => vec![ValueType::TextVAlign, ValueType::Trigger],
             ValueType::ExportPreset => vec![ValueType::ExportPreset, ValueType::Trigger],
             ValueType::Curve => vec![ValueType::Curve, ValueType::Trigger],
+            ValueType::ToneMapOperator => vec![ValueType::ToneMapOperator, ValueType::Trigger],
         }
     }
 
@@ -929,6 +943,35 @@ impl ExportPreset {
             ExportPreset::Unity,
             ExportPreset::Unreal,
             ExportPreset::Custom,
+        ]
+    }
+}
+
+/// Tone-mapping operator for compressing HDR values into displayable [0,1] range.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum ToneMapOperator {
+    /// Simple Reinhard: `v / (1 + v)`.
+    Reinhard,
+    /// Reinhard extended with a white point: highlights above the white point
+    /// stay clipped to 1.0 while the rest of the curve is Reinhard-shaped.
+    ReinhardExtended,
+    /// Narkowicz 2015 ACES filmic fit.
+    Aces,
+    /// Hable's Uncharted 2 filmic curve, normalized by the white point.
+    HableFilmic,
+    /// Heuristic log-domain sigmoid inspired by darktable's sigmoid module.
+    Sigmoid,
+}
+
+impl ToneMapOperator {
+    /// Returns all tone map operators in display order (matches dropdown ordering).
+    pub fn types() -> [ToneMapOperator; 5] {
+        [
+            ToneMapOperator::Reinhard,
+            ToneMapOperator::ReinhardExtended,
+            ToneMapOperator::Aces,
+            ToneMapOperator::HableFilmic,
+            ToneMapOperator::Sigmoid,
         ]
     }
 }

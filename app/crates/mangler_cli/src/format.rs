@@ -704,6 +704,7 @@ pub(crate) fn show_values_text() -> &'static str {
         "  texthalign:Left                       (run `show-types texthalign` for values)\n",
         "  textvalign:Top                        (run `show-types textvalign` for values)\n",
         "  exportpreset:Godot                    (run `show-types exportpreset` for values)\n",
+        "  tonemapoperator:Reinhard              (run `show-types tonemapoperator` for values)\n",
         "\n",
         "  Legacy JSON also works: {\"Decimal\":3.14}, {\"Color\":{\"r\":1,\"g\":0,\"b\":0,\"a\":1}}\n",
     )
@@ -729,6 +730,7 @@ pub(crate) fn format_show_values_json() -> serde_json::Value {
         "texthalign": {"typed": "texthalign:Left", "see": "show-types texthalign"},
         "textvalign": {"typed": "textvalign:Top", "see": "show-types textvalign"},
         "exportpreset": {"typed": "exportpreset:Godot", "see": "show-types exportpreset"},
+        "tonemapoperator": {"typed": "tonemapoperator:Reinhard", "see": "show-types tonemapoperator"},
     })
 }
 

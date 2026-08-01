@@ -96,6 +96,7 @@ pub(crate) fn parse_typed_value(s: &str) -> Result<Value, String> {
                 "texthalign" => "TextHAlign",
                 "textvalign" => "TextVAlign",
                 "exportpreset" => "ExportPreset",
+                "tonemapoperator" => "ToneMapOperator",
                 other => other,
             };
             match matched_variant {

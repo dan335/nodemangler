@@ -78,6 +78,7 @@ pub fn show(
         mangler_core::value::Value::TextHAlign(value) => TextViewer::show(ui, format!("{:?}", value)),
         mangler_core::value::Value::TextVAlign(value) => TextViewer::show(ui, format!("{:?}", value)),
         mangler_core::value::Value::ExportPreset(value) => TextViewer::show(ui, format!("{:?}", value)),
+        mangler_core::value::Value::ToneMapOperator(value) => TextViewer::show(ui, format!("{:?}", value)),
         // Painted read-only canvas: a letterboxed square (matching the overlay
         // editor's fallback rect, so a viewed-and-edited curve lines up) with a
         // themed background/border and the curve drawn on top.

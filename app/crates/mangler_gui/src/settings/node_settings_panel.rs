@@ -3,7 +3,7 @@ use epaint::{vec2, Color32};
 use image::imageops::FilterType;
 use mangler_core::{
     input::{Input, InputSettings},
-    value::{ColorFormat, EdgeMode, ExportPreset, Value, TextHAlign, TextVAlign},
+    value::{ColorFormat, EdgeMode, ExportPreset, ToneMapOperator, Value, TextHAlign, TextVAlign},
     curve::{Curve, CurveInterpolation},
     AddNodeType, ChangeNodeMessage,
     operations::Operation,
@@ -858,6 +858,7 @@ fn output_value(ui: &mut egui::Ui, value: &Value, theme: &Theme) {
         Value::TextHAlign(v) => mono(ui, format!("{:?}", v)),
         Value::TextVAlign(v) => mono(ui, format!("{:?}", v)),
         Value::ExportPreset(v) => mono(ui, format!("{:?}", v)),
+        Value::ToneMapOperator(v) => mono(ui, format!("{:?}", v)),
         Value::Curve(v) => mono(ui, curve_summary(v)),
     }
 }
@@ -1278,6 +1279,19 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                     |v| format!("{:?}", v),
                     input, input_index, node_id, tx_change_node,
                     |v| Value::ExportPreset(*v),
+                );
+            }
+        }
+        Value::ToneMapOperator(a) => {
+            if input.connection.is_some() {
+                ui.label(format!("{:?}", a));
+            } else {
+                let variants = ToneMapOperator::types();
+                show_enum_combo(
+                    ui, "operator", a, &variants,
+                    |v| format!("{:?}", v),
+                    input, input_index, node_id, tx_change_node,
+                    |v| Value::ToneMapOperator(*v),
                 );
             }
         }

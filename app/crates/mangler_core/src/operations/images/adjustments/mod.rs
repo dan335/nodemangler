@@ -37,6 +37,7 @@ pub mod replace_color;
 pub mod saturation;
 pub mod selective_color;
 pub mod threshold;
+pub mod tone_map;
 pub mod vibrance;
 pub mod vignette;
 pub mod white_balance;

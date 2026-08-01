@@ -259,6 +259,7 @@ pub(crate) fn value_type_name(vt: &ValueType) -> &'static str {
         ValueType::TextVAlign => "textvalign",
         ValueType::ExportPreset => "exportpreset",
         ValueType::Curve => "curve",
+        ValueType::ToneMapOperator => "tonemapoperator",
     }
 }
 
@@ -269,6 +270,7 @@ pub(crate) fn value_type_name(vt: &ValueType) -> &'static str {
 pub(crate) const ENUM_TYPE_NAMES: &[&str] = &[
     "blendmode", "edgemode", "colorspace", "filtertype", "imagetype",
     "colorformat", "worleydistance", "texthalign", "textvalign", "exportpreset",
+    "tonemapoperator",
 ];
 
 /// Legacy PascalCase aliases accepted as input prefixes (mapped to canonical names).
@@ -283,6 +285,7 @@ pub(crate) const ENUM_TYPE_ALIASES: &[(&str, &str)] = &[
     ("TextHAlign", "texthalign"),
     ("TextVAlign", "textvalign"),
     ("ExportPreset", "exportpreset"),
+    ("ToneMapOperator", "tonemapoperator"),
 ];
 
 /// Extract the serialized variant name from a `Value` that serializes as
@@ -311,7 +314,8 @@ pub(crate) fn enum_variants(type_name: &str) -> Option<Vec<String>> {
     use mangler_core::color::color_spaces::ColorSpace;
     use mangler_core::operations::images::noise::cellular::worley_distance::NoiseWorleyDistanceFunction;
     use mangler_core::value::{
-        filter_type_variants, ColorFormat, EdgeMode, ExportPreset, ImageType, TextHAlign, TextVAlign, Value,
+        filter_type_variants, ColorFormat, EdgeMode, ExportPreset, ImageType, TextHAlign, TextVAlign,
+        ToneMapOperator, Value,
     };
 
     match type_name.to_lowercase().as_str() {
@@ -327,6 +331,7 @@ pub(crate) fn enum_variants(type_name: &str) -> Option<Vec<String>> {
         "texthalign" => Some(TextHAlign::types().into_iter().map(|v| value_variant_name(&Value::TextHAlign(v))).collect()),
         "textvalign" => Some(TextVAlign::types().into_iter().map(|v| value_variant_name(&Value::TextVAlign(v))).collect()),
         "exportpreset" => Some(ExportPreset::types().into_iter().map(|v| value_variant_name(&Value::ExportPreset(v))).collect()),
+        "tonemapoperator" => Some(ToneMapOperator::types().into_iter().map(|v| value_variant_name(&Value::ToneMapOperator(v))).collect()),
         _ => None,
     }
 }
@@ -344,6 +349,7 @@ pub(crate) fn value_type_enum_name(vt: &ValueType) -> Option<&'static str> {
         ValueType::TextHAlign => Some("texthalign"),
         ValueType::TextVAlign => Some("textvalign"),
         ValueType::ExportPreset => Some("exportpreset"),
+        ValueType::ToneMapOperator => Some("tonemapoperator"),
         _ => None,
     }
 }

@@ -1165,6 +1165,15 @@ fn test_fingerprint_enum_variants() {
         Value::ExportPreset(ExportPreset::Godot).fingerprint(),
         Value::ExportPreset(ExportPreset::Unity).fingerprint()
     );
+
+    assert_eq!(
+        Value::ToneMapOperator(ToneMapOperator::Reinhard).fingerprint(),
+        Value::ToneMapOperator(ToneMapOperator::Reinhard).fingerprint()
+    );
+    assert_ne!(
+        Value::ToneMapOperator(ToneMapOperator::Reinhard).fingerprint(),
+        Value::ToneMapOperator(ToneMapOperator::Aces).fingerprint()
+    );
 }
 
 // valid_conversions tests
@@ -1214,6 +1223,7 @@ fn test_default_value_matches_type() {
         ValueType::ColorSpace,
         ValueType::BlendMode,
         ValueType::ExportPreset,
+        ValueType::ToneMapOperator,
     ];
     for vt in &all_types {
         let val = vt.default_value();
