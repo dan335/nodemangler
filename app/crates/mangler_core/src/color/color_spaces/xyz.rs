@@ -10,14 +10,14 @@ use glam::f32::Vec3;
 
 /// Linear RGB to XYZ conversion matrix (sRGB / Rec. 709 primaries, D65 illuminant).
 /// Coefficients are given as exact rational values for precision.
-static RGB2XYZ_MATRIX: Mat3 = Mat3::from_cols_array(&[
+pub(crate) static RGB2XYZ_MATRIX: Mat3 = Mat3::from_cols_array(&[
     (506752.0 / 1228815.0) as f32, (87098.0 / 409605.0) as f32, (7918.0 / 409605.0) as f32,
     (87881.0 / 245763.0) as f32, (175762.0 / 245763.0) as f32, (87881.0 / 737289.0) as f32,
     (12673.0 / 70218.0) as f32, (12673.0 / 175545.0) as f32, (1001167.0 / 1053270.0) as f32
 ]);
 
 /// XYZ to linear RGB conversion matrix (inverse of [`RGB2XYZ_MATRIX`]).
-static XYZ2RGB_MATRIX: Mat3 = Mat3::from_cols_array(&[
+pub(crate) static XYZ2RGB_MATRIX: Mat3 = Mat3::from_cols_array(&[
     (12831.0 / 3959.0) as f32, (-851781.0 / 878810.0) as f32, (705.0 / 12673.0) as f32,
     (-329.0 / 214.0) as f32, (1648619.0 / 878810.0) as f32, (-2585.0 / 12673.0) as f32,
     (-1974.0 / 3959.0) as f32, (36519.0 / 878810.0) as f32, (705.0 / 667.0) as f32

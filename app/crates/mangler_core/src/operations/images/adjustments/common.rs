@@ -59,3 +59,36 @@ fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
     if t < 2.0 / 3.0 { return p + (q - p) * (2.0 / 3.0 - t) * 6.0; }
     p
 }
+
+// Rec. 709 luma coefficients — same convention as `color::color_spaces::ycbcr`.
+const KR: f32 = 0.2126;
+const KG: f32 = 0.7152;
+const KB: f32 = 0.0722;
+
+/// Converts RGB (each 0..1) to full-range BT.709 YCbCr: luma `y` in 0..1,
+/// chroma `cb`/`cr` centered on 0 in -0.5..0.5. Matches
+/// [`crate::color::Color::to_ycbcr`], but for loose components so per-pixel
+/// image loops don't build a `Color` per pixel.
+#[inline]
+#[allow(dead_code)] // shared helper for adjustments that work in luma/chroma
+pub(crate) fn rgb_to_ycbcr(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
+    let y = KR * r + KG * g + KB * b;
+    let cb = (b - y) / (2.0 * (1.0 - KB));
+    let cr = (r - y) / (2.0 * (1.0 - KR));
+    (y, cb, cr)
+}
+
+/// Inverse of [`rgb_to_ycbcr`]: full-range BT.709 YCbCr back to RGB.
+#[inline]
+#[allow(dead_code)] // shared helper for adjustments that work in luma/chroma
+pub(crate) fn ycbcr_to_rgb(y: f32, cb: f32, cr: f32) -> (f32, f32, f32) {
+    let r = y + 2.0 * (1.0 - KR) * cr;
+    let b = y + 2.0 * (1.0 - KB) * cb;
+    // Recover green from the luma definition Y = KR*R + KG*G + KB*B.
+    let g = (y - KR * r - KB * b) / KG;
+    (r, g, b)
+}
+
+#[cfg(test)]
+#[path = "common_tests.rs"]
+mod tests;

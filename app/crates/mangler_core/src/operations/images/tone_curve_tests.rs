@@ -15,6 +15,42 @@ fn test_moved_curve_is_not_identity() {
 }
 
 #[test]
+fn test_flat_curve_decodes_to_half() {
+    let lut = tone_curve_lut(&flat_tone_curve(), TONE_LUT_SIZE);
+    for i in [0, 1, 100, TONE_LUT_SIZE / 3, TONE_LUT_SIZE / 2, TONE_LUT_SIZE - 2, TONE_LUT_SIZE - 1] {
+        assert!((lut[i] - 0.5).abs() < 1e-6, "bin {i}: got {}", lut[i]);
+    }
+    // and sampling anywhere in range gives 0.5
+    for x in [0.0f32, 0.25, 0.5, 0.75, 1.0] {
+        assert!((sample_lut(&lut, x) - 0.5).abs() < 1e-6, "x {x}");
+    }
+}
+
+#[test]
+fn test_optional_lut_vs_default() {
+    // Untouched default of any shape → None.
+    assert!(optional_lut_vs(&flat_tone_curve(), &flat_tone_curve()).is_none());
+    assert!(optional_lut_vs(&anti_diagonal_tone_curve(), &anti_diagonal_tone_curve()).is_none());
+    assert!(optional_lut_vs(&identity_tone_curve(), &identity_tone_curve()).is_none());
+
+    // A different (even if valid) curve than the stated default → Some.
+    assert!(optional_lut_vs(&identity_tone_curve(), &flat_tone_curve()).is_some());
+    let mut moved = flat_tone_curve();
+    moved.points[1] = [1.0, 0.2];
+    assert!(optional_lut_vs(&moved, &flat_tone_curve()).is_some());
+}
+
+#[test]
+fn test_optional_lut_matches_optional_lut_vs_identity() {
+    assert!(optional_lut(&identity_tone_curve()).is_none());
+    let mut moved = identity_tone_curve();
+    moved.points[0] = [0.0, 0.25];
+    let a = optional_lut(&moved).expect("modified curve builds a LUT");
+    let b = optional_lut_vs(&moved, &identity_tone_curve()).expect("same via the general form");
+    assert_eq!(a, b);
+}
+
+#[test]
 fn test_anti_diagonal_is_exact_descending_ramp() {
     let lut = tone_curve_lut(&anti_diagonal_tone_curve(), TONE_LUT_SIZE);
     for (i, v) in lut.iter().enumerate() {

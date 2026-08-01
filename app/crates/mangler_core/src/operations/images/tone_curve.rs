@@ -48,6 +48,19 @@ pub fn anti_diagonal_tone_curve() -> Curve {
     }
 }
 
+/// The flat tone curve: a horizontal line at `y = 0.5`, so every input decodes
+/// to output `0.5` (`1 - 0.5`). Useful as the untouched default for curves
+/// whose neutral state is "no signed change" — e.g. a bipolar adjustment where
+/// 0.5 means zero offset.
+pub fn flat_tone_curve() -> Curve {
+    Curve {
+        points: vec![[0.0, 0.5], [1.0, 0.5]],
+        closed: false,
+        interpolation: CurveInterpolation::Smooth,
+        handles: Vec::new(),
+    }
+}
+
 /// True when `curve` is exactly the untouched identity default. Remap-style
 /// consumers use this to skip the LUT entirely so default graphs stay
 /// bit-identical to the pre-curve behaviour.
@@ -58,7 +71,17 @@ pub fn is_identity(curve: &Curve) -> bool {
 /// Build the standard-size LUT for `curve`, or `None` when the curve is the
 /// identity default (the caller then skips remapping altogether).
 pub fn optional_lut(curve: &Curve) -> Option<Vec<f32>> {
-    if is_identity(curve) {
+    optional_lut_vs(curve, &identity_tone_curve())
+}
+
+/// Build the standard-size LUT for `curve`, or `None` when it's still exactly
+/// `default` — the generalization of [`optional_lut`] for inputs whose
+/// untouched default isn't the identity diagonal (e.g. [`flat_tone_curve`] or
+/// [`anti_diagonal_tone_curve`]). Same semantics as [`is_identity`]: exact
+/// equality, so an untouched input costs nothing and stays bit-identical to
+/// the pre-curve behaviour.
+pub fn optional_lut_vs(curve: &Curve, default: &Curve) -> Option<Vec<f32>> {
+    if curve == default {
         None
     } else {
         Some(tone_curve_lut(curve, TONE_LUT_SIZE))

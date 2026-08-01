@@ -160,6 +160,55 @@ async fn test_guided_output_range() {
 }
 
 #[tokio::test]
+async fn test_guided_filter_plane_matches_run() {
+    // The extracted per-plane core must reproduce the node's output exactly.
+    // Deterministic pseudo-random image so the comparison is reproducible.
+    let (w, h) = (16u32, 12u32);
+    let mut img = FloatImage::new(w, h, 4);
+    let mut state: u32 = 0x1234_5678;
+    let mut next = || {
+        state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        (state >> 8) as f32 / 16_777_216.0
+    };
+    for y in 0..h {
+        for x in 0..w {
+            img.put_pixel(x, y, &[next(), next(), next(), 1.0]);
+        }
+    }
+    let img = Arc::new(img);
+
+    let mut inputs = default_inputs(Value::Image { data: img.clone(), change_id: get_id() });
+    let result = OpImageAdjustmentGuided::run(&mut inputs).await.unwrap();
+    let Value::Image { data: out, .. } = &result.responses[0].value else {
+        panic!("Expected Image");
+    };
+
+    // Reproduce the node's own scaling of the authored radius.
+    let radius = crate::operations::scale_to_resolution(4.0, w, h).round().max(1.0) as usize;
+    let (wu, hu) = (w as usize, h as usize);
+    let n = wu * hu;
+
+    let mut planes: Vec<Vec<f32>> = vec![vec![0.0; n]; 4];
+    for (idx, pixel) in img.as_raw().chunks_exact(4).enumerate() {
+        for c in 0..4 {
+            planes[c][idx] = pixel[c];
+        }
+    }
+    let guide: Vec<f32> = (0..n)
+        .map(|i| 0.2126 * planes[0][i] + 0.7152 * planes[1][i] + 0.0722 * planes[2][i])
+        .collect();
+
+    for c in 0..3 {
+        let q = guided_filter_plane(&planes[c], &guide, wu, hu, radius, 0.01);
+        for i in 0..n {
+            let expected = q[i].clamp(0.0, 1.0);
+            let actual = out.as_raw()[i * 4 + c];
+            assert_eq!(actual, expected, "channel {c} pixel {i}");
+        }
+    }
+}
+
+#[tokio::test]
 async fn test_guided_preserves_alpha() {
     // alpha must pass through unchanged regardless of color filtering.
     let mut img = FloatImage::new(8, 8, 4);

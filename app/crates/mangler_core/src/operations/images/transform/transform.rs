@@ -163,7 +163,7 @@ impl OpImageTransformAffine {
 
 /// Remaps a source coordinate onto `[0, n)` per the edge rule, or returns
 /// `None` when it falls outside in fill mode (`0`).
-fn remap(i: i64, n: i64, edge: EdgeMode) -> Option<i64> {
+pub(crate) fn remap(i: i64, n: i64, edge: EdgeMode) -> Option<i64> {
     match edge {
         EdgeMode::Wrap => Some(((i % n) + n) % n),
         EdgeMode::Extend => Some(i.clamp(0, n - 1)),
@@ -179,7 +179,7 @@ fn remap(i: i64, n: i64, edge: EdgeMode) -> Option<i64> {
 
 /// Bilinear sample of `src` at `(sx, sy)` into `out`, applying `edge` handling
 /// to each of the four taps. Out-of-range taps in fill mode contribute `fill`.
-fn sample_bilinear(src: &FloatImage, sx: f32, sy: f32, edge: EdgeMode, fill: &[f32], out: &mut [f32]) {
+pub(crate) fn sample_bilinear(src: &FloatImage, sx: f32, sy: f32, edge: EdgeMode, fill: &[f32], out: &mut [f32]) {
     let w = src.width() as i64;
     let h = src.height() as i64;
     let x0f = sx.floor();
