@@ -70,7 +70,6 @@ const KB: f32 = 0.0722;
 /// [`crate::color::Color::to_ycbcr`], but for loose components so per-pixel
 /// image loops don't build a `Color` per pixel.
 #[inline]
-#[allow(dead_code)] // shared helper for adjustments that work in luma/chroma
 pub(crate) fn rgb_to_ycbcr(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let y = KR * r + KG * g + KB * b;
     let cb = (b - y) / (2.0 * (1.0 - KB));
@@ -80,7 +79,6 @@ pub(crate) fn rgb_to_ycbcr(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
 
 /// Inverse of [`rgb_to_ycbcr`]: full-range BT.709 YCbCr back to RGB.
 #[inline]
-#[allow(dead_code)] // shared helper for adjustments that work in luma/chroma
 pub(crate) fn ycbcr_to_rgb(y: f32, cb: f32, cr: f32) -> (f32, f32, f32) {
     let r = y + 2.0 * (1.0 - KR) * cr;
     let b = y + 2.0 * (1.0 - KB) * cb;

@@ -6,6 +6,8 @@ pub mod median;
 pub mod bilateral;
 /// Guided filter (He et al.): edge-preserving smoothing with cost independent of radius.
 pub mod guided;
+/// Separate luminance/chroma denoising in YCbCr with luma-guided chroma smoothing.
+pub mod denoise;
 /// Non-Local Means denoising (Buades, Coll & Morel 2005).
 pub mod non_local_means;
 /// Perona–Malik anisotropic diffusion: iterative edge-preserving smoothing.

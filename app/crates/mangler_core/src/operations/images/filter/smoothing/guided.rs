@@ -184,7 +184,6 @@ pub(crate) fn guide_stats(guide: &[f32], width: usize, height: usize, radius: us
 /// themselves.
 ///
 /// `eps` is the edge-preservation regularizer: smaller keeps edges sharper.
-#[allow(dead_code)] // shared entry point for other ops that guided-filter a plane
 pub(crate) fn guided_filter_plane(
     p: &[f32],
     guide: &[f32],
