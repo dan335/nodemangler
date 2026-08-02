@@ -213,6 +213,65 @@ pub struct Program {
     /// own engine), so no app-global state is needed. Used to render the node
     /// settings panel's batch progress bar for the matching node.
     batch_run: Option<(String, usize, usize)>,
+    /// The active watch on a "from folder" node, if any (see [`WatchRun`]).
+    /// Set from the engine's [`GraphChangedMessage::WatchStatus`] snapshots
+    /// and cleared on [`GraphChangedMessage::WatchStopped`]. Mutually
+    /// exclusive with `batch_run` — both drive the same node.
+    watch_run: Option<WatchRun>,
+}
+
+/// An active watch session: which "from folder" node the engine is watching,
+/// plus the last counters it reported. One per `Program`, since a `Program`
+/// owns a single engine.
+struct WatchRun {
+    /// The watched node.
+    node_id: String,
+    /// The latest whole-state snapshot from the engine.
+    status: node_settings_panel::WatchStatusView,
+}
+
+/// Status-message text for a watch that has ended.
+fn watch_stopped_message(
+    captured: usize,
+    skipped: usize,
+    reason: mangler_core::WatchStopReason,
+) -> String {
+    use mangler_core::WatchStopReason;
+    match reason {
+        WatchStopReason::Stopped => {
+            let mut text = format!("watch stopped: {captured} frames captured");
+            if skipped > 0 {
+                text.push_str(&format!(", {skipped} skipped"));
+            }
+            text
+        }
+        WatchStopReason::NodeDeleted => "watch stopped: node deleted".to_string(),
+        WatchStopReason::FolderChanged => "watch stopped: the folder input changed".to_string(),
+        WatchStopReason::Refused => {
+            "can't watch: check the node's folder, or stop the running batch".to_string()
+        }
+    }
+}
+
+/// Status-message text for a batch run that has ended. A cancel with
+/// `total == 0` means it never started, and `watching` separates the two
+/// causes of that: an empty/bad folder, or the watch that already owns the
+/// node (the engine refuses a batch while watching).
+fn batch_finished_message(
+    completed: usize,
+    total: usize,
+    cancelled: bool,
+    watching: bool,
+) -> String {
+    if !cancelled {
+        format!("batch finished: {completed} images")
+    } else if total > 0 {
+        format!("batch cancelled at {completed}/{total}")
+    } else if watching {
+        "can't run a batch while watching a folder".to_string()
+    } else {
+        "batch: no images found in the folder".to_string()
+    }
 }
 
 impl Program {
@@ -268,6 +327,7 @@ impl Program {
                 view_fit_seq: 0,
                 confirmed_save: None,
                 batch_run: None,
+                watch_run: None,
             }),
             Err(error) => Err(NewGraphError(format!(
                 "Error creating program. {:?}",
@@ -663,16 +723,49 @@ impl Program {
                     // The batch ended — clear the running state and surface a
                     // fading status message describing the outcome. A cancel
                     // with total == 0 means it never started (no images found /
-                    // bad folder / wrong node).
+                    // bad folder / wrong node / a watch already owns the node).
                     self.batch_run = None;
-                    let text = if !cancelled {
-                        format!("batch finished: {completed} images")
-                    } else if total > 0 {
-                        format!("batch cancelled at {completed}/{total}")
-                    } else {
-                        "batch: no images found in the folder".to_string()
-                    };
+                    let text = batch_finished_message(
+                        completed,
+                        total,
+                        cancelled,
+                        self.watch_run.is_some(),
+                    );
                     self.status_message = Some((text, std::time::Instant::now()));
+                }
+                GraphChangedMessage::WatchStatus {
+                    node_id,
+                    captured,
+                    pending,
+                    skipped,
+                    last_file,
+                    error,
+                } => {
+                    // A whole-state snapshot, so replace rather than merge —
+                    // that's what makes a dropped message self-heal.
+                    self.watch_run = Some(WatchRun {
+                        node_id,
+                        status: node_settings_panel::WatchStatusView {
+                            captured,
+                            pending,
+                            skipped,
+                            last_file,
+                            error,
+                        },
+                    });
+                }
+                GraphChangedMessage::WatchStopped {
+                    node_id: _,
+                    captured,
+                    skipped,
+                    reason,
+                } => {
+                    // Also covers a refused start, which never set the state.
+                    self.watch_run = None;
+                    self.status_message = Some((
+                        watch_stopped_message(captured, skipped, reason),
+                        std::time::Instant::now(),
+                    ));
                 }
             }
         }
@@ -995,6 +1088,19 @@ impl Program {
                     (id == editing_node_id).then_some((*c, *t))
                 });
 
+                // Same again for the watch: its counters only when *this* node
+                // is the watched one, plus the two flags the mutually
+                // exclusive start buttons need.
+                let watch = node_settings_panel::WatchPanelState {
+                    here: self
+                        .watch_run
+                        .as_ref()
+                        .filter(|w| &w.node_id == editing_node_id)
+                        .map(|w| w.status.clone()),
+                    watch_active: self.watch_run.is_some(),
+                    batch_active: self.batch_run.is_some(),
+                };
+
                 if let Some(node) = self.graph_editor.graph_nodes.get_mut(editing_node_id) {
                     // Seed file-dialog directories with this graph's own
                     // folder, so a "save/open file" input starts next to the
@@ -1010,6 +1116,7 @@ impl Program {
                             graph_dir,
                             upstream_image,
                             batch_progress,
+                            watch,
                         );
                     show_graph_settings = false;
 
@@ -1029,6 +1136,26 @@ impl Program {
                     if node_settings_response.cancel_batch {
                         if let Err(err) =
                             self.tx_change_graph.try_send(ChangeGraphMessage::CancelBatch)
+                        {
+                            println!("Error sending graph_message: {:?}", err);
+                        }
+                    }
+
+                    // Start watching this from-folder node's folder for newly
+                    // arriving photos (tethered shooting).
+                    if node_settings_response.start_watch {
+                        let message = ChangeGraphMessage::StartWatch {
+                            node_id: editing_node_id.clone(),
+                        };
+                        if let Err(err) = self.tx_change_graph.try_send(message) {
+                            println!("Error sending graph_message: {:?}", err);
+                        }
+                    }
+
+                    // Stop the watch after the in-flight frame.
+                    if node_settings_response.stop_watch {
+                        if let Err(err) =
+                            self.tx_change_graph.try_send(ChangeGraphMessage::StopWatch)
                         {
                             println!("Error sending graph_message: {:?}", err);
                         }

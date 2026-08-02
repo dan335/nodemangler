@@ -175,6 +175,68 @@ fn filter_type_display_name(ft: &FilterType) -> String {
         .unwrap_or_else(|| format!("{:?}", ft))
 }
 
+/// Live counters for an active watch, mirrored from the engine's
+/// `GraphChangedMessage::WatchStatus`. Those messages are whole-state
+/// snapshots, so this is always replaced wholesale, never merged.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct WatchStatusView {
+    /// Frames fully developed this session.
+    pub captured: usize,
+    /// Frames written and queued, but not yet developed.
+    pub pending: usize,
+    /// Frames abandoned (never finished writing, or wouldn't decode).
+    pub skipped: usize,
+    /// Stem of the most recent capture.
+    pub last_file: Option<String>,
+    /// Current folder problem. Set while the folder is unreadable; clears on
+    /// its own when it recovers, without ending the watch.
+    pub error: Option<String>,
+}
+
+/// What the batch and watch sections need to know about the two folder
+/// drivers. Both pin the same node's selection, so the engine refuses
+/// whichever is started second — the panel disables the button instead of
+/// letting the user discover that by being refused.
+pub struct WatchPanelState {
+    /// The live watch's counters, but only when it is watching *this* node.
+    pub here: Option<WatchStatusView>,
+    /// A watch is running, on this node or another.
+    pub watch_active: bool,
+    /// A batch run is in progress, on this node or another.
+    pub batch_active: bool,
+}
+
+/// The watch's primary line: `"12 captured · 2 pending"`, with the skipped
+/// count appended only when frames were actually skipped — a zero there is
+/// noise.
+fn watch_status_line(status: &WatchStatusView) -> String {
+    let mut line = format!("{} captured · {} pending", status.captured, status.pending);
+    if status.skipped > 0 {
+        line.push_str(&format!(" · {} skipped", status.skipped));
+    }
+    line
+}
+
+/// The watch's faint second line: which frame landed last, or the
+/// nothing-yet placeholder.
+fn watch_last_line(last_file: Option<&str>) -> String {
+    match last_file {
+        Some(stem) => format!("last: {}", stem),
+        None => "waiting for the first photo…".to_string(),
+    }
+}
+
+/// A batch can only start when nothing is watching — any watch blocks it, not
+/// just one on this node, since a `Program` runs a single engine.
+fn batch_button_enabled(watch_active: bool) -> bool {
+    !watch_active
+}
+
+/// ...and the same exclusion in the other direction.
+fn watch_button_enabled(batch_active: bool) -> bool {
+    !batch_active
+}
+
 pub fn show(
     ui: &mut egui::Ui,
     node: &mut GraphNode,
@@ -194,6 +256,10 @@ pub fn show(
     // one is running for a different from-folder node. Drives the batch
     // section's idle-vs-running rendering below.
     batch_progress: Option<(usize, usize)>,
+    // The watch session's state, also resolved by the caller: counters when
+    // this very node is being watched, plus the two flags that decide whether
+    // the batch and watch buttons are startable.
+    watch: WatchPanelState,
 ) -> NodeSettingsResponse {
     let mut node_settings_response = NodeSettingsResponse::new();
 
@@ -667,9 +733,16 @@ pub fn show(
                     Some(n) => format!("run batch ({} images)", n),
                     None => "run batch".to_string(),
                 };
-                // Full-width button so it reads as the section's primary action.
-                if ui
-                    .add_sized([ui.available_width(), 24.0], egui::Button::new(label))
+                // Full-width button so it reads as the section's primary
+                // action. Disabled while a watch owns the node — the engine
+                // would refuse the batch anyway.
+                let response = ui
+                    .add_enabled_ui(batch_button_enabled(watch.watch_active), |ui| {
+                        ui.add_sized([ui.available_width(), 24.0], egui::Button::new(label))
+                    })
+                    .inner;
+                if response
+                    .on_disabled_hover_text("stop watching to run a batch")
                     .clicked()
                 {
                     node_settings_response.run_batch = true;
@@ -697,6 +770,67 @@ pub fn show(
                 ui.add_space(4.0);
                 if ui.button("cancel").clicked() {
                     node_settings_response.cancel_batch = true;
+                }
+            }
+        }
+
+        // --- Watch folder section ---
+        // Tethered shooting: the same node and the same forced saving as a
+        // batch, but driven by arrivals rather than by a fixed listing, so it
+        // runs until stopped. `watch.here` is `Some` only while this node is
+        // the one being watched.
+        section_rule(ui, theme);
+        section_label(ui, "watch");
+
+        match &watch.here {
+            None => {
+                let response = ui
+                    .add_enabled_ui(watch_button_enabled(watch.batch_active), |ui| {
+                        ui.add_sized(
+                            [ui.available_width(), 24.0],
+                            egui::Button::new("watch folder"),
+                        )
+                    })
+                    .inner;
+                if response
+                    .on_disabled_hover_text("can't watch while a batch is running")
+                    .clicked()
+                {
+                    node_settings_response.start_watch = true;
+                }
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new(
+                        "develops and exports each new photo as it lands — point this at your camera software's download folder",
+                    )
+                    .color(theme.get().text_faint)
+                    .size(12.0),
+                );
+            }
+            Some(status) => {
+                // No progress bar — a watch has no total, only counters.
+                ui.label(watch_status_line(status));
+                ui.label(
+                    RichText::new(watch_last_line(status.last_file.as_deref()))
+                        .color(theme.get().text_faint)
+                        .size(12.0),
+                );
+                // An unreadable folder doesn't end the watch (mounts and
+                // cameras reconnect), so the error sits beside the live
+                // counters until it clears itself.
+                if let Some(error) = &status.error {
+                    ui.label(
+                        RichText::new(error)
+                            .color(theme.get().grid_connection_dot_error)
+                            .size(12.0),
+                    );
+                }
+                ui.add_space(4.0);
+                if ui
+                    .add_sized([ui.available_width(), 24.0], egui::Button::new("stop watching"))
+                    .clicked()
+                {
+                    node_settings_response.stop_watch = true;
                 }
             }
         }
@@ -1348,6 +1482,12 @@ pub struct NodeSettingsResponse {
     /// The batch "cancel" button was clicked this frame. The caller sends
     /// `ChangeGraphMessage::CancelBatch`.
     pub cancel_batch: bool,
+    /// The "watch folder" button was clicked this frame (only ever set for the
+    /// from-folder node). The caller sends `ChangeGraphMessage::StartWatch`.
+    pub start_watch: bool,
+    /// The "stop watching" button was clicked this frame. The caller sends
+    /// `ChangeGraphMessage::StopWatch`.
+    pub stop_watch: bool,
 }
 
 impl NodeSettingsResponse {
@@ -1356,6 +1496,12 @@ impl NodeSettingsResponse {
             deselect_node: false,
             run_batch: false,
             cancel_batch: false,
+            start_watch: false,
+            stop_watch: false,
         }
     }
 }
+
+#[cfg(test)]
+#[path = "node_settings_panel_tests.rs"]
+mod tests;

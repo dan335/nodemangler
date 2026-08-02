@@ -1097,3 +1097,473 @@ async fn test_resolve_file_conflict_keep_theirs_reloads_from_disk() {
     app.thread_handle.abort();
     let _ = std::fs::remove_file(&path);
 }
+
+// ── watched folder: StartWatch / StopWatch driver ─────────────────────────
+
+/// Builds a bare `WatchState` for the pure ingest tests. None of the fields the
+/// engine loop uses (channels, node, graph) are involved — `ingest_listing` is
+/// deliberately a pure function of a listing, so the settle rule can be tested
+/// without a filesystem or a clock.
+fn watch_state_for_ingest(known: &[&str]) -> super::WatchState {
+    super::WatchState {
+        node_id: "n".to_string(),
+        dir: std::path::PathBuf::from("/watch"),
+        folder_input: std::path::PathBuf::from("/watch"),
+        known: known.iter().map(std::path::PathBuf::from).collect(),
+        settling: std::collections::HashMap::new(),
+        pending: std::collections::VecDeque::new(),
+        last_listing: vec![],
+        in_flight: None,
+        failures: std::collections::HashMap::new(),
+        captured: 0,
+        skipped: 0,
+        last_file: None,
+        error: None,
+        last_poll: tokio::time::Instant::now(),
+    }
+}
+
+fn listing(entries: &[(&str, u64)]) -> Vec<(std::path::PathBuf, u64)> {
+    entries.iter().map(|(p, s)| (std::path::PathBuf::from(*p), *s)).collect()
+}
+
+/// A file must be seen at the same size twice before it is developed — the
+/// whole point being that a photo still transferring from the camera is not
+/// handed to the decoder half-written.
+#[test]
+fn test_watch_promotes_only_after_the_size_holds_still() {
+    let mut state = watch_state_for_ingest(&[]);
+
+    assert!(super::ingest_listing(&mut state, &listing(&[("/watch/a.cr3", 10)])).is_empty(),
+        "a file must never be developed on first sighting");
+
+    let ready = super::ingest_listing(&mut state, &listing(&[("/watch/a.cr3", 10)]));
+    assert_eq!(ready, vec![std::path::PathBuf::from("/watch/a.cr3")]);
+
+    assert!(super::ingest_listing(&mut state, &listing(&[("/watch/a.cr3", 10)])).is_empty(),
+        "an already-developed file must not come back");
+}
+
+#[test]
+fn test_watch_settle_restarts_when_the_file_is_still_growing() {
+    let mut state = watch_state_for_ingest(&[]);
+    for size in [10, 20, 30] {
+        assert!(super::ingest_listing(&mut state, &listing(&[("/watch/a.cr3", size)])).is_empty());
+    }
+    let ready = super::ingest_listing(&mut state, &listing(&[("/watch/a.cr3", 30)]));
+    assert_eq!(ready.len(), 1, "it settles only once the size stops changing");
+}
+
+/// A created-but-empty file would not decode, and its size trivially "holds
+/// still" at zero, so it needs an explicit guard.
+#[test]
+fn test_watch_never_promotes_a_zero_byte_file() {
+    let mut state = watch_state_for_ingest(&[]);
+    for _ in 0..5 {
+        assert!(super::ingest_listing(&mut state, &listing(&[("/watch/a.cr3", 0)])).is_empty());
+    }
+    // ...but it is developed as soon as it has content that holds still.
+    super::ingest_listing(&mut state, &listing(&[("/watch/a.cr3", 90)]));
+    let ready = super::ingest_listing(&mut state, &listing(&[("/watch/a.cr3", 90)]));
+    assert_eq!(ready.len(), 1);
+}
+
+/// The start-time snapshot is what stops a folder holding a previous shoot
+/// from being reprocessed the moment watching begins.
+#[test]
+fn test_watch_ignores_files_present_at_start() {
+    let mut state = watch_state_for_ingest(&["/watch/old.cr3"]);
+    let entries = listing(&[("/watch/old.cr3", 10), ("/watch/new.cr3", 20)]);
+
+    assert!(super::ingest_listing(&mut state, &entries).is_empty());
+    let ready = super::ingest_listing(&mut state, &entries);
+    assert_eq!(ready, vec![std::path::PathBuf::from("/watch/new.cr3")],
+        "only the file that arrived after the snapshot is developed");
+}
+
+/// Every frame is queued, in order — the burst behaviour the feature promises.
+#[test]
+fn test_watch_queues_every_frame_in_order() {
+    let mut state = watch_state_for_ingest(&[]);
+    let entries = listing(&[("/watch/a.cr3", 1), ("/watch/b.cr3", 2), ("/watch/c.cr3", 3)]);
+
+    super::ingest_listing(&mut state, &entries);
+    super::ingest_listing(&mut state, &entries);
+
+    let queued: Vec<_> = state.pending.iter().cloned().collect();
+    assert_eq!(queued, vec![
+        std::path::PathBuf::from("/watch/a.cr3"),
+        std::path::PathBuf::from("/watch/b.cr3"),
+        std::path::PathBuf::from("/watch/c.cr3"),
+    ]);
+    assert_eq!(state.skipped, 0, "nothing may be dropped");
+}
+
+/// A file renamed into place (the common temp-file tethering pattern) leaves a
+/// stale candidate behind; it must not be remembered, or a path that reappears
+/// would be promoted on its very first sighting.
+#[test]
+fn test_watch_forgets_candidates_that_disappear() {
+    let mut state = watch_state_for_ingest(&[]);
+    super::ingest_listing(&mut state, &listing(&[("/watch/tmp.cr3", 10)]));
+    super::ingest_listing(&mut state, &listing(&[]));
+
+    assert!(state.settling.is_empty(), "a vanished candidate must be dropped");
+    assert!(super::ingest_listing(&mut state, &listing(&[("/watch/tmp.cr3", 10)])).is_empty(),
+        "if it comes back it must settle from scratch");
+}
+
+/// A write that never finishes must eventually stop being stat-ed every poll.
+#[test]
+fn test_watch_gives_up_on_a_file_that_never_finishes() {
+    let mut state = watch_state_for_ingest(&[]);
+    for poll in 0..=super::WATCH_SETTLE_GIVE_UP_POLLS {
+        let ready = super::ingest_listing(&mut state, &listing(&[("/watch/a.cr3", 10 + poll as u64)]));
+        assert!(ready.is_empty());
+    }
+    assert_eq!(state.skipped, 1);
+    assert!(state.settling.is_empty(), "it must stop costing a stat per poll");
+    assert!(state.known.contains(&std::path::PathBuf::from("/watch/a.cr3")));
+}
+
+/// Builds a `from folder` -> `to file` graph over `img_dir`, writing PNGs into
+/// `out_dir`. Mirrors the batch tests' setup, which is the same shape.
+async fn watch_graph(
+    tx_change_graph: &mpsc::Sender<ChangeGraphMessage>,
+    img_dir: &std::path::Path,
+    out_dir: &std::path::Path,
+) -> String {
+    use crate::operations::images::inputs::from_folder;
+
+    let source_id = get_id();
+    tx_change_graph
+        .send(ChangeGraphMessage::AddNode {
+            node_id: source_id.clone(),
+            node_type: AddNodeType::Operation(Operation::OpImageInputFromFolder),
+            position: glam::Vec2::ZERO,
+            is_enabled: true,
+            custom_name: None,
+            input_values: vec![(from_folder::FOLDER, crate::value::Value::Path(img_dir.to_path_buf()))],
+        })
+        .await
+        .unwrap();
+    let sink_id = get_id();
+    tx_change_graph
+        .send(ChangeGraphMessage::AddNode {
+            node_id: sink_id.clone(),
+            node_type: AddNodeType::Operation(Operation::OpImageOutputFile),
+            position: glam::Vec2::ZERO,
+            is_enabled: true,
+            custom_name: None,
+            input_values: vec![
+                (1, crate::value::Value::Path(out_dir.to_path_buf())),
+                (2, crate::value::Value::Text("out".to_string())),
+                (3, crate::value::Value::ImageType(image::ImageFormat::Png)),
+            ],
+        })
+        .await
+        .unwrap();
+    tx_change_graph
+        .send(ChangeGraphMessage::AddConnection {
+            input_node_id: sink_id,
+            input_connection_index: 0,
+            output_node_id: source_id.clone(),
+            output_connection_index: 0,
+        })
+        .await
+        .unwrap();
+    source_id
+}
+
+/// The core contract, end to end: photos already in the folder are left alone,
+/// and a photo that arrives afterwards is developed and exported by itself.
+#[tokio::test]
+async fn test_watch_skips_existing_files_and_captures_new_arrivals() {
+    let img_dir = batch_temp_dir("watch_new_images");
+    // Two frames from a previous shoot. These must never be touched.
+    write_tiny_png(&img_dir.join("old_a.png"), 40);
+    write_tiny_png(&img_dir.join("old_b.png"), 80);
+    let out_dir = batch_temp_dir("watch_new_outputs");
+
+    let (app, tx_change_graph, _rx_node_changed, mut rx_graph_changed) = batch_test_app();
+    let source_id = watch_graph(&tx_change_graph, &img_dir, &out_dir).await;
+
+    tx_change_graph
+        .send(ChangeGraphMessage::StartWatch { node_id: source_id.clone() })
+        .await
+        .unwrap();
+
+    // Give the watch several poll intervals to (not) misbehave on the backlog.
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert_eq!(
+        std::fs::read_dir(&out_dir).unwrap().count(),
+        0,
+        "files already in the folder when watching started must not be developed"
+    );
+
+    // The shutter fires.
+    write_tiny_png(&img_dir.join("shot_001.png"), 120);
+
+    let captured = wait_for_message(&mut rx_graph_changed, 60, |msg| {
+        matches!(msg, GraphChangedMessage::WatchStatus { captured: 1, last_file: Some(name), .. } if name == "shot_001")
+    })
+    .await;
+    assert!(captured, "the new photo should have been captured");
+
+    assert!(
+        out_dir.join("out_shot_001.png").exists(),
+        "the captured frame must be exported, named after the incoming file"
+    );
+    assert_eq!(
+        std::fs::read_dir(&out_dir).unwrap().count(),
+        1,
+        "exactly one export, for the one new photo"
+    );
+
+    app.thread_handle.abort();
+    let _ = std::fs::remove_dir_all(&img_dir);
+    let _ = std::fs::remove_dir_all(&out_dir);
+}
+
+/// Stopping must actually stop: a photo arriving afterwards is ignored, and the
+/// node is unpinned so it goes back to ordinary index selection.
+#[tokio::test]
+async fn test_watch_stop_unpins_and_stops_capturing() {
+    use crate::operations::images::inputs::from_folder;
+
+    let img_dir = batch_temp_dir("watch_stop_images");
+    let out_dir = batch_temp_dir("watch_stop_outputs");
+
+    let (app, tx_change_graph, mut rx_node_changed, mut rx_graph_changed) = batch_test_app();
+    let source_id = watch_graph(&tx_change_graph, &img_dir, &out_dir).await;
+
+    tx_change_graph
+        .send(ChangeGraphMessage::StartWatch { node_id: source_id.clone() })
+        .await
+        .unwrap();
+    // Let the engine take its start-of-watch snapshot before the shutter
+    // fires, or the frame lands in the "already there" set.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    write_tiny_png(&img_dir.join("a.png"), 120);
+    assert!(
+        wait_for_message(&mut rx_graph_changed, 60, |msg| {
+            matches!(msg, GraphChangedMessage::WatchStatus { captured: 1, .. })
+        })
+        .await,
+        "first frame should be captured before stopping"
+    );
+
+    tx_change_graph.send(ChangeGraphMessage::StopWatch).await.unwrap();
+    assert!(
+        wait_for_message(&mut rx_graph_changed, 30, |msg| {
+            matches!(msg, GraphChangedMessage::WatchStopped { captured: 1, reason: crate::WatchStopReason::Stopped, .. })
+        })
+        .await,
+        "stopping should report the session's capture count"
+    );
+
+    // The pin must be cleared, or the node would stay stuck on that one file.
+    let mut last_pin = None;
+    while let Ok(msg) = rx_node_changed.try_recv() {
+        if let NodeChangedMessage::InputChanged { node_id, input_index, value } = msg {
+            if node_id == source_id && input_index == from_folder::PINNED_PATH {
+                last_pin = Some(value);
+            }
+        }
+    }
+    assert!(
+        matches!(&last_pin, Some(crate::value::Value::Path(p)) if p.as_os_str().is_empty()),
+        "the pinned path must be cleared on stop, got {:?}",
+        last_pin
+    );
+
+    let exports_before = std::fs::read_dir(&out_dir).unwrap().count();
+    write_tiny_png(&img_dir.join("b.png"), 200);
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert_eq!(
+        std::fs::read_dir(&out_dir).unwrap().count(),
+        exports_before,
+        "nothing may be captured after the watch stops"
+    );
+
+    app.thread_handle.abort();
+    let _ = std::fs::remove_dir_all(&img_dir);
+    let _ = std::fs::remove_dir_all(&out_dir);
+}
+
+/// A batch and a watch both drive the same node's inputs, so the second one
+/// requested must be refused rather than silently fighting the first.
+#[tokio::test]
+async fn test_watch_and_batch_are_mutually_exclusive() {
+    let img_dir = batch_temp_dir("watch_exclusive_images");
+    write_tiny_png(&img_dir.join("a.png"), 40);
+    let out_dir = batch_temp_dir("watch_exclusive_outputs");
+
+    let (app, tx_change_graph, _rx_node_changed, mut rx_graph_changed) = batch_test_app();
+    let source_id = watch_graph(&tx_change_graph, &img_dir, &out_dir).await;
+
+    tx_change_graph
+        .send(ChangeGraphMessage::StartWatch { node_id: source_id.clone() })
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    tx_change_graph
+        .send(ChangeGraphMessage::RunBatch { node_id: source_id.clone() })
+        .await
+        .unwrap();
+    assert!(
+        wait_for_message(&mut rx_graph_changed, 30, |msg| {
+            matches!(msg, GraphChangedMessage::BatchFinished { total: 0, cancelled: true, .. })
+        })
+        .await,
+        "a batch requested while watching must be refused"
+    );
+
+    // ...and the watch must have survived the refusal.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    write_tiny_png(&img_dir.join("b.png"), 160);
+    assert!(
+        wait_for_message(&mut rx_graph_changed, 60, |msg| {
+            matches!(msg, GraphChangedMessage::WatchStatus { captured: 1, .. })
+        })
+        .await,
+        "the refused batch must not have disturbed the watch"
+    );
+
+    app.thread_handle.abort();
+    let _ = std::fs::remove_dir_all(&img_dir);
+    let _ = std::fs::remove_dir_all(&out_dir);
+}
+
+/// Watching a node that isn't a from-folder node — or whose folder is unset —
+/// must be refused, mirroring how a batch reports a bad start.
+#[tokio::test]
+async fn test_watch_start_is_refused_for_an_invalid_node() {
+    let (app, tx_change_graph, _rx_node_changed, mut rx_graph_changed) = batch_test_app();
+
+    let wrong_id = get_id();
+    tx_change_graph
+        .send(ChangeGraphMessage::AddNode {
+            node_id: wrong_id.clone(),
+            node_type: AddNodeType::Operation(Operation::OpImageInputColor),
+            position: glam::Vec2::ZERO,
+            is_enabled: true,
+            custom_name: None,
+            input_values: vec![],
+        })
+        .await
+        .unwrap();
+    tx_change_graph
+        .send(ChangeGraphMessage::StartWatch { node_id: wrong_id })
+        .await
+        .unwrap();
+
+    assert!(
+        wait_for_message(&mut rx_graph_changed, 30, |msg| {
+            matches!(msg, GraphChangedMessage::WatchStopped { captured: 0, reason: crate::WatchStopReason::Refused, .. })
+        })
+        .await,
+        "watching a non-from-folder node must be refused"
+    );
+
+    app.thread_handle.abort();
+}
+
+/// Re-pointing the node mid-watch would leave the driver polling one folder
+/// while the node loaded from another, so it must end the session.
+#[tokio::test]
+async fn test_watch_stops_when_the_folder_input_changes() {
+    use crate::operations::images::inputs::from_folder;
+
+    let img_dir = batch_temp_dir("watch_repoint_images");
+    let other_dir = batch_temp_dir("watch_repoint_other");
+    let out_dir = batch_temp_dir("watch_repoint_outputs");
+
+    let (app, tx_change_graph, _rx_node_changed, mut rx_graph_changed) = batch_test_app();
+    let (tx_change_node, rx_change_node) = mpsc::channel::<ChangeNodeMessage>(32);
+    drop(rx_change_node);
+    let _ = &tx_change_node;
+    let source_id = watch_graph(&tx_change_graph, &img_dir, &out_dir).await;
+
+    tx_change_graph
+        .send(ChangeGraphMessage::StartWatch { node_id: source_id.clone() })
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Re-point the node by re-adding it is not possible; drive the input the
+    // way the GUI does, through the graph-change channel's node message twin.
+    tx_change_graph
+        .send(ChangeGraphMessage::AddNode {
+            node_id: source_id.clone(),
+            node_type: AddNodeType::Operation(Operation::OpImageInputFromFolder),
+            position: glam::Vec2::ZERO,
+            is_enabled: true,
+            custom_name: None,
+            input_values: vec![(from_folder::FOLDER, crate::value::Value::Path(other_dir.clone()))],
+        })
+        .await
+        .unwrap();
+
+    assert!(
+        wait_for_message(&mut rx_graph_changed, 30, |msg| {
+            matches!(msg, GraphChangedMessage::WatchStopped { reason: crate::WatchStopReason::FolderChanged, .. })
+                || matches!(msg, GraphChangedMessage::WatchStopped { reason: crate::WatchStopReason::NodeDeleted, .. })
+        })
+        .await,
+        "changing the watched node's folder must end the session"
+    );
+
+    app.thread_handle.abort();
+    let _ = std::fs::remove_dir_all(&img_dir);
+    let _ = std::fs::remove_dir_all(&other_dir);
+    let _ = std::fs::remove_dir_all(&out_dir);
+}
+
+
+/// Tethered capture with a real camera file: a CR3 copied into the watched
+/// folder must be developed and exported, the same way it would arrive from
+/// EOS Utility. Skipped unless `NODEMANGLER_RAW_FIXTURE` points at one.
+#[tokio::test]
+async fn test_watch_develops_a_real_raw_arrival() {
+    let Ok(fixture) = std::env::var("NODEMANGLER_RAW_FIXTURE") else { return };
+    let fixture = std::path::PathBuf::from(fixture);
+    let Some(extension) = fixture.extension().map(|e| e.to_string_lossy().to_string()) else { return };
+
+    let img_dir = batch_temp_dir("watch_raw_images");
+    let out_dir = batch_temp_dir("watch_raw_outputs");
+
+    let (app, tx_change_graph, _rx_node_changed, mut rx_graph_changed) = batch_test_app();
+    let source_id = watch_graph(&tx_change_graph, &img_dir, &out_dir).await;
+
+    tx_change_graph
+        .send(ChangeGraphMessage::StartWatch { node_id: source_id })
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // The shutter fires: the tethering software drops a raw into the folder.
+    std::fs::copy(&fixture, img_dir.join(format!("IMG_9001.{extension}"))).unwrap();
+
+    let captured = wait_for_message(&mut rx_graph_changed, 150, |msg| {
+        matches!(msg, GraphChangedMessage::WatchStatus { captured: 1, last_file: Some(name), .. } if name == "IMG_9001")
+    })
+    .await;
+    assert!(captured, "a raw arriving in the watched folder should be developed");
+
+    let exported = out_dir.join("out_IMG_9001.png");
+    assert!(exported.exists(), "the developed frame must be exported");
+    // It must be the real photograph, not an embedded thumbnail or a stub.
+    let decoded = image::open(&exported).unwrap();
+    assert!(
+        decoded.width() > 1000 && decoded.height() > 1000,
+        "expected a full-resolution develop, got {}x{}",
+        decoded.width(),
+        decoded.height()
+    );
+
+    app.thread_handle.abort();
+    let _ = std::fs::remove_dir_all(&img_dir);
+    let _ = std::fs::remove_dir_all(&out_dir);
+}

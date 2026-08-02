@@ -313,6 +313,49 @@ pub enum ChangeGraphMessage {
     /// pre-batch value and replies with [`GraphChangedMessage::BatchFinished`]
     /// (`cancelled: true`). A no-op when no batch is running.
     CancelBatch,
+    /// Start watching a "from folder" node's folder for newly arriving images
+    /// — the tethered-shooting mode: point the node at whatever directory the
+    /// camera software downloads into, and every photo that lands is developed
+    /// and exported.
+    ///
+    /// The folder's current contents are snapshotted as already-known, so
+    /// pointing at a directory that already holds a previous shoot does not
+    /// reprocess it. Each new file is armed only once it has finished being
+    /// written (see the size-settle rule in the engine), then drives one full
+    /// `graph.run()` with the node pinned to that exact file and
+    /// [`Graph::force_save_outputs`] on, exactly as a batch iteration does.
+    ///
+    /// Progress arrives as [`GraphChangedMessage::WatchStatus`] and the session
+    /// ends with [`GraphChangedMessage::WatchStopped`]. Refused — reported as
+    /// `WatchStopped { reason: WatchStopReason::Refused }` — when a batch or
+    /// another watch is already running, the node isn't a "from folder" node,
+    /// or its folder is unset, unresolvable or unreadable. Like
+    /// [`ChangeGraphMessage::RunBatch`], this is not itself an edit and does
+    /// not trigger the auto-save debounce.
+    StartWatch {
+        /// The "from folder" node whose folder is watched.
+        node_id: String,
+    },
+    /// Stop the active watch once the in-flight frame finishes. Any frames
+    /// still queued are discarded — they remain on disk, so a batch run can
+    /// sweep them up. Unlike [`ChangeGraphMessage::CancelBatch`] the node's
+    /// selection is deliberately left on the last captured frame. A no-op when
+    /// no watch is running.
+    StopWatch,
+}
+
+/// Why a watch session ended (see [`GraphChangedMessage::WatchStopped`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WatchStopReason {
+    /// The user stopped it.
+    Stopped,
+    /// The watched node was deleted from the graph.
+    NodeDeleted,
+    /// The node's `folder` input changed, so the driver would have been
+    /// polling one folder while the node loaded from another.
+    FolderChanged,
+    /// The watch could not start at all.
+    Refused,
 }
 
 /// Messages sent from the engine to the UI when graph structure changes.
@@ -456,6 +499,43 @@ pub enum GraphChangedMessage {
         /// `true` when the run ended early (user cancel, node deleted, or
         /// failure to start) rather than by finishing every file.
         cancelled: bool,
+    },
+    /// Snapshot of the active watch (see [`ChangeGraphMessage::StartWatch`]).
+    ///
+    /// Sent once on start and thereafter only when something the UI shows has
+    /// actually changed, so an idle watch is silent. It carries the whole state
+    /// rather than a delta specifically so that a message dropped by the
+    /// engine's `try_send` under load self-heals on the next change.
+    WatchStatus {
+        /// The "from folder" node being watched.
+        node_id: String,
+        /// Frames fully developed since the watch started.
+        captured: usize,
+        /// Frames that have finished writing and are queued, but not yet
+        /// developed — non-zero means the graph is behind the camera.
+        pending: usize,
+        /// Frames deliberately not developed: abandoned after repeatedly
+        /// failing to decode, or never finished being written.
+        skipped: usize,
+        /// File stem of the most recently captured frame, for the status line.
+        last_file: Option<String>,
+        /// The current problem, if the watch is in a bad state (folder
+        /// unreadable or unmounted, a file given up on). Clears back to `None`
+        /// when the folder becomes readable again — an unreachable folder does
+        /// not end the watch, since mounts and cameras reconnect.
+        error: Option<String>,
+    },
+    /// The watch session ended. Forced saving is off again, and the node's
+    /// selection has been unpinned but left showing the last captured frame.
+    WatchStopped {
+        /// The "from folder" node that was watched.
+        node_id: String,
+        /// Frames fully developed over the session.
+        captured: usize,
+        /// Frames deliberately not developed.
+        skipped: usize,
+        /// Why the session ended.
+        reason: WatchStopReason,
     },
 }
 

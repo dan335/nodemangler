@@ -30,9 +30,20 @@ fn write_tiny_png(path: &std::path::Path, gray: u8) {
 /// `run_context::current()` sees `None` — `folder` must therefore be
 /// absolute for the run to find anything) and returns the raw result.
 async fn run_from_folder(folder: PathBuf, index: i32) -> Result<OperationResponse, OperationError> {
+    run_from_folder_pinned(folder, index, PathBuf::new()).await
+}
+
+/// As [`run_from_folder`], but also sets the hidden `pinned path` input the
+/// engine's watch driver uses. An empty `pinned` is the normal, index-driven case.
+async fn run_from_folder_pinned(
+    folder: PathBuf,
+    index: i32,
+    pinned: PathBuf,
+) -> Result<OperationResponse, OperationError> {
     let mut inputs = vec![
         Input::new("folder".to_string(), Value::Path(folder), None, None),
         Input::new("index".to_string(), Value::Integer(index), None, None),
+        Input::new("pinned path".to_string(), Value::Path(pinned), None, None),
     ];
     OpImageInputFromFolder::run(&mut inputs).await
 }
@@ -43,7 +54,7 @@ async fn run_from_folder(folder: PathBuf, index: i32) -> Result<OperationRespons
 async fn test_from_folder_exact_settings() {
     let s = OpImageInputFromFolder::settings();
     assert_eq!(s.name, "from folder");
-    assert_eq!(OpImageInputFromFolder::create_inputs().len(), 2);
+    assert_eq!(OpImageInputFromFolder::create_inputs().len(), 3);
     assert_eq!(OpImageInputFromFolder::create_outputs().len(), 4);
 }
 
@@ -169,4 +180,86 @@ async fn test_from_folder_run_empty_folder_errors() {
 async fn test_from_folder_run_unset_folder_errors() {
     let result = run_from_folder(PathBuf::new(), 0).await;
     assert!(result.is_err(), "an unset (empty) folder should error");
+}
+
+// --- pinned path (watch driver) -----------------------------------------
+
+/// The pinned input must be hidden: it is set by the engine, not wired by hand,
+/// and a visible port would clutter every from-folder node in the graph.
+#[test]
+fn test_pinned_path_input_is_hidden_and_empty_by_default() {
+    let inputs = OpImageInputFromFolder::create_inputs();
+    assert!(inputs[PINNED_PATH].hide_in_graph, "pinned path must not show a connection dot");
+    let Value::Path(p) = &inputs[PINNED_PATH].value else { panic!("expected a path") };
+    assert!(p.as_os_str().is_empty(), "default must be empty so index selection stays the norm");
+}
+
+/// A pinned file wins over the index, and reports its own position.
+#[tokio::test]
+async fn test_pinned_path_overrides_the_index() {
+    let dir = temp_dir("pinned_overrides");
+    write_tiny_png(&dir.join("a.png"), 10);
+    write_tiny_png(&dir.join("b.png"), 20);
+    write_tiny_png(&dir.join("c.png"), 30);
+
+    // index says 0 (a.png), the pin says c.png — the pin must win.
+    let response = run_from_folder_pinned(dir.clone(), 0, dir.join("c.png")).await.unwrap();
+    let Value::Text(stem) = &response.responses[1].value else { panic!("expected text") };
+    assert_eq!(stem, "c");
+    let Value::Integer(used) = response.responses[2].value else { panic!("expected integer") };
+    assert_eq!(used, 2, "the reported index must be the pinned file's position");
+}
+
+/// The whole point of pinning: a file arriving *before* the pinned one in sort
+/// order must not shift the selection, which is exactly what an index would do.
+#[tokio::test]
+async fn test_pinned_path_survives_a_file_appearing_earlier_in_sort_order() {
+    let dir = temp_dir("pinned_shift");
+    write_tiny_png(&dir.join("m.png"), 10);
+    let target = dir.join("z.png");
+    write_tiny_png(&target, 20);
+
+    let before = run_from_folder_pinned(dir.clone(), 0, target.clone()).await.unwrap();
+    let Value::Integer(index_before) = before.responses[2].value else { panic!("expected integer") };
+    assert_eq!(index_before, 1);
+
+    // A new frame lands that sorts first; the pin must still resolve to z.png.
+    write_tiny_png(&dir.join("a.png"), 30);
+    let after = run_from_folder_pinned(dir.clone(), 0, target).await.unwrap();
+    let Value::Text(stem) = &after.responses[1].value else { panic!("expected text") };
+    assert_eq!(stem, "z", "the pinned file must not shift when the folder grows");
+    let Value::Integer(index_after) = after.responses[2].value else { panic!("expected integer") };
+    assert_eq!(index_after, 2, "its position moved, but it is still the same file");
+}
+
+/// An empty pin must be indistinguishable from the node as it behaved before
+/// the input existed.
+#[tokio::test]
+async fn test_empty_pinned_path_is_plain_index_selection() {
+    let dir = temp_dir("pinned_empty");
+    write_tiny_png(&dir.join("a.png"), 10);
+    write_tiny_png(&dir.join("b.png"), 20);
+
+    for index in [0, 1] {
+        let pinned = run_from_folder_pinned(dir.clone(), index, PathBuf::new()).await.unwrap();
+        let plain = run_from_folder(dir.clone(), index).await.unwrap();
+        let (Value::Text(a), Value::Text(b)) = (&pinned.responses[1].value, &plain.responses[1].value)
+            else { panic!("expected text") };
+        assert_eq!(a, b);
+    }
+}
+
+/// A pinned file that has been deleted must fail loudly against the pinned
+/// input rather than silently falling back to some other frame.
+#[tokio::test]
+async fn test_pinned_path_not_in_folder_errors() {
+    let dir = temp_dir("pinned_missing");
+    write_tiny_png(&dir.join("a.png"), 10);
+
+    let err = run_from_folder_pinned(dir.clone(), 0, dir.join("gone.png")).await.unwrap_err();
+    assert!(
+        err.input_errors.iter().any(|(index, _)| *index == PINNED_PATH),
+        "the error must be attributed to the pinned input, got {:?}",
+        err.input_errors
+    );
 }

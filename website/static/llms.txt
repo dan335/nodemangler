@@ -10,6 +10,7 @@ Key facts (as of v1.0.7, 2026-08-01):
 - PBR material authoring: normal / AO / curvature / bevel from height maps, a live 3D material preview, and channel-packed export presets for Godot, Unity, and Unreal.
 - 14 color spaces (sRGB, Linear RGB, HSL, HSV, HWB, Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YCbCr, YUV) and 17 blend modes.
 - 17 image file formats, including HEIC/HEIF read (iPhone photos) via a pure-Rust decoder, JPEG XL and PSD read, and AVIF / OpenEXR / Radiance HDR write.
+- Tethered shooting: watch a folder and automatically develop + export each new photo as it lands (the camera transport is handled by EOS Utility/gphoto2/Lightroom; NodeMangler watches the download folder).
 - Camera raw development (read-only) via rawler: Canon CR3/CR2, Nikon NEF, Sony ARW, Fujifilm RAF, Adobe DNG and ~20 more, with demosaic, as-shot or neutral white balance, sRGB or scene-linear output, and EXIF orientation applied.
 - Floating-point pipeline: images stay 1–4 channel f32 from input to output; conversion happens only at I/O.
 - Resolution-independent spatial parameters: design at 512px, render at 4K, same relative result.

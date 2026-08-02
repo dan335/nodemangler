@@ -25,6 +25,9 @@ Claude.
   Nikon NEF, Sony ARW, Fujifilm RAF, Adobe DNG and ~20 more, read-only via
   [rawler](https://github.com/dnglab/dnglab). Demosaic, white balance, colour
   matrix and orientation are applied for you.
+- **Tethered shooting** — point a from-folder node at the directory your camera
+  software downloads into, press watch, and every new photo is developed and
+  exported automatically as it lands.
 - **Subgraphs** — package an entire pipeline into a single reusable node.
 - **GUI and CLI** — build graphs visually in the desktop app or headless from the
   command line. Both share the same JSON graph format, and the CLI is designed to be

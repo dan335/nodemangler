@@ -3,7 +3,12 @@ use std::sync::{Arc, Mutex};
 
 use eframe::egui;
 
-use super::{collect_selected_nodes_to_delete, detect_copy_paste, poll_preview_slot, PreviewPoll};
+use mangler_core::WatchStopReason;
+
+use super::{
+    batch_finished_message, collect_selected_nodes_to_delete, detect_copy_paste, poll_preview_slot,
+    watch_stopped_message, PreviewPoll,
+};
 
 // === Event::Copy ===
 
@@ -207,4 +212,92 @@ fn preview_slot_last_click_wins_across_two_decodes() {
 
     *old.lock().unwrap() = Some("old".to_string());
     assert_eq!(poll_preview_slot(&old, current - 1, current), PreviewPoll::Stale);
+}
+
+// === watch_stopped_message ===
+
+#[test]
+fn watch_stopped_reports_the_capture_count() {
+    assert_eq!(
+        watch_stopped_message(12, 0, WatchStopReason::Stopped),
+        "watch stopped: 12 frames captured"
+    );
+}
+
+#[test]
+fn watch_stopped_appends_skipped_only_when_non_zero() {
+    assert_eq!(
+        watch_stopped_message(12, 3, WatchStopReason::Stopped),
+        "watch stopped: 12 frames captured, 3 skipped"
+    );
+}
+
+#[test]
+fn watch_stopped_by_node_deletion_ignores_counts() {
+    assert_eq!(
+        watch_stopped_message(5, 2, WatchStopReason::NodeDeleted),
+        "watch stopped: node deleted"
+    );
+}
+
+#[test]
+fn watch_stopped_by_folder_change() {
+    assert_eq!(
+        watch_stopped_message(0, 0, WatchStopReason::FolderChanged),
+        "watch stopped: the folder input changed"
+    );
+}
+
+#[test]
+fn watch_refused_explains_both_causes() {
+    assert_eq!(
+        watch_stopped_message(0, 0, WatchStopReason::Refused),
+        "can't watch: check the node's folder, or stop the running batch"
+    );
+}
+
+// === batch_finished_message ===
+
+#[test]
+fn batch_finished_reports_the_total_processed() {
+    assert_eq!(
+        batch_finished_message(8, 8, false, false),
+        "batch finished: 8 images"
+    );
+}
+
+#[test]
+fn batch_cancelled_mid_run_reports_progress() {
+    assert_eq!(
+        batch_finished_message(3, 8, true, false),
+        "batch cancelled at 3/8"
+    );
+}
+
+#[test]
+fn batch_refused_with_no_watch_blames_the_folder() {
+    assert_eq!(
+        batch_finished_message(0, 0, true, false),
+        "batch: no images found in the folder"
+    );
+}
+
+#[test]
+fn batch_refused_while_watching_blames_the_watch() {
+    // Same message shape from the engine; only the local watch state
+    // distinguishes "empty folder" from "the watch already owns this node".
+    assert_eq!(
+        batch_finished_message(0, 0, true, true),
+        "can't run a batch while watching a folder"
+    );
+}
+
+#[test]
+fn batch_completion_is_never_confused_by_an_active_watch() {
+    // A watch can't be running during a real batch, but a stale flag must not
+    // hijack a successful finish.
+    assert_eq!(
+        batch_finished_message(4, 4, false, true),
+        "batch finished: 4 images"
+    );
 }

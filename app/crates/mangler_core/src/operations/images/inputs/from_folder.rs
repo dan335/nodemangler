@@ -3,13 +3,14 @@
 //! Scans a folder for image files and outputs a single one, selected by an
 //! `index` input, plus that file's stem, the clamped index actually used, and
 //! the total number of image files found. Unlike [`super::file`], which loads
-//! one fixed path, this node is meant to be stepped through by an
-//! engine-side batch driver (not built here) that increments `index` and
-//! re-runs the graph once per file — the settings-panel "run batch" button
-//! mentioned in the help text below. The listing/ordering logic is exposed as
-//! standalone helpers ([`resolve_folder`], [`list_image_files`]) so that
-//! future batch driver can reuse the exact same file set and order this node
-//! uses, instead of re-deriving it and risking drift.
+//! one fixed path, this node is meant to be driven by the engine: the batch
+//! driver steps `index` and re-runs the graph once per file, and the watch
+//! driver pins each newly arrived photo for tethered shooting. Both are in
+//! `crate::app`, not here, and both are exposed as buttons in the node's
+//! settings panel. The listing/ordering logic lives in standalone helpers
+//! ([`resolve_folder`], [`list_image_files`]) so those drivers reuse the exact
+//! same file set and order this node uses, instead of re-deriving it and
+//! risking drift.
 
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -27,6 +28,9 @@ use super::file::load_image_from_path;
 pub const FOLDER: usize = 0;
 /// Input index of the `index` input (a positional contract with `run`).
 pub const INDEX: usize = 1;
+/// Input index of the hidden `pinned path` input (a positional contract with
+/// `run`). Empty means "select by index", which is the normal case.
+pub const PINNED_PATH: usize = 2;
 
 /// Operation that loads one image at a time from a folder of images, selected
 /// by a numeric index.
@@ -44,7 +48,7 @@ impl OpImageInputFromFolder {
         NodeSettings {
             name: "from folder".to_string(),
             description: "Loads one image at a time from a folder of images.".to_string(),
-            help: "Scans `folder` (non-recursively) for image files and outputs the one at `index`, along with its file name (without extension), the clamped index that was actually used, and the total number of image files found. Files are sorted case-insensitively by name for a deterministic order across runs and platforms.\n\n`index` is clamped into the available range: negative indices load the first file and indices past the end load the last file, so it's safe to sweep past either boundary. This node pairs with the \"run batch\" button in its settings panel, which re-runs the graph once per file by driving this index from 0 to count-1, force-saving any output nodes each time — output nodes name their files after each source image automatically, or wire this node's `file name` output into an output node's `file name` input for full control. If files are added to or removed from the folder mid-batch, the changing file list can cause some items to repeat or be skipped between runs.\n\nErrors if the folder is unset, cannot be read, or contains no recognized image files.".to_string(),
+            help: "Scans `folder` (non-recursively) for image files and outputs the one at `index`, along with its file name (without extension), the clamped index that was actually used, and the total number of image files found. Files are sorted case-insensitively by name for a deterministic order across runs and platforms.\n\n`index` is clamped into the available range: negative indices load the first file and indices past the end load the last file, so it's safe to sweep past either boundary. This node pairs with the \"run batch\" button in its settings panel, which re-runs the graph once per file by driving this index from 0 to count-1, force-saving any output nodes each time — output nodes name their files after each source image automatically, or wire this node's `file name` output into an output node's `file name` input for full control. If files are added to or removed from the folder mid-batch, the changing file list can cause some items to repeat or be skipped between runs.\n\nThe \"watch folder\" button in the same panel is the tethered-shooting mode: point this node at the folder your camera software downloads into, and every photo that lands from then on is developed and exported automatically. Photos already in the folder when you start watching are left alone, so you can point it at a directory holding a previous shoot. Frames are queued, so nothing is lost if you shoot faster than the graph can keep up, and each one is only loaded once it has finished being written.\n\nErrors if the folder is unset, cannot be read, or contains no recognized image files.".to_string(),
         }
     }
 
@@ -61,6 +65,13 @@ impl OpImageInputFromFolder {
                 .with_description("Folder containing the images to step through. Relative paths resolve against the graph's own folder."),
             Input::new("index".to_string(), Value::Integer(0), Some(InputSettings::DragValue { clamp: Some((0.0, 100000.0)), speed: None }), None)
                 .with_description("Which image to load (0-based), clamped to the number of files found. The batch run steps this automatically."),
+            // Set by the engine's watch driver, which must name an exact file
+            // rather than a position: while watching, the folder is growing
+            // under us, and an index resolved against one listing can point at
+            // a different file by the time this node builds its own.
+            Input::new("pinned path".to_string(), Value::Path(PathBuf::new()), None, None)
+                .hidden_in_graph()
+                .with_description("Load this exact file instead of the one at `index`. Set automatically while watching a folder; empty the rest of the time."),
         ]
     }
 
@@ -93,6 +104,7 @@ impl OpImageInputFromFolder {
         // convert inputs
         let folder_converted = convert_input(inputs, FOLDER, ValueType::Path, &mut input_errors);
         let index_converted = convert_input(inputs, INDEX, ValueType::Integer, &mut input_errors);
+        let pinned_converted = convert_input(inputs, PINNED_PATH, ValueType::Path, &mut input_errors);
 
         // return if error
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
@@ -100,6 +112,7 @@ impl OpImageInputFromFolder {
         // get values
         let Value::Path(folder) = folder_converted.unwrap() else { unreachable!() };
         let Value::Integer(index) = index_converted.unwrap() else { unreachable!() };
+        let Value::Path(pinned) = pinned_converted.unwrap() else { unreachable!() };
 
         // Resolve the folder against the graph's directory (None outside the
         // engine, e.g. a direct unit-test call — the folder must be absolute).
@@ -122,11 +135,24 @@ impl OpImageInputFromFolder {
             return Err(OperationError { input_errors: vec![(FOLDER, msg.clone())], node_error: None });
         }
 
-        // Clamp the requested index into the valid range: negative indices
-        // load the first file, indices past the end load the last file, so a
-        // batch driver can sweep past either boundary without special-casing.
         let count = files.len();
-        let clamped_index = index.clamp(0, count as i32 - 1) as usize;
+        // A pinned path names an exact file; resolve it inside *this* listing
+        // so a folder that grew since the driver chose it cannot shift the
+        // selection. Otherwise clamp the requested index into the valid range:
+        // negative indices load the first file, indices past the end load the
+        // last file, so a batch driver can sweep past either boundary without
+        // special-casing.
+        let clamped_index = if pinned.as_os_str().is_empty() {
+            index.clamp(0, count as i32 - 1) as usize
+        } else {
+            match files.iter().position(|file| file == &pinned) {
+                Some(found) => found,
+                None => {
+                    let msg = format!("pinned file is not in the folder: {}", pinned.display());
+                    return Err(OperationError { input_errors: vec![(PINNED_PATH, msg)], node_error: None });
+                }
+            }
+        };
         let path = &files[clamped_index];
 
         // Decoding is shared with the "from file" node and the GUI's library
