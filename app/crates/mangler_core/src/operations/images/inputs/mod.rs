@@ -8,6 +8,10 @@
 pub mod url;
 /// Loads an image from a file path on disk.
 pub mod file;
+/// Decodes camera RAW files (Canon CR3/CR2, Nikon NEF, Sony ARW, DNG, …) via rawler.
+pub mod raw_decode;
+/// Develops a camera RAW file with control over white balance, encoding and size.
+pub mod raw;
 /// Loads one image at a time from a folder of images, selected by index.
 pub mod from_folder;
 /// Grabs an image from the system clipboard.

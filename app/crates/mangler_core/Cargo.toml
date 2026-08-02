@@ -10,6 +10,12 @@ readme = "README.md"
 keywords = ["image-processing", "node-graph", "color", "noise", "graphics"]
 categories = ["multimedia::images", "graphics"]
 
+[features]
+default = ["raw"]
+# Camera RAW decode via rawler (LGPL-2.1). On by default; building with
+# --no-default-features yields a fully permissive dependency tree.
+raw = ["dep:rawler"]
+
 [dependencies]
 nanoid = "0.5"
 image = "0.25"
@@ -28,6 +34,9 @@ jxl-oxide = "0.12.6"
 psd = "0.3.5"
 # Pure-Rust HEIC/HEIF decode (our own library: github.com/dan335/heif-oxide).
 heif-oxide = "0.1.0"
+# Camera RAW decode (Canon CR3/CR2, Nikon NEF, Sony ARW, DNG, ...). Pure Rust.
+# Exact-pinned: rawler's API is explicitly not SemVer-stable.
+rawler = { version = "=0.7.2", optional = true }
 sanitize-filename = "0.6"
 
 [dev-dependencies]

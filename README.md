@@ -10,7 +10,7 @@ Claude.
 
 ## Features
 
-- **442 nodes** across images, colors, curves, numbers, logic, and text — see the
+- **443 nodes** across images, colors, curves, numbers, logic, and text — see the
   full [Node Reference](#node-reference) below.
 - **Procedural generation** — 47 noise generators.
 - **14 color spaces** with conversion between them: sRGB, Linear RGB, HSL, HSV, HWB,
@@ -21,6 +21,10 @@ Claude.
   Radiance HDR, OpenEXR, JPEG XL, PSD, HEIC/HEIF, and AVIF (JPEG XL, PSD, and
   HEIC/HEIF — iPhone photos — are read-only, AVIF write-only) and 8/16/32-bit-float
   output color formats.
+- **Camera raw** — develop photographs straight off the camera: Canon CR3/CR2,
+  Nikon NEF, Sony ARW, Fujifilm RAF, Adobe DNG and ~20 more, read-only via
+  [rawler](https://github.com/dnglab/dnglab). Demosaic, white balance, colour
+  matrix and orientation are applied for you.
 - **Subgraphs** — package an entire pipeline into a single reusable node.
 - **GUI and CLI** — build graphs visually in the desktop app or headless from the
   command line. Both share the same JSON graph format, and the CLI is designed to be
@@ -64,7 +68,7 @@ Each crate README goes into detail on that component.
 ## Node Reference
 
 Every node in the graph editor's Add Node menu, by category and subcategory
-(442 operation nodes, plus subgraph nodes for composing whole pipelines).
+(443 operation nodes, plus subgraph nodes for composing whole pipelines).
 
 ### Numbers (104)
 
@@ -99,9 +103,9 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Modify:** Jitter, Mirror, Offset, Resample, Reverse, Round Corners, Simplify, Smooth, Transform, Trim
 - **Simulation:** Meander
 
-### Images (212)
+### Images (213)
 
-- **Input:** Constant, From Clipboard, From Color, From File, From Folder, From Gradient, From Text, From URL
+- **Input:** Constant, From Clipboard, From Color, From File, From Folder, From Gradient, From Raw, From Text, From URL
 - **Output:** Material, To Clipboard, To File
 - **Adjustments:** Auto Levels, Black And White, Brighten, Clarity, Color Balance, Color Grade, Color Lookup, Color Match, Color To Mask, Contrast, Curves, Defringe, Dehaze, Dither, Exposure, Frequency Split, Gradient Dynamic, Gradient Map, Grain, Grayscale, Histogram Range, Histogram Scan, Histogram Select, HSL, HSL Mixer, Hue Shift, Invert, Levels, Negadoctor, Photo Filter, Posterize, Replace Color, Saturation, Selective Color, Shadows Highlights, Texture, Threshold, Tone Equalizer, Tone Map, Vibrance, Vignette, White Balance
 - **Blur:** Blur, Directional Blur, Non-Uniform Blur, Radial Blur, Slope Blur

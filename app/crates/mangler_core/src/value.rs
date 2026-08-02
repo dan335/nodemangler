@@ -524,6 +524,15 @@ pub enum ValueType {
     ToneMapOperator,
 }
 
+/// Extensions rawler claims to support that we deliberately do not advertise.
+///
+/// `raw` is maximally generic — it is used for arbitrary binary dumps,
+/// headerless framebuffers and audio — so listing it would make folder
+/// listings and the Libraries panel sweep up unrelated files. `crm` is Canon
+/// RAW Movie, a video container with no place in a still-image node.
+#[cfg(feature = "raw")]
+const RAW_EXTENSION_BLOCKLIST: &[&str] = &["raw", "crm"];
+
 impl ValueType {
     /// Return the standard set of value types available for general use.
     pub fn types() -> [ValueType; 11] {
@@ -625,9 +634,35 @@ impl ValueType {
                 list.push("heic".to_string());
                 list.push("heif".to_string());
 
+                // Camera RAW formats, decoded by rawler.
+                list.extend(Self::raw_file_extensions());
+
                 list
             }
             _ => vec![],
+        }
+    }
+
+    /// Camera RAW extensions routed to rawler (Canon CR3/CR2, Nikon NEF, Sony
+    /// ARW, DNG, …).
+    ///
+    /// Derived from rawler's own supported list so bumping the crate picks up
+    /// newly supported cameras automatically. Lowercase, and empty when the
+    /// `raw` feature is disabled — the pickers, folder listings and Libraries
+    /// scanner then simply never offer RAW files, the same way AVIF is absent
+    /// because it can be written but not read.
+    pub fn raw_file_extensions() -> Vec<String> {
+        #[cfg(feature = "raw")]
+        {
+            rawler::decoders::supported_extensions()
+                .iter()
+                .map(|ext| ext.to_ascii_lowercase())
+                .filter(|ext| !RAW_EXTENSION_BLOCKLIST.contains(&ext.as_str()))
+                .collect()
+        }
+        #[cfg(not(feature = "raw"))]
+        {
+            vec![]
         }
     }
 

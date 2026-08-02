@@ -104,7 +104,11 @@ enum and every dispatch `match` arm. The categories:
 The image file ops read PNG, JPEG, GIF, WebP, TIFF, TGA, BMP, ICO, PNM, QOI, Farbfeld,
 Radiance HDR, and OpenEXR through the `image` crate, plus JPEG XL (`jxl-oxide`), PSD
 (`psd`, flattened composite) and HEIC/HEIF (`heif-oxide` — iPhone photos: grid tiles,
-orientation, Display P3 → sRGB) through dedicated pure-Rust decoders. Writing supports
+orientation, Display P3 → sRGB) through dedicated pure-Rust decoders. Camera raw files
+(Canon CR3/CR2, Nikon NEF, Sony ARW, Fujifilm RAF, Adobe DNG and more) develop through
+`rawler` behind the default-on `raw` cargo feature — demosaic, white balance, colour
+matrix, sRGB gamma and EXIF orientation. Building with `--no-default-features` drops
+rawler and its LGPL-2.1 licence along with raw support. Writing supports
 the `image`-crate formats plus AVIF (JPEG XL, PSD and HEIC/HEIF are read-only; AVIF is
 write-only), with a shared quality input for JPEG/AVIF, a compression-level selector
 for PNG, and 8/16/32-bit-float color formats validated per container (e.g. JPEG is
@@ -164,6 +168,7 @@ is renamed or removed.
 - `jxl-oxide` — JPEG XL decoding (pure Rust)
 - `psd` — Photoshop PSD decoding (flattened composite)
 - `heif-oxide` — HEIC/HEIF decoding (pure Rust, our own library)
+- `rawler` — camera raw decoding (pure Rust; optional, LGPL-2.1, behind the default-on `raw` feature)
 - `tokio` — async runtime for graph execution
 - `serde` / `serde_json` — save/load serialization
 - `glam` — 2D vector math (node positions)

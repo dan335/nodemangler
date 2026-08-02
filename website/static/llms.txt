@@ -4,12 +4,13 @@
 
 Key facts (as of v1.0.7, 2026-08-01):
 
-- 442 nodes across 6 categories — Images (212), Numbers (104), Colors (53), Text (26), Curves (25), Logic (22) — plus subgraph nodes for packaging a pipeline into one reusable node.
+- 443 nodes across 6 categories — Images (213), Numbers (104), Colors (53), Text (26), Curves (25), Logic (22) — plus subgraph nodes for packaging a pipeline into one reusable node.
 - 47 procedural noise generators (basic, fractal, cellular, structural, grunge, process) plus a simulation category (hydraulic erosion, river meandering, hillslope diffusion, and more).
-- Photo-editing suite: shadow/highlight recovery, 8-band HSL mixer, tone mapping (Reinhard/ACES/filmic), 3-way color grading, tone equalizer, Kelvin white balance with Bradford adaptation, luma/chroma denoise, lens distortion + chromatic aberration correction, and per-channel curves.
+- Photo-editing suite: camera raw development (CR3/NEF/ARW/DNG), shadow/highlight recovery, 8-band HSL mixer, tone mapping (Reinhard/ACES/filmic), 3-way color grading, tone equalizer, Kelvin white balance with Bradford adaptation, luma/chroma denoise, lens distortion + chromatic aberration correction, and per-channel curves.
 - PBR material authoring: normal / AO / curvature / bevel from height maps, a live 3D material preview, and channel-packed export presets for Godot, Unity, and Unreal.
 - 14 color spaces (sRGB, Linear RGB, HSL, HSV, HWB, Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YCbCr, YUV) and 17 blend modes.
 - 17 image file formats, including HEIC/HEIF read (iPhone photos) via a pure-Rust decoder, JPEG XL and PSD read, and AVIF / OpenEXR / Radiance HDR write.
+- Camera raw development (read-only) via rawler: Canon CR3/CR2, Nikon NEF, Sony ARW, Fujifilm RAF, Adobe DNG and ~20 more, with demosaic, as-shot or neutral white balance, sRGB or scene-linear output, and EXIF orientation applied.
 - Floating-point pipeline: images stay 1–4 channel f32 from input to output; conversion happens only at I/O.
 - Resolution-independent spatial parameters: design at 512px, render at 4K, same relative result.
 - Batch runs: sweep a folder of images through a graph, saving outputs per file.

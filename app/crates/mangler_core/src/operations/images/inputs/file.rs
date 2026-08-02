@@ -5,8 +5,8 @@
 //! crate into a `DynamicImage`, converted to a `FloatImage` via
 //! [`FloatImage::from_dynamic`], preserving the original channel count
 //! (grayscale stays 1ch, RGB 3ch, etc.). JPEG XL (via jxl-oxide), PSD
-//! (via psd, flattened composite) and HEIC/HEIF (via heif-oxide) are
-//! decoded by dedicated pure-Rust crates.
+//! (via psd, flattened composite), HEIC/HEIF (via heif-oxide) and camera
+//! RAW (via rawler) are decoded by dedicated pure-Rust crates.
 
 use crate::float_image::FloatImage;
 use crate::get_id;
@@ -20,6 +20,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use image::ImageReader;
+#[cfg(feature = "raw")]
+use super::raw_decode;
 
 /// Operation that loads an image from a file on disk.
 ///
@@ -34,7 +36,7 @@ impl OpImageInputFile {
         NodeSettings {
             name: "from file".to_string(),
             description: "Grabs an image from a file.".to_string(),
-            help: "Decodes an image file from disk and converts it into a FloatImage, preserving the source channel count (grayscale stays 1ch, RGB 3ch, RGBA 4ch). The path input uses a picker filtered to the supported image extensions. JPEG XL files are decoded with jxl-oxide, PSD files with the psd crate (the flattened composite image; individual layers are not exposed), and HEIC/HEIF files (iPhone photos) with heif-oxide — grid tiles, rotation, and Display P3 color are handled; output is sRGB.\n\nErrors if the file cannot be opened or the format is unsupported. Note that pixel values are interpreted as sRGB by default; connect a linear-RGB conversion downstream if the file holds linear data like a normal or height map.".to_string(),
+            help: "Decodes an image file from disk and converts it into a FloatImage, preserving the source channel count (grayscale stays 1ch, RGB 3ch, RGBA 4ch). The path input uses a picker filtered to the supported image extensions. JPEG XL files are decoded with jxl-oxide, PSD files with the psd crate (the flattened composite image; individual layers are not exposed), and HEIC/HEIF files (iPhone photos) with heif-oxide — grid tiles, rotation, and Display P3 color are handled; output is sRGB.\n\nCamera RAW files (Canon CR3/CR2, Nikon NEF, Sony ARW, Fujifilm RAF, Adobe DNG and more) are developed with rawler using the camera's own as-shot settings — demosaic, white balance, colour matrix, sRGB gamma, and EXIF orientation — which looks roughly like the camera's own JPEG. Use the 'from raw' node instead when you want control over white balance, linear output, or resolution.\n\nErrors if the file cannot be opened or the format is unsupported. Note that pixel values are interpreted as sRGB by default; connect a linear-RGB conversion downstream if the file holds linear data like a normal or height map.".to_string(),
         }
     }
 
@@ -147,11 +149,26 @@ impl OpImageInputFile {
     }
 }
 
+/// The set of camera RAW extensions, built once.
+///
+/// `load_image_from_path` is called once per file when listing a folder, so
+/// this must not rebuild and allocate the list on every call.
+#[cfg(feature = "raw")]
+fn raw_extension_set() -> &'static std::collections::HashSet<String> {
+    static SET: std::sync::OnceLock<std::collections::HashSet<String>> = std::sync::OnceLock::new();
+    SET.get_or_init(|| ValueType::raw_file_extensions().into_iter().collect())
+}
+
 /// Decodes an image file at `path` into a [`FloatImage`], preserving its
-/// channel count. JPEG XL, PSD and HEIC/HEIF use dedicated decoders;
-/// everything else goes through the `image` crate. Shared by the
+/// channel count. JPEG XL, PSD, HEIC/HEIF and camera RAW use dedicated
+/// decoders; everything else goes through the `image` crate. Shared by the
 /// image-from-file node and the GUI's library image preview so both accept
 /// exactly the same formats.
+///
+/// RAW files develop with the camera's own settings
+/// ([`raw_decode::RawOptions::default`]). The `from raw` node exposes the
+/// development controls; this path deliberately takes none, so RAW works
+/// identically in folder batching, drag-and-drop and library previews.
 pub fn load_image_from_path(path: &std::path::Path) -> Result<FloatImage, String> {
     let extension = path
         .extension()
@@ -161,6 +178,13 @@ pub fn load_image_from_path(path: &std::path::Path) -> Result<FloatImage, String
         Some("jxl") => OpImageInputFile::decode_jxl(path),
         Some("psd") => OpImageInputFile::decode_psd(path),
         Some("heic") | Some("heif") => OpImageInputFile::decode_heif(path),
+        // Must precede the `image`-crate fallback: several RAW containers are
+        // TIFF-based, and `image` would happily decode a DNG's embedded
+        // preview thumbnail from IFD0 instead of the actual photograph.
+        #[cfg(feature = "raw")]
+        Some(ext) if raw_extension_set().contains(ext) => {
+            raw_decode::decode_raw(path, &raw_decode::RawOptions::default())
+        }
         _ => ImageReader::open(path)
             .map_err(|e| e.to_string())
             .and_then(|reader| reader.decode().map_err(|e| e.to_string()))

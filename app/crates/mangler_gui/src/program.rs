@@ -11,7 +11,7 @@ use crate::graph::clipboard::Clipboard;
 use mangler_core::float_image::FloatImage;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -50,6 +50,55 @@ struct LibraryImagePreview {
     path: PathBuf,
     /// The decoded image.
     image: Arc<FloatImage>,
+}
+
+/// A library image being decoded on a background `std::thread` (see
+/// [`Program::preview_library_image`]). Decoding is off the UI thread because
+/// it can take hundreds of milliseconds — a camera raw has to be developed, and
+/// large TIFF/EXR/HEIC files are no faster — which would otherwise freeze the
+/// window for the whole decode.
+struct PendingLibraryPreview {
+    /// The file being decoded. Keeps the Libraries row highlighted while the
+    /// decode is in flight and names the loading placeholder.
+    path: PathBuf,
+    /// Which request this is. Compared against
+    /// [`Program::library_preview_generation`] when the result lands so a
+    /// superseded decode is discarded instead of stealing the panel — the same
+    /// stale-check discipline `mangler_core::thumbnail_service` uses.
+    generation: u64,
+    /// Where the worker thread leaves its result. `None` until it finishes.
+    slot: Arc<Mutex<Option<Result<FloatImage, String>>>>,
+}
+
+/// Outcome of checking a background decode's slot.
+#[derive(Debug, PartialEq)]
+enum PreviewPoll<T> {
+    /// Still decoding — keep showing the loading placeholder.
+    Pending,
+    /// Finished and still the newest request.
+    Ready(T),
+    /// Finished, but a newer request superseded it: drop the result.
+    Stale,
+}
+
+/// Reads a finished background decode out of `slot`, discarding it when
+/// `generation` no longer matches `current_generation` (last click wins).
+///
+/// Generic over the payload so the stale/ready decision is testable without a
+/// decoded image or a live egui context.
+fn poll_preview_slot<T>(
+    slot: &Mutex<Option<T>>,
+    generation: u64,
+    current_generation: u64,
+) -> PreviewPoll<T> {
+    let Some(result) = slot.lock().unwrap().take() else {
+        return PreviewPoll::Pending;
+    };
+    if generation == current_generation {
+        PreviewPoll::Ready(result)
+    } else {
+        PreviewPoll::Stale
+    }
 }
 
 pub struct Program {
@@ -134,6 +183,19 @@ pub struct Program {
     /// [`LibraryImagePreview`]). When set, it takes precedence over
     /// `viewing_node_id_index` in the 2D preview.
     library_image_preview: Option<LibraryImagePreview>,
+    /// A library image whose decode is still running (see
+    /// [`PendingLibraryPreview`]). While set, the 2D panel draws a loading
+    /// placeholder and the Libraries row for `path` stays highlighted.
+    pending_library_preview: Option<PendingLibraryPreview>,
+    /// Monotonic id handed to each background decode. Bumped by every request
+    /// *and* by `view_node`, so anything already in flight when the user picks
+    /// something else lands stale and is thrown away.
+    library_preview_generation: u64,
+    /// Failure from a background decode, held until `App` drains it into the
+    /// Libraries panel's error line ([`Self::take_library_preview_error`]).
+    /// Errors can no longer be returned from the request call — they only
+    /// exist a frame or more later.
+    library_preview_error: Option<String>,
     /// Fit-request counter for the 2D preview panels: bumped whenever the user
     /// explicitly picks something to view (right-clicks a node output, clicks
     /// a library image), so each per-leaf [`ImageViewer`] centers and frames
@@ -200,6 +262,9 @@ impl Program {
                 graph_name_buffer: String::new(),
                 pending_open_graphs: Vec::new(),
                 library_image_preview: None,
+                pending_library_preview: None,
+                library_preview_generation: 0,
+                library_preview_error: None,
                 view_fit_seq: 0,
                 confirmed_save: None,
                 batch_run: None,
@@ -331,6 +396,10 @@ impl Program {
         if let Some(pos) = ctx.pointer_latest_pos() {
             self.pointer_position = pos;
         }
+
+        // Also polled per 2D panel; doing it here as well means a decode still
+        // completes (and a failure still reports) with no 2D panel open.
+        self.poll_library_preview();
 
         // Copy/paste keyboard shortcuts.
         {
@@ -1160,6 +1229,10 @@ impl Program {
     }
 
     fn show_preview_2d_panel(&mut self, ui: &mut egui::Ui, leaf_id: LeafId, theme: &Theme) {
+        // Before the borrow below, so a decode that landed this frame is drawn
+        // now rather than a frame late.
+        self.poll_library_preview();
+
         // Destructure so the per-leaf viewer and the graph nodes can be
         // borrowed simultaneously (disjoint fields). `tx_change_node` is taken
         // here too so the curve overlay can commit without re-borrowing `self`.
@@ -1168,6 +1241,7 @@ impl Program {
             graph_editor,
             viewing_node_id_index,
             library_image_preview,
+            pending_library_preview,
             view_fit_seq,
             editing_node_id,
             tx_change_node,
@@ -1227,6 +1301,16 @@ impl Program {
                 theme,
             );
             displayed_dims = Some((preview.image.width() as f32, preview.image.height() as f32));
+        } else if let Some(pending) = pending_library_preview.as_ref() {
+            // Decoding on a background thread: hold the panel with a named
+            // placeholder rather than falling back to a node output the user
+            // didn't just ask for.
+            let name = pending
+                .path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| pending.path.to_string_lossy().into_owned());
+            preview_2d::show_loading(ui, &name, theme);
         } else if let Some((viewing_node_id, output_index)) = viewing_node_id_index.as_ref() {
             if let Some(graph_node) = graph_editor.graph_nodes.get(viewing_node_id) {
                 preview_2d::show(ui, viewer, graph_node, *output_index, view_fit_seq, theme);
@@ -1771,8 +1855,12 @@ impl Program {
     pub fn view_node(&mut self, node_id: String, output_index: usize) {
         self.viewing_node_id_index = Some((node_id, output_index));
         // A node output replaces any library image being previewed (last
-        // action wins), so the 2D panel shows what the user just picked.
+        // action wins), so the 2D panel shows what the user just picked. The
+        // generation bump also disowns a decode still in flight, which would
+        // otherwise land later and take the panel back.
         self.library_image_preview = None;
+        self.pending_library_preview = None;
+        self.library_preview_generation += 1;
         // Explicitly viewing an output always re-frames it, even if it was
         // already showing (the user may have panned/zoomed it out of view).
         self.view_fit_seq += 1;
@@ -1785,30 +1873,106 @@ impl Program {
         //self.needs_to_save = true;
     }
 
-    /// Loads `path` off the graph and shows it in the 2D preview panel. Takes
-    /// precedence over any node output being viewed (`view_node` clears this in
-    /// the other direction). Returns an error string if decoding fails.
-    pub fn preview_library_image(&mut self, path: PathBuf) -> Result<(), String> {
-        let image = mangler_core::operations::images::inputs::file::load_image_from_path(&path)?;
-        self.library_image_preview = Some(LibraryImagePreview {
-            path,
-            image: Arc::new(image),
+    /// Requests `path` be loaded off the graph and shown in the 2D preview
+    /// panel. Takes precedence over any node output being viewed (`view_node`
+    /// clears this in the other direction).
+    ///
+    /// Returns immediately: the decode runs on a plain `std::thread` (same
+    /// choice as `library_scanner` — no coupling to the tokio runtime) and the
+    /// result is picked up by [`Self::poll_library_preview`]. Decode failures
+    /// surface through [`Self::take_library_preview_error`] rather than a
+    /// return value, since they aren't known yet when this returns.
+    pub fn preview_library_image(&mut self, path: PathBuf, ctx: &egui::Context) {
+        self.library_preview_generation += 1;
+        let generation = self.library_preview_generation;
+
+        // Drop what's on screen now: the placeholder should replace the old
+        // image immediately, not leave the previous click's picture up while a
+        // different file loads.
+        self.library_image_preview = None;
+
+        let slot: Arc<Mutex<Option<Result<FloatImage, String>>>> = Arc::new(Mutex::new(None));
+        let thread_slot = Arc::clone(&slot);
+        let thread_path = path.clone();
+        let thread_ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let result =
+                mangler_core::operations::images::inputs::file::load_image_from_path(&thread_path);
+            *thread_slot.lock().unwrap() = Some(result);
+            // Wake the UI: an idle app repaints on demand, so without this the
+            // result could sit in the slot until the next unrelated event.
+            thread_ctx.request_repaint();
         });
-        // Re-frame even when re-clicking the image already being previewed.
-        self.view_fit_seq += 1;
+
+        self.pending_library_preview = Some(PendingLibraryPreview {
+            path,
+            generation,
+            slot,
+        });
+
         if !self.has_preview_2d_panel {
             self.status_message = Some((
                 "no 2D preview panel open — use a panel's corner menu to add one".to_string(),
                 std::time::Instant::now(),
             ));
         }
-        Ok(())
     }
 
-    /// The library image currently shown in the 2D preview, if any. Used by the
-    /// Libraries panel to highlight the matching row.
+    /// Promotes a finished background decode into the shown preview. Cheap and
+    /// idempotent, so it's safe to call once per frame and again per 2D panel.
+    ///
+    /// A result whose generation is stale is dropped without touching the
+    /// panel; a failure is stashed for `App` to surface.
+    fn poll_library_preview(&mut self) {
+        let Some(pending) = self.pending_library_preview.as_ref() else {
+            return;
+        };
+        match poll_preview_slot(
+            &pending.slot,
+            pending.generation,
+            self.library_preview_generation,
+        ) {
+            PreviewPoll::Pending => return,
+            PreviewPoll::Ready(Ok(image)) => {
+                let path = pending.path.clone();
+                self.library_image_preview = Some(LibraryImagePreview {
+                    path,
+                    image: Arc::new(image),
+                });
+                // Fit when the image actually appears — fitting at click time
+                // would frame whatever the panel was showing before.
+                self.view_fit_seq += 1;
+            }
+            PreviewPoll::Ready(Err(err)) => {
+                self.library_preview_error = Some(format!(
+                    "couldn't preview '{}': {}",
+                    pending.path.display(),
+                    err
+                ));
+            }
+            PreviewPoll::Stale => {}
+        }
+        self.pending_library_preview = None;
+    }
+
+    /// Takes the last background decode failure, if any, so `App` can show it
+    /// on the Libraries panel's error line.
+    pub fn take_library_preview_error(&mut self) -> Option<String> {
+        self.library_preview_error.take()
+    }
+
+    /// The library image shown in (or on its way to) the 2D preview, if any.
+    /// Used by the Libraries panel to highlight the matching row — a file being
+    /// decoded counts, so the row stays lit for the whole wait.
     pub fn previewed_library_image(&self) -> Option<&Path> {
-        self.library_image_preview.as_ref().map(|p| p.path.as_path())
+        self.library_image_preview
+            .as_ref()
+            .map(|p| p.path.as_path())
+            .or_else(|| {
+                self.pending_library_preview
+                    .as_ref()
+                    .map(|p| p.path.as_path())
+            })
     }
 
     /// Binds all of the 3D preview panels' material channels from a material

@@ -197,6 +197,14 @@ impl eframe::App for App {
                         );
                         panel_actions.extend(resp);
                     }
+
+                    // Background library-image decodes report failures a frame
+                    // or more after the click. Drained after rendering, which
+                    // is where finished decodes are promoted, so an error
+                    // raised this frame still reaches the panel this frame.
+                    if let Some(err) = program.take_library_preview_error() {
+                        self.libraries.set_error(err);
+                    }
                 }
             }
 
@@ -232,7 +240,7 @@ impl eframe::App for App {
             // Deferred to here (like panel_actions) because they mutate the
             // programs map, which was borrowed during rendering.
             for action in self.libraries.take_pending() {
-                self.handle_library_action(action);
+                self.handle_library_action(action, &ctx);
             }
 
             // Reap secondary windows whose titlebar close button was pressed.
@@ -621,7 +629,11 @@ impl App {
     /// Perform a request raised by the Libraries panel. These need the
     /// programs map (open/create a graph = a new tab; a rename must
     /// re-target open tabs), which the panel itself can't touch.
-    fn handle_library_action(&mut self, action: crate::libraries::libraries_state::LibraryAction) {
+    fn handle_library_action(
+        &mut self,
+        action: crate::libraries::libraries_state::LibraryAction,
+        ctx: &egui::Context,
+    ) {
         use crate::libraries::libraries_state::LibraryAction;
         match action {
             LibraryAction::OpenGraph { path } => self.open_or_focus(path),
@@ -679,15 +691,11 @@ impl App {
             }
             LibraryAction::PreviewImage { path } => {
                 // Show the image in the focused program's 2D preview panel.
+                // The decode runs in the background, so a failure comes back
+                // later via `take_library_preview_error` instead of here.
                 if let Some(id) = self.current_program.clone() {
                     if let Some(program) = self.programs.get_mut(&id) {
-                        if let Err(err) = program.preview_library_image(path.clone()) {
-                            self.libraries.set_error(format!(
-                                "couldn't preview '{}': {}",
-                                path.display(),
-                                err
-                            ));
-                        }
+                        program.preview_library_image(path, ctx);
                     }
                 }
             }

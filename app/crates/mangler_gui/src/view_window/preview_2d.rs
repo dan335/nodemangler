@@ -116,6 +116,20 @@ pub fn show_empty(ui: &mut egui::Ui, theme: &Theme) {
     );
 }
 
+/// Placeholder shown while a library image is decoded on a background thread.
+/// Names the file so a slow decode (camera raw, large TIFF/EXR) reads as "this
+/// click is working" rather than "nothing happened".
+pub fn show_loading(ui: &mut egui::Ui, file_name: &str, theme: &Theme) {
+    let rect = ui.max_rect();
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        format!("loading {}…", file_name),
+        egui::FontId::proportional(13.0),
+        theme.get().text_faint,
+    );
+}
+
 /// Placeholder shown when a curve is being edited but nothing (or a non-image)
 /// is viewed to trace over. Frames the fallback canvas the overlay will draw
 /// on (same rect), so the [0,1]² drawing area is visible.
