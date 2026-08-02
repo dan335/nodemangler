@@ -2,10 +2,11 @@
 
 > Free, open-source node-based image editor and procedural texture generator written in Rust. A Substance Designer / Material Maker alternative that is not built on a game engine. Desktop GUI plus a headless CLI that share the same JSON graph format, designed to be easy for scripts and LLMs to drive.
 
-Key facts (as of v1.0.7, 2026-07-27):
+Key facts (as of v1.0.7, 2026-08-01):
 
-- 429 nodes across 6 categories — Images (199), Numbers (104), Colors (53), Text (26), Curves (25), Logic (22) — plus subgraph nodes for packaging a pipeline into one reusable node.
+- 442 nodes across 6 categories — Images (212), Numbers (104), Colors (53), Text (26), Curves (25), Logic (22) — plus subgraph nodes for packaging a pipeline into one reusable node.
 - 47 procedural noise generators (basic, fractal, cellular, structural, grunge, process) plus a simulation category (hydraulic erosion, river meandering, hillslope diffusion, and more).
+- Photo-editing suite: shadow/highlight recovery, 8-band HSL mixer, tone mapping (Reinhard/ACES/filmic), 3-way color grading, tone equalizer, Kelvin white balance with Bradford adaptation, luma/chroma denoise, lens distortion + chromatic aberration correction, and per-channel curves.
 - PBR material authoring: normal / AO / curvature / bevel from height maps, a live 3D material preview, and channel-packed export presets for Godot, Unity, and Unreal.
 - 14 color spaces (sRGB, Linear RGB, HSL, HSV, HWB, Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YCbCr, YUV) and 17 blend modes.
 - 17 image file formats, including HEIC/HEIF read (iPhone photos) via a pure-Rust decoder, JPEG XL and PSD read, and AVIF / OpenEXR / Radiance HDR write.

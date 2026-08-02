@@ -10,7 +10,7 @@ Claude.
 
 ## Features
 
-- **429 nodes** across images, colors, curves, numbers, logic, and text — see the
+- **442 nodes** across images, colors, curves, numbers, logic, and text — see the
   full [Node Reference](#node-reference) below.
 - **Procedural generation** — 47 noise generators.
 - **14 color spaces** with conversion between them: sRGB, Linear RGB, HSL, HSV, HWB,
