@@ -25,12 +25,33 @@ fn image_input(w: u32, h: u32) -> Value {
     Value::Image { data: test_image(w, h), change_id: get_id() }
 }
 
-/// Build the op's inputs with a specific curve value.
+/// Build the op's inputs with a specific master curve; the per-channel curves
+/// stay at their identity defaults.
 fn inputs_with_curve(image: Value, curve: Curve) -> Vec<Input> {
+    inputs_with_curves(image, curve, identity(), identity(), identity())
+}
+
+/// The untouched default for every curve input.
+fn identity() -> Curve {
+    OpImageAdjustmentCurves::identity_curve()
+}
+
+/// Build the op's inputs with explicit master / red / green / blue curves.
+fn inputs_with_curves(image: Value, master: Curve, red: Curve, green: Curve, blue: Curve) -> Vec<Input> {
     vec![
         Input::new("image".to_string(), image, None, None),
-        Input::new("curve".to_string(), Value::Curve(curve), None, None),
+        Input::new("curve".to_string(), Value::Curve(master), None, None),
+        Input::new("red".to_string(), Value::Curve(red), None, None),
+        Input::new("green".to_string(), Value::Curve(green), None, None),
+        Input::new("blue".to_string(), Value::Curve(blue), None, None),
     ]
+}
+
+/// Runs the op and unwraps the image output.
+async fn run_image(mut inputs: Vec<Input>) -> Arc<FloatImage> {
+    let result = OpImageAdjustmentCurves::run(&mut inputs).await.unwrap();
+    let Value::Image { data, .. } = &result.responses[0].value else { panic!("expected image") };
+    data.clone()
 }
 
 /// A linear tone curve through the given (input, output) anchor points.
@@ -48,7 +69,10 @@ fn linear_tone_curve(anchors: &[(f32, f32)]) -> Curve {
 async fn test_curves_settings() {
     let s = OpImageAdjustmentCurves::settings();
     assert_eq!(s.name, "curves");
-    assert_eq!(OpImageAdjustmentCurves::create_inputs().len(), 2);
+    assert_eq!(OpImageAdjustmentCurves::create_inputs().len(), 5);
+    // image, master curve, then red/green/blue in that order.
+    let names: Vec<String> = OpImageAdjustmentCurves::create_inputs().iter().map(|i| i.name.clone()).collect();
+    assert_eq!(names, vec!["image", "curve", "red", "green", "blue"]);
     assert_eq!(OpImageAdjustmentCurves::create_outputs().len(), 1);
 }
 
@@ -189,6 +213,129 @@ async fn test_curves_preserves_dimensions() {
         }
         other => panic!("Expected Image, got {:?}", other),
     }
+}
+
+#[tokio::test]
+async fn test_curves_all_identity_passes_the_buffer_through() {
+    // Every curve untouched: the node must hand back the original Arc so a
+    // freshly dropped node costs nothing downstream.
+    let src = test_image(4, 4);
+    let inputs = inputs_with_curves(
+        Value::Image { data: src.clone(), change_id: get_id() },
+        identity(), identity(), identity(), identity(),
+    );
+    let out = run_image(inputs).await;
+    assert!(Arc::ptr_eq(&src, &out), "all-identity curves must short-circuit");
+}
+
+#[tokio::test]
+async fn test_curves_per_channel_inputs_are_tone_curves() {
+    // The settings panel renders one editor box per unconnected ToneCurve
+    // input, labelled by input name — so the marker has to be present.
+    for input in OpImageAdjustmentCurves::create_inputs().iter().skip(1) {
+        assert!(
+            matches!(input.settings, Some(InputSettings::ToneCurve)),
+            "input {} should be a tone curve",
+            input.name
+        );
+        let Value::Curve(c) = &input.value else { panic!("expected curve default") };
+        assert_eq!(*c, OpImageAdjustmentCurves::identity_curve(), "{} must default to identity", input.name);
+    }
+}
+
+#[tokio::test]
+async fn test_curves_red_curve_only_touches_red() {
+    let src = Arc::new(FloatImage::from_pixel(2, 2, 4, &[0.5, 0.25, 0.75, 0.4]));
+    let red = linear_tone_curve(&[(0.0, 0.0), (0.5, 0.8), (1.0, 1.0)]);
+    let inputs = inputs_with_curves(
+        Value::Image { data: src.clone(), change_id: get_id() },
+        identity(), red, identity(), identity(),
+    );
+    let out = run_image(inputs).await;
+    let p = out.get_pixel(0, 0);
+    assert!((p[0] - 0.8).abs() < 0.01, "red should remap to 0.8, got {}", p[0]);
+    // Green and blue go through untouched, bit for bit.
+    assert_eq!(p[1], 0.25);
+    assert_eq!(p[2], 0.75);
+    assert_eq!(p[3], 0.4, "alpha must be preserved");
+}
+
+#[tokio::test]
+async fn test_curves_channel_then_master_order() {
+    // Composition is master(channel(v)) — verified against manual sampling.
+    let red = linear_tone_curve(&[(0.0, 0.0), (0.5, 0.8), (1.0, 1.0)]);
+    let master = linear_tone_curve(&[(0.0, 0.0), (0.5, 0.2), (1.0, 1.0)]);
+    let src = Arc::new(FloatImage::from_pixel(1, 1, 4, &[0.5, 0.5, 0.5, 1.0]));
+    let inputs = inputs_with_curves(
+        Value::Image { data: src, change_id: get_id() },
+        master.clone(), red.clone(), identity(), identity(),
+    );
+    let out = run_image(inputs).await;
+
+    let red_lut = tone_curve_lut(&red, TONE_LUT_SIZE);
+    let master_lut = tone_curve_lut(&master, TONE_LUT_SIZE);
+    let expected = sample_lut(&master_lut, sample_lut(&red_lut, 0.5));
+    let swapped = sample_lut(&red_lut, sample_lut(&master_lut, 0.5));
+
+    let p = out.get_pixel(0, 0);
+    assert!((p[0] - expected).abs() < 1e-5, "expected master(red(v)) = {}, got {}", expected, p[0]);
+    assert!((expected - swapped).abs() > 0.05, "test curves must distinguish the two orders");
+    // Green/blue get the master curve only.
+    assert!((p[1] - sample_lut(&master_lut, 0.5)).abs() < 1e-5);
+}
+
+#[tokio::test]
+async fn test_curves_per_channel_ignored_for_grayscale() {
+    // 1-channel: no channel identity, so a red curve alone changes nothing.
+    let src = Arc::new(FloatImage::from_pixel(2, 2, 1, &[0.5]));
+    let inputs = inputs_with_curves(
+        Value::Image { data: src.clone(), change_id: get_id() },
+        identity(),
+        linear_tone_curve(&[(0.0, 0.0), (0.5, 0.9), (1.0, 1.0)]),
+        identity(), identity(),
+    );
+    let out = run_image(inputs).await;
+    assert!(Arc::ptr_eq(&src, &out), "grayscale ignores per-channel curves");
+
+    // 2-channel (grey + alpha) behaves the same way.
+    let src2 = Arc::new(FloatImage::from_pixel(2, 2, 2, &[0.5, 0.3]));
+    let inputs2 = inputs_with_curves(
+        Value::Image { data: src2.clone(), change_id: get_id() },
+        identity(),
+        linear_tone_curve(&[(0.0, 0.0), (0.5, 0.9), (1.0, 1.0)]),
+        identity(), identity(),
+    );
+    let out2 = run_image(inputs2).await;
+    assert!(Arc::ptr_eq(&src2, &out2), "grey+alpha ignores per-channel curves");
+}
+
+#[tokio::test]
+async fn test_curves_grayscale_still_honours_master() {
+    let src = Arc::new(FloatImage::from_pixel(1, 1, 2, &[0.5, 0.3]));
+    let inputs = inputs_with_curves(
+        Value::Image { data: src, change_id: get_id() },
+        linear_tone_curve(&[(0.0, 0.0), (0.5, 0.9), (1.0, 1.0)]),
+        identity(), identity(), identity(),
+    );
+    let out = run_image(inputs).await;
+    let p = out.get_pixel(0, 0);
+    assert!((p[0] - 0.9).abs() < 0.01, "master should still apply, got {}", p[0]);
+    assert_eq!(p[1], 0.3, "alpha untouched");
+}
+
+#[tokio::test]
+async fn test_curves_blue_curve_cools_and_warms() {
+    let src = Arc::new(FloatImage::from_pixel(1, 1, 3, &[0.5, 0.5, 0.5]));
+    let up = inputs_with_curves(
+        Value::Image { data: src.clone(), change_id: get_id() },
+        identity(), identity(), identity(),
+        linear_tone_curve(&[(0.0, 0.0), (0.5, 0.7), (1.0, 1.0)]),
+    );
+    let out = run_image(up).await;
+    let p = out.get_pixel(0, 0);
+    assert!(p[2] > p[0], "raising the blue curve should cool the image, got {:?}", p);
+    assert_eq!(p[0], 0.5);
+    assert_eq!(p[1], 0.5);
 }
 
 #[tokio::test]
