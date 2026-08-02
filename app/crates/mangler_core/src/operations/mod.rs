@@ -491,6 +491,7 @@ operations! {
     OpImageFxDropShadow(crate::operations::images::fx::drop_shadow::OpImageFxDropShadow),
     OpImageFxOuterGlow(crate::operations::images::fx::outer_glow::OpImageFxOuterGlow),
     OpImageFxInnerGlow(crate::operations::images::fx::inner_glow::OpImageFxInnerGlow),
+    OpImageFxBloom(crate::operations::images::fx::bloom::OpImageFxBloom),
 
     OpImageChannelSplit(crate::operations::images::channels::split::OpImageChannelSplit),
     OpImageChannelMerge(crate::operations::images::channels::merge::OpImageChannelMerge),
@@ -1095,6 +1096,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageFxDropShadow },
                 OperationListItem::Operation { operation: Operation::OpImageFxOuterGlow },
                 OperationListItem::Operation { operation: Operation::OpImageFxInnerGlow },
+                OperationListItem::Operation { operation: Operation::OpImageFxBloom },
             ]},
             OperationListItem::Category { name: "channels".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageChannelSplit },
