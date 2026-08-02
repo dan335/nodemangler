@@ -24,3 +24,6 @@ pub mod kaleidoscope;
 pub mod polar_coordinates;
 pub mod spherize;
 pub mod perspective;
+pub mod lens_distortion;
+pub mod chromatic_aberration;
+pub mod border;

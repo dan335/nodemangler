@@ -64,7 +64,7 @@ Each crate README goes into detail on that component.
 ## Node Reference
 
 Every node in the graph editor's Add Node menu, by category and subcategory
-(438 operation nodes, plus subgraph nodes for composing whole pipelines).
+(441 operation nodes, plus subgraph nodes for composing whole pipelines).
 
 ### Numbers (104)
 
@@ -99,7 +99,7 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Modify:** Jitter, Mirror, Offset, Resample, Reverse, Round Corners, Simplify, Smooth, Transform, Trim
 - **Simulation:** Meander
 
-### Images (208)
+### Images (211)
 
 - **Input:** Constant, From Clipboard, From Color, From File, From Folder, From Gradient, From Text, From URL
 - **Output:** Material, To Clipboard, To File
@@ -120,7 +120,7 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **PBR:** AO From Height, Bevel, Curvature, Height Blend, Normal Blend, Normal Combine, Normal From Height, Normal Invert, Normal To Height
 - **Shapes:** Circle, Cone, Curve Distance Field, Curve Gradient, Ellipse, Line, Paraboloid, Polygon, Pyramid, Rasterize Curve, Rectangle, Star
 - **Simulation:** Carve River, Guided Rolling Hills, Hillslope Diffusion, Hydraulic Erosion
-- **Transform:** Crop, Directional Warp, Flip Horizontal, Flip Vertical, Kaleidoscope, Make Tile, Mirror, Perspective, Polar Coordinates, Resize, Resize Exact, Resize Fill, Rotate, Rotate 180, Rotate 270, Rotate 90, Seam Carve, Spherize, Swirl, Transform, Warp
+- **Transform:** Border, Chromatic Aberration, Crop, Directional Warp, Flip Horizontal, Flip Vertical, Kaleidoscope, Lens Distortion, Make Tile, Mirror, Perspective, Polar Coordinates, Resize, Resize Exact, Resize Fill, Rotate, Rotate 180, Rotate 270, Rotate 90, Seam Carve, Spherize, Swirl, Transform, Warp
 
 ### Logic (22)
 

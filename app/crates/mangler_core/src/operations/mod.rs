@@ -395,6 +395,9 @@ operations! {
     OpImageTransformPolarCoordinates(crate::operations::images::transform::polar_coordinates::OpImageTransformPolarCoordinates),
     OpImageTransformSpherize(crate::operations::images::transform::spherize::OpImageTransformSpherize),
     OpImageTransformPerspective(crate::operations::images::transform::perspective::OpImageTransformPerspective),
+    OpImageTransformLensDistortion(crate::operations::images::transform::lens_distortion::OpImageTransformLensDistortion),
+    OpImageTransformChromaticAberration(crate::operations::images::transform::chromatic_aberration::OpImageTransformChromaticAberration),
+    OpImageTransformBorder(crate::operations::images::transform::border::OpImageTransformBorder),
 
     // blur
     OpImageAdjustmentBlur(crate::operations::images::blur::blur::OpImageAdjustmentBlur),
@@ -974,6 +977,9 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageTransformPolarCoordinates },
                 OperationListItem::Operation { operation: Operation::OpImageTransformSpherize },
                 OperationListItem::Operation { operation: Operation::OpImageTransformPerspective },
+                OperationListItem::Operation { operation: Operation::OpImageTransformLensDistortion },
+                OperationListItem::Operation { operation: Operation::OpImageTransformChromaticAberration },
+                OperationListItem::Operation { operation: Operation::OpImageTransformBorder },
             ]},
             OperationListItem::Category { name: "adjustments".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentContrast },
