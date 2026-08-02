@@ -13,6 +13,7 @@
 //! through unchanged.
 
 use crate::color::color_spaces::rgb_linear::{linear_to_nonlinear_srgb, nonlinear_to_linear_rgb};
+use crate::color::Color;
 use crate::color::color_spaces::xyz::{RGB2XYZ_MATRIX, XYZ2RGB_MATRIX};
 use crate::get_id;
 use crate::value::ValueType;
@@ -112,13 +113,68 @@ pub(crate) fn white_balance_matrix(temperature: f32, tint: f32) -> Mat3 {
     XYZ2RGB_MATRIX * bradford_adaptation(src, dst) * RGB2XYZ_MATRIX
 }
 
+/// Below this per-channel spread a reference colour is treated as carrying no
+/// chroma.
+const ACHROMATIC_EPSILON: f32 = 1e-4;
+
+/// The linear-RGB correction that makes `reference` render neutral.
+///
+/// The reference's own chromaticity is taken as the scene illuminant and
+/// adapted to the neutral reference, so whatever colour the user says *should*
+/// have been grey becomes grey. Unlike temperature and tint this is not
+/// confined to the Planckian locus, so it can correct fluorescent, LED and
+/// mixed lighting that no single temperature describes.
+///
+/// Returns `None` when the reference carries no chroma — an achromatic
+/// reference already is neutral, so there is nothing to correct, and that is
+/// what keeps the default (white) an exact no-op.
+///
+/// Note this adapts to the *working space's* white point, taken from the
+/// RGB→XYZ matrix so it cannot drift from the primaries, rather than to the
+/// `NEUTRAL_TEMPERATURE` locus point the temperature path uses. The two differ
+/// slightly — the Planckian 6500 K point sits just off D65 — and only the true
+/// white point makes an adapted colour come out with equal RGB channels, which
+/// is the whole contract of this control. The temperature path is unaffected
+/// because it adapts locus-to-locus and is exactly identity at its own anchor.
+pub(crate) fn neutral_reference_matrix(reference: Color) -> Option<Mat3> {
+    if (reference.r - reference.g).abs() < ACHROMATIC_EPSILON
+        && (reference.g - reference.b).abs() < ACHROMATIC_EPSILON
+    {
+        return None;
+    }
+
+    let linear = Vec3::new(
+        nonlinear_to_linear_rgb(reference.r),
+        nonlinear_to_linear_rgb(reference.g),
+        nonlinear_to_linear_rgb(reference.b),
+    );
+    let xyz = RGB2XYZ_MATRIX * linear;
+    let sum = xyz.x + xyz.y + xyz.z;
+    if sum < 1e-6 {
+        // Numerically black: no usable chromaticity to adapt from.
+        return None;
+    }
+
+    let src = (xyz.x / sum, xyz.y / sum);
+    Some(XYZ2RGB_MATRIX * bradford_adaptation(src, working_space_white_xy()) * RGB2XYZ_MATRIX)
+}
+
+/// Chromaticity of the working space's white, i.e. the XYZ of linear RGB
+/// `(1, 1, 1)`. Derived from the matrix rather than hardcoded so it stays
+/// correct if the primaries ever change.
+fn working_space_white_xy() -> (f32, f32) {
+    let white = RGB2XYZ_MATRIX * Vec3::ONE;
+    let sum = white.x + white.y + white.z;
+    (white.x / sum, white.y / sum)
+}
+
 impl OpImageAdjustmentWhiteBalance {
     /// Returns the node metadata (name and description) for white balance.
     pub fn settings() -> NodeSettings {
         NodeSettings {
             name: "white balance".to_string(),
-            description: "Corrects colour temperature (warm/cool) and tint (green/magenta).".to_string(),
-            help: "White balance via Planckian-locus illuminant (Kang et al. 2002 approximation) and Bradford chromatic adaptation, applied in linear RGB. Tint is a simplified magenta-green chromaticity offset.\n\nTemperature names the colour of the light the shot is treated as having been taken under, in Kelvin. Raising it above the 6500 K neutral warms the image (more orange), lowering it cools the image (more blue) — the same direction as Lightroom's temperature slider. Positive tint pushes toward magenta, negative toward green.\n\nThe correction collapses to one 3x3 matrix built per run: sRGB is linearized, transformed, re-encoded and clamped to 0-1. At exactly 6500 K with no tint the image passes through untouched. Grayscale inputs (1 or 2 channels) carry no chroma and pass through unchanged; alpha is always preserved.".to_string(),
+            description: "Corrects colour temperature (warm/cool) and tint (green/magenta), or neutralises a reference colour.".to_string(),
+            help: "White balance via Planckian-locus illuminant (Kang et al. 2002 approximation) and Bradford chromatic adaptation, applied in linear RGB. Tint is a simplified magenta-green chromaticity offset.\n\nTemperature names the colour of the light the shot is treated as having been taken under, in Kelvin. Raising it above the 6500 K neutral warms the image (more orange), lowering it cools the image (more blue) — the same direction as Lightroom's temperature slider. Positive tint pushes toward magenta, negative toward green.\n\n'neutral reference' is the eyedropper: give it a colour that should have been neutral grey and the correction that makes it grey is derived directly, without going through a temperature at all. Wire a 'sample pixel' node pointed at a grey card or a white wall. Because it is not confined to the Planckian locus, this can correct fluorescent, LED and mixed lighting that no single temperature can describe. Any grey reference — including the white default — means no reference correction, so the input is a no-op until you feed it something with colour in it.\n\nThe two work together: the reference sets the base white point and temperature/tint then trim it, so you can pick a grey and still warm the result to taste.\n\nThe correction collapses to one 3x3 matrix built per run: sRGB is linearized, transformed, re-encoded and clamped to 0-1. At exactly 6500 K with no tint and no reference colour the image passes through untouched. Grayscale inputs (1 or 2 channels) carry no chroma and pass through unchanged; alpha is always preserved.".to_string(),
         }
     }
 
@@ -131,6 +187,8 @@ impl OpImageAdjustmentWhiteBalance {
                 .with_description("Colour temperature in Kelvin; above 6500 warms the image, below cools it."),
             Input::new("tint".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Green/magenta shift; positive pushes toward magenta."),
+            Input::new("neutral reference".to_string(), Value::Color(Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }), None, None)
+                .with_description("A colour that should have been neutral grey — wire a 'sample pixel' node at a grey card to use it as an eyedropper. Any grey (including the white default) means no reference correction."),
         ]
     }
 
@@ -151,24 +209,35 @@ impl OpImageAdjustmentWhiteBalance {
         let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
         let temp_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
         let tint_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
+        let reference_converted = convert_input(inputs, 3, ValueType::Color, &mut input_errors);
 
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
         let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
         let Value::Decimal(temperature) = temp_converted.unwrap() else { unreachable!() };
         let Value::Decimal(tint) = tint_converted.unwrap() else { unreachable!() };
+        let Value::Color(reference) = reference_converted.unwrap() else { unreachable!() };
 
-        // Neutral settings, or grayscale (no chroma to balance): pass the
-        // original buffer straight through without touching a pixel.
-        let neutral = (temperature - NEUTRAL_TEMPERATURE).abs() < 1e-3 && tint.abs() < 1e-6;
-        if neutral || data.channels() < 3 {
+        let reference_matrix = neutral_reference_matrix(reference);
+        let temperature_neutral =
+            (temperature - NEUTRAL_TEMPERATURE).abs() < 1e-3 && tint.abs() < 1e-6;
+
+        // Nothing to do, or grayscale (no chroma to balance): pass the original
+        // buffer straight through without touching a pixel.
+        if (temperature_neutral && reference_matrix.is_none()) || data.channels() < 3 {
             return Ok(OperationResponse {
                 time: Instant::now().duration_since(start_time),
                 responses: vec![OutputResponse { value: Value::Image { data, change_id: get_id() } }],
             });
         }
 
-        let matrix = white_balance_matrix(temperature, tint);
+        // The reference sets the base white point and temperature/tint trim it
+        // afterwards, so an eyedropper pick and the sliders compose instead of
+        // overriding each other.
+        let mut matrix = reference_matrix.unwrap_or(Mat3::IDENTITY);
+        if !temperature_neutral {
+            matrix = white_balance_matrix(temperature, tint) * matrix;
+        }
 
         let mut result = (*data).clone();
         for pixel in result.pixels_mut() {
