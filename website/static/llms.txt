@@ -27,4 +27,4 @@ Graphs are plain JSON files (`.mangler.json`). The CLI (`mangler_cli`) runs them
 ## Download
 
 - [Latest release](https://github.com/dan335/nodemangler/releases/latest): prebuilt binaries for Windows, macOS, and Linux
-- [itch.io page](https://dan335.itch.io/nodemangler): alternative download
+- [itch.io page](https://danp.itch.io/nodemangler): alternative download
