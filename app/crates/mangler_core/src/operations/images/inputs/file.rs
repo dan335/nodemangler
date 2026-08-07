@@ -36,7 +36,7 @@ impl OpImageInputFile {
         NodeSettings {
             name: "from file".to_string(),
             description: "Grabs an image from a file.".to_string(),
-            help: "Decodes an image file from disk and converts it into a FloatImage, preserving the source channel count (grayscale stays 1ch, RGB 3ch, RGBA 4ch). The path input uses a picker filtered to the supported image extensions. JPEG XL files are decoded with jxl-oxide, PSD files with the psd crate (the flattened composite image; individual layers are not exposed), and HEIC/HEIF files (iPhone photos) with heif-oxide — grid tiles, rotation, and Display P3 color are handled; output is sRGB.\n\nCamera RAW files (Canon CR3/CR2, Nikon NEF, Sony ARW, Fujifilm RAF, Adobe DNG and more) are developed with rawler using the camera's own as-shot settings — demosaic, white balance, colour matrix, sRGB gamma, and EXIF orientation — which looks roughly like the camera's own JPEG. Use the 'from raw' node instead when you want control over white balance, linear output, or resolution.\n\nErrors if the file cannot be opened or the format is unsupported. Note that pixel values are interpreted as sRGB by default; connect a linear-RGB conversion downstream if the file holds linear data like a normal or height map.".to_string(),
+            help: "Decodes an image file from disk and converts it into a FloatImage, preserving the source channel count (grayscale stays 1ch, RGB 3ch, RGBA 4ch). The path input uses a picker filtered to the supported image extensions. JPEG XL files are decoded with jxl-oxide, PSD files with the psd crate (the flattened composite image; individual layers are not exposed), and HEIC/HEIF files (iPhone photos) with heif-oxide — grid tiles, rotation, and Display P3 color are handled; output is sRGB.\n\nCamera RAW files (Canon CR3/CR2, Nikon NEF, Sony ARW, Fujifilm RAF, Adobe DNG and more) are developed with rawler using the camera's own as-shot settings — demosaic, white balance, colour matrix, sRGB gamma, and EXIF orientation — which looks roughly like the camera's own JPEG. Use the 'from raw' node instead when you want control over white balance, linear output, or resolution — dragging a raw file in from the Libraries panel creates that node for you.\n\nThe 'path' output echoes the loaded path, so downstream text nodes can name an export after the source file.\n\nErrors if the file cannot be opened or the format is unsupported. Note that pixel values are interpreted as sRGB by default; connect a linear-RGB conversion downstream if the file holds linear data like a normal or height map.".to_string(),
         }
     }
 
@@ -54,7 +54,8 @@ impl OpImageInputFile {
         ]
     }
 
-    /// Creates the output definitions: the decoded image, its width, and its height.
+    /// Creates the output definitions: the decoded image, its width and height,
+    /// and the path it was loaded from.
     pub fn create_outputs() -> Vec<Output> {
         vec![
             Output::new("output".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None)
@@ -63,6 +64,8 @@ impl OpImageInputFile {
                 .with_description("Width of the loaded image in pixels."),
             Output::new("height".to_string(), Value::Integer(1), None)
                 .with_description("Height of the loaded image in pixels."),
+            Output::new("path".to_string(), Value::Path(PathBuf::new()), None)
+                .with_description("The file path that was loaded, echoed for downstream use (e.g. naming an exported file after the source)."),
         ]
     }
 
@@ -96,6 +99,7 @@ impl OpImageInputFile {
                         OutputResponse { value: Value::Image { data: Arc::new(float_img), change_id: get_id() } },
                         OutputResponse { value: Value::Integer(width as i32) },
                         OutputResponse { value: Value::Integer(height as i32) },
+                        OutputResponse { value: Value::Path(path) },
                     ],
                 })
             }
@@ -159,6 +163,27 @@ fn raw_extension_set() -> &'static std::collections::HashSet<String> {
     SET.get_or_init(|| ValueType::raw_file_extensions().into_iter().collect())
 }
 
+/// Whether `path`'s extension names a camera RAW format handled by rawler.
+///
+/// Shared with the GUI so that adding a `.CR3` from the Libraries panel or a
+/// file drop creates a `from raw` node — which exposes the development
+/// controls — instead of a `from file` node that can only develop it with the
+/// camera's as-shot settings. Always false when the `raw` feature is disabled,
+/// since nothing in the build could decode it.
+pub fn is_raw_file(path: &std::path::Path) -> bool {
+    #[cfg(feature = "raw")]
+    {
+        path.extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|ext| raw_extension_set().contains(&ext.to_ascii_lowercase()))
+    }
+    #[cfg(not(feature = "raw"))]
+    {
+        let _ = path;
+        false
+    }
+}
+
 /// Decodes an image file at `path` into a [`FloatImage`], preserving its
 /// channel count. JPEG XL, PSD, HEIC/HEIF and camera RAW use dedicated
 /// decoders; everything else goes through the `image` crate. Shared by the
@@ -182,7 +207,7 @@ pub fn load_image_from_path(path: &std::path::Path) -> Result<FloatImage, String
         // TIFF-based, and `image` would happily decode a DNG's embedded
         // preview thumbnail from IFD0 instead of the actual photograph.
         #[cfg(feature = "raw")]
-        Some(ext) if raw_extension_set().contains(ext) => {
+        _ if is_raw_file(path) => {
             raw_decode::decode_raw(path, &raw_decode::RawOptions::default())
         }
         _ => ImageReader::open(path)
