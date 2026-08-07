@@ -38,5 +38,7 @@ pub mod patterns;
 pub mod pbr;
 /// Mask-driven effect layers (drop shadow, glows).
 pub mod fx;
+/// Mask generators and combination (linear/radial gradient, hue range, combine).
+pub mod masks;
 /// Cast operations for converting values to images.
 pub mod cast;

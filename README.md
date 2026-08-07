@@ -95,7 +95,7 @@ Each crate README goes into detail on that component.
 ## Node Reference
 
 Every node in the graph editor's Add Node menu, by category and subcategory
-(443 operation nodes, plus subgraph nodes for composing whole pipelines).
+(447 operation nodes, plus subgraph nodes for composing whole pipelines).
 
 ### Numbers (104)
 
@@ -112,12 +112,12 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Text:** Byte Length, Count Occurrences, Index Of, Line Count, Parse Decimal, Parse Integer, Word Count
 - **Trigonometry:** Acos, Acosh, Asin, Asinh, Atan, Atan2, Atanh, Cos, Cosh, Sin, Sinh, Tan, Tanh, To Degrees, To Radians
 
-### Colors (53)
+### Colors (54)
 
 - **Input:** CMYK, HSL, HSV, HWB, Lab, LCH, Oklab, Oklch, RGB, RGB Linear, xyY, XYZ, YCbCr, YUV
 - **Output:** To CMYK, To HSL, To HSV, To HWB, To Lab, To LCH, To Oklab, To Oklch, To RGB, To RGB Linear, To xyY, To XYZ, To YCbCr, To YUV
 - **Analysis:** Color Temperature, Contrast Ratio, Distance, Dominant Hue, Harmony Score, Luminance, Mix Ratio, Most Common Colors, Sample Pixel
-- **Generation:** From Hex, Random Color, To Color, To Hex
+- **Generation:** From Hex, Random Color, Skin Tone, To Color, To Hex
 - **Harmony:** Analogous, Complementary, Double Split Comp, Monochromatic, Tetradic, Triadic
 - **Manipulation:** Adjust HSV, Blend, Clamp, Grayscale, Invert, Set Alpha
 
@@ -130,7 +130,7 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Modify:** Jitter, Mirror, Offset, Resample, Reverse, Round Corners, Simplify, Smooth, Transform, Trim
 - **Simulation:** Meander
 
-### Images (213)
+### Images (217)
 
 - **Input:** Constant, From Clipboard, From Color, From File, From Folder, From Gradient, From Raw, From Text, From URL
 - **Output:** Material, To Clipboard, To File
@@ -146,6 +146,7 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Filter / Dither:** Floyd Steinberg, Ordered Dither
 - **Filter:** Convolution
 - **FX:** Bloom, Drop Shadow, Inner Glow, Outer Glow
+- **Masks:** Hue Range Mask, Linear Gradient Mask, Mask Combine, Radial Gradient Mask
 - **Noise:** Anisotropic Noise, Billow Noise, Blue Noise, Caustics Noise, Checkerboard Noise, Cloud Noise, Concentric Rings, Craters, Crystal Noise, Curl Noise, Dirt Noise, Domain Warp, Erosion, Fault Terrain, FBM Noise, Fibers, Flow Noise, Gabor Noise, Growth Noise, Hybrid Multifractal Noise, Leaks Noise, Lightning Noise, Multifractal Noise, Open Simplex Noise, Peeling Noise, Perlin Noise, Phasor Noise, Plasma Noise, Reaction Diffusion, Ridged Multifractal Noise, Rolling Hills, Scales, Scratches, Smear Noise, Spectral Terrain, Stains Noise, Super Simplex Noise, Truchet Tiles, Value Noise, Veins Noise, Voronoi Blend, Voronoi Crack Noise, Warped Rings Noise, Wave, White Noise, Worley Distance Noise, Worley Value Noise
 - **Patterns:** Brick, Flood Fill, Flood Fill Mapper, Hexagonal, Scatter On Curve, Splatter, Tile Generator, Tile Sampler, Weave
 - **PBR:** AO From Height, Bevel, Curvature, Height Blend, Normal Blend, Normal Combine, Normal From Height, Normal Invert, Normal To Height

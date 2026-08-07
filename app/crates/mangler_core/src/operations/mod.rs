@@ -333,6 +333,7 @@ operations! {
     OpColorGenerationFromHex(crate::operations::colors::generation::from_hex::OpColorGenerationFromHex),
     OpColorGenerationToHex(crate::operations::colors::generation::to_hex::OpColorGenerationToHex),
     OpColorGenerationRandomColor(crate::operations::colors::generation::random_color::OpColorGenerationRandomColor),
+    OpColorGenerationSkinTone(crate::operations::colors::generation::skin_tone::OpColorGenerationSkinTone),
 
     OpColorManipulationInvert(crate::operations::colors::manipulation::invert::OpColorManipulationInvert),
     OpColorManipulationGrayscale(crate::operations::colors::manipulation::grayscale::OpColorManipulationGrayscale),
@@ -487,6 +488,12 @@ operations! {
     OpImageAdjustmentDefringe(crate::operations::images::adjustments::defringe::OpImageAdjustmentDefringe),
     OpImageAdjustmentTexture(crate::operations::images::adjustments::texture::OpImageAdjustmentTexture),
     OpImageAdjustmentToneEqualizer(crate::operations::images::adjustments::tone_equalizer::OpImageAdjustmentToneEqualizer),
+
+    // mask generators / combine
+    OpImageMaskLinearGradient(crate::operations::images::masks::linear_gradient::OpImageMaskLinearGradient),
+    OpImageMaskRadialGradient(crate::operations::images::masks::radial_gradient::OpImageMaskRadialGradient),
+    OpImageMaskHueRange(crate::operations::images::masks::hue_range::OpImageMaskHueRange),
+    OpImageMaskCombine(crate::operations::images::masks::combine::OpImageMaskCombine),
 
     // mask fx
     OpImageFxDropShadow(crate::operations::images::fx::drop_shadow::OpImageFxDropShadow),
@@ -917,6 +924,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpColorGenerationFromHex },
                 OperationListItem::Operation { operation: Operation::OpColorGenerationToHex },
                 OperationListItem::Operation { operation: Operation::OpColorGenerationRandomColor },
+                OperationListItem::Operation { operation: Operation::OpColorGenerationSkinTone },
                 OperationListItem::Operation { operation: Operation::OpColorCastToColor },
             ]},
             OperationListItem::Category { name: "manipulation".to_string(), operation_list_items: vec![
@@ -1099,6 +1107,12 @@ pub fn operation_list() -> Vec<OperationListItem> {
                 OperationListItem::Operation { operation: Operation::OpImageFxOuterGlow },
                 OperationListItem::Operation { operation: Operation::OpImageFxInnerGlow },
                 OperationListItem::Operation { operation: Operation::OpImageFxBloom },
+            ]},
+            OperationListItem::Category { name: "masks".to_string(), operation_list_items: vec![
+                OperationListItem::Operation { operation: Operation::OpImageMaskLinearGradient },
+                OperationListItem::Operation { operation: Operation::OpImageMaskRadialGradient },
+                OperationListItem::Operation { operation: Operation::OpImageMaskHueRange },
+                OperationListItem::Operation { operation: Operation::OpImageMaskCombine },
             ]},
             OperationListItem::Category { name: "channels".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageChannelSplit },

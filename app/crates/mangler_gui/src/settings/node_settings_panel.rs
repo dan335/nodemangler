@@ -412,6 +412,15 @@ pub fn show(
         }
     });
 
+    // Skin-tone node: seed/r² apply only in random mode; T/U/V only in manual.
+    let sibling_skin_tone_random = node.inputs.iter().find_map(|i| {
+        if i.name == "random" {
+            if let Value::Bool(b) = i.value { Some(b) } else { None }
+        } else {
+            None
+        }
+    });
+
     // Auto-correct: if the current color format is incompatible with the
     // selected image format, switch to a sensible default.
     if let Some(ref img_fmt) = sibling_image_format {
@@ -497,6 +506,21 @@ pub fn show(
                     && !input.is_exposed
                 {
                     continue;
+                }
+
+                // Skin tone: seed/r² only when random is on; deep/fair,
+                // flushed/ochre, cool/warm only when random is off. Alpha and
+                // the random toggle itself always show. Connected/exposed stay
+                // visible so they can be managed.
+                if let Some(random) = sibling_skin_tone_random {
+                    let hide = match input.name.as_str() {
+                        "seed" | "r²" => !random,
+                        "deep/fair" | "flushed/ochre" | "cool/warm" => random,
+                        _ => false,
+                    };
+                    if hide && input.connection.is_none() && !input.is_exposed {
+                        continue;
+                    }
                 }
 
                 body.row(24.0, |mut row| {
