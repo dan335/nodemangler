@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=NodeMangler
+Comment=Node-based visual programming tool for image and color manipulation
+Exec=mangler_gui
+Icon=nodemangler
+Terminal=false
+Categories=Graphics;

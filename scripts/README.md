@@ -7,6 +7,7 @@ Each script has a `.sh` (macOS/Linux) and `.bat` (Windows) version.
 | `test` | Run the full test suite (`cargo test --workspace`) |
 | `build` | Build release executables for **this machine's OS** into `app/target/release/` |
 | `release` | Cut a release: run tests, bump the version, commit, tag `vX.Y.Z`, and push |
+| `update_manifests` | Regenerate the package-manager manifests (Homebrew/Scoop/winget) for a version — normally run by CI; `.sh` only |
 
 ## Releasing
 
@@ -24,8 +25,16 @@ as:
 - `nodemangler-v1.1.0-linux-x86_64.tar.gz`
 - `nodemangler-v1.1.0-macos-aarch64.tar.gz` (Apple Silicon)
 - `nodemangler-v1.1.0-macos-x86_64.tar.gz` (Intel)
+- `nodemangler-v1.1.0-linux-x86_64.AppImage` (same Linux binaries, single-file)
+- `SHA256SUMS.txt`
 
 The workflow refuses to run if the tag doesn't match the Cargo.toml version.
+
+After the release publishes, the workflow's `manifests` job regenerates the
+package-manager manifests (Homebrew formula in `Formula/`, Scoop manifest in
+`bucket/`, winget set in `packaging/winget/` — see `packaging/README.md`) with
+the new version + hashes and **commits that to main**, so run `git pull` after
+a release to pick it up locally.
 
 ## itch.io
 

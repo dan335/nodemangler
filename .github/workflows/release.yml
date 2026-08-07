@@ -83,12 +83,36 @@ jobs:
                     "app/target/${{ matrix.target }}/release/mangler_cli.exe", `
                     README.md, LICENSE.md $stage
           Compress-Archive -Path $stage -DestinationPath "$stage.zip"
+      # Same binaries again as a single-file AppImage: desktop-integrated
+      # (menu entry + icon), chmod +x and run. appimagetool only publishes a
+      # "continuous" release; --appimage-extract-and-run avoids needing FUSE
+      # on the runner.
+      - name: Package AppImage (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          APPDIR=NodeMangler.AppDir
+          mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" \
+                   "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+          cp "app/target/${{ matrix.target }}/release/mangler_gui" \
+             "app/target/${{ matrix.target }}/release/mangler_cli" "$APPDIR/usr/bin/"
+          cp packaging/appimage/nodemangler.desktop "$APPDIR/"
+          cp packaging/appimage/nodemangler.desktop "$APPDIR/usr/share/applications/"
+          cp app/crates/mangler_gui/assets/mangler_icon.png "$APPDIR/nodemangler.png"
+          cp app/crates/mangler_gui/assets/mangler_icon.png \
+             "$APPDIR/usr/share/icons/hicolor/256x256/apps/nodemangler.png"
+          ln -s usr/bin/mangler_gui "$APPDIR/AppRun"
+          curl -fL -o appimagetool \
+            "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run "$APPDIR" \
+            "nodemangler-${{ github.ref_name }}-linux-x86_64.AppImage"
       - uses: actions/upload-artifact@v7
         with:
           name: nodemangler-${{ matrix.name }}
           path: |
             nodemangler-*.tar.gz
             nodemangler-*.zip
+            nodemangler-*.AppImage
           if-no-files-found: error
 
   release:
@@ -102,8 +126,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          sha256sum nodemangler-* > SHA256SUMS.txt
           gh release create "${{ github.ref_name }}" \
-            nodemangler-*.tar.gz nodemangler-*.zip \
+            nodemangler-*.tar.gz nodemangler-*.zip nodemangler-*.AppImage \
+            SHA256SUMS.txt \
             --repo "${{ github.repository }}" \
             --title "NodeMangler ${{ github.ref_name }}" \
             --generate-notes
@@ -142,3 +168,33 @@ jobs:
           push linux-x86_64  linux
           push macos-aarch64 mac-arm64
           push macos-x86_64  mac-x86_64
+
+  # Regenerate the package-manager manifests (Homebrew formula, Scoop bucket,
+  # winget) with the new version + hashes and commit them back to main. This
+  # repo doubles as the Homebrew tap and Scoop bucket, which is what lets the
+  # default GITHUB_TOKEN do the update — no extra secrets. Remember to
+  # `git pull` after a release to pick this commit up locally.
+  manifests:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+          path: archives
+      - name: Regenerate manifests
+        run: scripts/update_manifests.sh "${GITHUB_REF_NAME#v}" archives
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898270+github-actions[bot]@users.noreply.github.com"
+          git add Formula bucket packaging/winget
+          if git diff --cached --quiet; then
+            echo "manifests unchanged"
+            exit 0
+          fi
+          git commit -m "Update package manifests for ${GITHUB_REF_NAME}"
+          git push origin main || (git pull --rebase origin main && git push origin main)

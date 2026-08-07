@@ -26,5 +26,7 @@ Graphs are plain JSON files (`.mangler.json`). The CLI (`mangler_cli`) runs them
 
 ## Download
 
-- [Latest release](https://github.com/dan335/nodemangler/releases/latest): prebuilt binaries for Windows, macOS, and Linux
-- [itch.io page](https://danp.itch.io/nodemangler): alternative download
+- [Latest release](https://github.com/dan335/nodemangler/releases/latest): prebuilt binaries for Windows, macOS, and Linux, plus a Linux AppImage and SHA256SUMS.txt
+- [itch.io page](https://danp.itch.io/nodemangler): alternative download; the itch.io desktop app auto-updates its installs
+- Homebrew (macOS/Linux): `brew tap dan335/nodemangler https://github.com/dan335/nodemangler && brew install nodemangler` — installs the GUI as `nodemangler` and the CLI as `mangle`
+- Scoop (Windows): `scoop bucket add nodemangler https://github.com/dan335/nodemangler && scoop install nodemangler`

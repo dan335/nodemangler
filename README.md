@@ -33,6 +33,30 @@ Claude.
   command line. Both share the same JSON graph format, and the CLI is designed to be
   easy for scripts and LLMs to drive.
 
+## Install
+
+Prebuilt binaries for Windows, macOS (Apple Silicon + Intel), and Linux from
+[itch.io](https://danp.itch.io/nodemangler) or the
+[releases page](https://github.com/dan335/nodemangler/releases/latest), or via
+a package manager (this repo doubles as the Homebrew tap and Scoop bucket):
+
+```bash
+# macOS / Linux — Homebrew (installs `nodemangler` GUI + `mangle` CLI)
+brew tap dan335/nodemangler https://github.com/dan335/nodemangler
+brew install nodemangler
+```
+
+```powershell
+# Windows — Scoop
+scoop bucket add nodemangler https://github.com/dan335/nodemangler
+scoop install nodemangler
+```
+
+On Linux there's also a single-file `.AppImage` on the releases page:
+download, `chmod +x`, run. The [itch.io app](https://itch.io/app) auto-updates
+its installs; Homebrew/Scoop update through their normal `upgrade`/`update`
+commands.
+
 ## Build & run
 
 ```bash

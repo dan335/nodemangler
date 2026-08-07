@@ -7,6 +7,7 @@ Node-based visual programming tool for image and color manipulation.
 - `app/` — Rust application (Cargo workspace)
 - `website/` — Project marketing site: standalone Rust crate (`mangler_site`, not in the `app/` workspace) serving static files with axum + tower-http; deployed via Docker to a host running Traefik
 - `scripts/` — test/build/release scripts (`.sh` + `.bat`); see `scripts/README.md`
+- `Formula/`, `bucket/`, `packaging/` — package-manager distribution (Homebrew formula, Scoop manifest, winget manifests + AppImage assets). `Formula/` and `bucket/` are forced to the repo root because this repo doubles as the Homebrew tap and Scoop bucket. All manifests are **generated** by `scripts/update_manifests.sh` (CI re-runs it after each release and commits to main — `git pull` after releasing); edit the script, not the files. See `packaging/README.md`, including why Homebrew is a formula and not a cask (cask downloads get quarantined; our ad-hoc-signed binaries then get SIGKILLed by Gatekeeper).
 
 ## Versioning & Releases
 
@@ -15,7 +16,9 @@ Node-based visual programming tool for image and color manipulation.
 - `scripts/release.sh <version>` (or `release.bat`) runs tests, bumps the version,
   commits, tags `vX.Y.Z`, and pushes. The tag triggers
   `.github/workflows/release.yml`, which builds Windows/Linux/macOS executables on
-  native runners and publishes them to GitHub Releases.
+  native runners and publishes them to GitHub Releases (archives + a Linux
+  AppImage + `SHA256SUMS.txt`), pushes to itch.io via butler, then regenerates
+  the package-manager manifests and commits them back to main.
 
 ## Project Structure
 

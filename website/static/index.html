@@ -142,7 +142,15 @@
           <a href="https://danp.itch.io/nodemangler" class="btn btn-primary">Download on itch.io</a>
           <a href="https://github.com/dan335/nodemangler/releases/latest" class="btn btn-primary">Download on GitHub</a>
         </div>
-        <p class="download-note">Prebuilt binaries for Windows, macOS, and Linux on the <a href="https://github.com/dan335/nodemangler/releases">releases page</a>. Or build from source:</p>
+        <p class="download-note">Prebuilt binaries for Windows, macOS, and Linux (including a single-file AppImage) on the <a href="https://github.com/dan335/nodemangler/releases">releases page</a>. Or install with a package manager:</p>
+        <pre class="code-block"><code><span class="code-comment"># macOS / Linux — Homebrew</span>
+brew tap dan335/nodemangler https://github.com/dan335/nodemangler
+brew install nodemangler
+
+<span class="code-comment"># Windows — Scoop</span>
+scoop bucket add nodemangler https://github.com/dan335/nodemangler
+scoop install nodemangler</code></pre>
+        <p class="download-note">Or build from source:</p>
         <pre class="code-block"><code>git clone https://github.com/dan335/nodemangler
 cd nodemangler/app
 cargo run -p mangler_gui    <span class="code-comment"># desktop app</span>
