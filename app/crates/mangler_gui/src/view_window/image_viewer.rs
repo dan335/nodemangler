@@ -18,6 +18,10 @@ pub struct ImageViewer {
     /// Last consumed value of `show`'s `fit_seq` — a viewer fits once per new
     /// sequence value, so one bump refits every 2D panel exactly once.
     last_fit_seq: u64,
+    /// Last backdrop *identity* this viewer framed, as `(node id, output
+    /// index)`. Drives `fit_on_source_change`; see that method for why the
+    /// `change_id` is deliberately not part of the key.
+    last_fit_source: Option<(String, usize)>,
 }
 
 impl ImageViewer {
@@ -29,6 +33,7 @@ impl ImageViewer {
             zoom: 1.0,
             pan_zoom: PanZoomController::new(),
             last_fit_seq: 0,
+            last_fit_source: None,
         }
     }
 
@@ -142,14 +147,10 @@ impl ImageViewer {
         }
 
         if let Some(texture_handle) = &self.image_texture_handle {
-            let rect = self.get_rect(
-                Pos2::new(
-                    view_rect.left() + float_image.width() as f32 * 0.5,
-                    view_rect.top() + float_image.height() as f32 * 0.5
-                ),
-                self.zoom,
+            let rect = self.displayed_image_rect(
+                view_rect,
                 float_image.width() as f32,
-                float_image.height() as f32
+                float_image.height() as f32,
             );
             let uv = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0));
             ui.painter().image(texture_handle.id(), rect, uv, Color32::WHITE);
@@ -210,6 +211,46 @@ impl ImageViewer {
         self.position = Pos2::new(center_x, center_y);
     }
 
+    /// On-screen rect of a `width` x `height` image displayed in `view_rect` at
+    /// the current pan/zoom.
+    ///
+    /// The single source of truth for image↔screen mapping: `draw_image` paints
+    /// into it, and the curve and gizmo overlays map their normalized `[0,1]²`
+    /// onto it. Previously this expression was duplicated at the overlay call
+    /// site, where any divergence would have drawn handles that didn't line up
+    /// with the image under pan or zoom.
+    pub fn displayed_image_rect(&self, view_rect: Rect, width: f32, height: f32) -> Rect {
+        self.get_rect(
+            Pos2::new(view_rect.left() + width * 0.5, view_rect.top() + height * 0.5),
+            self.zoom,
+            width,
+            height,
+        )
+    }
+
+    /// Frame the image once when the backdrop switches to a different node or
+    /// output — selecting a gizmo node can swap a 512px mask for a 6000px photo,
+    /// and the user's existing pan/zoom would leave it off-screen.
+    ///
+    /// Keyed on identity only, deliberately excluding `change_id`: a node output
+    /// re-runs constantly, and refitting on every run would fight the user's
+    /// pan/zoom.
+    pub fn fit_on_source_change(
+        &mut self,
+        node_id: &str,
+        output_index: usize,
+        view_rect: Rect,
+        width: f32,
+        height: f32,
+    ) {
+        let source = (node_id.to_owned(), output_index);
+        if self.last_fit_source.as_ref() == Some(&source) {
+            return;
+        }
+        self.last_fit_source = Some(source);
+        self.fit_to_view(view_rect, width, height);
+    }
+
     pub fn get_rect(&self, graph_position: Pos2, graph_zoom: f32, width: f32, height: f32) -> Rect {
         let node_view_pos = graph_to_view_space_pos2(graph_zoom, self.position);
         let graph_view_pos = graph_to_view_space_pos2(graph_zoom, graph_position);
@@ -249,3 +290,6 @@ impl ImageViewer {
         )
     }
 }
+#[cfg(test)]
+#[path = "image_viewer_tests.rs"]
+mod tests;

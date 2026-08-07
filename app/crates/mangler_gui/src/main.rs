@@ -9,6 +9,7 @@ mod config;
 mod graph;
 mod libraries;
 mod node_menu;
+mod overlay;
 mod panels;
 mod pan_zoom;
 mod program;

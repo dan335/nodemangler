@@ -301,3 +301,254 @@ fn batch_completion_is_never_confused_by_an_active_watch() {
         "batch finished: 4 images"
     );
 }
+
+
+// === gizmo backdrop + preview editor resolution ===
+
+mod preview_editor {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    use eframe::egui::Pos2;
+    use mangler_core::curve::Curve;
+    use mangler_core::float_image::FloatImage;
+    use mangler_core::input::{Input, InputSettings};
+    use mangler_core::node_settings::NodeSettings;
+    use mangler_core::operations::Operation;
+    use mangler_core::output::Output;
+    use mangler_core::value::Value;
+    use mangler_core::AddNodeType;
+
+    use crate::graph::graph_node::GraphNode;
+    use crate::program::{gizmo_backdrop_source, resolve_preview_editor, PreviewEditor};
+
+    fn image_value() -> Value {
+        Value::Image { data: Arc::new(FloatImage::new(4, 4, 3)), change_id: "c".to_string() }
+    }
+
+    fn node(id: &str, op: Option<Operation>, inputs: Vec<Input>, outputs: Vec<Output>) -> GraphNode {
+        GraphNode::new(
+            id.to_string(),
+            Pos2::ZERO,
+            NodeSettings {
+                name: id.to_string(),
+                description: String::new(),
+                help: String::new(),
+            },
+            inputs,
+            outputs,
+            false,
+            op.map(AddNodeType::Operation),
+            true,
+            None,
+        )
+    }
+
+    fn image_input(connection: Option<(&str, usize)>) -> Input {
+        let mut input = Input::new("image".to_string(), image_value(), None, None);
+        input.connection = connection.map(|(id, idx)| (id.to_string(), idx));
+        input
+    }
+
+    fn number_input(name: &str) -> Input {
+        Input::new(name.to_string(), Value::Decimal(0.0), None, None)
+    }
+
+    fn img_out() -> Output {
+        Output::new("output".to_string(), image_value(), None)
+    }
+
+    fn curve_input(name: &str, settings: Option<InputSettings>) -> Input {
+        Input::new(name.to_string(), Value::Curve(Curve::default()), settings, None)
+    }
+
+    fn graph(nodes: Vec<GraphNode>) -> HashMap<String, GraphNode> {
+        nodes.into_iter().map(|n| (n.id.clone(), n)).collect()
+    }
+
+    /// A `crop`-shaped consumer: image input 0 plus four spatial numbers.
+    fn crop_node(id: &str, connection: Option<(&str, usize)>) -> GraphNode {
+        node(
+            id,
+            Some(Operation::OpImageTransformCrop),
+            vec![
+                image_input(connection),
+                number_input("x"),
+                number_input("y"),
+                number_input("width"),
+                number_input("height"),
+            ],
+            vec![img_out()],
+        )
+    }
+
+    fn label(editor: &Option<PreviewEditor>) -> &'static str {
+        match editor {
+            Some(PreviewEditor::Curve { .. }) => "curve",
+            Some(PreviewEditor::Gizmos { .. }) => "gizmos",
+            None => "none",
+        }
+    }
+
+    // --- backdrop resolution ---
+
+    #[test]
+    fn consumer_resolves_its_upstream_source() {
+        let nodes = graph(vec![
+            node("src", None, vec![], vec![img_out()]),
+            crop_node("crop", Some(("src", 0))),
+        ]);
+        assert_eq!(gizmo_backdrop_source(&nodes, "crop"), Some(("src".to_string(), 0)));
+    }
+
+    #[test]
+    fn consumer_with_nothing_connected_has_no_backdrop() {
+        // Must NOT fall back to its own output: that is the 1x1 white
+        // `default_image()` placeholder, and drawing a crop box on it would be
+        // actively misleading. This is why the rule is a dichotomy, not a chain.
+        let nodes = graph(vec![crop_node("crop", None)]);
+        assert_eq!(gizmo_backdrop_source(&nodes, "crop"), None);
+    }
+
+    #[test]
+    fn producer_uses_its_own_first_image_output() {
+        // A shape node makes its image from nothing, so its own output IS the
+        // coordinate space its handles live in.
+        let nodes = graph(vec![node(
+            "line",
+            None,
+            vec![number_input("start x")],
+            vec![Output::new("count".to_string(), Value::Integer(0), None), img_out()],
+        )]);
+        assert_eq!(gizmo_backdrop_source(&nodes, "line"), Some(("line".to_string(), 1)));
+    }
+
+    #[test]
+    fn the_first_connected_image_input_wins() {
+        // `blit`-shaped: two image inputs, only the second wired. An earlier but
+        // unconnected input must not shadow the one that actually has pixels.
+        let mut n = node(
+            "blit",
+            None,
+            vec![image_input(None), image_input(Some(("src", 0)))],
+            vec![img_out()],
+        );
+        n.inputs[1].name = "foreground".to_string();
+        let nodes = graph(vec![node("src", None, vec![], vec![img_out()]), n]);
+        assert_eq!(gizmo_backdrop_source(&nodes, "blit"), Some(("src".to_string(), 0)));
+    }
+
+    #[test]
+    fn a_dangling_connection_resolves_to_nothing() {
+        let nodes = graph(vec![crop_node("crop", Some(("missing", 0)))]);
+        assert_eq!(gizmo_backdrop_source(&nodes, "crop"), None);
+    }
+
+    #[test]
+    fn an_out_of_range_output_index_resolves_to_nothing() {
+        let nodes = graph(vec![
+            node("src", None, vec![], vec![img_out()]),
+            crop_node("crop", Some(("src", 7))),
+        ]);
+        assert_eq!(gizmo_backdrop_source(&nodes, "crop"), None);
+    }
+
+    #[test]
+    fn a_non_image_upstream_output_resolves_to_nothing() {
+        let nodes = graph(vec![
+            node(
+                "num",
+                None,
+                vec![],
+                vec![Output::new("value".to_string(), Value::Decimal(1.0), None)],
+            ),
+            crop_node("crop", Some(("num", 0))),
+        ]);
+        assert_eq!(gizmo_backdrop_source(&nodes, "crop"), None);
+    }
+
+    #[test]
+    fn a_missing_node_resolves_to_nothing() {
+        assert_eq!(gizmo_backdrop_source(&graph(vec![]), "nope"), None);
+    }
+
+    // --- editor resolution ---
+
+    #[test]
+    fn resolve_picks_gizmos_for_an_op_that_declares_them() {
+        let nodes = graph(vec![crop_node("crop", None)]);
+        match resolve_preview_editor(&nodes, Some("crop")) {
+            Some(PreviewEditor::Gizmos { node_id, specs }) => {
+                assert_eq!(node_id, "crop");
+                assert_eq!(specs.len(), 1);
+            }
+            other => panic!("expected gizmos, got {}", label(&other)),
+        }
+    }
+
+    #[test]
+    fn curve_wins_over_gizmos_when_a_node_has_both() {
+        // The curve overlay's empty-space catcher covers the whole panel and
+        // would swallow gizmo clicks, so exactly one editor may be active.
+        let mut n = crop_node("crop", None);
+        n.inputs.push(curve_input("path", None));
+        let nodes = graph(vec![n]);
+        match resolve_preview_editor(&nodes, Some("crop")) {
+            Some(PreviewEditor::Curve { input_index, .. }) => assert_eq!(input_index, 5),
+            other => panic!("expected curve, got {}", label(&other)),
+        }
+    }
+
+    #[test]
+    fn a_connected_curve_input_does_not_claim_the_overlay() {
+        // A driven curve can't be hand-edited, so the node's gizmos still win.
+        let mut n = crop_node("crop", None);
+        let mut curve = curve_input("path", None);
+        curve.connection = Some(("elsewhere".to_string(), 0));
+        n.inputs.push(curve);
+        let nodes = graph(vec![n]);
+        assert!(matches!(
+            resolve_preview_editor(&nodes, Some("crop")),
+            Some(PreviewEditor::Gizmos { .. })
+        ));
+    }
+
+    #[test]
+    fn a_tone_curve_input_is_never_a_spatial_editor() {
+        // Tone curves map values, not space; they are edited in the settings
+        // panel's embedded box instead.
+        let n = node(
+            "curves",
+            None,
+            vec![curve_input("master", Some(InputSettings::ToneCurve))],
+            vec![img_out()],
+        );
+        assert!(resolve_preview_editor(&graph(vec![n]), Some("curves")).is_none());
+    }
+
+    #[test]
+    fn an_op_without_gizmos_gets_no_editor() {
+        let nodes = graph(vec![node(
+            "resize",
+            Some(Operation::OpImageTransformResize),
+            vec![image_input(None)],
+            vec![img_out()],
+        )]);
+        assert!(resolve_preview_editor(&nodes, Some("resize")).is_none());
+    }
+
+    #[test]
+    fn an_unknown_node_type_gets_no_editor() {
+        // `NodeType::Unknown` placeholders carry no operation, so they can never
+        // reach the gizmo table.
+        let nodes = graph(vec![node("mystery", None, vec![], vec![img_out()])]);
+        assert!(resolve_preview_editor(&nodes, Some("mystery")).is_none());
+    }
+
+    #[test]
+    fn no_selection_and_missing_nodes_get_no_editor() {
+        let nodes = graph(vec![crop_node("crop", None)]);
+        assert!(resolve_preview_editor(&nodes, None).is_none());
+        assert!(resolve_preview_editor(&nodes, Some("gone")).is_none());
+    }
+}

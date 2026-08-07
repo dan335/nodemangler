@@ -32,6 +32,7 @@ use crate::{
     view_to_graph_space_pos2,
     view_window::{
         curve_overlay,
+        spatial_overlay,
         image_viewer::ImageViewer,
         material_channels::{material_input_channel, MaterialAssignment, MaterialChannel},
         preview_2d,
@@ -54,8 +55,8 @@ struct LibraryImagePreview {
 
 /// A library image being decoded on a background `std::thread` (see
 /// [`Program::preview_library_image`]). Decoding is off the UI thread because
-/// it can take hundreds of milliseconds — a camera raw has to be developed, and
-/// large TIFF/EXR/HEIC files are no faster — which would otherwise freeze the
+/// it can take hundreds of milliseconds â€” a camera raw has to be developed, and
+/// large TIFF/EXR/HEIC files are no faster â€” which would otherwise freeze the
 /// window for the whole decode.
 struct PendingLibraryPreview {
     /// The file being decoded. Keeps the Libraries row highlighted while the
@@ -63,7 +64,7 @@ struct PendingLibraryPreview {
     path: PathBuf,
     /// Which request this is. Compared against
     /// [`Program::library_preview_generation`] when the result lands so a
-    /// superseded decode is discarded instead of stealing the panel — the same
+    /// superseded decode is discarded instead of stealing the panel â€” the same
     /// stale-check discipline `mangler_core::thumbnail_service` uses.
     generation: u64,
     /// Where the worker thread leaves its result. `None` until it finishes.
@@ -73,7 +74,7 @@ struct PendingLibraryPreview {
 /// Outcome of checking a background decode's slot.
 #[derive(Debug, PartialEq)]
 enum PreviewPoll<T> {
-    /// Still decoding — keep showing the loading placeholder.
+    /// Still decoding â€” keep showing the loading placeholder.
     Pending,
     /// Finished and still the newest request.
     Ready(T),
@@ -118,7 +119,7 @@ pub struct Program {
     /// Temporary status message shown on screen (text, expiry time).
     status_message: Option<(String, std::time::Instant)>,
     /// Persistent, user-dismissible warning about the loaded file (saved by
-    /// a newer NodeMangler, and/or unknown nodes preserved as placeholders —
+    /// a newer NodeMangler, and/or unknown nodes preserved as placeholders â€”
     /// see `GraphChangedMessage::LoadWarnings`). Shown as a banner at the
     /// top-center of the work area until the close button is clicked;
     /// deliberately NOT the 2-second fading `status_message`, because the
@@ -131,14 +132,21 @@ pub struct Program {
     file_conflict: Option<PathBuf>,
     /// Whether any panel tree (main window or a secondary window) currently
     /// has a Preview2D leaf open. Recomputed by `App` every frame from the
-    /// union of trees — `Program` cannot see the panel tree itself — and used
+    /// union of trees â€” `Program` cannot see the panel tree itself â€” and used
     /// to hint the user when viewing a node with nowhere to show it.
     pub has_preview_2d_panel: bool,
     /// Per-leaf 2D preview pan/zoom state, keyed by panel leaf id.
     viewers_2d: HashMap<LeafId, ImageViewer>,
     /// Per-leaf 3D preview state (arcball camera + material channel bindings).
     viewers_3d: HashMap<LeafId, Preview3dPanel>,
-    /// Per-leaf graph pan/zoom camera, keyed by panel leaf id — mirrors
+    /// Per-leaf 2D-preview backdrop override: `true` means show the output the
+    /// user explicitly right-clicked instead of the gizmo node's source image.
+    /// Set for every live leaf by `view_node` (an explicit act beats the
+    /// automatic choice) and cleared by `edit_node` when the selection changes
+    /// (a new node re-arms the automatic choice). Also toggled from the gizmo
+    /// caption strip. Absent means "automatic".
+    gizmo_backdrop_prefer_viewed: HashMap<LeafId, bool>,
+    /// Per-leaf graph pan/zoom camera, keyed by panel leaf id â€” mirrors
     /// `viewers_2d`/`viewers_3d` so every Graph-kind panel pans and zooms
     /// independently instead of sharing one camera.
     graph_cameras: HashMap<LeafId, GraphCamera>,
@@ -153,7 +161,7 @@ pub struct Program {
     /// points). Refreshed by each window's `show_menu_drag` pass and pruned
     /// with the viewers. Needed because a cross-window drag delivers all
     /// pointer events to the *source* window (OS mouse capture) in that
-    /// window's local coordinates — screen space is the common frame.
+    /// window's local coordinates â€” screen space is the common frame.
     graph_rects_screen: HashMap<LeafId, (Rect, Pos2)>,
     /// Pointer position in screen points while a node-list drag is active,
     /// published by the window holding the mouse capture so every window can
@@ -162,12 +170,12 @@ pub struct Program {
     /// Image file being dragged out of the Libraries panel, if any. Set when
     /// an image row's drag starts (via `LibraryAction::BeginImageDrag`) and
     /// dropped onto a graph panel by `show_menu_drag`, which creates an "image
-    /// from file" node at the drop position — mirroring the node-list drag
+    /// from file" node at the drop position â€” mirroring the node-list drag
     /// (`dragging_menu_button`) but carrying a path instead of an operation.
     dragging_library_image: Option<PathBuf>,
     /// Display name to show when this graph has no save path yet (a brand-new
     /// unsaved tab). Once a save path exists the name is derived purely from
-    /// the file stem — see [`Self::display_name`].
+    /// the file stem â€” see [`Self::display_name`].
     fallback_name: String,
     /// Editable buffer backing the graph-settings name field. Kept in sync
     /// with the authoritative display name while the field isn't focused, and
@@ -193,7 +201,7 @@ pub struct Program {
     library_preview_generation: u64,
     /// Failure from a background decode, held until `App` drains it into the
     /// Libraries panel's error line ([`Self::take_library_preview_error`]).
-    /// Errors can no longer be returned from the request call — they only
+    /// Errors can no longer be returned from the request call â€” they only
     /// exist a frame or more later.
     library_preview_error: Option<String>,
     /// Fit-request counter for the 2D preview panels: bumped whenever the user
@@ -216,7 +224,7 @@ pub struct Program {
     /// The active watch on a "from folder" node, if any (see [`WatchRun`]).
     /// Set from the engine's [`GraphChangedMessage::WatchStatus`] snapshots
     /// and cleared on [`GraphChangedMessage::WatchStopped`]. Mutually
-    /// exclusive with `batch_run` — both drive the same node.
+    /// exclusive with `batch_run` â€” both drive the same node.
     watch_run: Option<WatchRun>,
 }
 
@@ -310,6 +318,7 @@ impl Program {
                 file_conflict: None,
                 has_preview_2d_panel: false,
                 viewers_2d: HashMap::new(),
+                gizmo_backdrop_prefer_viewed: HashMap::new(),
                 viewers_3d: HashMap::new(),
                 graph_cameras: HashMap::new(),
                 popup_graph_leaf: None,
@@ -388,14 +397,16 @@ impl Program {
         }
     }
 
-    /// Creates an "image from file" input node wired to `path` and drops it
-    /// near the focused graph panel's centre (with a little random jitter so
-    /// repeated adds don't stack exactly). Shared by the drag-and-drop handler
-    /// and the Libraries panel's "add to current graph" action.
+    /// Creates an image input node wired to `path` (see
+    /// [`Self::add_image_from_file_at`] for how the node type is chosen) and
+    /// drops it near the focused graph panel's centre (with a little random
+    /// jitter so repeated adds don't stack exactly). Shared by the
+    /// drag-and-drop handler and the Libraries panel's "add to current graph"
+    /// action.
     pub fn add_image_from_file(&mut self, path: PathBuf) {
         // Pick a screen point inside the focused graph panel, then map it into
         // graph space through that panel's camera. `main_graph_rects` holds
-        // last frame's panel rects — the same source `camera_at` relies on for
+        // last frame's panel rects â€” the same source `camera_at` relies on for
         // pre-render pointer conversions.
         let rect = self
             .main_graph_rects
@@ -412,18 +423,31 @@ impl Program {
         self.add_image_from_file_at(path, graph_pos);
     }
 
-    /// Creates an "image from file" input node wired to `path` at an explicit
-    /// graph-space position. Used by the Libraries-panel drag-and-drop handler,
-    /// which knows exactly where the user dropped the image;
-    /// `add_image_from_file` is the jittered-center wrapper over this.
+    /// Creates an image input node wired to `path` at an explicit graph-space
+    /// position. Used by the Libraries-panel drag-and-drop handler, which knows
+    /// exactly where the user dropped the image; `add_image_from_file` is the
+    /// jittered-center wrapper over this.
+    ///
+    /// Camera raw files get a `from raw` node rather than `from file`. Both can
+    /// open a raw, but `from file` develops it with the camera's as-shot
+    /// settings and offers no way to change them, so landing on `from raw`
+    /// puts the white-balance, encoding and resolution controls in front of the
+    /// user instead of making them swap the node out first. Their `path` input
+    /// is index 0 in both cases.
     pub fn add_image_from_file_at(&mut self, path: PathBuf, graph_pos: Pos2) {
+        use mangler_core::operations::Operation;
+        let operation = if mangler_core::operations::images::inputs::file::is_raw_file(&path) {
+            Operation::OpImageInputRaw
+        } else {
+            Operation::OpImageInputFile
+        };
         // The path goes through `AddNode`'s initial input values (not a
-        // follow-up `SetInput`) so the engine's `AddedNode` echo — which the
-        // GUI builds its local node from — already carries it. A `SetInput`
+        // follow-up `SetInput`) so the engine's `AddedNode` echo â€” which the
+        // GUI builds its local node from â€” already carries it. A `SetInput`
         // sent after `AddNode` is never echoed back, leaving the settings
         // panel showing an empty path even though the engine loaded the file.
         if let Err(err) = self.add_node(
-            AddNodeType::Operation(mangler_core::operations::Operation::OpImageInputFile),
+            AddNodeType::Operation(operation),
             graph_pos,
             true,
             None,
@@ -475,7 +499,7 @@ impl Program {
                 }
 
                 if selection.is_empty() {
-                    self.status_message = Some(("Nothing to copy — select a node first".to_string(), std::time::Instant::now()));
+                    self.status_message = Some(("Nothing to copy â€” select a node first".to_string(), std::time::Instant::now()));
                 } else if let Some(cb) = Clipboard::from_selection(
                     &selection,
                     &self.graph_editor.graph_nodes,
@@ -548,7 +572,7 @@ impl Program {
                             // `mangler_core::saved_nodes`). There's no
                             // `AddNodeType` for it, so it renders with
                             // `node_type: None` for now (clipboard copy/paste
-                            // already skips nodes with no op — see
+                            // already skips nodes with no op â€” see
                             // `Clipboard::from_selection`). Full display
                             // support (error badge, non-runnable styling)
                             // lands in a later pass.
@@ -646,7 +670,7 @@ impl Program {
                     let mut parts: Vec<String> = Vec::new();
                     if is_newer_than_app {
                         parts.push(format!(
-                            "Saved with NodeMangler {} — you're on {}. Auto-save paused until you edit.",
+                            "Saved with NodeMangler {} â€” you're on {}. Auto-save paused until you edit.",
                             file_version,
                             mangler_core::APP_VERSION,
                         ));
@@ -663,15 +687,15 @@ impl Program {
                 }
                 GraphChangedMessage::FileConflict { path } => {
                     // Save file rewritten externally while local edits are
-                    // pending — remember the path; show_overlays renders the
+                    // pending â€” remember the path; show_overlays renders the
                     // Reload-vs-Overwrite modal while this is set.
                     self.file_conflict = Some(path);
                 }
                 GraphChangedMessage::SaveError { path, message } => {
                     // Writing the save file failed (missing/unwritable
-                    // directory, disk full, ...). Not fatal — the edit is
+                    // directory, disk full, ...). Not fatal â€” the edit is
                     // still in memory and the next auto-save tick will try
-                    // again — so this is a fading status message rather
+                    // again â€” so this is a fading status message rather
                     // than a blocking modal.
                     self.status_message = Some((
                         format!("couldn't save {}: {}", path.display(), message),
@@ -720,7 +744,7 @@ impl Program {
                     total,
                     cancelled,
                 } => {
-                    // The batch ended — clear the running state and surface a
+                    // The batch ended â€” clear the running state and surface a
                     // fading status message describing the outcome. A cancel
                     // with total == 0 means it never started (no images found /
                     // bad folder / wrong node / a watch already owns the node).
@@ -741,7 +765,7 @@ impl Program {
                     last_file,
                     error,
                 } => {
-                    // A whole-state snapshot, so replace rather than merge —
+                    // A whole-state snapshot, so replace rather than merge â€”
                     // that's what makes a dropped message self-heal.
                     self.watch_run = Some(WatchRun {
                         node_id,
@@ -1325,8 +1349,8 @@ impl Program {
             self.popup_graph_leaf = Some(leaf_id);
         }
 
-        // Graph run timing and interaction help live inside the graph panel —
-        // they describe the graph, not the whole app — anchored to this
+        // Graph run timing and interaction help live inside the graph panel â€”
+        // they describe the graph, not the whole app â€” anchored to this
         // panel's corners (the clip rect keeps them from spilling out).
         let panel_rect = ui.max_rect();
         {
@@ -1355,6 +1379,41 @@ impl Program {
         }
     }
 
+    /// Send one `SetInput` per touched input, reading each input's
+    /// *accumulated local value* rather than a per-frame payload â€” an overlay's
+    /// drag-release frame carries no pointer movement, so the frame's `changed`
+    /// list is empty by then (see `overlay::Gesture`).
+    ///
+    /// All the messages land in one engine tick, and the engine drains its whole
+    /// node channel before calling `graph.run()`, so a four-input crop gesture
+    /// still costs exactly one graph run.
+    fn commit_node_inputs(
+        nodes: &HashMap<String, GraphNode>,
+        tx: &mpsc::Sender<ChangeNodeMessage>,
+        node_id: &str,
+        input_indices: &[usize],
+    ) {
+        let mut sent: Vec<usize> = Vec::with_capacity(input_indices.len());
+        for &input_index in input_indices {
+            if sent.contains(&input_index) {
+                continue;
+            }
+            sent.push(input_index);
+            let Some(value) = nodes
+                .get(node_id)
+                .and_then(|node| node.inputs.get(input_index))
+                .map(|input| input.value.clone())
+            else {
+                continue;
+            };
+            let message =
+                ChangeNodeMessage::SetInput { node_id: node_id.to_owned(), input_index, value };
+            if let Err(err) = tx.try_send(message) {
+                println!("Error sending SetInput: {:?}", err);
+            }
+        }
+    }
+
     fn show_preview_2d_panel(&mut self, ui: &mut egui::Ui, leaf_id: LeafId, theme: &Theme) {
         // Before the borrow below, so a decode that landed this frame is drawn
         // now rather than a frame late.
@@ -1362,7 +1421,7 @@ impl Program {
 
         // Destructure so the per-leaf viewer and the graph nodes can be
         // borrowed simultaneously (disjoint fields). `tx_change_node` is taken
-        // here too so the curve overlay can commit without re-borrowing `self`.
+        // here too so an overlay can commit without re-borrowing `self`.
         let Self {
             viewers_2d,
             graph_editor,
@@ -1372,50 +1431,46 @@ impl Program {
             view_fit_seq,
             editing_node_id,
             tx_change_node,
+            gizmo_backdrop_prefer_viewed,
             ..
         } = self;
         let view_fit_seq = *view_fit_seq;
 
         let viewer = viewers_2d.entry(leaf_id).or_insert_with(ImageViewer::new);
+        let prefer_viewed = *gizmo_backdrop_prefer_viewed.entry(leaf_id).or_insert(false);
 
         // Capture the panel rect before any child drawing advances the cursor
         // (same formula as `image_viewer::show`).
         let view_rect = Rect::from_min_size(ui.cursor().left_top(), ui.available_size());
 
-        // Curve editing is selection-driven: active when the *edited* (settings-
-        // panel) node has an unconnected `Value::Curve` input. Resolved up front
-        // (an immutable read that ends here via clone) so the mutable node
-        // borrow below is sequential, and so the empty-panel branch can show the
-        // "draw a curve" hint instead of the generic placeholder. Tone-curve
-        // inputs are excluded — they map values, not space, and are edited in
-        // the node settings panel's embedded box instead.
-        let editing_curve: Option<(String, usize, mangler_core::curve::Curve)> = editing_node_id
-            .as_ref()
-            .and_then(|id| graph_editor.graph_nodes.get(id))
-            .and_then(|node| {
-                node.inputs
-                    .iter()
-                    .position(|inp| {
-                        matches!(inp.value, Value::Curve(_))
-                            && inp.connection.is_none()
-                            && !matches!(
-                                inp.settings,
-                                Some(mangler_core::input::InputSettings::ToneCurve)
-                            )
-                    })
-                    .and_then(|idx| match &node.inputs[idx].value {
-                        Value::Curve(c) => Some((node.id.clone(), idx, c.clone())),
-                        _ => None,
-                    })
-            });
+        // Overlay editing is selection-driven: it acts on the *edited*
+        // (settings-panel) node, never the viewed one. Resolved up front as an
+        // immutable read that ends here via clone, so the mutable node borrow
+        // further down is a fresh sequential borrow.
+        let editor = resolve_preview_editor(&graph_editor.graph_nodes, editing_node_id.as_deref());
+
+        // A gizmo's numbers are relative to one specific image, so the panel
+        // shows that image rather than whatever was last right-clicked — which
+        // for the flagship nodes is exactly the useless one (`sample pixel`
+        // outputs a colour swatch, `crop` outputs the already-cropped result).
+        let gizmo_backdrop = match &editor {
+            Some(PreviewEditor::Gizmos { node_id, .. }) if !prefer_viewed => {
+                gizmo_backdrop_source(&graph_editor.graph_nodes, node_id)
+            }
+            _ => None,
+        };
 
         // Normal content dispatch. Records the displayed image's dimensions so
-        // the overlay can map onto the same on-screen rect `draw_image` uses.
+        // an overlay can map onto the same on-screen rect `draw_image` uses.
         let mut displayed_dims: Option<(f32, f32)> = None;
+        // The backdrop's pixels, but only when they really are the gizmo node's
+        // spatial source — the colour readout must never sample an unrelated
+        // image and present it as the sampled value.
+        let mut source_pixels: Option<std::sync::Arc<mangler_core::float_image::FloatImage>> = None;
+        let mut backdrop_label: Option<String> = None;
 
-        // A clicked library image takes precedence over a viewed node output.
-        // Its cache key is the file path, so switching images rebuilds the
-        // texture; a synthetic node id keeps it distinct from real outputs.
+        // A clicked library image takes precedence over everything: it is the
+        // most recent explicit act, and `view_node` already clears it.
         if let Some(preview) = library_image_preview.as_ref() {
             viewer.show(
                 ui,
@@ -1428,6 +1483,14 @@ impl Program {
                 theme,
             );
             displayed_dims = Some((preview.image.width() as f32, preview.image.height() as f32));
+            backdrop_label = Some(format!(
+                "{} (not this node's source)",
+                preview
+                    .path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| preview.path.to_string_lossy().into_owned())
+            ));
         } else if let Some(pending) = pending_library_preview.as_ref() {
             // Decoding on a background thread: hold the panel with a named
             // placeholder rather than falling back to a node output the user
@@ -1438,70 +1501,157 @@ impl Program {
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| pending.path.to_string_lossy().into_owned());
             preview_2d::show_loading(ui, &name, theme);
+        } else if let Some((backdrop_id, backdrop_index)) = gizmo_backdrop.as_ref() {
+            if let Some((data, change_id)) =
+                image_output(&graph_editor.graph_nodes, backdrop_id, *backdrop_index)
+            {
+                let (w, h) = (data.width() as f32, data.height() as f32);
+                // Switching backdrops can swap a 512px mask for a 6000px photo,
+                // so frame it once per new source rather than leaving it
+                // off-screen under the previous pan/zoom.
+                viewer.fit_on_source_change(backdrop_id, *backdrop_index, view_rect, w, h);
+                viewer.show(
+                    ui,
+                    backdrop_id.clone(),
+                    *backdrop_index,
+                    change_id,
+                    &data,
+                    false,
+                    view_fit_seq,
+                    theme,
+                );
+                displayed_dims = Some((w, h));
+                backdrop_label =
+                    Some(describe_output(&graph_editor.graph_nodes, backdrop_id, *backdrop_index));
+                source_pixels = Some(data);
+            } else {
+                show_editor_hint(ui, &editor, theme);
+            }
         } else if let Some((viewing_node_id, output_index)) = viewing_node_id_index.as_ref() {
             if let Some(graph_node) = graph_editor.graph_nodes.get(viewing_node_id) {
                 preview_2d::show(ui, viewer, graph_node, *output_index, view_fit_seq, theme);
                 if let Some(output) = graph_node.outputs.get(*output_index) {
                     if let Value::Image { data, .. } = &output.value {
                         displayed_dims = Some((data.width() as f32, data.height() as f32));
+                        // Only the gizmo node's own source may feed the colour
+                        // readout; anything else is a coincidence of whatever
+                        // the user happened to be viewing.
+                        if let Some(PreviewEditor::Gizmos { node_id, .. }) = &editor {
+                            let is_source =
+                                gizmo_backdrop_source(&graph_editor.graph_nodes, node_id)
+                                    .is_some_and(|(id, idx)| {
+                                        &id == viewing_node_id && idx == *output_index
+                                    });
+                            if is_source {
+                                source_pixels = Some(data.clone());
+                            }
+                        }
                     }
                 }
-            } else if editing_curve.is_some() {
-                preview_2d::show_curve_hint(ui, theme);
+                backdrop_label = Some(describe_output(
+                    &graph_editor.graph_nodes,
+                    viewing_node_id,
+                    *output_index,
+                ));
             } else {
-                preview_2d::show_empty(ui, theme);
+                show_editor_hint(ui, &editor, theme);
             }
-        } else if editing_curve.is_some() {
-            preview_2d::show_curve_hint(ui, theme);
         } else {
-            preview_2d::show_empty(ui, theme);
+            show_editor_hint(ui, &editor, theme);
         }
 
         // Draw the editing overlay on top of whatever was displayed.
-        let Some((node_id, input_index, curve)) = editing_curve else {
+        let Some(editor) = editor else {
             return;
         };
 
-        // Map onto the displayed image's screen rect (same call `draw_image`
-        // makes), else a letterboxed fallback canvas.
+        // Map onto the displayed image's screen rect (the same call
+        // `draw_image` makes), else a letterboxed fallback canvas.
         let image_rect = match displayed_dims {
-            Some((w, h)) => viewer.get_rect(
-                Pos2::new(view_rect.left() + w * 0.5, view_rect.top() + h * 0.5),
-                viewer.zoom,
-                w,
-                h,
-            ),
-            None => curve_overlay::fallback_canvas_rect(view_rect),
+            Some((w, h)) => viewer.displayed_image_rect(view_rect, w, h),
+            None => crate::overlay::mapping::fallback_canvas_rect(view_rect),
         };
 
-        let resp = curve_overlay::show(ui, leaf_id, view_rect, image_rect, &curve, theme);
+        match editor {
+            PreviewEditor::Curve { node_id, input_index, curve } => {
+                let resp = curve_overlay::show(ui, leaf_id, view_rect, image_rect, &curve, theme);
 
-        if let Some(new_curve) = resp.changed {
-            // Local mutate every frame for instant feedback; the immutable
-            // borrows above are done, so this `get_mut` is a fresh borrow.
-            if let Some(node) = graph_editor.graph_nodes.get_mut(&node_id) {
-                if let Some(input) = node.inputs.get_mut(input_index) {
-                    input.value = Value::Curve(new_curve);
+                if let Some(new_curve) = resp.changed {
+                    // Local mutate every frame for instant feedback; the
+                    // immutable borrows above are done, so this `get_mut` is a
+                    // fresh sequential borrow.
+                    if let Some(node) = graph_editor.graph_nodes.get_mut(&node_id) {
+                        if let Some(input) = node.inputs.get_mut(input_index) {
+                            input.value = Value::Curve(new_curve);
+                        }
+                    }
+                }
+                // Push to the engine only when the gesture completed.
+                if resp.commit {
+                    Self::commit_node_inputs(
+                        &graph_editor.graph_nodes,
+                        tx_change_node,
+                        &node_id,
+                        &[input_index],
+                    );
                 }
             }
-        }
-        // Push to the engine only when the gesture completed. A drag's release
-        // frame reports `commit` with `changed: None` (the pointer no longer
-        // moves), so commit sends the accumulated local value — not `changed`.
-        if resp.commit {
-            let value = graph_editor
-                .graph_nodes
-                .get(&node_id)
-                .and_then(|node| node.inputs.get(input_index))
-                .map(|input| input.value.clone());
-            if let Some(value) = value {
-                let message = ChangeNodeMessage::SetInput {
-                    node_id,
-                    input_index,
-                    value,
+            PreviewEditor::Gizmos { node_id, specs } => {
+                let Some(node) = graph_editor.graph_nodes.get(&node_id) else {
+                    return;
                 };
-                if let Err(err) = tx_change_node.try_send(message) {
-                    println!("Error sending SetInput: {:?}", err);
+                let resp = spatial_overlay::show(
+                    ui,
+                    leaf_id,
+                    view_rect,
+                    image_rect,
+                    &spatial_overlay::GizmoContext {
+                        specs,
+                        inputs: &node.inputs,
+                        image_dims: displayed_dims.map(|(w, h)| (w as u32, h as u32)),
+                        sample_source: source_pixels.as_deref(),
+                    },
+                    theme,
+                );
+
+                if !resp.changed.is_empty() {
+                    if let Some(node) = graph_editor.graph_nodes.get_mut(&node_id) {
+                        for (input_index, value) in resp.changed {
+                            if let Some(input) = node.inputs.get_mut(input_index) {
+                                input.value = value;
+                            }
+                        }
+                    }
+                }
+                if resp.commit {
+                    Self::commit_node_inputs(
+                        &graph_editor.graph_nodes,
+                        tx_change_node,
+                        &node_id,
+                        &resp.commit_inputs,
+                    );
+                }
+
+                // Always say what is underneath, and offer the escape hatch —
+                // an automatic backdrop is only helpful if it is legible.
+                if let Some(label) = backdrop_label {
+                    let toggled = crate::overlay::strip::top_left(
+                        ui,
+                        view_rect,
+                        egui::Vec2::new(320.0, 26.0),
+                        theme,
+                        |ui| {
+                            ui.label(
+                                egui::RichText::new(format!("over: {label}"))
+                                    .color(theme.get().text_faint),
+                            );
+                            ui.small_button(if prefer_viewed { "auto" } else { "viewed" })
+                                .clicked()
+                        },
+                    );
+                    if toggled {
+                        gizmo_backdrop_prefer_viewed.insert(leaf_id, !prefer_viewed);
+                    }
                 }
             }
         }
@@ -1523,6 +1673,7 @@ impl Program {
     pub fn prune_viewers(&mut self, live: &HashSet<LeafId>) {
         self.viewers_2d.retain(|id, _| live.contains(id));
         self.viewers_3d.retain(|id, _| live.contains(id));
+        self.gizmo_backdrop_prefer_viewed.retain(|id, _| live.contains(id));
         self.graph_cameras.retain(|id, _| live.contains(id));
         self.graph_rects_screen.retain(|id, _| live.contains(id));
     }
@@ -1568,7 +1719,7 @@ impl Program {
     ) {
         // Keep the main-window graph rects around for pointer→graph
         // conversions that run before panels render this frame (paste,
-        // dropped files) — see `camera_at`.
+        // dropped files) â€” see `camera_at`.
         self.main_graph_rects = graph_rects.to_vec();
 
         // Open search popup on Tab key (only when popup isn't already open)
@@ -1654,7 +1805,7 @@ impl Program {
 
     /// Persistent, dismissible load-warning banner (newer-version file /
     /// unknown-node placeholders), top-center of the work area. Unlike the
-    /// fading `status_message`, this stays until the user closes it — it
+    /// fading `status_message`, this stays until the user closes it â€” it
     /// carries information they need to act on (auto-save is being held).
     fn show_load_warning_banner(&mut self, ui: &mut egui::Ui, work_rect: Rect, theme: &Theme) {
         let Some(warning) = self.load_warning.clone() else {
@@ -1750,7 +1901,7 @@ impl Program {
             });
         });
         // Note: `modal.should_close()` (Esc / outside click) is intentionally
-        // ignored — see the doc comment above.
+        // ignored â€” see the doc comment above.
 
         if let Some(keep_ours) = choice {
             if let Err(err) = self
@@ -1769,7 +1920,7 @@ impl Program {
     ///
     /// Cross-window detail: the OS gives the *source* window mouse capture
     /// for the whole drag, so only that window receives pointer/release
-    /// events — in its own local coordinates, even when the cursor is
+    /// events â€” in its own local coordinates, even when the cursor is
     /// physically over another window. The capturing window therefore
     /// publishes the pointer in *screen* points (`menu_drag_pointer_screen`),
     /// every window registers its graph rects in screen points
@@ -1809,7 +1960,7 @@ impl Program {
         });
 
         // Only the capturing window holds the button during the drag, so this
-        // updates from exactly one window per frame — with live coordinates
+        // updates from exactly one window per frame â€” with live coordinates
         // even when the cursor is outside its bounds.
         if primary_down || primary_released {
             if let Some(local) = local_pointer {
@@ -1821,7 +1972,7 @@ impl Program {
             return;
         };
 
-        // release mouse button after dragging menu button — delivered to the
+        // release mouse button after dragging menu button â€” delivered to the
         // capturing window only; the drop target may be any window's panel.
         if primary_released {
             let target = self
@@ -1981,6 +2132,12 @@ impl Program {
 
     pub fn view_node(&mut self, node_id: String, output_index: usize) {
         self.viewing_node_id_index = Some((node_id, output_index));
+        // Explicitly picking an output beats the gizmo overlay's automatic
+        // choice of backdrop, in every panel â€” the automatic one re-arms when
+        // the user selects a different node (see `edit_node`).
+        for prefer in self.gizmo_backdrop_prefer_viewed.values_mut() {
+            *prefer = true;
+        }
         // A node output replaces any library image being previewed (last
         // action wins), so the 2D panel shows what the user just picked. The
         // generation bump also disowns a decode still in flight, which would
@@ -1993,7 +2150,7 @@ impl Program {
         self.view_fit_seq += 1;
         if !self.has_preview_2d_panel {
             self.status_message = Some((
-                "no 2D preview panel open — use a panel's corner menu to add one".to_string(),
+                "no 2D preview panel open â€” use a panel's corner menu to add one".to_string(),
                 std::time::Instant::now(),
             ));
         }
@@ -2005,7 +2162,7 @@ impl Program {
     /// clears this in the other direction).
     ///
     /// Returns immediately: the decode runs on a plain `std::thread` (same
-    /// choice as `library_scanner` — no coupling to the tokio runtime) and the
+    /// choice as `library_scanner` â€” no coupling to the tokio runtime) and the
     /// result is picked up by [`Self::poll_library_preview`]. Decode failures
     /// surface through [`Self::take_library_preview_error`] rather than a
     /// return value, since they aren't known yet when this returns.
@@ -2039,7 +2196,7 @@ impl Program {
 
         if !self.has_preview_2d_panel {
             self.status_message = Some((
-                "no 2D preview panel open — use a panel's corner menu to add one".to_string(),
+                "no 2D preview panel open â€” use a panel's corner menu to add one".to_string(),
                 std::time::Instant::now(),
             ));
         }
@@ -2066,7 +2223,7 @@ impl Program {
                     path,
                     image: Arc::new(image),
                 });
-                // Fit when the image actually appears — fitting at click time
+                // Fit when the image actually appears â€” fitting at click time
                 // would frame whatever the panel was showing before.
                 self.view_fit_seq += 1;
             }
@@ -2089,7 +2246,7 @@ impl Program {
     }
 
     /// The library image shown in (or on its way to) the 2D preview, if any.
-    /// Used by the Libraries panel to highlight the matching row — a file being
+    /// Used by the Libraries panel to highlight the matching row â€” a file being
     /// decoded counts, so the row stays lit for the whole wait.
     pub fn previewed_library_image(&self) -> Option<&Path> {
         self.library_image_preview
@@ -2105,8 +2262,8 @@ impl Program {
     /// Binds all of the 3D preview panels' material channels from a material
     /// export node's input connections (right-click on the node in the graph).
     ///
-    /// There's no "focused panel" concept for the 3D viewers — the default
-    /// layout has a single 3D panel anyway — so this deliberately applies the
+    /// There's no "focused panel" concept for the 3D viewers â€” the default
+    /// layout has a single 3D panel anyway â€” so this deliberately applies the
     /// binding to every open 3D panel rather than picking one.
     ///
     /// Purely a GUI-side state change: no engine messages are sent. The
@@ -2114,7 +2271,7 @@ impl Program {
     /// `resolve_material` (called from the 3D panel's own show code).
     fn bind_material_node_to_3d(&mut self, node_id: &str) {
         let Some(node) = self.graph_editor.graph_nodes.get(node_id) else {
-            // Node vanished (e.g. deleted the same frame) — nothing to bind.
+            // Node vanished (e.g. deleted the same frame) â€” nothing to bind.
             return;
         };
 
@@ -2150,7 +2307,7 @@ impl Program {
 
         self.status_message = Some(if self.viewers_3d.is_empty() {
             (
-                "no 3D preview panel open — use a panel's corner menu to add one".to_string(),
+                "no 3D preview panel open â€” use a panel's corner menu to add one".to_string(),
                 std::time::Instant::now(),
             )
         } else {
@@ -2162,6 +2319,12 @@ impl Program {
     }
 
     pub fn edit_node(&mut self, node_id: String) {
+        // Selecting a different node re-arms the automatic gizmo backdrop: the
+        // override means "I want to keep looking at what I picked for *this*
+        // node", not "never auto-switch again".
+        if self.editing_node_id.as_deref() != Some(node_id.as_str()) {
+            self.gizmo_backdrop_prefer_viewed.clear();
+        }
         self.editing_node_id = Some(node_id);
         //self.needs_to_save = true;
     }
@@ -2235,7 +2398,7 @@ impl Program {
             );
 
             // The input values travel with the AddNode message so the engine
-            // applies them before echoing the node back — the local node is
+            // applies them before echoing the node back â€” the local node is
             // then built with the pasted values, not defaults. (Images are
             // excluded by the clipboard; connected inputs get their values
             // from propagation once connections are restored below.)
@@ -2394,8 +2557,8 @@ fn detect_copy_paste(events: &[egui::Event]) -> (bool, Option<String>) {
 /// thumbnail) and the `ThumbnailReady` handler (where the async service
 /// delivers the thumbnail after the value has already been stored).
 ///
-/// Passing `None` for `thumbnail` produces `Text("None")` — the UI's
-/// equivalent of "no thumbnail data" — which mirrors the pre-async
+/// Passing `None` for `thumbnail` produces `Text("None")` â€” the UI's
+/// equivalent of "no thumbnail data" â€” which mirrors the pre-async
 /// behaviour. Callers that want to preserve the previous thumbnail (e.g.
 /// mid-scrub, before the async one arrives) should skip calling this and
 /// leave `node.thumbnail` untouched.
@@ -2456,6 +2619,131 @@ fn build_graph_node_thumbnail(
         },
         Some(Thumbnail::Text(v)) => Some(GraphNodeThumbnail::Text(v)),
         None => Some(GraphNodeThumbnail::Text("None".to_string())),
+    }
+}
+
+/// What the 2D preview is editing on behalf of the settings-panel node.
+///
+/// At most one is active. The curve overlay's empty-space catcher covers the
+/// whole panel and would swallow gizmo clicks, so making the two mutually
+/// exclusive *here* is what stops a node that has both (`directional blur` has
+/// a spatial `path` curve as well as an angle) from getting a half-working
+/// gizmo. Curve wins: if a node offers a path to draw, that is what the user
+/// came to the preview for.
+pub enum PreviewEditor {
+    Curve { node_id: String, input_index: usize, curve: mangler_core::curve::Curve },
+    Gizmos { node_id: String, specs: &'static [mangler_core::gizmo::GizmoSpec] },
+}
+
+/// Pick the overlay editor for the node currently in the settings panel.
+///
+/// Curve editing stays *rule-based* (any unconnected, non-tone `Value::Curve`
+/// input) rather than being listed in the gizmo table: roughly two dozen
+/// operations across `curves/`, `shapes/` and the simulations take a spatial
+/// curve, and enumerating them would mean silently losing an editor for every
+/// one that was missed.
+pub fn resolve_preview_editor(
+    nodes: &HashMap<String, GraphNode>,
+    editing_node_id: Option<&str>,
+) -> Option<PreviewEditor> {
+    let node = nodes.get(editing_node_id?)?;
+
+    // Tone-curve inputs are excluded — they map values, not space, and are
+    // edited in the node settings panel's embedded box instead.
+    let curve_input = node.inputs.iter().position(|inp| {
+        matches!(inp.value, Value::Curve(_))
+            && inp.connection.is_none()
+            && !matches!(inp.settings, Some(mangler_core::input::InputSettings::ToneCurve))
+    });
+    if let Some(idx) = curve_input {
+        if let Value::Curve(curve) = &node.inputs[idx].value {
+            return Some(PreviewEditor::Curve {
+                node_id: node.id.clone(),
+                input_index: idx,
+                curve: curve.clone(),
+            });
+        }
+    }
+
+    // `NodeType::Unknown` placeholders and subgraphs carry no operation, so
+    // they never reach the gizmo table.
+    let AddNodeType::Operation(op) = node.node_type.as_ref()? else {
+        return None;
+    };
+    let specs = mangler_core::gizmo::gizmos(op);
+    (!specs.is_empty()).then(|| PreviewEditor::Gizmos { node_id: node.id.clone(), specs })
+}
+
+/// The image a node's spatial inputs are expressed against, as
+/// `(node id, output index)`.
+///
+/// A dichotomy, deliberately not a fallback chain:
+/// - An operation that **consumes** an image (crop, sample pixel) works in its
+///   *source* image's space, resolved upstream through the first connected
+///   image input.
+/// - An operation that **produces** one from nothing (line, circle, text) works
+///   in its own output's space.
+///
+/// A consumer with nothing connected returns `None` rather than falling back to
+/// its own output: that output is the 1×1 white `default_image()` placeholder,
+/// and a fallback chain would cheerfully draw a crop box on it.
+pub fn gizmo_backdrop_source(
+    nodes: &HashMap<String, GraphNode>,
+    node_id: &str,
+) -> Option<(String, usize)> {
+    let node = nodes.get(node_id)?;
+    let consumes_image = node.inputs.iter().any(|i| matches!(i.value, Value::Image { .. }));
+
+    if consumes_image {
+        let (upstream_id, upstream_index) = node
+            .inputs
+            .iter()
+            .find(|i| matches!(i.value, Value::Image { .. }) && i.connection.is_some())
+            .and_then(|i| i.connection.clone())?;
+        // Verify the far end really produces an image before naming it.
+        image_output(nodes, &upstream_id, upstream_index)?;
+        Some((upstream_id, upstream_index))
+    } else {
+        let index = node.outputs.iter().position(|o| matches!(o.value, Value::Image { .. }))?;
+        Some((node_id.to_owned(), index))
+    }
+}
+
+/// The image at `(node id, output index)`, with its change id, when that output
+/// holds one.
+fn image_output(
+    nodes: &HashMap<String, GraphNode>,
+    node_id: &str,
+    output_index: usize,
+) -> Option<(std::sync::Arc<mangler_core::float_image::FloatImage>, String)> {
+    match &nodes.get(node_id)?.outputs.get(output_index)?.value {
+        Value::Image { data, change_id } => Some((data.clone(), change_id.clone())),
+        _ => None,
+    }
+}
+
+/// `"node name ▸ output name"`, for the gizmo caption strip.
+fn describe_output(
+    nodes: &HashMap<String, GraphNode>,
+    node_id: &str,
+    output_index: usize,
+) -> String {
+    let Some(node) = nodes.get(node_id) else {
+        return node_id.to_owned();
+    };
+    let name = node.custom_name.clone().unwrap_or_else(|| node.settings.name.clone());
+    match node.outputs.get(output_index) {
+        Some(output) => format!("{name} ▸ {}", output.name),
+        None => name,
+    }
+}
+
+/// The placeholder for a panel with an active editor but nothing to draw over.
+fn show_editor_hint(ui: &mut egui::Ui, editor: &Option<PreviewEditor>, theme: &Theme) {
+    match editor {
+        Some(PreviewEditor::Curve { .. }) => preview_2d::show_curve_hint(ui, theme),
+        Some(PreviewEditor::Gizmos { .. }) => preview_2d::show_gizmo_hint(ui, theme),
+        None => preview_2d::show_empty(ui, theme),
     }
 }
 

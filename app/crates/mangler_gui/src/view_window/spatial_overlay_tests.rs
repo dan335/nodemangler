@@ -1,0 +1,345 @@
+//! Unit tests for the spatial overlay's pure geometry and value plumbing.
+//!
+//! The interaction loop needs an egui context and has no harness here (the
+//! repo's precedent), so the coverage targets the extracted arithmetic: corner
+//! conversion, resize and move clamping, which inputs a handle reaches, and the
+//! clamp/round-trip that keeps the drawn box equal to the committed one.
+
+use super::*;
+use eframe::egui::{Pos2, Rect, Vec2};
+
+fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
+    Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h))
+}
+
+fn slider(lo: f32, hi: f32, clamp: bool) -> InputSettings {
+    InputSettings::Slider { range: (lo, hi), step_by: None, clamp_to_range: clamp }
+}
+
+const NO_MIN: [f32; 2] = [0.0, 0.0];
+const MIN: [f32; 2] = [0.01, 0.01];
+
+// ------------------------------------------------------------ corner mapping
+
+#[test]
+fn origin_size_converts_to_corners() {
+    // `width` is a SIZE measured from `x`, not the far edge — reading it the
+    // other way would only look right when x == 0.
+    let c = spec_to_corners(RectExtent::OriginSize, [0.25, 0.25, 0.5, 0.5]);
+    assert_eq!(c, [0.25, 0.25, 0.75, 0.75]);
+}
+
+#[test]
+fn two_corner_passes_through() {
+    let v = [0.25, 0.3, 0.75, 0.8];
+    assert_eq!(spec_to_corners(RectExtent::TwoCorner, v), v);
+    assert_eq!(corners_to_spec(RectExtent::TwoCorner, v), v);
+}
+
+#[test]
+fn corner_conversion_round_trips() {
+    for extent in [RectExtent::OriginSize, RectExtent::TwoCorner] {
+        for v in [[0.0, 0.0, 1.0, 1.0], [0.1, 0.2, 0.3, 0.4], [0.5, 0.5, 0.25, 0.125]] {
+            let round = corners_to_spec(extent, spec_to_corners(extent, v));
+            for i in 0..4 {
+                assert!((round[i] - v[i]).abs() < 1e-6, "{extent:?} {v:?} -> {round:?}");
+            }
+        }
+    }
+}
+
+// -------------------------------------------------------------------- resize
+
+#[test]
+fn each_handle_moves_only_its_own_coordinates() {
+    let start = [0.2, 0.3, 0.7, 0.8];
+    let to = [0.5, 0.5];
+    // Dragging the east edge must leave y0, y1 and x0 exactly untouched.
+    let c = resize_corners(start, RectHandle::E, to, NO_MIN);
+    assert_eq!([c[0], c[1], c[3]], [start[0], start[1], start[3]]);
+    assert!((c[2] - 0.5).abs() < 1e-6);
+
+    let c = resize_corners(start, RectHandle::N, to, NO_MIN);
+    assert_eq!([c[0], c[2], c[3]], [start[0], start[2], start[3]]);
+    assert!((c[1] - 0.5).abs() < 1e-6);
+
+    // A corner moves exactly two.
+    let c = resize_corners(start, RectHandle::NW, to, NO_MIN);
+    assert_eq!([c[2], c[3]], [start[2], start[3]]);
+    assert!((c[0] - 0.5).abs() < 1e-6 && (c[1] - 0.5).abs() < 1e-6);
+}
+
+#[test]
+fn resize_clamps_into_the_unit_square() {
+    let start = [0.2, 0.2, 0.7, 0.7];
+    assert_eq!(resize_corners(start, RectHandle::E, [1.4, 0.5], NO_MIN)[2], 1.0);
+    assert_eq!(resize_corners(start, RectHandle::W, [-0.4, 0.5], NO_MIN)[0], 0.0);
+    assert_eq!(resize_corners(start, RectHandle::N, [0.5, -2.0], NO_MIN)[1], 0.0);
+    assert_eq!(resize_corners(start, RectHandle::S, [0.5, 9.0], NO_MIN)[3], 1.0);
+}
+
+#[test]
+fn resize_never_flips_the_box() {
+    // Dragging an edge past its opposite stops at the minimum size rather than
+    // inverting — `crop` cannot represent an inverted region at all.
+    let start = [0.2, 0.2, 0.7, 0.7];
+    let c = resize_corners(start, RectHandle::E, [0.05, 0.5], MIN);
+    assert!((c[2] - (start[0] + MIN[0])).abs() < 1e-6, "c {c:?}");
+    assert!(c[2] > c[0], "must not invert: {c:?}");
+
+    let c = resize_corners(start, RectHandle::W, [0.95, 0.5], MIN);
+    assert!((c[0] - (start[2] - MIN[0])).abs() < 1e-6, "c {c:?}");
+    assert!(c[2] > c[0], "must not invert: {c:?}");
+
+    let c = resize_corners(start, RectHandle::S, [0.5, 0.0], MIN);
+    assert!(c[3] > c[1], "must not invert: {c:?}");
+    let c = resize_corners(start, RectHandle::N, [0.5, 1.0], MIN);
+    assert!(c[3] > c[1], "must not invert: {c:?}");
+}
+
+#[test]
+fn resize_keeps_the_minimum_size_from_every_handle() {
+    let start = [0.4, 0.4, 0.6, 0.6];
+    for h in [
+        RectHandle::N,
+        RectHandle::S,
+        RectHandle::W,
+        RectHandle::E,
+        RectHandle::NW,
+        RectHandle::NE,
+        RectHandle::SE,
+        RectHandle::SW,
+    ] {
+        // Drag each handle hard toward the box's centre.
+        let c = resize_corners(start, h, [0.5, 0.5], MIN);
+        assert!(c[2] - c[0] >= MIN[0] - 1e-6, "{h:?} collapsed width: {c:?}");
+        assert!(c[3] - c[1] >= MIN[1] - 1e-6, "{h:?} collapsed height: {c:?}");
+    }
+}
+
+#[test]
+fn min_size_takes_the_largest_of_its_three_floors() {
+    // Zoomed in on a small image: one source pixel is the binding floor.
+    let big_on_screen = rect(0.0, 0.0, 4000.0, 4000.0);
+    let m = min_size(big_on_screen, Some((10, 10)));
+    assert!((m[0] - 0.1).abs() < 1e-6, "m {m:?} should be one of ten pixels");
+
+    // Zoomed way out: the screen-pixel floor binds so the grips stay separable.
+    let tiny_on_screen = rect(0.0, 0.0, 40.0, 40.0);
+    let m = min_size(tiny_on_screen, Some((4000, 4000)));
+    assert!((m[0] - MIN_RECT_PX / 40.0).abs() < 1e-6, "m {m:?}");
+
+    // No backdrop: only the absolute floor remains, and it is never zero.
+    let m = min_size(rect(0.0, 0.0, 100000.0, 100000.0), None);
+    assert!(m[0] >= MIN_RECT_NORM && m[0] > 0.0, "m {m:?}");
+}
+
+#[test]
+fn min_size_never_exceeds_the_whole_image() {
+    // A 1x1 backdrop would otherwise ask for a minimum of the entire unit
+    // square plus change; the clamp keeps resize arithmetic well-formed.
+    let m = min_size(rect(0.0, 0.0, 4.0, 4.0), Some((1, 1)));
+    assert!(m[0] <= 1.0 && m[1] <= 1.0, "m {m:?}");
+}
+
+// ---------------------------------------------------------------------- move
+
+#[test]
+fn move_slides_along_the_boundary_instead_of_shrinking() {
+    // A half-width box pushed right stops with its far edge on the image edge,
+    // keeping its size — shrinking here would silently resize on a move.
+    let c = move_corners([0.4, 0.1, 0.9, 0.6], [0.3, 0.0]);
+    assert!((c[0] - 0.5).abs() < 1e-6, "c {c:?}");
+    assert!((c[2] - 1.0).abs() < 1e-6, "c {c:?}");
+    assert!((c[2] - c[0] - 0.5).abs() < 1e-6, "width must be preserved: {c:?}");
+}
+
+#[test]
+fn move_clamps_at_the_near_edge_too() {
+    let c = move_corners([0.1, 0.1, 0.6, 0.6], [-0.5, -0.5]);
+    assert_eq!([c[0], c[1]], [0.0, 0.0]);
+    assert!((c[2] - 0.5).abs() < 1e-6 && (c[3] - 0.5).abs() < 1e-6, "c {c:?}");
+}
+
+#[test]
+fn move_preserves_size_exactly_under_a_long_walk() {
+    // Repeated clamping is where a naive implementation accumulates drift, so
+    // walk the box into every wall many times and re-check the invariant.
+    let mut c = [0.25, 0.25, 0.75, 0.75];
+    let (w0, h0) = (c[2] - c[0], c[3] - c[1]);
+    let deltas = [[0.3, 0.0], [0.0, 0.3], [-0.4, -0.1], [0.05, -0.35], [-0.2, 0.25]];
+    for step in 0..200 {
+        c = move_corners(c, deltas[step % deltas.len()]);
+        assert!((c[2] - c[0] - w0).abs() < 1e-5, "step {step} width drifted: {c:?}");
+        assert!((c[3] - c[1] - h0).abs() < 1e-5, "step {step} height drifted: {c:?}");
+        assert!(c[0] >= -1e-6 && c[2] <= 1.0 + 1e-6, "step {step} left the image: {c:?}");
+    }
+}
+
+#[test]
+fn move_of_an_oversized_box_stays_finite() {
+    // A box wider than the image cannot be placed inside it; the origin pins to
+    // zero rather than producing a negative clamp range.
+    let c = move_corners([0.0, 0.0, 1.5, 1.5], [0.5, 0.5]);
+    assert_eq!([c[0], c[1]], [0.0, 0.0]);
+    assert!(c.iter().all(|v| v.is_finite()), "c {c:?}");
+}
+
+// ------------------------------------------------------- touched-input rules
+
+#[test]
+fn moving_the_body_touches_the_origin_but_never_the_size() {
+    assert_eq!(
+        spec_inputs_touched(RectHandle::Body, RectExtent::OriginSize),
+        [true, true, false, false]
+    );
+}
+
+#[test]
+fn a_far_edge_touches_only_the_size() {
+    // Dragging east changes `width` alone; `x` stays where it was.
+    assert_eq!(
+        spec_inputs_touched(RectHandle::E, RectExtent::OriginSize),
+        [false, false, true, false]
+    );
+    assert_eq!(
+        spec_inputs_touched(RectHandle::S, RectExtent::OriginSize),
+        [false, false, false, true]
+    );
+}
+
+#[test]
+fn a_near_edge_touches_both_the_origin_and_the_size() {
+    // With an origin/size spec, moving the left edge shifts `x` and, because
+    // the far edge stays put, changes `width` as well.
+    assert_eq!(
+        spec_inputs_touched(RectHandle::W, RectExtent::OriginSize),
+        [true, false, true, false]
+    );
+    assert_eq!(
+        spec_inputs_touched(RectHandle::NW, RectExtent::OriginSize),
+        [true, true, true, true]
+    );
+}
+
+#[test]
+fn two_corner_specs_report_the_corners_directly() {
+    assert_eq!(
+        spec_inputs_touched(RectHandle::E, RectExtent::TwoCorner),
+        [false, false, true, false]
+    );
+    assert_eq!(
+        spec_inputs_touched(RectHandle::Body, RectExtent::TwoCorner),
+        [true, true, true, true]
+    );
+}
+
+#[test]
+fn every_handle_touches_at_least_one_input() {
+    for h in [
+        RectHandle::Body,
+        RectHandle::N,
+        RectHandle::S,
+        RectHandle::W,
+        RectHandle::E,
+        RectHandle::NW,
+        RectHandle::NE,
+        RectHandle::SE,
+        RectHandle::SW,
+    ] {
+        for extent in [RectExtent::OriginSize, RectExtent::TwoCorner] {
+            assert!(
+                spec_inputs_touched(h, extent).iter().any(|t| *t),
+                "{h:?}/{extent:?} would commit nothing"
+            );
+        }
+    }
+}
+
+// ------------------------------------------------------------ value plumbing
+
+#[test]
+fn read_scalar_accepts_both_numeric_variants() {
+    assert_eq!(read_scalar(&Value::Decimal(0.25)), Some(0.25));
+    assert_eq!(read_scalar(&Value::Integer(-7)), Some(-7.0));
+    assert_eq!(read_scalar(&Value::Bool(true)), None);
+    assert_eq!(read_scalar(&Value::Text("x".into())), None);
+}
+
+#[test]
+fn write_scalar_preserves_the_input_variant() {
+    assert!(matches!(write_scalar(&Value::Decimal(0.0), 0.4), Value::Decimal(v) if v == 0.4));
+    assert!(matches!(write_scalar(&Value::Integer(0), 12.4), Value::Integer(12)));
+}
+
+#[test]
+fn write_scalar_rounds_integers_half_away_from_zero() {
+    // Pixel-space handles are integers; the rounding must be symmetric so a
+    // handle dragged left of the origin doesn't bias toward zero.
+    assert!(matches!(write_scalar(&Value::Integer(0), 2.5), Value::Integer(3)));
+    assert!(matches!(write_scalar(&Value::Integer(0), -2.5), Value::Integer(-3)));
+    assert!(matches!(write_scalar(&Value::Integer(0), -0.4), Value::Integer(0)));
+}
+
+#[test]
+fn clamp_for_honours_the_inputs_own_range() {
+    assert_eq!(clamp_for(Some(&slider(0.0, 1.0, true)), 1.5), 1.0);
+    assert_eq!(clamp_for(Some(&slider(0.0, 1.0, true)), -0.5), 0.0);
+    // An unclamped slider is deliberately left alone: some ops accept values
+    // past their slider's ends.
+    assert_eq!(clamp_for(Some(&slider(0.0, 1.0, false)), 1.5), 1.5);
+}
+
+#[test]
+fn clamp_for_honours_drag_value_bounds_and_leaves_unbounded_ones_free() {
+    let bounded = InputSettings::DragValue { clamp: Some((-256.0, 256.0)), speed: None };
+    assert_eq!(clamp_for(Some(&bounded), 900.0), 256.0);
+    assert_eq!(clamp_for(Some(&bounded), -900.0), -256.0);
+
+    // This is what lets a future pixel-space gizmo place a layer off-canvas
+    // with no special case in the overlay.
+    let free = InputSettings::DragValue { clamp: None, speed: None };
+    assert_eq!(clamp_for(Some(&free), 9000.0), 9000.0);
+    assert_eq!(clamp_for(None, 9000.0), 9000.0);
+}
+
+// ------------------------------------------------------------- crop readout
+
+#[test]
+fn crop_readout_matches_the_operations_own_rounding() {
+    // The readout must agree with what the node reports on its width/height
+    // outputs, so it reproduces crop.rs's arithmetic exactly.
+    let (x, y, w, h) = crop_pixels([0.25, 0.25, 0.5, 0.5], (512, 256));
+    assert_eq!((x, y, w, h), (128, 64, 256, 128));
+}
+
+#[test]
+fn crop_readout_rounds_the_far_edge_from_origin_plus_size() {
+    // Rounding the size on its own would let two abutting crops disagree by a
+    // pixel; rounding origin+size makes them share an edge exactly.
+    let dims = (100, 100);
+    let (x0, _, w0, _) = crop_pixels([0.0, 0.0, 0.333, 1.0], dims);
+    let (x1, _, w1, _) = crop_pixels([0.333, 0.0, 0.334, 1.0], dims);
+    assert_eq!(x0 + w0, x1, "left crop's far edge should meet the right crop's origin");
+    assert_eq!(x1 + w1, 67);
+}
+
+#[test]
+fn crop_readout_always_keeps_at_least_one_pixel() {
+    let (_, _, w, h) = crop_pixels([0.5, 0.5, 0.0, 0.0], (64, 64));
+    assert!(w >= 1 && h >= 1, "{w}x{h}");
+}
+
+#[test]
+fn crop_readout_never_runs_past_the_image() {
+    let dims = (64, 32);
+    let (x, y, w, h) = crop_pixels([0.9, 0.9, 0.5, 0.5], dims);
+    assert!(x + w <= dims.0 as i64, "x {x} w {w}");
+    assert!(y + h <= dims.1 as i64, "y {y} h {h}");
+}
+
+#[test]
+fn crop_readout_survives_a_degenerate_image() {
+    let (x, y, w, h) = crop_pixels([0.0, 0.0, 1.0, 1.0], (0, 0));
+    assert_eq!((x, y, w, h), (0, 0, 1, 1));
+}

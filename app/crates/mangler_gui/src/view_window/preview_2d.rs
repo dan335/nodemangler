@@ -7,7 +7,7 @@
 use eframe::egui::{self, RichText};
 use epaint::{Stroke, StrokeKind};
 
-use crate::{graph::graph_node::GraphNode, themes::theme::Theme};
+use crate::{graph::graph_node::GraphNode, overlay::mapping, themes::theme::Theme};
 
 use super::{color_viewer::ColorViewer, curve_overlay, image_viewer::ImageViewer, text_viewer::TextViewer};
 
@@ -84,7 +84,7 @@ pub fn show(
         // themed background/border and the curve drawn on top.
         mangler_core::value::Value::Curve(value) => {
             let colors = theme.get();
-            let canvas = curve_overlay::fallback_canvas_rect(ui.max_rect());
+            let canvas = mapping::fallback_canvas_rect(ui.max_rect());
             ui.painter().rect_filled(canvas, 4.0, colors.grid_bg);
             ui.painter().rect_stroke(
                 canvas,
@@ -136,7 +136,7 @@ pub fn show_loading(ui: &mut egui::Ui, file_name: &str, theme: &Theme) {
 pub fn show_curve_hint(ui: &mut egui::Ui, theme: &Theme) {
     let rect = ui.max_rect();
     let colors = theme.get();
-    let canvas = curve_overlay::fallback_canvas_rect(rect);
+    let canvas = mapping::fallback_canvas_rect(rect);
     ui.painter().rect_filled(canvas, 4.0, colors.grid_bg);
     ui.painter().rect_stroke(
         canvas,
@@ -148,6 +148,31 @@ pub fn show_curve_hint(ui: &mut egui::Ui, theme: &Theme) {
         rect.center_bottom() - egui::vec2(0.0, 14.0),
         egui::Align2::CENTER_BOTTOM,
         "drawing curve — right-click a node output to trace over it",
+        egui::FontId::proportional(13.0),
+        colors.text_faint,
+    );
+}
+
+/// Placeholder shown when the selected node has a spatial gizmo but no source
+/// image to place it on — an image-consuming node with nothing wired in. Says
+/// so rather than drawing a crop box over the 1x1 placeholder the node's own
+/// output would otherwise supply. The gizmo still draws on the fallback canvas,
+/// so a crop can be pre-set before an image is connected.
+pub fn show_gizmo_hint(ui: &mut egui::Ui, theme: &Theme) {
+    let rect = ui.max_rect();
+    let colors = theme.get();
+    let canvas = mapping::fallback_canvas_rect(rect);
+    ui.painter().rect_filled(canvas, 4.0, colors.grid_bg);
+    ui.painter().rect_stroke(
+        canvas,
+        4.0,
+        Stroke::new(1.0, colors.grid_lines),
+        StrokeKind::Inside,
+    );
+    ui.painter().text(
+        rect.center_bottom() - egui::vec2(0.0, 14.0),
+        egui::Align2::CENTER_BOTTOM,
+        "connect an image to place this node's handles on it",
         egui::FontId::proportional(13.0),
         colors.text_faint,
     );
