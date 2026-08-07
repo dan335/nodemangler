@@ -1,42 +1,9 @@
-//! Unit tests for the curve overlay's pure coordinate/insertion helpers.
+//! Unit tests for the curve overlay's insertion helpers.
+//!
+//! The coordinate mapping these once covered now lives in
+//! `crate::overlay::mapping` and is tested there.
 
 use super::*;
-use eframe::egui::{Pos2, Rect};
-
-fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
-    Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h))
-}
-
-#[test]
-fn norm_to_screen_maps_corners_and_center() {
-    let r = rect(100.0, 200.0, 400.0, 300.0);
-    assert_eq!(norm_to_screen(r, [0.0, 0.0]), Pos2::new(100.0, 200.0));
-    assert_eq!(norm_to_screen(r, [1.0, 1.0]), Pos2::new(500.0, 500.0));
-    assert_eq!(norm_to_screen(r, [0.5, 0.5]), Pos2::new(300.0, 350.0));
-}
-
-#[test]
-fn screen_to_norm_is_inverse_of_norm_to_screen() {
-    let r = rect(10.0, 20.0, 640.0, 480.0);
-    for p in [[0.0, 0.0], [1.0, 1.0], [0.25, 0.75], [0.5, 0.5]] {
-        let round = screen_to_norm(r, norm_to_screen(r, p));
-        assert!((round[0] - p[0]).abs() < 1e-5, "x {round:?} vs {p:?}");
-        assert!((round[1] - p[1]).abs() < 1e-5, "y {round:?} vs {p:?}");
-    }
-}
-
-#[test]
-fn screen_to_norm_clamps_outside_the_rect() {
-    let r = rect(0.0, 0.0, 100.0, 100.0);
-    assert_eq!(screen_to_norm(r, Pos2::new(-50.0, 150.0)), [0.0, 1.0]);
-    assert_eq!(screen_to_norm(r, Pos2::new(200.0, -10.0)), [1.0, 0.0]);
-}
-
-#[test]
-fn screen_to_norm_degenerate_rect_is_zero() {
-    let r = rect(5.0, 5.0, 0.0, 0.0);
-    assert_eq!(screen_to_norm(r, Pos2::new(5.0, 5.0)), [0.0, 0.0]);
-}
 
 #[test]
 fn nearest_segment_insertion_none_for_too_few_points() {
@@ -85,10 +52,20 @@ fn nearest_segment_insertion_open_ignores_the_closing_segment() {
 }
 
 #[test]
-fn fallback_canvas_rect_is_a_centered_square() {
-    let view = rect(0.0, 0.0, 400.0, 200.0);
-    let canvas = fallback_canvas_rect(view);
-    assert!((canvas.width() - canvas.height()).abs() < 1e-4);
-    assert!((canvas.width() - 180.0).abs() < 1e-4); // min(400,200) * 0.9
-    assert_eq!(canvas.center(), view.center());
+fn project_point_segment_handles_a_degenerate_segment() {
+    // A zero-length segment must not divide by zero; it reports the distance to
+    // the shared endpoint.
+    let (d, proj) = project_point_segment([3.0, 4.0], [0.0, 0.0], [0.0, 0.0]);
+    assert!((d - 5.0).abs() < 1e-4, "dist {d}");
+    assert_eq!(proj, [0.0, 0.0]);
+}
+
+#[test]
+fn project_point_segment_clamps_beyond_the_endpoints() {
+    // Projection is confined to the segment, so a query past an end reports the
+    // endpoint rather than a point on the infinite line.
+    let (_, proj) = project_point_segment([20.0, 0.0], [0.0, 0.0], [10.0, 0.0]);
+    assert_eq!(proj, [10.0, 0.0]);
+    let (_, proj) = project_point_segment([-20.0, 0.0], [0.0, 0.0], [10.0, 0.0]);
+    assert_eq!(proj, [0.0, 0.0]);
 }

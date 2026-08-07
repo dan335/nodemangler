@@ -21,6 +21,7 @@ use thumbnail::Thumbnail;
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use value::Value;
 
+pub mod gizmo;
 pub mod graph;
 pub mod input;
 pub mod node;

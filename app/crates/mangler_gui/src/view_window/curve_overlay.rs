@@ -4,31 +4,26 @@
 //! lets the user draw it directly: drag control points, click empty space to
 //! insert/append a point, double- or right-click a point to delete it, drag
 //! the mirrored tangent knobs in Bezier mode to shape curvature, and toggle
-//! closed/interpolation from a small strip. This is a *pure widget* — it
-//! has no engine knowledge and holds no persistent state (egui tracks drags per
-//! widget id; ids are salted with the panel's `leaf_id` so two 2D panels don't
+//! closed/interpolation from a small strip. This is a *pure widget* — it has no
+//! engine knowledge and holds no persistent state (egui tracks drags per widget
+//! id; ids are salted with the panel's `leaf_id` so two 2D panels don't
 //! collide). The caller applies [`CurveOverlayResponse::changed`] to its local
 //! value every frame and pushes it to the engine only when `commit` is set.
 //!
-//! ## Hit-testing (egui 0.35 spike, verified against the vendored source)
-//! The overlay renders *after* the image viewer's full-rect `Sense::drag()`
-//! background, so its widgets are topmost. egui resolves the click winner and
-//! the drag winner independently (`hit_test.rs`):
-//! - Per-point handles use `Sense::click_and_drag()`. A topmost click-and-drag
-//!   handle wins the drag over the earlier full-rect drag background
-//!   (`buttons_on_window` test), so dragging a handle moves it and never pans.
-//! - The empty-space catcher uses `Sense::click()` only. A click-only widget
-//!   over a drag-only background takes the click but leaves the drag to the
-//!   background, so dragging empty space still pans the image.
-//!
-//! If a future egui version changed this resolution, the fallback is to drop
-//! the click-catcher and detect click-on-empty from pointer press/release edges
-//! plus a movement threshold via `pan_zoom::viewport_cursor` — the catcher is
-//! isolated in [`handle_insert`] to keep that swap local.
+//! The interaction itself lives in [`crate::overlay::point_editor`], shared with
+//! the settings panel's tone-curve box; this module supplies the *spatial*
+//! policy (points may go anywhere and loop, tangent tips may leave the canvas)
+//! and the path rendering. See [`crate::overlay::handle`] for the egui
+//! hit-testing contract that keeps handle drags from stealing the canvas pan.
 
-use eframe::egui::{self, Pos2, Rect, Sense, Stroke, Vec2};
+use eframe::egui::{self, Pos2, Rect, Stroke, Vec2};
 use mangler_core::curve::{Curve, CurveInterpolation};
 
+use crate::overlay::mapping::{norm_to_screen, screen_to_norm};
+use crate::overlay::point_editor::{
+    self, KnobMode, PointSetPolicy, PointSetStyle,
+};
+use crate::overlay::Gesture;
 use crate::panels::panel_tree::LeafId;
 use crate::themes::theme::Theme;
 
@@ -48,14 +43,31 @@ pub struct CurveOverlayResponse {
 /// Screen-pixel radius that a click must be within to insert a point on a
 /// segment (rather than appending to the end of the curve).
 const INSERT_THRESHOLD_PX: f32 = 10.0;
-/// Half-width of a control point's interaction rect, in screen pixels.
-const HANDLE_HIT_HALF: f32 = 8.0;
-/// Half-width of a bezier tangent knob's interaction rect, in screen pixels.
-/// Smaller than the anchors', and knobs are registered *before* the anchors,
-/// so an anchor wins when a short handle overlaps it.
-const KNOB_HIT_HALF: f32 = 6.0;
+
+/// How a spatial path behaves: points go wherever they are dragged (a path has
+/// no ordering requirement), tangents are offered in Bezier mode on both sides
+/// of every anchor, and a two-point floor keeps the curve a curve.
+const POLICY: PointSetPolicy = PointSetPolicy {
+    min_points: 2,
+    knobs: KnobMode::Spatial,
+    constrain: point_editor::unconstrained,
+    insert: handle_insert,
+    style: PointSetStyle {
+        anchor_hit_half: 8.0,
+        anchor_radius: 4.0,
+        anchor_radius_active: 6.0,
+        knob_hit_half: 6.0,
+        knob_radius: 3.0,
+        knob_radius_active: 4.5,
+        first_point_ring: true,
+    },
+};
 
 /// Draw the interactive overlay and return any change made this frame.
+///
+/// `view_rect` is the whole panel (where a click counts as empty space and
+/// where the controls strip is anchored); `image_rect` is the `[0,1]²` mapping
+/// target — the displayed image, or a fallback canvas when there is none.
 pub fn show(
     ui: &mut egui::Ui,
     leaf_id: LeafId,
@@ -64,145 +76,42 @@ pub fn show(
     curve: &Curve,
     theme: &Theme,
 ) -> CurveOverlayResponse {
-    let colors = theme.get();
     let mut working = curve.clone();
-    let mut changed = false;
-    let mut commit = false;
 
-    // Empty-space click catcher (click-only, so it never steals the pan). Read
-    // its response first; the actual insert is applied after the handle loop so
-    // a click that landed on a handle (egui's single click winner) is excluded.
-    let catcher = ui.interact(
+    let edit = point_editor::edit_point_set(
+        ui,
+        egui::Id::new(("curve_overlay", leaf_id)),
+        image_rect,
         view_rect,
-        egui::Id::new(("curve_overlay_catcher", leaf_id)),
-        Sense::click(),
+        &mut working,
+        &POLICY,
     );
+    let mut gesture = edit.gesture;
 
-    // The flattened path (topmost visual, drawn under the handles).
-    draw_polyline(ui.painter(), image_rect, &working, Stroke::new(2.0, colors.grid_connection_line));
+    // Path first, handles on top — both from this frame's values, so a drag
+    // tracks the pointer without a frame of lag.
+    draw_polyline(
+        ui.painter(),
+        image_rect,
+        &working,
+        Stroke::new(2.0, theme.get().grid_connection_line),
+    );
+    point_editor::draw_point_set(ui, image_rect, &working, &POLICY, &edit, theme);
 
-    // Bezier tangent knobs: one mirrored pair per anchor. Registered before the
-    // anchor widgets so anchors win overlapping hits (a near-zero handle sits
-    // on its anchor). Dragging either knob rewrites the shared offset, so the
-    // twin follows point-reflected — the curve stays smooth by construction.
-    if working.interpolation == CurveInterpolation::Bezier {
-        // Materialize silently: auto tangents become concrete so a drag can
-        // write `handles[i]`. Not an edit until a gesture actually changes one.
-        working.materialize_handles();
-        for i in 0..working.points.len() {
-            let anchor = norm_to_screen(image_rect, working.points[i]);
-            let h = working.handles[i];
-            let offset = Vec2::new(h[0] * image_rect.width(), h[1] * image_rect.height());
-            // side 1.0 = out-knob (anchor + h), side -1.0 = in-knob (anchor - h).
-            for (side_idx, sign) in [(0u8, 1.0f32), (1, -1.0)] {
-                let knob = anchor + offset * sign;
-                let hit = Rect::from_center_size(knob, Vec2::splat(KNOB_HIT_HALF * 2.0));
-                let resp = ui.interact(
-                    hit,
-                    egui::Id::new(("curve_overlay_knob", leaf_id, i, side_idx)),
-                    Sense::drag(),
-                );
-                if resp.dragged() {
-                    if let Some(pos) = resp.interact_pointer_pos() {
-                        // Unclamped: handle tips may leave the canvas.
-                        working.handles[i] = [
-                            (pos.x - anchor.x) / image_rect.width().max(1e-6) * sign,
-                            (pos.y - anchor.y) / image_rect.height().max(1e-6) * sign,
-                        ];
-                        changed = true;
-                    }
-                }
-                if resp.drag_stopped() {
-                    commit = true;
-                }
-
-                let hovered = resp.hovered() || resp.dragged();
-                let radius = if hovered { 4.5 } else { 3.0 };
-                ui.painter().line_segment([anchor, knob], Stroke::new(1.0, colors.text_faint));
-                ui.painter().circle(
-                    knob,
-                    radius,
-                    colors.panel_fill,
-                    Stroke::new(1.5, colors.node_header_selected_border),
-                );
-            }
-        }
-    }
-
-    // Control-point handles. Deletion changes indices, so defer it past the loop.
-    let mut delete_index: Option<usize> = None;
-    for i in 0..working.points.len() {
-        let center = norm_to_screen(image_rect, working.points[i]);
-        let hit = Rect::from_center_size(center, Vec2::splat(HANDLE_HIT_HALF * 2.0));
-        let resp = ui.interact(
-            hit,
-            egui::Id::new(("curve_overlay_pt", leaf_id, i)),
-            Sense::click_and_drag(),
-        );
-
-        if resp.dragged() {
-            if let Some(pos) = resp.interact_pointer_pos() {
-                working.points[i] = screen_to_norm(image_rect, pos);
-                changed = true;
-            }
-        }
-        if resp.drag_stopped() {
-            commit = true;
-        }
-        // Double- or right-click removes the point, with a floor of 2.
-        if (resp.double_clicked() || resp.clicked_by(egui::PointerButton::Secondary))
-            && working.points.len() > 2
-        {
-            delete_index = Some(i);
-        }
-
-        // Enlarge the handle while hovered or dragged for a clear affordance.
-        let hovered = resp.hovered() || resp.dragged();
-        let radius = if hovered { 6.0 } else { 4.0 };
-        let fill = if hovered { colors.grid_connection_dot_hover } else { colors.grid_connection_dot };
-        ui.painter().circle(center, radius, fill, Stroke::new(1.5, colors.node_header_selected_border));
-
-        // The first point gets a distinguishing ring so start/end are legible.
-        if i == 0 {
-            ui.painter().circle_stroke(center, radius + 3.0, Stroke::new(1.5, colors.node_header_selected_border));
-        }
-    }
-
-    if let Some(idx) = delete_index {
-        // Keep handles index-aligned with points (only when they already are —
-        // a stale mismatched vec is left for `materialize_handles` to rebuild).
-        if working.handles.len() == working.points.len() {
-            working.handles.remove(idx);
-        }
-        working.points.remove(idx);
-        changed = true;
-        commit = true;
-    }
-
-    // Insert/append on a click that missed every handle.
-    if catcher.clicked() {
-        if let Some(pos) = catcher.interact_pointer_pos() {
-            handle_insert(&mut working, image_rect, pos);
-            changed = true;
-            commit = true;
-        }
-    }
-
-    // Controls strip pinned to the panel's top-left corner.
+    // Controls strip pinned to the panel's top-left corner. Registered after
+    // the handles so its widgets win clicks where they overlap.
     if show_controls(ui, leaf_id, view_rect, &mut working, theme) {
-        changed = true;
-        commit = true;
+        gesture.merge(Gesture::edited());
     }
 
     CurveOverlayResponse {
-        changed: changed.then_some(working),
-        commit,
+        changed: gesture.changed.then_some(working),
+        commit: gesture.commit,
     }
 }
 
 /// Insert a new control point where the user clicked: on the nearest segment if
 /// the click is within [`INSERT_THRESHOLD_PX`], otherwise appended to the end.
-/// Isolated so a future manual click-detection fallback can replace only this.
 fn handle_insert(working: &mut Curve, image_rect: Rect, click: Pos2) {
     let screen_pts: Vec<[f32; 2]> = working
         .points
@@ -242,37 +151,29 @@ fn show_controls(
     theme: &Theme,
 ) -> bool {
     let mut changed = false;
-    let strip_rect = Rect::from_min_size(view_rect.left_top() + Vec2::new(8.0, 8.0), Vec2::new(280.0, 26.0));
-    ui.painter().rect_filled(strip_rect, 4.0, theme.get().panel_fill);
+    crate::overlay::strip::top_left(ui, view_rect, Vec2::new(280.0, 26.0), theme, |ui| {
+        if ui.checkbox(&mut working.closed, "closed").changed() {
+            changed = true;
+        }
 
-    ui.scope_builder(
-        egui::UiBuilder::new().max_rect(strip_rect.shrink2(Vec2::new(6.0, 2.0))),
-        |ui| {
-            ui.horizontal_centered(|ui| {
-                if ui.checkbox(&mut working.closed, "closed").changed() {
-                    changed = true;
+        let mut interp = working.interpolation;
+        egui::ComboBox::from_id_salt(("curve_overlay_interp", leaf_id))
+            .selected_text(interp_name(interp))
+            .show_ui(ui, |ui| {
+                for variant in CurveInterpolation::types() {
+                    ui.selectable_value(&mut interp, variant, interp_name(variant));
                 }
-
-                let mut interp = working.interpolation;
-                egui::ComboBox::from_id_salt(("curve_overlay_interp", leaf_id))
-                    .selected_text(interp_name(interp))
-                    .show_ui(ui, |ui| {
-                        for variant in CurveInterpolation::types() {
-                            ui.selectable_value(&mut interp, variant, interp_name(variant));
-                        }
-                    });
-                if interp != working.interpolation {
-                    working.interpolation = interp;
-                    changed = true;
-                }
-
-                ui.label(
-                    egui::RichText::new(format!("{} pts", working.points.len()))
-                        .color(theme.get().text_faint),
-                );
             });
-        },
-    );
+        if interp != working.interpolation {
+            working.interpolation = interp;
+            changed = true;
+        }
+
+        ui.label(
+            egui::RichText::new(format!("{} pts", working.points.len()))
+                .color(theme.get().text_faint),
+        );
+    });
 
     changed
 }
@@ -311,13 +212,6 @@ fn draw_polyline(painter: &egui::Painter, image_rect: Rect, curve: &Curve, strok
     painter.add(egui::Shape::line(pts, stroke));
 }
 
-/// A letterboxed square canvas centered in `view_rect`, used when no image is
-/// displayed to draw over (a curve is being edited/viewed on its own).
-pub fn fallback_canvas_rect(view_rect: Rect) -> Rect {
-    let size = view_rect.width().min(view_rect.height()) * 0.9;
-    Rect::from_center_size(view_rect.center(), Vec2::splat(size))
-}
-
 /// Display name for an interpolation kind (matches the settings-panel summary).
 fn interp_name(interp: CurveInterpolation) -> &'static str {
     match interp {
@@ -325,19 +219,6 @@ fn interp_name(interp: CurveInterpolation) -> &'static str {
         CurveInterpolation::Smooth => "smooth",
         CurveInterpolation::Bezier => "bezier",
     }
-}
-
-/// Map a normalized `[0,1]²` point to a screen position within `rect`.
-fn norm_to_screen(rect: Rect, p: [f32; 2]) -> Pos2 {
-    Pos2::new(rect.left() + p[0] * rect.width(), rect.top() + p[1] * rect.height())
-}
-
-/// Map a screen position to a normalized `[0,1]²` point within `rect`,
-/// clamped to the unit square (points can't leave the canvas).
-fn screen_to_norm(rect: Rect, pos: Pos2) -> [f32; 2] {
-    let x = if rect.width() > 0.0 { (pos.x - rect.left()) / rect.width() } else { 0.0 };
-    let y = if rect.height() > 0.0 { (pos.y - rect.top()) / rect.height() } else { 0.0 };
-    [x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)]
 }
 
 /// Find where to insert a new point so it lands on the curve's nearest segment.

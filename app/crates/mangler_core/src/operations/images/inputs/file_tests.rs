@@ -13,7 +13,10 @@ async fn test_file_input_exact_settings() {
     let s = OpImageInputFile::settings();
     assert_eq!(s.name, "from file");
     assert_eq!(OpImageInputFile::create_inputs().len(), 1);
-    assert_eq!(OpImageInputFile::create_outputs().len(), 3);
+    let outputs = OpImageInputFile::create_outputs();
+    assert_eq!(outputs.len(), 4);
+    assert_eq!(outputs[3].name, "path");
+    assert!(matches!(outputs[3].value, Value::Path(_)));
 }
 
 #[tokio::test]
@@ -26,15 +29,40 @@ async fn test_file_input_nonexistent_path_returns_error() {
     assert!(result.is_err(), "loading from nonexistent path should fail");
 }
 
-/// Runs the operation on `path` and returns (image, width, height).
+/// Runs the operation on `path` and returns (image, width, height). Also
+/// asserts the path output echoes the input path, since every fixture test
+/// below goes through here.
 async fn load(path: PathBuf) -> (std::sync::Arc<crate::float_image::FloatImage>, i32, i32) {
     use crate::input::Input;
-    let mut inputs = vec![Input::new("path".to_string(), Value::Path(path), None, None)];
+    let mut inputs = vec![Input::new("path".to_string(), Value::Path(path.clone()), None, None)];
     let result = OpImageInputFile::run(&mut inputs).await.unwrap();
     let Value::Image { data, .. } = &result.responses[0].value else { panic!("expected image output") };
     let Value::Integer(w) = result.responses[1].value else { panic!("expected width output") };
     let Value::Integer(h) = result.responses[2].value else { panic!("expected height output") };
+    let Value::Path(echoed) = &result.responses[3].value else { panic!("expected path output") };
+    assert_eq!(echoed, &path, "path output should echo the loaded path");
     (data.clone(), w, h)
+}
+
+#[test]
+fn test_is_raw_file() {
+    // The raw check is what routes a Libraries drop to the `from raw` node, and
+    // what keeps `load_image_from_path` off the image crate's TIFF decoder for
+    // TIFF-based raw containers. Extension matching must be case-insensitive:
+    // cameras write .CR3/.NEF in upper case.
+    assert!(!is_raw_file(std::path::Path::new("photo.png")));
+    assert!(!is_raw_file(std::path::Path::new("photo.jxl")));
+    assert!(!is_raw_file(std::path::Path::new("no_extension")));
+
+    // Only meaningful with the `raw` feature on; without it nothing can decode
+    // a raw, so the function correctly reports false for everything.
+    #[cfg(feature = "raw")]
+    {
+        assert!(is_raw_file(std::path::Path::new("IMG_1234.CR3")));
+        assert!(is_raw_file(std::path::Path::new("IMG_1234.cr3")));
+        assert!(is_raw_file(std::path::Path::new("shot.NEF")));
+        assert!(is_raw_file(std::path::Path::new("scan.dng")));
+    }
 }
 
 #[tokio::test]

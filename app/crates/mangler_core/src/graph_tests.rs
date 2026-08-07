@@ -3294,3 +3294,76 @@ async fn load_pads_short_input_vector_to_current_schema() {
         other => panic!("preserved slot should keep its saved Decimal value, got {other:?}"),
     }
 }
+
+
+// A node saved by an older build has however many outputs that build declared.
+// When an operation later *gains* one (as `from file` gained `path`), loading
+// must adopt the current schema — otherwise the new output only ever appears on
+// freshly created nodes and existing graphs are stuck without it. Inputs have
+// always been migrated this way; outputs used to keep the saved vector.
+#[tokio::test]
+async fn test_load_adopts_new_outputs_added_since_the_graph_was_saved() {
+    use std::fs;
+    use crate::GraphSaveData;
+
+    let mut graph = create_test_graph();
+    let node_id = graph
+        .add_node(
+            get_id(),
+            AddNodeType::Operation(Operation::OpImageInputFile),
+            glam::Vec2::ZERO,
+            true,
+            None,
+            Vec::new(),
+        )
+        .await;
+
+    let schema_len = Operation::OpImageInputFile.create_outputs().len();
+    assert!(schema_len >= 2, "test needs an op with more than one output");
+
+    // Simulate an older save: drop the trailing output, and give the first one
+    // a downstream connection so we can prove connections survive.
+    let mut save_nodes = graph.nodes.clone();
+    {
+        let node = save_nodes.get_mut(&node_id).expect("node should exist");
+        node.outputs.truncate(schema_len - 1);
+        node.outputs[0].connection = Some(vec![("downstream".to_string(), 3)]);
+        node.outputs[0].is_exposed = true;
+    }
+
+    let tmp_path =
+        std::env::temp_dir().join(format!("mangler_output_migration_{}.mangler.json", get_id()));
+    let save_data = GraphSaveData {
+        version: crate::APP_VERSION.to_string(),
+        id: graph.id.clone(),
+        name: graph.name.clone(),
+        nodes: save_nodes,
+    };
+    fs::write(&tmp_path, serde_json::to_string(&save_data).unwrap())
+        .expect("failed to write graph tempfile");
+
+    let (tx_nc, _rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
+    let (tx_gc, _rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let loaded = Graph::load(tmp_path.clone(), Some(tx_nc), Some(tx_gc), false)
+        .expect("failed to load graph");
+    let node = loaded.nodes.get(&node_id).expect("node should round-trip");
+
+    // The output added since the save is present, named per the schema...
+    assert_eq!(node.outputs.len(), schema_len);
+    let schema = Operation::OpImageInputFile.create_outputs();
+    for (i, fresh) in schema.iter().enumerate() {
+        assert_eq!(node.outputs[i].name, fresh.name, "output {i} name");
+    }
+    // ...and arrives unconnected, since nothing was ever wired to it.
+    assert!(node.outputs[schema_len - 1].connection.is_none());
+
+    // Existing wiring and exposure survive the migration.
+    assert_eq!(
+        node.outputs[0].connection,
+        Some(vec![("downstream".to_string(), 3)]),
+        "an existing output's fan-out must not be dropped"
+    );
+    assert!(node.outputs[0].is_exposed, "exposed flag must survive");
+
+    let _ = fs::remove_file(&tmp_path);
+}

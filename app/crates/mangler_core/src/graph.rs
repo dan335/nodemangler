@@ -286,14 +286,25 @@ impl Graph {
                             }
                             node.inputs = fresh_inputs;
 
-                            // Outputs carry outgoing connection lists, so keep
-                            // the saved vector and only re-derive the
-                            // #[serde(skip)] value/default_value from the schema.
-                            let fresh_outputs = operation.create_outputs();
-                            for (out, fresh) in node.outputs.iter_mut().zip(fresh_outputs.into_iter()) {
-                                out.value = fresh.value.clone();
-                                out.default_value = fresh.default_value;
+                            // Outputs get the same treatment as inputs above, and
+                            // for the same reason: an op that *gained* an output
+                            // must show it on already-saved nodes, not just on
+                            // freshly created ones. Positional migration — keep
+                            // each saved slot's outgoing connection list and
+                            // exposed flag, adopt the schema for everything else
+                            // (name/description/value/default_value). Extra saved
+                            // slots are dropped; new ones arrive unconnected.
+                            // Output ids are regenerated, which is safe because
+                            // connections address outputs by (node id, index),
+                            // never by id — same as the input path.
+                            let mut fresh_outputs = operation.create_outputs();
+                            for (i, fresh) in fresh_outputs.iter_mut().enumerate() {
+                                if let Some(saved) = node.outputs.get(i) {
+                                    fresh.connection = saved.connection.clone();
+                                    fresh.is_exposed = saved.is_exposed;
+                                }
                             }
+                            node.outputs = fresh_outputs;
                         }
 
                         // let ui know node was created
