@@ -11,8 +11,14 @@ pub mod library;
 /// Background folder-tree scanner that walks a library's root folder for
 /// `.mangler.json` graphs on a poll interval.
 pub mod library_scanner;
-/// The Libraries panel UI (tree of libraries → folders → graphs).
+/// The Libraries panel UI (tree of libraries → folders → graphs / image thumbs).
 pub mod libraries_panel;
 /// App-global panel state: linked libraries, scanner handle, open dialog,
 /// and the action queue drained by `App`.
 pub mod libraries_state;
+/// Background image-thumbnail cache for the panel's thumbnails view style.
+pub mod library_thumbs;
+/// Decode dispatch for library thumbnails (scaled JPEG, RAW preview, …).
+pub mod thumb_decode;
+/// On-disk thumbnail cache keyed by path + mtime + size.
+pub mod thumb_disk_cache;

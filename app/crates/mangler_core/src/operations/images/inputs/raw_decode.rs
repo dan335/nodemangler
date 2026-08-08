@@ -6,9 +6,11 @@
 //! That means a decoded RAW drops straight into the adjustment nodes with no
 //! adapter layer.
 //!
-//! Shared by three callers: the `from file` node's extension dispatch (with
+//! Shared by: the `from file` node's extension dispatch (with
 //! [`RawOptions::default`]), the dedicated `from raw` node (with user values),
-//! and the GUI's library preview.
+//! the GUI's 2D library image preview, and library-panel thumbnails via
+//! [`decode_raw_preview_rgba8`] (embedded camera JPEG; falls back to
+//! [`decode_raw`] with a small `max_dimension`).
 //!
 //! The whole module compiles without the `raw` feature; only [`decode_raw`]'s
 //! body is gated, so the `from raw` node exists in every build and the node
@@ -264,6 +266,63 @@ pub fn decode_raw(path: &std::path::Path, opts: &RawOptions) -> Result<FloatImag
 /// compiles and the node menu is identical in every build.
 #[cfg(not(feature = "raw"))]
 pub fn decode_raw(_path: &std::path::Path, _opts: &RawOptions) -> Result<FloatImage, String> {
+    Err("this build was compiled without camera RAW support (cargo feature \"raw\")".to_string())
+}
+
+/// Minimum long-edge for an embedded preview to be considered useful as a
+/// library thumbnail. Some bodies only store a tiny ~160×120 IFD thumb;
+/// a blurry postage stamp is worse than falling back to a reduced develop.
+pub const RAW_PREVIEW_MIN_EDGE: u32 = 160;
+
+/// Extracts the camera's embedded full/preview JPEG (rawler `full_image`) and
+/// returns an RGBA8 buffer whose longest edge is ≤ `max_edge`.
+///
+/// Orders of magnitude cheaper than [`decode_raw`]: no demosaic, no float
+/// develop pass. The trade-off is that this is the **camera's** rendering
+/// (picture style / in-camera WB), not what the `from raw` node produces —
+/// every DAM accepts that for library browsing.
+///
+/// Returns `Err` when the file has no usable preview (caller should fall back
+/// to [`decode_raw`] with a small `max_dimension`). Previews smaller than
+/// [`RAW_PREVIEW_MIN_EDGE`] are rejected for the same reason.
+///
+/// Orientation is left as the camera stored it — embedded JPEGs are often
+/// already upright, and blindly applying EXIF orientation double-rotates some
+/// bodies. Validate with real portrait fixtures if a specific brand looks wrong.
+#[cfg(feature = "raw")]
+pub fn decode_raw_preview_rgba8(
+    path: &std::path::Path,
+    max_edge: u32,
+) -> Result<(Vec<u8>, u32, u32), String> {
+    use image::GenericImageView;
+    use rawler::analyze::extract_full_pixels;
+    use rawler::decoders::RawDecodeParams;
+
+    let max_edge = max_edge.max(1);
+    let img = extract_full_pixels(path, &RawDecodeParams::default()).map_err(|e| e.to_string())?;
+    let (w, h) = img.dimensions();
+    if w.max(h) < RAW_PREVIEW_MIN_EDGE {
+        return Err(format!(
+            "embedded RAW preview too small ({w}×{h}; need ≥ {RAW_PREVIEW_MIN_EDGE})"
+        ));
+    }
+
+    let thumb = if w.max(h) > max_edge {
+        img.thumbnail(max_edge, max_edge)
+    } else {
+        img
+    };
+    let rgba = thumb.to_rgba8();
+    let (rw, rh) = (rgba.width(), rgba.height());
+    Ok((rgba.into_raw(), rw, rh))
+}
+
+/// Stub when the `raw` feature is off — library thumbs fall back cleanly.
+#[cfg(not(feature = "raw"))]
+pub fn decode_raw_preview_rgba8(
+    _path: &std::path::Path,
+    _max_edge: u32,
+) -> Result<(Vec<u8>, u32, u32), String> {
     Err("this build was compiled without camera RAW support (cargo feature \"raw\")".to_string())
 }
 

@@ -15,6 +15,7 @@ Key facts (as of v1.0.7, 2026-08-01):
 - Floating-point pipeline: images stay 1–4 channel f32 from input to output; conversion happens only at I/O.
 - Resolution-independent spatial parameters: design at 512px, render at 4K, same relative result.
 - Batch runs: sweep a folder of images through a graph, saving outputs per file.
+- Libraries panel browses linked folders of graphs and images with list or thumbnail view (in-panel image previews; single-click still opens the 2D preview).
 - Runs on Windows, macOS (Apple Silicon and Intel), and Linux. Licensed MIT OR Apache-2.0.
 
 Graphs are plain JSON files (`.mangler.json`). The CLI (`mangler_cli`) runs them headless: build a graph in the GUI, then automate it from scripts or agents.

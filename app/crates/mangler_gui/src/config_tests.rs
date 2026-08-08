@@ -13,6 +13,7 @@ fn test_default_config() {
     assert!(config.theme.is_none());
     assert!(config.default_layout.is_none());
     assert!(config.libraries.is_empty());
+    assert_eq!(config.library_view_style, LibraryViewStyle::List);
 }
 
 /// Config survives a JSON serialize/deserialize round-trip.
@@ -23,12 +24,14 @@ fn test_serialize_deserialize_roundtrip() {
         default_layout: None,
         libraries: Vec::new(),
         default_library: None,
+        library_view_style: LibraryViewStyle::Thumbnails,
     };
 
     let json = serde_json::to_string(&config).unwrap();
     let restored: AppConfig = serde_json::from_str(&json).unwrap();
 
     assert_eq!(restored.theme.as_deref(), Some("dark_green"));
+    assert_eq!(restored.library_view_style, LibraryViewStyle::Thumbnails);
 }
 
 /// Config with a `libraries` entry survives a JSON round-trip.
@@ -44,6 +47,7 @@ fn test_serialize_deserialize_roundtrip_with_libraries() {
             },
         }],
         default_library: None,
+        library_view_style: LibraryViewStyle::default(),
     };
 
     let json = serde_json::to_string(&config).unwrap();
@@ -84,6 +88,7 @@ fn test_serialize_deserialize_roundtrip_with_layout() {
         default_layout: Some(layout.clone()),
         libraries: Vec::new(),
         default_library: None,
+        library_view_style: LibraryViewStyle::default(),
     };
 
     let json = serde_json::to_string(&config).unwrap();
@@ -94,7 +99,7 @@ fn test_serialize_deserialize_roundtrip_with_layout() {
 }
 
 /// Existing theme-only config JSON (pre-Phase-4) still loads, with
-/// `default_layout` defaulting to `None`.
+/// `default_layout` defaulting to `None` and view style to list.
 #[test]
 fn test_theme_only_json_back_compat() {
     let json = r#"{"theme": "dark_green"}"#;
@@ -102,6 +107,7 @@ fn test_theme_only_json_back_compat() {
     assert_eq!(config.theme.as_deref(), Some("dark_green"));
     assert!(config.default_layout.is_none());
     assert!(config.libraries.is_empty());
+    assert_eq!(config.library_view_style, LibraryViewStyle::List);
 }
 
 /// An empty JSON object parses to an all-default config.
@@ -145,6 +151,7 @@ fn test_save_and_load_roundtrip() {
         default_layout: None,
         libraries: Vec::new(),
         default_library: None,
+        library_view_style: LibraryViewStyle::default(),
     };
 
     let json = serde_json::to_string_pretty(&config).unwrap();

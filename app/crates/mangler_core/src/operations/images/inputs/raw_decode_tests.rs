@@ -264,6 +264,39 @@ mod with_rawler {
         assert!(result.is_err());
     }
 
+    #[test]
+    fn test_preview_rejects_a_non_raw_file() {
+        let path = std::env::temp_dir().join("mangler_raw_preview_bogus.cr3");
+        let img = image::RgbImage::from_pixel(4, 4, image::Rgb([1u8, 2, 3]));
+        img.save_with_format(&path, image::ImageFormat::Png).unwrap();
+
+        let result = decode_raw_preview_rgba8(&path, 192);
+        let _ = std::fs::remove_file(&path);
+        assert!(result.is_err(), "a PNG named .cr3 must not yield a RAW preview");
+    }
+
+    #[test]
+    fn test_preview_reports_a_missing_file() {
+        let result =
+            decode_raw_preview_rgba8(std::path::Path::new("/nonexistent/nope.cr3"), 192);
+        assert!(result.is_err());
+    }
+
+    /// Real-file preview path. Same fixture env as `test_decode_real_raw_fixture`.
+    #[test]
+    fn test_preview_real_raw_fixture() {
+        let Ok(path) = std::env::var("NODEMANGLER_RAW_FIXTURE") else {
+            return;
+        };
+        let path = std::path::PathBuf::from(path);
+
+        let (pixels, w, h) = decode_raw_preview_rgba8(&path, 192)
+            .unwrap_or_else(|e| panic!("preview failed for {}: {e}", path.display()));
+        assert!(w.max(h) <= 192);
+        assert!(w >= 16 && h >= 16, "implausibly tiny preview {w}x{h}");
+        assert_eq!(pixels.len(), (w * h * 4) as usize);
+    }
+
     /// End-to-end decode of a real camera file. Skipped unless
     /// `NODEMANGLER_RAW_FIXTURE` points at one, so no multi-megabyte blob has
     /// to live in git.

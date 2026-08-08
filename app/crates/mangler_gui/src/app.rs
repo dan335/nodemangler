@@ -372,9 +372,13 @@ impl App {
             next_leaf_id: 0,
             secondary_windows: Vec::new(),
             next_window_id: 0,
-            // Spawns the background library scanner and points it at the
-            // libraries persisted in config.
-            libraries: LibrariesState::new(cc.egui_ctx.clone(), config.libraries.clone()),
+            // Spawns the background library scanner / thumb pool and points
+            // them at the libraries + view style persisted in config.
+            libraries: LibrariesState::new(
+                cc.egui_ctx.clone(),
+                config.libraries.clone(),
+                config.library_view_style,
+            ),
             error_modal,
             pending_close: None,
             quit_requested: false,

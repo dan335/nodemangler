@@ -9,6 +9,7 @@ use eframe::egui;
 
 use super::*;
 use crate::libraries::library::{LibraryConfig, LibrarySource};
+use crate::libraries::libraries_state::LibraryViewStyle;
 
 /// Builds a test state from (name, path) pairs.
 fn state_with(configs: &[(&str, &str)]) -> LibrariesState {
@@ -89,6 +90,34 @@ fn rename_library_with_unknown_id_is_a_noop() {
     let mut state = state_with(&[("a", "C:/libs/a")]);
     state.rename_library(999, "ghost".to_string());
     assert_eq!(state.entries[0].config.name, "a");
+}
+
+#[test]
+fn default_view_style_is_list() {
+    let state = state_with(&[]);
+    assert_eq!(state.view_style, LibraryViewStyle::List);
+}
+
+#[test]
+fn set_view_style_updates_without_persist() {
+    // new_without_persistence: style still mutates in memory; save_config is a no-op.
+    let mut state = state_with(&[]);
+    state.set_view_style(LibraryViewStyle::Thumbnails);
+    assert_eq!(state.view_style, LibraryViewStyle::Thumbnails);
+    state.set_view_style(LibraryViewStyle::List);
+    assert_eq!(state.view_style, LibraryViewStyle::List);
+}
+
+#[test]
+fn view_style_toggle_cycles() {
+    assert_eq!(
+        LibraryViewStyle::List.toggle(),
+        LibraryViewStyle::Thumbnails
+    );
+    assert_eq!(
+        LibraryViewStyle::Thumbnails.toggle(),
+        LibraryViewStyle::List
+    );
 }
 
 #[test]

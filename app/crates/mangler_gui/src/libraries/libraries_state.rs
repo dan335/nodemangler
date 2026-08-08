@@ -15,6 +15,10 @@ use crate::config::AppConfig;
 
 use super::library::{LibraryConfig, LibraryId, LibrarySource};
 use super::library_scanner::Scanner;
+use super::library_thumbs::LibraryThumbCache;
+
+// Re-export so panel / tests can import from libraries_state.
+pub use crate::config::LibraryViewStyle;
 
 /// One linked library with its session-local id. The id is assigned at load
 /// time and never persisted — configs on disk are identified by position.
@@ -89,6 +93,11 @@ pub struct LibrariesState {
     /// Handle to the background folder scanner; `scanner.results` holds the
     /// latest folder-tree snapshot per library.
     pub scanner: Scanner,
+    /// Background image-thumbnail cache for thumbnails view (shared by every
+    /// Libraries leaf so secondary windows don't re-decode).
+    pub thumbs: LibraryThumbCache,
+    /// List vs thumbnails; app-global and persisted (see [`LibraryViewStyle`]).
+    pub view_style: LibraryViewStyle,
     /// The modal dialog currently open, if any.
     pub dialog: Option<LibraryDialog>,
     /// Actions queued for `App` to perform; drained via `take_pending`.
@@ -103,19 +112,28 @@ pub struct LibrariesState {
 
 impl LibrariesState {
     /// Builds the state from the persisted library configs, assigns each a
-    /// session id, spawns the background scanner, and points it at every
-    /// local library root.
-    pub fn new(ctx: egui::Context, configs: Vec<LibraryConfig>) -> Self {
-        Self::with_persistence(ctx, configs, true)
+    /// session id, spawns the background scanner and thumb pool, and points
+    /// the scanner at every local library root.
+    pub fn new(
+        ctx: egui::Context,
+        configs: Vec<LibraryConfig>,
+        view_style: LibraryViewStyle,
+    ) -> Self {
+        Self::with_persistence(ctx, configs, view_style, true)
     }
 
     /// Test-only constructor that never writes the user's config file.
     #[cfg(test)]
     pub fn new_without_persistence(ctx: egui::Context, configs: Vec<LibraryConfig>) -> Self {
-        Self::with_persistence(ctx, configs, false)
+        Self::with_persistence(ctx, configs, LibraryViewStyle::default(), false)
     }
 
-    fn with_persistence(ctx: egui::Context, configs: Vec<LibraryConfig>, persist: bool) -> Self {
+    fn with_persistence(
+        ctx: egui::Context,
+        configs: Vec<LibraryConfig>,
+        view_style: LibraryViewStyle,
+        persist: bool,
+    ) -> Self {
         let mut next_id: LibraryId = 0;
         let entries: Vec<LibraryEntry> = configs
             .into_iter()
@@ -129,7 +147,9 @@ impl LibrariesState {
         let state = Self {
             entries,
             next_id,
-            scanner: Scanner::spawn(ctx),
+            scanner: Scanner::spawn(ctx.clone()),
+            thumbs: LibraryThumbCache::spawn(ctx),
+            view_style,
             dialog: None,
             pending: Vec::new(),
             error: None,
@@ -138,6 +158,23 @@ impl LibrariesState {
         // Kick off the first scan of everything loaded from config.
         state.sync_roots();
         state
+    }
+
+    /// Sets the view style and persists it (when persistence is enabled).
+    pub fn set_view_style(&mut self, style: LibraryViewStyle) {
+        if self.view_style == style {
+            return;
+        }
+        self.view_style = style;
+        self.save_config();
+    }
+
+    /// Asks the scanner to rescan soon. Does **not** wipe in-memory thumbs —
+    /// the disk cache is keyed by path+mtime+size, so rewritten files miss
+    /// naturally on the next worker load, and unrelated libraries keep their
+    /// Ready textures (create-graph / add-library used to nuke everything).
+    pub fn request_rescan(&mut self) {
+        self.scanner.request_rescan();
     }
 
     /// Takes (and clears) the queued actions. Called once per frame by `App`
@@ -218,9 +255,9 @@ impl LibrariesState {
         self.scanner.set_roots(roots);
     }
 
-    /// Persists the library list into the app config. Uses load-modify-save
-    /// so concurrent settings (theme, layout) are never clobbered — the same
-    /// pattern the theme picker uses.
+    /// Persists the library list and view style into the app config. Uses
+    /// load-modify-save so concurrent settings (theme, layout) are never
+    /// clobbered — the same pattern the theme picker uses.
     fn save_config(&self) {
         if !self.persist {
             return;
@@ -231,6 +268,7 @@ impl LibrariesState {
             .iter()
             .map(|entry| entry.config.clone())
             .collect();
+        config.library_view_style = self.view_style;
         config.save();
     }
 
@@ -243,7 +281,7 @@ impl LibrariesState {
         }
         // Rescan either way so the panel reflects reality (e.g. the folder
         // already existed).
-        self.scanner.request_rescan();
+        self.request_rescan();
     }
 
     /// Renames a folder or graph file on disk to `new_name` (already
@@ -288,7 +326,7 @@ impl LibrariesState {
                 self.set_error(format!("couldn't rename '{}': {}", from.display(), err));
             }
         }
-        self.scanner.request_rescan();
+        self.request_rescan();
     }
 
     /// Moves a folder or graph to the OS recycle bin (never a permanent
@@ -299,7 +337,7 @@ impl LibrariesState {
         if let Err(err) = trash::delete(path) {
             self.set_error(format!("couldn't delete '{}': {}", path.display(), err));
         }
-        self.scanner.request_rescan();
+        self.request_rescan();
     }
 
     /// Opens the OS file manager at `path`: Explorer on Windows, Finder on

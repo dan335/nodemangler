@@ -8,6 +8,37 @@ use serde::{Deserialize, Serialize};
 use crate::libraries::library::{LibraryConfig, LibrarySource};
 use crate::panels::panel_tree::PanelNode;
 
+/// How the Libraries panel renders folder contents. App-global (shared by
+/// every Libraries leaf) and persisted here — deliberate asymmetry with
+/// per-leaf expansion state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LibraryViewStyle {
+    /// Icon + name rows (default, original layout).
+    #[default]
+    List,
+    /// Image files as a wrapping thumbnail grid; graphs stay list rows.
+    Thumbnails,
+}
+
+impl LibraryViewStyle {
+    /// Cycles list ↔ thumbnails.
+    pub fn toggle(self) -> Self {
+        match self {
+            LibraryViewStyle::List => LibraryViewStyle::Thumbnails,
+            LibraryViewStyle::Thumbnails => LibraryViewStyle::List,
+        }
+    }
+
+    /// Short label for tooltips.
+    pub fn label(self) -> &'static str {
+        match self {
+            LibraryViewStyle::List => "list",
+            LibraryViewStyle::Thumbnails => "thumbnails",
+        }
+    }
+}
+
 /// Top-level application configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
@@ -27,6 +58,10 @@ pub struct AppConfig {
     /// computed yet, or the computed location turned out to be unwritable.
     #[serde(default)]
     pub default_library: Option<PathBuf>,
+    /// Libraries panel view style (list vs thumbnails). App-global, restored
+    /// on startup; missing key → list.
+    #[serde(default)]
+    pub library_view_style: LibraryViewStyle,
 }
 
 impl AppConfig {
