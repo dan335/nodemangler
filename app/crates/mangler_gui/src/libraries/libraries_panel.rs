@@ -146,8 +146,9 @@ fn strengthen_menu_hover(ui: &mut egui::Ui, colors: &ThemeValues) {
 
 /// An invisible click target filling the panel's leftover space, so
 /// right-clicking the empty background offers the add-library menu. Placed
-/// *after* the scroll area (which auto-shrinks to its content) because
-/// vertical space inside a scroll area is unbounded.
+/// *after* the scroll area (which still auto-shrinks vertically to its
+/// content) because vertical space inside a scroll area is unbounded. The
+/// scroll area fills the panel width so its bar sits on the right edge.
 fn show_background_menu(ui: &mut egui::Ui, colors: &ThemeValues, commands: &mut PanelCommands) {
     let leftover = ui.available_size_before_wrap().y;
     if leftover <= 0.0 {
@@ -176,7 +177,13 @@ fn show_tree(
     // mutations.
     let results = state.scanner.results.lock().unwrap();
 
-    egui::ScrollArea::vertical().show(ui, |ui| {
+    // Fill the panel width so the scrollbar sits on the right edge of the
+    // panel, not snug against the (narrower) row text. Keep vertical
+    // auto-shrink so leftover space below the tree stays available for the
+    // empty-background context menu.
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, true])
+        .show(ui, |ui| {
         if state.entries.is_empty() {
             ui.add_space(4.0);
             ui.label(

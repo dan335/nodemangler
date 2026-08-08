@@ -143,8 +143,9 @@ pub struct Program {
     /// user explicitly right-clicked instead of the gizmo node's source image.
     /// Set for every live leaf by `view_node` (an explicit act beats the
     /// automatic choice) and cleared by `edit_node` when the selection changes
-    /// (a new node re-arms the automatic choice). Also toggled from the gizmo
-    /// caption strip. Absent means "automatic".
+    /// (a new node re-arms the automatic choice). Cleared from the conflict
+    /// strip's "Show source" button when the panel is not showing the source.
+    /// Absent / false means "automatic".
     gizmo_backdrop_prefer_viewed: HashMap<LeafId, bool>,
     /// Per-leaf graph pan/zoom camera, keyed by panel leaf id â€” mirrors
     /// `viewers_2d`/`viewers_3d` so every Graph-kind panel pans and zooms
@@ -1632,25 +1633,37 @@ impl Program {
                     );
                 }
 
-                // Always say what is underneath, and offer the escape hatch —
-                // an automatic backdrop is only helpful if it is legible.
-                if let Some(label) = backdrop_label {
-                    let toggled = crate::overlay::strip::top_left(
-                        ui,
-                        view_rect,
-                        egui::Vec2::new(320.0, 26.0),
-                        theme,
-                        |ui| {
-                            ui.label(
-                                egui::RichText::new(format!("over: {label}"))
+                // Silent when auto-showing the gizmo's spatial source (the common
+                // case). Only surface chrome when the panel is showing something
+                // else — library preview, a pinned "keep viewed" output, etc. —
+                // so the user can recover without living under a permanent bar.
+                // `source_pixels` is set only when the displayed image *is* that
+                // source (see the dispatch above).
+                let showing_source = source_pixels.is_some();
+                if !showing_source {
+                    if let Some(label) = backdrop_label {
+                        let restore = crate::overlay::strip::top_left(
+                            ui,
+                            view_rect,
+                            egui::Vec2::new(420.0, 26.0),
+                            theme,
+                            |ui| {
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "Showing {label} — not this node's source"
+                                    ))
                                     .color(theme.get().text_faint),
-                            );
-                            ui.small_button(if prefer_viewed { "auto" } else { "viewed" })
-                                .clicked()
-                        },
-                    );
-                    if toggled {
-                        gizmo_backdrop_prefer_viewed.insert(leaf_id, !prefer_viewed);
+                                );
+                                ui.small_button("Show source").clicked()
+                            },
+                        );
+                        if restore {
+                            gizmo_backdrop_prefer_viewed.insert(leaf_id, false);
+                            // Library preview outranks the gizmo backdrop in the
+                            // dispatch above; clear it so auto can take over.
+                            *library_image_preview = None;
+                            *pending_library_preview = None;
+                        }
                     }
                 }
             }
