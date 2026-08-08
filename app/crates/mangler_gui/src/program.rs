@@ -1610,7 +1610,6 @@ impl Program {
                         specs,
                         inputs: &node.inputs,
                         image_dims: displayed_dims.map(|(w, h)| (w as u32, h as u32)),
-                        sample_source: source_pixels.as_deref(),
                     },
                     theme,
                 );

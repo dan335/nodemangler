@@ -26,8 +26,7 @@
 //! handle drags from stealing the canvas pan.
 
 use eframe::egui::{self, Pos2, Rect, Stroke, Vec2};
-use mangler_core::float_image::FloatImage;
-use mangler_core::gizmo::{Gizmo, GizmoSpec, PixelBasis, RectExtent, SpatialSpace};
+use mangler_core::gizmo::{Gizmo, GizmoSpec, RadiusSpace, RectExtent, SpatialSpace};
 use mangler_core::input::{Input, InputSettings};
 use mangler_core::value::Value;
 
@@ -83,10 +82,6 @@ pub struct GizmoContext<'a> {
     pub inputs: &'a [Input],
     /// Pixel size of the backdrop, when one is displayed.
     pub image_dims: Option<(u32, u32)>,
-    /// The backdrop's pixels, but **only** when the backdrop really is this
-    /// node's spatial source. `None` suppresses the colour readout rather than
-    /// reporting a sample from an unrelated image.
-    pub sample_source: Option<&'a FloatImage>,
 }
 
 /// Draw every gizmo the node declares and return any change made this frame.
@@ -127,34 +122,81 @@ pub fn show(
 
         let id = egui::Id::new(("spatial_overlay", leaf_id, spec_index));
         match spec.kind {
-            Gizmo::Point { x, y, diameter, space } => {
-                show_point(
-                    ui,
-                    id,
-                    image_rect,
-                    ctx,
-                    spec,
-                    [x, y],
-                    diameter,
-                    space,
-                    editable,
-                    theme,
-                    &mut out,
-                )
-            }
-            Gizmo::Rect { x, y, w, h, space, extent } => show_rect(
+            Gizmo::Point {
+                x,
+                y,
+                diameter,
+                radius,
+                space,
+            } => show_point(
                 ui,
                 id,
                 image_rect,
                 ctx,
-                spec,
+                [x, y],
+                diameter,
+                radius,
+                space,
+                editable,
+                theme,
+                &mut out,
+            ),
+            Gizmo::Rect {
+                x,
+                y,
+                w,
+                h,
+                space,
+                extent,
+            } => show_rect(
+                ui,
+                id,
+                image_rect,
+                ctx,
                 [x, y, w, h],
                 space,
                 extent,
                 editable,
                 theme,
                 &mut out,
+            ), // space reserved for future basis-aware rects
+            Gizmo::Line {
+                angle,
+                position,
+                space,
+            } => show_line(ui, id, image_rect, ctx, angle, position, space, editable, theme, &mut out),
+            Gizmo::Axes { x, y, space } => {
+                show_axes(ui, id, image_rect, ctx, x, y, space, editable, theme, &mut out)
+            }
+            Gizmo::QuadCorners { corners } => {
+                show_quad(ui, id, image_rect, ctx, corners, editable, theme, &mut out)
+            }
+            Gizmo::Transform {
+                offset_x,
+                offset_y,
+                rotation,
+                scale_x,
+                scale_y,
+            } => show_transform(
+                ui,
+                id,
+                image_rect,
+                ctx,
+                offset_x,
+                offset_y,
+                rotation,
+                scale_x,
+                scale_y,
+                editable,
+                theme,
+                &mut out,
             ),
+            Gizmo::OffsetPx { x, y } => {
+                show_offset_px(ui, id, image_rect, ctx, x, y, editable, theme, &mut out)
+            }
+            Gizmo::CenterRadius { radius, space } => {
+                show_center_radius(ui, id, image_rect, ctx, radius, space, editable, theme, &mut out)
+            }
         }
     }
     out
@@ -162,19 +204,16 @@ pub fn show(
 
 // ---------------------------------------------------------------- point gizmo
 
-/// A draggable crosshair. Clicking anywhere on the image jumps the point there,
-/// which is what makes `sample pixel` usable as an eyedropper. When `diameter`
-/// indexes a source-pixel size input, a circle of that diameter is painted so
-/// the sample area updates live as the slider moves.
+/// A draggable crosshair (+ optional radius rim / pixel-diameter disk).
 #[allow(clippy::too_many_arguments)]
 fn show_point(
     ui: &mut egui::Ui,
     id: egui::Id,
     image_rect: Rect,
     ctx: &GizmoContext<'_>,
-    spec: &GizmoSpec,
     idx: [usize; 2],
     diameter_idx: Option<usize>,
+    radius: Option<(usize, RadiusSpace)>,
     space: SpatialSpace,
     editable: bool,
     theme: &Theme,
@@ -182,12 +221,46 @@ fn show_point(
 ) {
     let Some(mut values) = read_pair(ctx.inputs, idx) else { return };
     let diameter = diameter_idx.and_then(|i| read_scalar(&ctx.inputs[i].value));
+    let mut radius_val = radius.and_then(|(i, _)| read_scalar(&ctx.inputs[i].value));
+    let radius_space = radius.map(|(_, s)| s);
+
+    let center = norm_to_screen(image_rect, space.to_unit(ctx.image_dims, values));
+    let screen_r = ring_screen_radius(diameter, radius_val, radius_space, image_rect, ctx.image_dims);
 
     if editable {
-        // Catcher first so the handle below wins the click; the catcher then
-        // only fires for clicks that missed it.
+        // Radius rim first (registered before centre so centre wins on overlap
+        // at small radii). Catcher last so empty-space click repositions.
+        let mut rim_active = false;
+        if let (Some((r_idx, r_space)), Some(rv)) = (radius, radius_val) {
+            if let Some(sr) = screen_r.filter(|r| *r > HANDLE_HIT_HALF) {
+                let rim_pos = center + Vec2::new(sr, 0.0);
+                let rim = handle::handle(ui, id.with("rim"), rim_pos, HANDLE_HIT_HALF);
+                rim_active = rim.active;
+                if let Some(to) = rim.drag_to {
+                    if let Some(dims) = ctx.image_dims {
+                        let dist = (to - center).length();
+                        let next = quantize(
+                            &ctx.inputs[r_idx],
+                            r_space.from_screen_radius(
+                                dist,
+                                [image_rect.width(), image_rect.height()],
+                                dims,
+                            ),
+                        );
+                        if (next - rv).abs() > 1e-6 {
+                            radius_val = Some(next);
+                            push_live(out, r_idx, &ctx.inputs[r_idx], next);
+                        }
+                    }
+                }
+                if rim.commit {
+                    out.commit = true;
+                    out.commit_inputs.push(r_idx);
+                }
+            }
+        }
+
         let catcher = handle::catcher(ui, id.with("catch"), image_rect);
-        let center = norm_to_screen(image_rect, space.to_unit(ctx.image_dims, values));
         let grab = handle::handle(ui, id.with("pt"), center, HANDLE_HIT_HALF);
 
         let target = grab.drag_to.or(catcher.clicked_at);
@@ -196,77 +269,93 @@ fn show_point(
             let next = quantize_pair(ctx.inputs, idx, space.from_unit(ctx.image_dims, unit));
             if next != values {
                 values = next;
-                out.changed.push((idx[0], write_scalar(&ctx.inputs[idx[0]].value, values[0])));
-                out.changed.push((idx[1], write_scalar(&ctx.inputs[idx[1]].value, values[1])));
-                // Live engine update while dragging — sample pixel (and any
-                // future point gizmo) re-runs every frame so the colour output
-                // tracks the crosshair, not just the mouse-up position.
-                out.commit = true;
-                out.commit_inputs.extend_from_slice(&idx);
+                push_live(out, idx[0], &ctx.inputs[idx[0]], values[0]);
+                push_live(out, idx[1], &ctx.inputs[idx[1]], values[1]);
             }
         }
-        // Click-to-jump also commits (same frame as changed). A pure release
-        // with no further motion still commits so a zero-length drag is safe.
         if grab.commit || catcher.clicked_at.is_some() {
             out.commit = true;
             out.commit_inputs.extend_from_slice(&idx);
         }
 
         draw_crosshair(
-            ui, image_rect, ctx, spec, values, diameter, space, grab.active, true, None, theme,
+            ui,
+            image_rect,
+            space.to_unit(ctx.image_dims, values),
+            ring_screen_radius(diameter, radius_val, radius_space, image_rect, ctx.image_dims),
+            grab.active || rim_active,
+            true,
+            None,
+            theme,
         );
     } else {
         let note = driven_note(ctx, &idx);
         draw_crosshair(
-            ui, image_rect, ctx, spec, values, diameter, space, false, false, note, theme,
+            ui,
+            image_rect,
+            space.to_unit(ctx.image_dims, values),
+            screen_r,
+            false,
+            false,
+            note,
+            theme,
         );
     }
 }
 
-/// Paint the crosshair, optional sample-disk outline, centre dot, and readout.
+/// Screen radius for a point's optional disk: pixel diameter or RadiusSpace rim.
+fn ring_screen_radius(
+    diameter: Option<f32>,
+    radius_val: Option<f32>,
+    radius_space: Option<RadiusSpace>,
+    image_rect: Rect,
+    dims: Option<(u32, u32)>,
+) -> Option<f32> {
+    if let (Some(d), Some((iw, ih))) = (diameter, dims) {
+        if d > 1.0 && iw > 0 && ih > 0 {
+            let rx = (d * 0.5) * (image_rect.width() / iw as f32);
+            let ry = (d * 0.5) * (image_rect.height() / ih as f32);
+            return Some(0.5 * (rx + ry));
+        }
+    }
+    if let (Some(rv), Some(space), Some(dims)) = (radius_val, radius_space, dims) {
+        let r = space.to_screen_radius(rv, [image_rect.width(), image_rect.height()], dims);
+        if r > 0.5 {
+            return Some(r);
+        }
+    }
+    None
+}
+
+/// Paint the crosshair, optional ring, and centre dot.
 #[allow(clippy::too_many_arguments)]
 fn draw_crosshair(
     ui: &egui::Ui,
     image_rect: Rect,
-    ctx: &GizmoContext<'_>,
-    spec: &GizmoSpec,
-    values: [f32; 2],
-    diameter: Option<f32>,
-    space: SpatialSpace,
+    unit: [f32; 2],
+    ring_r: Option<f32>,
     active: bool,
     editable: bool,
     note: Option<String>,
     theme: &Theme,
 ) {
     let painter = ui.painter().with_clip_rect(image_rect);
-    let center = norm_to_screen(image_rect, space.to_unit(ctx.image_dims, values));
+    let center = norm_to_screen(image_rect, unit);
 
     handle::draw_guide(&painter, image_rect, center, true, theme);
     handle::draw_guide(&painter, image_rect, center, false, theme);
 
-    // Sample disk: diameter is in source-image pixels (same units as the op).
-    // Draw whenever diameter > 1 so the slider visibly grows/shrinks the circle.
-    if let (Some(d), Some((iw, ih))) = (diameter, ctx.image_dims) {
-        if d > 1.0 && iw > 0 && ih > 0 {
-            let rx = (d * 0.5) * (image_rect.width() / iw as f32);
-            let ry = (d * 0.5) * (image_rect.height() / ih as f32);
-            let colors = theme.get();
-            let stroke = Stroke::new(
-                if active { 2.0 } else { 1.5 },
-                if editable {
-                    colors.node_header_selected_border
-                } else {
-                    handle::read_only_color(theme)
-                },
-            );
-            // Ellipse so non-square image_rect letterboxing stays accurate; for
-            // aspect-correct rects this is a circle matching the pixel disk.
-            painter.add(egui::Shape::from(egui::epaint::EllipseShape::stroke(
-                center,
-                Vec2::new(rx, ry),
-                stroke,
-            )));
-        }
+    if let Some(r) = ring_r {
+        let colors = theme.get();
+        let stroke = Stroke::new(
+            if active { 2.0 } else { 1.5 },
+            if editable {
+                colors.node_header_selected_border
+            } else {
+                handle::read_only_color(theme)
+            },
+        );
+        painter.circle_stroke(center, r, stroke);
     }
 
     if editable {
@@ -280,119 +369,499 @@ fn draw_crosshair(
         );
     }
 
-    let text = with_note(point_readout(ctx, spec, values, diameter), note);
-    draw_readout(ui, image_rect, center + Vec2::new(10.0, 10.0), &text, theme);
+    if let Some(note) = note {
+        draw_readout(ui, image_rect, center + Vec2::new(10.0, 10.0), &note, theme);
+    }
 }
 
-/// The crosshair's readout: pixel coordinates, diameter when multi-pixel, plus
-/// the sampled colour when the backdrop really is this node's source image.
-fn point_readout(
+/// Push a value change and mark for live engine commit.
+fn push_live(out: &mut SpatialOverlayResponse, idx: usize, input: &Input, v: f32) {
+    out.changed.push((idx, write_scalar(&input.value, v)));
+    out.commit = true;
+    out.commit_inputs.push(idx);
+}
+
+// ----------------------------------------------------------------- line gizmo
+
+/// Graduated filter: angle (degrees) + position (0–1) along the gradient axis.
+#[allow(clippy::too_many_arguments)]
+fn show_line(
+    ui: &mut egui::Ui,
+    id: egui::Id,
+    image_rect: Rect,
     ctx: &GizmoContext<'_>,
-    spec: &GizmoSpec,
-    values: [f32; 2],
-    diameter: Option<f32>,
-) -> String {
-    let Some((w, h)) = ctx.image_dims else {
-        return format!("{} {:.3}, {:.3}", spec.label, values[0], values[1]);
-    };
-    // Mirror the operation's own addressing so the numbers name the pixel it
-    // will actually read.
-    let basis = match spec.kind.space() {
-        SpatialSpace::Norm01 { basis } => basis,
-    };
-    let (px, py) = match basis {
-        PixelBasis::Centres => (
-            values[0].clamp(0.0, 1.0) * w.saturating_sub(1) as f32,
-            values[1].clamp(0.0, 1.0) * h.saturating_sub(1) as f32,
-        ),
-        PixelBasis::Extent => (values[0] * w as f32, values[1] * h as f32),
-    };
+    angle_idx: usize,
+    pos_idx: usize,
+    _space: SpatialSpace,
+    editable: bool,
+    theme: &Theme,
+    out: &mut SpatialOverlayResponse,
+) {
+    let Some(mut angle) = read_scalar(&ctx.inputs[angle_idx].value) else { return };
+    let Some(mut position) = read_scalar(&ctx.inputs[pos_idx].value) else { return };
 
-    let mut text = format!("{} x {:.0}  y {:.0}", spec.label, px, py);
-    let diam = diameter.unwrap_or(1.0).max(1.0);
-    if diam > 1.0 {
-        text.push_str(&format!("  ⌀{diam:.0}"));
+    // Gradient direction (angle 0 = +x). The soft edge is perpendicular.
+    let rad = angle.to_radians();
+    let dir = Vec2::new(rad.cos(), rad.sin());
+    let mid = image_rect.center();
+    let diag = (image_rect.width().hypot(image_rect.height())).max(1.0);
+    // Project image half-diagonal so the line spans the view.
+    let span = diag * 0.6;
+    // Position 0.5 is centre; shift along dir by (position - 0.5) * full projection span.
+    let origin = mid + dir * ((position - 0.5) * diag);
+    let perp = Vec2::new(-dir.y, dir.x);
+    let a = origin - perp * span;
+    let b = origin + perp * span;
+
+    let painter = ui.painter().with_clip_rect(image_rect);
+    let colors = theme.get();
+    let stroke = Stroke::new(
+        1.5,
+        if editable {
+            colors.grid_connection_line
+        } else {
+            handle::read_only_color(theme)
+        },
+    );
+    painter.line_segment([a, b], stroke);
+    // Direction tick at mid-line.
+    painter.arrow(origin, dir * 24.0, stroke);
+
+    if editable {
+        // Drag body: move position along dir.
+        let body = handle::handle(ui, id.with("pos"), origin, HANDLE_HIT_HALF + 4.0);
+        if let Some(to) = body.drag_to {
+            let delta = to - mid;
+            // Project onto dir; map to 0–1 roughly spanning the image diagonal.
+            let proj = delta.dot(dir) / diag + 0.5;
+            let next = quantize(&ctx.inputs[pos_idx], proj);
+            if (next - position).abs() > 1e-6 {
+                position = next;
+                push_live(out, pos_idx, &ctx.inputs[pos_idx], next);
+            }
+        }
+        if body.commit {
+            out.commit = true;
+            out.commit_inputs.push(pos_idx);
+        }
+
+        // Angle handle on the direction tick.
+        let angle_pos = origin + dir * 28.0;
+        let ang = handle::handle(ui, id.with("ang"), angle_pos, HANDLE_HIT_HALF);
+        if let Some(to) = ang.drag_to {
+            let v = to - origin;
+            if v.length_sq() > 1.0 {
+                let deg = v.y.atan2(v.x).to_degrees().rem_euclid(360.0);
+                let next = quantize(&ctx.inputs[angle_idx], deg);
+                if (next - angle).abs() > 1e-3 {
+                    angle = next;
+                    push_live(out, angle_idx, &ctx.inputs[angle_idx], next);
+                }
+            }
+        }
+        if ang.commit {
+            out.commit = true;
+            out.commit_inputs.push(angle_idx);
+        }
+
+        handle::draw_handle(ui.painter(), origin, GRIP_RADIUS + 1.0, body.active, HandleShape::Dot, theme);
+        handle::draw_handle(ui.painter(), angle_pos, GRIP_RADIUS, ang.active, HandleShape::Square, theme);
+    } else if let Some(note) = driven_note(ctx, &[angle_idx, pos_idx]) {
+        draw_readout(ui, image_rect, origin + Vec2::new(8.0, 8.0), &note, theme);
     }
-    if let Some(img) = ctx.sample_source {
-        let (r, g, b, a) = sample_for_readout(img, px, py, diam);
-        text.push_str(&format!("\n{r:.3} {g:.3} {b:.3} {a:.3}"));
-    }
-    text
+    let _ = (angle, position); // silence when not editable
 }
 
-/// Match the sample-pixel op: bilinear point for diameter ≤ 1, disk average above.
-fn sample_for_readout(img: &FloatImage, px: f32, py: f32, diameter: f32) -> (f32, f32, f32, f32) {
-    let ch = img.channels() as usize;
-    if diameter <= 1.0 {
-        let mut buf = [0.0f32; 4];
-        img.bilinear_sample(px, py, &mut buf[..ch.min(4)]);
-        return match ch {
-            1 => (buf[0], buf[0], buf[0], 1.0),
-            2 => (buf[0], buf[0], buf[0], buf[1]),
-            3 => (buf[0], buf[1], buf[2], 1.0),
-            _ => (buf[0], buf[1], buf[2], buf[3]),
-        };
-    }
+// ---------------------------------------------------------------- axes gizmo
 
-    let (w, h) = img.dimensions();
-    if w == 0 || h == 0 {
-        return (0.0, 0.0, 0.0, 1.0);
-    }
-    let radius = diameter * 0.5;
-    let r2 = radius * radius;
-    let x0 = ((px - radius).floor() as i32).max(0) as u32;
-    let y0 = ((py - radius).floor() as i32).max(0) as u32;
-    let x1 = ((px + radius).ceil() as i32).clamp(0, w as i32 - 1) as u32;
-    let y1 = ((py + radius).ceil() as i32).clamp(0, h as i32 - 1) as u32;
+/// Vertical and/or horizontal split lines (mirror).
+#[allow(clippy::too_many_arguments)]
+fn show_axes(
+    ui: &mut egui::Ui,
+    id: egui::Id,
+    image_rect: Rect,
+    ctx: &GizmoContext<'_>,
+    x_idx: Option<usize>,
+    y_idx: Option<usize>,
+    _space: SpatialSpace,
+    editable: bool,
+    theme: &Theme,
+    out: &mut SpatialOverlayResponse,
+) {
+    let colors = theme.get();
+    let stroke = Stroke::new(
+        1.5,
+        if editable {
+            colors.grid_connection_line
+        } else {
+            handle::read_only_color(theme)
+        },
+    );
+    let painter = ui.painter().with_clip_rect(image_rect);
 
-    let mut sum_ra = 0.0f64;
-    let mut sum_ga = 0.0f64;
-    let mut sum_ba = 0.0f64;
-    let mut sum_a = 0.0f64;
-    let mut sum_r = 0.0f64;
-    let mut sum_g = 0.0f64;
-    let mut sum_b = 0.0f64;
-    let mut count = 0u32;
-
-    for y in y0..=y1 {
-        for x in x0..=x1 {
-            let dx = x as f32 - px;
-            let dy = y as f32 - py;
-            if dx * dx + dy * dy > r2 {
-                continue;
+    if let Some(xi) = x_idx {
+        if let Some(xv) = read_scalar(&ctx.inputs[xi].value) {
+            let mut xv = xv;
+            let px = image_rect.left() + xv.clamp(0.0, 1.0) * image_rect.width();
+            painter.line_segment(
+                [Pos2::new(px, image_rect.top()), Pos2::new(px, image_rect.bottom())],
+                stroke,
+            );
+            if editable {
+                let mid = Pos2::new(px, image_rect.center().y);
+                let grab = handle::handle(ui, id.with("ax"), mid, HANDLE_HIT_HALF);
+                if let Some(to) = grab.drag_to {
+                    let next = quantize(
+                        &ctx.inputs[xi],
+                        ((to.x - image_rect.left()) / image_rect.width()).clamp(0.0, 1.0),
+                    );
+                    if (next - xv).abs() > 1e-6 {
+                        xv = next;
+                        push_live(out, xi, &ctx.inputs[xi], next);
+                    }
+                }
+                if grab.commit {
+                    out.commit = true;
+                    out.commit_inputs.push(xi);
+                }
+                handle::draw_handle(ui.painter(), mid, GRIP_RADIUS, grab.active, HandleShape::Square, theme);
             }
-            let p = img.get_pixel(x, y);
-            let (r, g, b, a) = match ch {
-                1 => (p[0], p[0], p[0], 1.0),
-                2 => (p[0], p[0], p[0], p[1]),
-                3 => (p[0], p[1], p[2], 1.0),
-                _ => (p[0], p[1], p[2], p[3]),
-            };
-            sum_ra += (r * a) as f64;
-            sum_ga += (g * a) as f64;
-            sum_ba += (b * a) as f64;
-            sum_a += a as f64;
-            sum_r += r as f64;
-            sum_g += g as f64;
-            sum_b += b as f64;
-            count += 1;
+            let _ = xv;
         }
     }
-    if count == 0 {
-        return sample_for_readout(img, px, py, 1.0);
+    if let Some(yi) = y_idx {
+        if let Some(yv) = read_scalar(&ctx.inputs[yi].value) {
+            let mut yv = yv;
+            let py = image_rect.top() + yv.clamp(0.0, 1.0) * image_rect.height();
+            painter.line_segment(
+                [Pos2::new(image_rect.left(), py), Pos2::new(image_rect.right(), py)],
+                stroke,
+            );
+            if editable {
+                let mid = Pos2::new(image_rect.center().x, py);
+                let grab = handle::handle(ui, id.with("ay"), mid, HANDLE_HIT_HALF);
+                if let Some(to) = grab.drag_to {
+                    let next = quantize(
+                        &ctx.inputs[yi],
+                        ((to.y - image_rect.top()) / image_rect.height()).clamp(0.0, 1.0),
+                    );
+                    if (next - yv).abs() > 1e-6 {
+                        yv = next;
+                        push_live(out, yi, &ctx.inputs[yi], next);
+                    }
+                }
+                if grab.commit {
+                    out.commit = true;
+                    out.commit_inputs.push(yi);
+                }
+                handle::draw_handle(ui.painter(), mid, GRIP_RADIUS, grab.active, HandleShape::Square, theme);
+            }
+            let _ = yv;
+        }
     }
-    let n = count as f64;
-    let a = (sum_a / n) as f32;
-    if sum_a > 1e-9 {
-        (
-            (sum_ra / sum_a) as f32,
-            (sum_ga / sum_a) as f32,
-            (sum_ba / sum_a) as f32,
-            a,
-        )
-    } else {
-        ((sum_r / n) as f32, (sum_g / n) as f32, (sum_b / n) as f32, 0.0)
+}
+
+// ----------------------------------------------------------------- quad gizmo
+
+/// Perspective: four corners as offsets from the unit-square corners.
+#[allow(clippy::too_many_arguments)]
+fn show_quad(
+    ui: &mut egui::Ui,
+    id: egui::Id,
+    image_rect: Rect,
+    ctx: &GizmoContext<'_>,
+    corners: [usize; 8],
+    editable: bool,
+    theme: &Theme,
+    out: &mut SpatialOverlayResponse,
+) {
+    // Base corners in unit space: TL, TR, BR, BL.
+    const BASE: [[f32; 2]; 4] = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+    let mut offs = [0.0f32; 8];
+    for (i, &idx) in corners.iter().enumerate() {
+        offs[i] = read_scalar(&ctx.inputs[idx].value).unwrap_or(0.0);
     }
+    let mut screen = [Pos2::ZERO; 4];
+    for c in 0..4 {
+        let u = [
+            (BASE[c][0] + offs[c * 2]).clamp(-0.5, 1.5),
+            (BASE[c][1] + offs[c * 2 + 1]).clamp(-0.5, 1.5),
+        ];
+        screen[c] = norm_to_screen(image_rect, u);
+    }
+
+    let painter = ui.painter().with_clip_rect(image_rect);
+    let colors = theme.get();
+    let stroke = Stroke::new(
+        1.5,
+        if editable {
+            colors.grid_connection_line
+        } else {
+            handle::read_only_color(theme)
+        },
+    );
+    for i in 0..4 {
+        painter.line_segment([screen[i], screen[(i + 1) % 4]], stroke);
+    }
+
+    if editable {
+        for c in 0..4 {
+            let grab = handle::handle(ui, id.with(("c", c as u8)), screen[c], HANDLE_HIT_HALF);
+            if let Some(to) = grab.drag_to {
+                let unit = screen_to_norm(image_rect, to);
+                let nx = quantize(&ctx.inputs[corners[c * 2]], unit[0] - BASE[c][0]);
+                let ny = quantize(&ctx.inputs[corners[c * 2 + 1]], unit[1] - BASE[c][1]);
+                if (nx - offs[c * 2]).abs() > 1e-6 || (ny - offs[c * 2 + 1]).abs() > 1e-6 {
+                    offs[c * 2] = nx;
+                    offs[c * 2 + 1] = ny;
+                    push_live(out, corners[c * 2], &ctx.inputs[corners[c * 2]], nx);
+                    push_live(out, corners[c * 2 + 1], &ctx.inputs[corners[c * 2 + 1]], ny);
+                }
+            }
+            if grab.commit {
+                out.commit = true;
+                out.commit_inputs.push(corners[c * 2]);
+                out.commit_inputs.push(corners[c * 2 + 1]);
+            }
+            handle::draw_handle(
+                ui.painter(),
+                screen[c],
+                if grab.active { GRIP_RADIUS_ACTIVE } else { GRIP_RADIUS },
+                grab.active,
+                HandleShape::Square,
+                theme,
+            );
+        }
+    }
+}
+
+// ------------------------------------------------------------ transform gizmo
+
+/// Affine transform: drag body to offset, handle to rotate, optional scale.
+#[allow(clippy::too_many_arguments)]
+fn show_transform(
+    ui: &mut egui::Ui,
+    id: egui::Id,
+    image_rect: Rect,
+    ctx: &GizmoContext<'_>,
+    ox_idx: usize,
+    oy_idx: usize,
+    rot_idx: usize,
+    sx_idx: Option<usize>,
+    sy_idx: Option<usize>,
+    editable: bool,
+    theme: &Theme,
+    out: &mut SpatialOverlayResponse,
+) {
+    let Some(mut ox) = read_scalar(&ctx.inputs[ox_idx].value) else { return };
+    let Some(mut oy) = read_scalar(&ctx.inputs[oy_idx].value) else { return };
+    let Some(mut rot) = read_scalar(&ctx.inputs[rot_idx].value) else { return };
+    let sx = sx_idx.and_then(|i| read_scalar(&ctx.inputs[i].value)).unwrap_or(1.0);
+    let sy = sy_idx.and_then(|i| read_scalar(&ctx.inputs[i].value)).unwrap_or(1.0);
+
+    // Offset is a fraction of size: 0 = centre stays put; positive moves content
+    // right/down so the original centre lands at unit (0.5 + ox, 0.5 + oy).
+    let center = Pos2::new(
+        image_rect.left() + (0.5 + ox) * image_rect.width(),
+        image_rect.top() + (0.5 + oy) * image_rect.height(),
+    );
+
+    let rad = rot.to_radians();
+    let dir = Vec2::new(rad.cos(), rad.sin());
+    let arm = 40.0 * ((sx.abs() + sy.abs()) * 0.5).clamp(0.25, 3.0);
+    let tip = center + dir * arm;
+
+    let painter = ui.painter().with_clip_rect(image_rect);
+    let colors = theme.get();
+    let stroke = Stroke::new(
+        1.5,
+        if editable {
+            colors.grid_connection_line
+        } else {
+            handle::read_only_color(theme)
+        },
+    );
+    painter.circle_stroke(center, 10.0, stroke);
+    painter.arrow(center, dir * arm, stroke);
+
+    if editable {
+        let body = handle::handle(ui, id.with("body"), center, HANDLE_HIT_HALF + 2.0);
+        if let Some(to) = body.drag_to {
+            let unit = screen_to_norm(image_rect, to);
+            let nx = quantize(&ctx.inputs[ox_idx], unit[0] - 0.5);
+            let ny = quantize(&ctx.inputs[oy_idx], unit[1] - 0.5);
+            if (nx - ox).abs() > 1e-6 || (ny - oy).abs() > 1e-6 {
+                ox = nx;
+                oy = ny;
+                push_live(out, ox_idx, &ctx.inputs[ox_idx], nx);
+                push_live(out, oy_idx, &ctx.inputs[oy_idx], ny);
+            }
+        }
+        if body.commit {
+            out.commit = true;
+            out.commit_inputs.extend([ox_idx, oy_idx]);
+        }
+
+        let rot_h = handle::handle(ui, id.with("rot"), tip, HANDLE_HIT_HALF);
+        if let Some(to) = rot_h.drag_to {
+            let v = to - center;
+            if v.length_sq() > 1.0 {
+                let deg = v.y.atan2(v.x).to_degrees();
+                let next = quantize(&ctx.inputs[rot_idx], deg);
+                if (next - rot).abs() > 1e-3 {
+                    rot = next;
+                    push_live(out, rot_idx, &ctx.inputs[rot_idx], next);
+                }
+            }
+            // Scale from arm length when scale inputs exist.
+            if let (Some(sxi), Some(syi)) = (sx_idx, sy_idx) {
+                let len = v.length() / 40.0;
+                let ns = quantize(&ctx.inputs[sxi], len.clamp(0.01, 4.0));
+                if (ns - sx).abs() > 1e-4 {
+                    push_live(out, sxi, &ctx.inputs[sxi], ns);
+                    push_live(out, syi, &ctx.inputs[syi], quantize(&ctx.inputs[syi], ns));
+                }
+            }
+        }
+        if rot_h.commit {
+            out.commit = true;
+            out.commit_inputs.push(rot_idx);
+            if let Some(s) = sx_idx {
+                out.commit_inputs.push(s);
+            }
+            if let Some(s) = sy_idx {
+                out.commit_inputs.push(s);
+            }
+        }
+
+        handle::draw_handle(ui.painter(), center, GRIP_RADIUS + 1.0, body.active, HandleShape::Dot, theme);
+        handle::draw_handle(ui.painter(), tip, GRIP_RADIUS, rot_h.active, HandleShape::Square, theme);
+    }
+    let _ = (ox, oy, rot);
+}
+
+// ----------------------------------------------------------- offset-px gizmo
+
+/// Drop-shadow style offset in px@1024, drawn from image centre.
+#[allow(clippy::too_many_arguments)]
+fn show_offset_px(
+    ui: &mut egui::Ui,
+    id: egui::Id,
+    image_rect: Rect,
+    ctx: &GizmoContext<'_>,
+    x_idx: usize,
+    y_idx: usize,
+    editable: bool,
+    theme: &Theme,
+    out: &mut SpatialOverlayResponse,
+) {
+    let Some(mut ox) = read_scalar(&ctx.inputs[x_idx].value) else { return };
+    let Some(mut oy) = read_scalar(&ctx.inputs[y_idx].value) else { return };
+    let Some((iw, ih)) = ctx.image_dims else { return };
+    if iw == 0 || ih == 0 {
+        return;
+    }
+    // px@1024 → actual pixels → screen.
+    let scale = iw.max(ih) as f32 / 1024.0;
+    let px = ox * scale;
+    let py = oy * scale;
+    let origin = image_rect.center();
+    let tip = Pos2::new(
+        origin.x + px * (image_rect.width() / iw as f32),
+        origin.y + py * (image_rect.height() / ih as f32),
+    );
+
+    let painter = ui.painter().with_clip_rect(image_rect);
+    let colors = theme.get();
+    let stroke = Stroke::new(
+        1.5,
+        if editable {
+            colors.grid_connection_line
+        } else {
+            handle::read_only_color(theme)
+        },
+    );
+    painter.arrow(origin, tip - origin, stroke);
+    painter.circle_filled(origin, 3.0, stroke.color);
+
+    if editable {
+        let grab = handle::handle(ui, id.with("off"), tip, HANDLE_HIT_HALF);
+        if let Some(to) = grab.drag_to {
+            let dx = (to.x - origin.x) * (iw as f32 / image_rect.width()) / scale;
+            let dy = (to.y - origin.y) * (ih as f32 / image_rect.height()) / scale;
+            let nx = quantize(&ctx.inputs[x_idx], dx);
+            let ny = quantize(&ctx.inputs[y_idx], dy);
+            if (nx - ox).abs() > 1e-4 || (ny - oy).abs() > 1e-4 {
+                ox = nx;
+                oy = ny;
+                push_live(out, x_idx, &ctx.inputs[x_idx], nx);
+                push_live(out, y_idx, &ctx.inputs[y_idx], ny);
+            }
+        }
+        if grab.commit {
+            out.commit = true;
+            out.commit_inputs.extend([x_idx, y_idx]);
+        }
+        handle::draw_handle(ui.painter(), tip, GRIP_RADIUS, grab.active, HandleShape::Dot, theme);
+    }
+    let _ = (ox, oy);
+}
+
+// ------------------------------------------------------- centre-radius gizmo
+
+/// Radius ring fixed at image centre (vignette / swirl / spherize).
+#[allow(clippy::too_many_arguments)]
+fn show_center_radius(
+    ui: &mut egui::Ui,
+    id: egui::Id,
+    image_rect: Rect,
+    ctx: &GizmoContext<'_>,
+    radius_idx: usize,
+    space: RadiusSpace,
+    editable: bool,
+    theme: &Theme,
+    out: &mut SpatialOverlayResponse,
+) {
+    let Some(mut rv) = read_scalar(&ctx.inputs[radius_idx].value) else { return };
+    let Some(dims) = ctx.image_dims else { return };
+    let center = image_rect.center();
+    let screen_r = space.to_screen_radius(rv, [image_rect.width(), image_rect.height()], dims);
+
+    let painter = ui.painter().with_clip_rect(image_rect);
+    let colors = theme.get();
+    let stroke = Stroke::new(
+        1.5,
+        if editable {
+            colors.node_header_selected_border
+        } else {
+            handle::read_only_color(theme)
+        },
+    );
+    if screen_r > 0.5 {
+        painter.circle_stroke(center, screen_r, stroke);
+    }
+
+    if editable {
+        let rim = center + Vec2::new(screen_r.max(HANDLE_HIT_HALF), 0.0);
+        let grab = handle::handle(ui, id.with("r"), rim, HANDLE_HIT_HALF);
+        if let Some(to) = grab.drag_to {
+            let dist = (to - center).length();
+            let next = quantize(
+                &ctx.inputs[radius_idx],
+                space.from_screen_radius(dist, [image_rect.width(), image_rect.height()], dims),
+            );
+            if (next - rv).abs() > 1e-5 {
+                rv = next;
+                push_live(out, radius_idx, &ctx.inputs[radius_idx], next);
+            }
+        }
+        if grab.commit {
+            out.commit = true;
+            out.commit_inputs.push(radius_idx);
+        }
+        handle::draw_handle(ui.painter(), rim, GRIP_RADIUS, grab.active, HandleShape::Square, theme);
+    }
+    let _ = rv;
 }
 
 // ----------------------------------------------------------------- rect gizmo
@@ -433,9 +902,8 @@ fn show_rect(
     id: egui::Id,
     image_rect: Rect,
     ctx: &GizmoContext<'_>,
-    spec: &GizmoSpec,
     idx: [usize; 4],
-    space: SpatialSpace,
+    _space: SpatialSpace,
     extent: RectExtent,
     editable: bool,
     theme: &Theme,
@@ -527,23 +995,21 @@ fn show_rect(
         }
 
         let active = moved.is_some();
-        draw_rect(ui, image_rect, ctx, spec, values, space, extent, active, true, None, theme);
+        draw_rect(ui, image_rect, values, extent, active, true, None, theme);
     } else {
         let note = driven_note(ctx, &idx);
-        draw_rect(ui, image_rect, ctx, spec, values, space, extent, false, false, note, theme);
+        draw_rect(ui, image_rect, values, extent, false, false, note, theme);
     }
 }
 
 /// Paint the box: an outside scrim so the kept region reads instantly, the
-/// outline, rule-of-thirds guides, the grips, and the pixel readout.
+/// outline, rule-of-thirds guides, and the grips. Pixel size lives in the
+/// settings panel — no on-image coordinate readout.
 #[allow(clippy::too_many_arguments)]
 fn draw_rect(
     ui: &egui::Ui,
     image_rect: Rect,
-    ctx: &GizmoContext<'_>,
-    spec: &GizmoSpec,
     values: [f32; 4],
-    _space: SpatialSpace,
     extent: RectExtent,
     active: bool,
     editable: bool,
@@ -591,31 +1057,9 @@ fn draw_rect(
         }
     }
 
-    let text = with_note(rect_readout(ctx, spec, values, extent), note);
-    draw_readout(ui, image_rect, r.left_top() + Vec2::new(4.0, 4.0), &text, theme);
-}
-
-/// The box's readout. When the convention allows it, this reproduces the crop
-/// operation's own rounding so the numbers match the pixel dimensions the node
-/// reports on its `width`/`height` outputs.
-fn rect_readout(
-    ctx: &GizmoContext<'_>,
-    spec: &GizmoSpec,
-    values: [f32; 4],
-    extent: RectExtent,
-) -> String {
-    let basis = match spec.kind.space() {
-        SpatialSpace::Norm01 { basis } => basis,
-    };
-    match (ctx.image_dims, extent, basis) {
-        (Some(dims), RectExtent::OriginSize, PixelBasis::Extent) => {
-            let (x, y, w, h) = crop_pixels(values, dims);
-            format!("{} x {x}  y {y}  ·  {w} × {h} px", spec.label)
-        }
-        _ => format!(
-            "{} {:.3}, {:.3}  ·  {:.3} × {:.3}",
-            spec.label, values[0], values[1], values[2], values[3]
-        ),
+    // Only a driven-input note (wired upstream); no x/y/size chip.
+    if let Some(note) = note {
+        draw_readout(ui, image_rect, r.left_top() + Vec2::new(4.0, 4.0), &note, theme);
     }
 }
 
@@ -876,21 +1320,12 @@ fn draw_readout(ui: &egui::Ui, clip: Rect, at: Pos2, text: &str, theme: &Theme) 
     painter.galley(plate.min + Vec2::new(4.0, 2.0), galley, colors.text_faint);
 }
 
-/// Append an explanatory note to a readout, on its own line.
-fn with_note(readout: String, note: Option<String>) -> String {
-    match note {
-        Some(n) => format!("{readout}
-{n}"),
-        None => readout,
-    }
-}
-
 /// Why a gizmo has no handles: which of its inputs are driven from upstream.
 ///
-/// Appended to the readout rather than shown as a hover tooltip, because a
-/// read-only gizmo deliberately registers no interactive widget at all — there
-/// would be nothing to hover, and adding one purely for the tooltip would put a
-/// dead zone over the image's drag-to-pan background.
+/// Shown as a small plate rather than a hover tooltip, because a read-only
+/// gizmo deliberately registers no interactive widget at all — there would be
+/// nothing to hover, and adding one purely for the tooltip would put a dead
+/// zone over the image's drag-to-pan background.
 fn driven_note(ctx: &GizmoContext<'_>, indices: &[usize]) -> Option<String> {
     let driven: Vec<&str> = indices
         .iter()

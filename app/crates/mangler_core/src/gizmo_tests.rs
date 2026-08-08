@@ -14,14 +14,54 @@ use crate::value::Value;
 /// `height` keeps both indices valid — so the names are pinned too. Add a row
 /// whenever a gizmo is added to [`gizmos`].
 const EXPECTED_NAMES: &[(Operation, usize, &str)] = &[
+    // crop
     (Operation::OpImageTransformCrop, 1, "x"),
     (Operation::OpImageTransformCrop, 2, "y"),
     (Operation::OpImageTransformCrop, 3, "width"),
     (Operation::OpImageTransformCrop, 4, "height"),
+    // sample pixel
     (Operation::OpColorSampleSamplePixel, 1, "x"),
     (Operation::OpColorSampleSamplePixel, 2, "y"),
-    // Display-only: sample disk size painted on the crosshair, not drag-driven.
-    (Operation::OpColorSampleSamplePixel, 3, "diameter"),
+    (Operation::OpColorSampleSamplePixel, 3, "diameter"), // display-only
+    // radial gradient mask
+    (Operation::OpImageMaskRadialGradient, 2, "center x"),
+    (Operation::OpImageMaskRadialGradient, 3, "center y"),
+    (Operation::OpImageMaskRadialGradient, 4, "radius"),
+    // linear gradient mask
+    (Operation::OpImageMaskLinearGradient, 2, "angle"),
+    (Operation::OpImageMaskLinearGradient, 3, "position"),
+    // circle
+    (Operation::OpImageShapesCircle, 2, "radius"),
+    (Operation::OpImageShapesCircle, 3, "center_x"),
+    (Operation::OpImageShapesCircle, 4, "center_y"),
+    // from text
+    (Operation::OpImageInputText, 4, "x_position"),
+    (Operation::OpImageInputText, 5, "y_position"),
+    // mirror
+    (Operation::OpImageTransformMirror, 3, "offset x"),
+    (Operation::OpImageTransformMirror, 4, "offset y"),
+    // perspective
+    (Operation::OpImageTransformPerspective, 1, "top-left x"),
+    (Operation::OpImageTransformPerspective, 2, "top-left y"),
+    (Operation::OpImageTransformPerspective, 3, "top-right x"),
+    (Operation::OpImageTransformPerspective, 4, "top-right y"),
+    (Operation::OpImageTransformPerspective, 5, "bottom-right x"),
+    (Operation::OpImageTransformPerspective, 6, "bottom-right y"),
+    (Operation::OpImageTransformPerspective, 7, "bottom-left x"),
+    (Operation::OpImageTransformPerspective, 8, "bottom-left y"),
+    // transform (affine)
+    (Operation::OpImageTransformAffine, 1, "offset x"),
+    (Operation::OpImageTransformAffine, 2, "offset y"),
+    (Operation::OpImageTransformAffine, 3, "rotation"),
+    (Operation::OpImageTransformAffine, 4, "scale x"),
+    (Operation::OpImageTransformAffine, 5, "scale y"),
+    // drop shadow
+    (Operation::OpImageFxDropShadow, 1, "offset x"),
+    (Operation::OpImageFxDropShadow, 2, "offset y"),
+    // vignette / swirl / spherize
+    (Operation::OpImageAdjustmentVignette, 2, "radius"),
+    (Operation::OpImageTransformSwirl, 2, "radius"),
+    (Operation::OpImageTransformSpherize, 2, "radius"),
 ];
 
 #[test]
@@ -169,7 +209,7 @@ fn gizmos_never_panics_and_is_empty_for_ops_without_one() {
             with_gizmos += 1;
         }
     }
-    assert_eq!(with_gizmos, 2, "update this count when a gizmo is added");
+    assert_eq!(with_gizmos, 13, "update this count when a gizmo is added");
     // Spot-check a few unrelated ops across categories.
     for op in [
         Operation::OpNumberMathAdd,
