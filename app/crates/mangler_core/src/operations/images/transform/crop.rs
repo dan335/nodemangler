@@ -42,10 +42,10 @@ impl OpImageTransformCrop {
                 .with_description("Left edge of the crop region as a 0-1 fraction of image width (0.25 = a quarter across). Resolution-independent."),
             Input::new("y".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
                 .with_description("Top edge of the crop region as a 0-1 fraction of image height. Resolution-independent."),
-            Input::new("width".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
-                .with_description("Width of the crop region as a 0-1 fraction of image width (0.5 = half the image); clipped at the right edge."),
-            Input::new("height".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
-                .with_description("Height of the crop region as a 0-1 fraction of image height; clipped at the bottom edge."),
+            Input::new("width".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
+                .with_description("Width of the crop region as a 0-1 fraction of image width (1.0 = full image); clipped at the right edge."),
+            Input::new("height".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
+                .with_description("Height of the crop region as a 0-1 fraction of image height (1.0 = full image); clipped at the bottom edge."),
         ]
     }
 

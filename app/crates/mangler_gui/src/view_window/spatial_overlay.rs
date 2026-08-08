@@ -12,7 +12,8 @@
 //! salted with the panel's `leaf_id`, so every open 2D panel draws its own copy
 //! and drags never cross-talk. The caller mirrors
 //! [`SpatialOverlayResponse::changed`] into its local values every frame and
-//! pushes to the engine only on `commit`.
+//! pushes to the engine when `commit` is set. Point and rect gizmos both
+//! commit every drag frame so crop / sample pixel track the overlay live.
 //!
 //! ## Core invariant: draw the round-tripped value
 //! Every drag pushes its candidate through the input's clamp range and its value
@@ -60,12 +61,16 @@ pub struct SpatialOverlayResponse {
     /// mirrors each into its local node for instant feedback. **Empty on a
     /// drag's release frame** — the pointer no longer moved.
     pub changed: Vec<(usize, Value)>,
-    /// A gesture completed; push to the engine.
+    /// Push the listed inputs to the engine this frame.
+    ///
+    /// Set on every drag frame (point and rect) so sample pixel and crop track
+    /// the overlay live, not only on mouse-up. Also set on release so a
+    /// zero-motion drag end still commits.
     pub commit: bool,
-    /// Which inputs the completed gesture could have moved, derived from the
-    /// handle that reported the release (dragging the right edge of a crop box
-    /// reaches `width` but never `y`). The caller sends one `SetInput` per
-    /// index, reading its *accumulated local value* rather than `changed`.
+    /// Which inputs to push when `commit` is set. For a rect, derived from the
+    /// handle that moved (dragging the right edge reaches `width` but never
+    /// `y`). The caller sends one `SetInput` per index, reading its
+    /// *accumulated local value* rather than `changed`.
     pub commit_inputs: Vec<usize>,
 }
 
@@ -108,21 +113,34 @@ pub fn show(
         && image_rect.height() >= MIN_INTERACTIVE_PX;
 
     for (spec_index, spec) in ctx.specs.iter().enumerate() {
-        let indices = spec.kind.inputs();
+        let drag_indices = spec.kind.inputs();
         // Defensive: a graph saved before the op gained an input can present a
         // shorter slice than the table expects. Skip rather than panic.
-        if indices.iter().any(|&i| i >= ctx.inputs.len()) {
+        // `referenced_inputs` includes display-only indices (e.g. sample diameter).
+        if spec.kind.referenced_inputs().iter().any(|&i| i >= ctx.inputs.len()) {
             continue;
         }
-        // All-or-nothing: a gizmo whose inputs are driven upstream draws
-        // read-only rather than vanishing, so it still explains itself.
+        // All-or-nothing on *drag* inputs only: a connected diameter must not
+        // freeze the crosshair.
         let editable =
-            interactive && indices.iter().all(|&i| ctx.inputs[i].connection.is_none());
+            interactive && drag_indices.iter().all(|&i| ctx.inputs[i].connection.is_none());
 
         let id = egui::Id::new(("spatial_overlay", leaf_id, spec_index));
         match spec.kind {
-            Gizmo::Point { x, y, space } => {
-                show_point(ui, id, image_rect, ctx, spec, [x, y], space, editable, theme, &mut out)
+            Gizmo::Point { x, y, diameter, space } => {
+                show_point(
+                    ui,
+                    id,
+                    image_rect,
+                    ctx,
+                    spec,
+                    [x, y],
+                    diameter,
+                    space,
+                    editable,
+                    theme,
+                    &mut out,
+                )
             }
             Gizmo::Rect { x, y, w, h, space, extent } => show_rect(
                 ui,
@@ -145,7 +163,9 @@ pub fn show(
 // ---------------------------------------------------------------- point gizmo
 
 /// A draggable crosshair. Clicking anywhere on the image jumps the point there,
-/// which is what makes `sample pixel` usable as an eyedropper.
+/// which is what makes `sample pixel` usable as an eyedropper. When `diameter`
+/// indexes a source-pixel size input, a circle of that diameter is painted so
+/// the sample area updates live as the slider moves.
 #[allow(clippy::too_many_arguments)]
 fn show_point(
     ui: &mut egui::Ui,
@@ -154,12 +174,14 @@ fn show_point(
     ctx: &GizmoContext<'_>,
     spec: &GizmoSpec,
     idx: [usize; 2],
+    diameter_idx: Option<usize>,
     space: SpatialSpace,
     editable: bool,
     theme: &Theme,
     out: &mut SpatialOverlayResponse,
 ) {
     let Some(mut values) = read_pair(ctx.inputs, idx) else { return };
+    let diameter = diameter_idx.and_then(|i| read_scalar(&ctx.inputs[i].value));
 
     if editable {
         // Catcher first so the handle below wins the click; the catcher then
@@ -176,23 +198,32 @@ fn show_point(
                 values = next;
                 out.changed.push((idx[0], write_scalar(&ctx.inputs[idx[0]].value, values[0])));
                 out.changed.push((idx[1], write_scalar(&ctx.inputs[idx[1]].value, values[1])));
+                // Live engine update while dragging — sample pixel (and any
+                // future point gizmo) re-runs every frame so the colour output
+                // tracks the crosshair, not just the mouse-up position.
+                out.commit = true;
+                out.commit_inputs.extend_from_slice(&idx);
             }
         }
-        // A click both moves and finishes in one frame; a drag finishes on
-        // release, when `drag_to` is None and `values` is already accumulated.
+        // Click-to-jump also commits (same frame as changed). A pure release
+        // with no further motion still commits so a zero-length drag is safe.
         if grab.commit || catcher.clicked_at.is_some() {
             out.commit = true;
             out.commit_inputs.extend_from_slice(&idx);
         }
 
-        draw_crosshair(ui, image_rect, ctx, spec, values, space, grab.active, true, None, theme);
+        draw_crosshair(
+            ui, image_rect, ctx, spec, values, diameter, space, grab.active, true, None, theme,
+        );
     } else {
         let note = driven_note(ctx, &idx);
-        draw_crosshair(ui, image_rect, ctx, spec, values, space, false, false, note, theme);
+        draw_crosshair(
+            ui, image_rect, ctx, spec, values, diameter, space, false, false, note, theme,
+        );
     }
 }
 
-/// Paint the crosshair, its centre dot, and the readout chip.
+/// Paint the crosshair, optional sample-disk outline, centre dot, and readout.
 #[allow(clippy::too_many_arguments)]
 fn draw_crosshair(
     ui: &egui::Ui,
@@ -200,6 +231,7 @@ fn draw_crosshair(
     ctx: &GizmoContext<'_>,
     spec: &GizmoSpec,
     values: [f32; 2],
+    diameter: Option<f32>,
     space: SpatialSpace,
     active: bool,
     editable: bool,
@@ -212,6 +244,31 @@ fn draw_crosshair(
     handle::draw_guide(&painter, image_rect, center, true, theme);
     handle::draw_guide(&painter, image_rect, center, false, theme);
 
+    // Sample disk: diameter is in source-image pixels (same units as the op).
+    // Draw whenever diameter > 1 so the slider visibly grows/shrinks the circle.
+    if let (Some(d), Some((iw, ih))) = (diameter, ctx.image_dims) {
+        if d > 1.0 && iw > 0 && ih > 0 {
+            let rx = (d * 0.5) * (image_rect.width() / iw as f32);
+            let ry = (d * 0.5) * (image_rect.height() / ih as f32);
+            let colors = theme.get();
+            let stroke = Stroke::new(
+                if active { 2.0 } else { 1.5 },
+                if editable {
+                    colors.node_header_selected_border
+                } else {
+                    handle::read_only_color(theme)
+                },
+            );
+            // Ellipse so non-square image_rect letterboxing stays accurate; for
+            // aspect-correct rects this is a circle matching the pixel disk.
+            painter.add(egui::Shape::from(egui::epaint::EllipseShape::stroke(
+                center,
+                Vec2::new(rx, ry),
+                stroke,
+            )));
+        }
+    }
+
     if editable {
         let radius = if active { GRIP_RADIUS_ACTIVE + 1.0 } else { GRIP_RADIUS + 1.0 };
         handle::draw_handle(ui.painter(), center, radius, active, HandleShape::Dot, theme);
@@ -223,13 +280,18 @@ fn draw_crosshair(
         );
     }
 
-    let text = with_note(point_readout(ctx, spec, values), note);
+    let text = with_note(point_readout(ctx, spec, values, diameter), note);
     draw_readout(ui, image_rect, center + Vec2::new(10.0, 10.0), &text, theme);
 }
 
-/// The crosshair's readout: pixel coordinates, plus the sampled colour when the
-/// backdrop really is this node's source image.
-fn point_readout(ctx: &GizmoContext<'_>, spec: &GizmoSpec, values: [f32; 2]) -> String {
+/// The crosshair's readout: pixel coordinates, diameter when multi-pixel, plus
+/// the sampled colour when the backdrop really is this node's source image.
+fn point_readout(
+    ctx: &GizmoContext<'_>,
+    spec: &GizmoSpec,
+    values: [f32; 2],
+    diameter: Option<f32>,
+) -> String {
     let Some((w, h)) = ctx.image_dims else {
         return format!("{} {:.3}, {:.3}", spec.label, values[0], values[1]);
     };
@@ -247,19 +309,90 @@ fn point_readout(ctx: &GizmoContext<'_>, spec: &GizmoSpec, values: [f32; 2]) -> 
     };
 
     let mut text = format!("{} x {:.0}  y {:.0}", spec.label, px, py);
+    let diam = diameter.unwrap_or(1.0).max(1.0);
+    if diam > 1.0 {
+        text.push_str(&format!("  ⌀{diam:.0}"));
+    }
     if let Some(img) = ctx.sample_source {
-        let ch = img.channels() as usize;
+        let (r, g, b, a) = sample_for_readout(img, px, py, diam);
+        text.push_str(&format!("\n{r:.3} {g:.3} {b:.3} {a:.3}"));
+    }
+    text
+}
+
+/// Match the sample-pixel op: bilinear point for diameter ≤ 1, disk average above.
+fn sample_for_readout(img: &FloatImage, px: f32, py: f32, diameter: f32) -> (f32, f32, f32, f32) {
+    let ch = img.channels() as usize;
+    if diameter <= 1.0 {
         let mut buf = [0.0f32; 4];
         img.bilinear_sample(px, py, &mut buf[..ch.min(4)]);
-        let (r, g, b, a) = match ch {
+        return match ch {
             1 => (buf[0], buf[0], buf[0], 1.0),
             2 => (buf[0], buf[0], buf[0], buf[1]),
             3 => (buf[0], buf[1], buf[2], 1.0),
             _ => (buf[0], buf[1], buf[2], buf[3]),
         };
-        text.push_str(&format!("\n{r:.3} {g:.3} {b:.3} {a:.3}"));
     }
-    text
+
+    let (w, h) = img.dimensions();
+    if w == 0 || h == 0 {
+        return (0.0, 0.0, 0.0, 1.0);
+    }
+    let radius = diameter * 0.5;
+    let r2 = radius * radius;
+    let x0 = ((px - radius).floor() as i32).max(0) as u32;
+    let y0 = ((py - radius).floor() as i32).max(0) as u32;
+    let x1 = ((px + radius).ceil() as i32).clamp(0, w as i32 - 1) as u32;
+    let y1 = ((py + radius).ceil() as i32).clamp(0, h as i32 - 1) as u32;
+
+    let mut sum_ra = 0.0f64;
+    let mut sum_ga = 0.0f64;
+    let mut sum_ba = 0.0f64;
+    let mut sum_a = 0.0f64;
+    let mut sum_r = 0.0f64;
+    let mut sum_g = 0.0f64;
+    let mut sum_b = 0.0f64;
+    let mut count = 0u32;
+
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            let dx = x as f32 - px;
+            let dy = y as f32 - py;
+            if dx * dx + dy * dy > r2 {
+                continue;
+            }
+            let p = img.get_pixel(x, y);
+            let (r, g, b, a) = match ch {
+                1 => (p[0], p[0], p[0], 1.0),
+                2 => (p[0], p[0], p[0], p[1]),
+                3 => (p[0], p[1], p[2], 1.0),
+                _ => (p[0], p[1], p[2], p[3]),
+            };
+            sum_ra += (r * a) as f64;
+            sum_ga += (g * a) as f64;
+            sum_ba += (b * a) as f64;
+            sum_a += a as f64;
+            sum_r += r as f64;
+            sum_g += g as f64;
+            sum_b += b as f64;
+            count += 1;
+        }
+    }
+    if count == 0 {
+        return sample_for_readout(img, px, py, 1.0);
+    }
+    let n = count as f64;
+    let a = (sum_a / n) as f32;
+    if sum_a > 1e-9 {
+        (
+            (sum_ra / sum_a) as f32,
+            (sum_ga / sum_a) as f32,
+            (sum_ba / sum_a) as f32,
+            a,
+        )
+    } else {
+        ((sum_r / n) as f32, (sum_g / n) as f32, (sum_b / n) as f32, 0.0)
+    }
 }
 
 // ----------------------------------------------------------------- rect gizmo
@@ -373,6 +506,14 @@ fn show_rect(
                 values = next;
                 for (slot, &i) in idx.iter().enumerate() {
                     out.changed.push((i, write_scalar(&ctx.inputs[i].value, values[slot])));
+                }
+                // Live engine update while dragging — crop re-runs every frame
+                // so the output tracks the box, not just the mouse-up size.
+                out.commit = true;
+                for (slot, touched) in spec_inputs_touched(h, extent).iter().enumerate() {
+                    if *touched {
+                        out.commit_inputs.push(idx[slot]);
+                    }
                 }
             }
         }

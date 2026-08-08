@@ -202,6 +202,86 @@ fn test_resize_uniform() {
 }
 
 #[test]
+/// Exact 2:1 / 4:1 shrinks use area averaging and mean the full source block.
+fn test_resize_area_exact_block_average() {
+    // 4×4 checkerboard of 0 and 1 → 1×1 must be exactly 0.5 under area.
+    let mut img = FloatImage::new(4, 4, 1);
+    for y in 0..4 {
+        for x in 0..4 {
+            img.put_pixel(x, y, &[if (x + y) % 2 == 0 { 0.0 } else { 1.0 }]);
+        }
+    }
+    let one = img.resize(1, 1);
+    assert!((one.get_pixel(0, 0)[0] - 0.5).abs() < 1e-5, "4×4 checker → 1×1 should average to 0.5");
+
+    // 8×8 solid quarters: TL=0, TR=1, BL=0.25, BR=0.75 → 2×2 should recover them.
+    let mut q = FloatImage::new(8, 8, 1);
+    for y in 0..8 {
+        for x in 0..8 {
+            let v = match (x < 4, y < 4) {
+                (true, true) => 0.0,
+                (false, true) => 1.0,
+                (true, false) => 0.25,
+                (false, false) => 0.75,
+            };
+            q.put_pixel(x, y, &[v]);
+        }
+    }
+    let half = q.resize(2, 2);
+    assert!((half.get_pixel(0, 0)[0] - 0.0).abs() < 1e-5);
+    assert!((half.get_pixel(1, 0)[0] - 1.0).abs() < 1e-5);
+    assert!((half.get_pixel(0, 1)[0] - 0.25).abs() < 1e-5);
+    assert!((half.get_pixel(1, 1)[0] - 0.75).abs() < 1e-5);
+}
+
+#[test]
+/// Area path must fire for heavy shrinks and leave modest shrinks on bilinear.
+fn test_resize_area_threshold() {
+    assert!(FloatImage::should_area_downsample(16, 16, 4, 4)); // 4×
+    assert!(FloatImage::should_area_downsample(8, 8, 4, 4)); // 2×
+    assert!(!FloatImage::should_area_downsample(6, 6, 4, 4)); // 1.5×
+    assert!(!FloatImage::should_area_downsample(4, 4, 8, 8)); // upscale
+    assert!(!FloatImage::should_area_downsample(8, 4, 4, 8)); // one axis up
+    assert!(!FloatImage::should_area_downsample(4, 4, 4, 4)); // identity
+}
+
+#[test]
+/// Heavy downscale of high-frequency noise is much quieter with area than bilinear.
+fn test_resize_area_quiets_high_frequency() {
+    // Alternate 0/1 every pixel — max high-frequency energy.
+    let mut img = FloatImage::new(64, 64, 1);
+    for y in 0..64 {
+        for x in 0..64 {
+            img.put_pixel(x, y, &[if (x + y) % 2 == 0 { 0.0 } else { 1.0 }]);
+        }
+    }
+    let area = img.resize(8, 8); // ratio 8 → area path
+    // Every 8×8 block of a 2-phase checkerboard is exactly half 0s and half 1s.
+    for px in area.pixels() {
+        assert!(
+            (px[0] - 0.5).abs() < 1e-4,
+            "area downsample of checkerboard must be flat mid-gray, got {}",
+            px[0]
+        );
+    }
+
+    // Bilinear would still see near-0/1 extremes at many sample sites; force it
+    // and confirm it does *not* flatten (documents why we switched).
+    let bilinear = img.resize_bilinear(8, 8);
+    let mut min_v = f32::MAX;
+    let mut max_v = f32::MIN;
+    for px in bilinear.pixels() {
+        min_v = min_v.min(px[0]);
+        max_v = max_v.max(px[0]);
+    }
+    assert!(
+        max_v - min_v > 0.2,
+        "bilinear on the same checkerboard should retain contrast (got span {})",
+        max_v - min_v
+    );
+}
+
+#[test]
 /// from_raw should return None for mismatched data length.
 fn test_from_raw_invalid() {
     assert!(FloatImage::from_raw(2, 2, 3, vec![0.0; 11]).is_none());

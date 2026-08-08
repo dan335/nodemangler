@@ -406,7 +406,39 @@ impl FloatImage {
         }
     }
 
-    /// Resizes the image to the given dimensions using bilinear interpolation.
+    /// True when a pure downscale should use area averaging instead of bilinear.
+    ///
+    /// Bilinear only samples a 2×2 neighbourhood, so shrinking by more than ~2×
+    /// aliases high-frequency detail (sensor noise, demosaic texture) into the
+    /// result — the classic grainy RAW-thumbnail look. Area averaging integrates
+    /// every source pixel in each destination pixel's footprint and is the right
+    /// filter for heavy downscales. Modest scales and any upscale axis stay on
+    /// bilinear.
+    #[inline]
+    fn should_area_downsample(src_w: u32, src_h: u32, dst_w: u32, dst_h: u32) -> bool {
+        if dst_w == 0 || dst_h == 0 || src_w == 0 || src_h == 0 {
+            return false;
+        }
+        // Any growing axis → bilinear (area is only defined for downscale).
+        if dst_w > src_w || dst_h > src_h {
+            return false;
+        }
+        if dst_w == src_w && dst_h == src_h {
+            return false;
+        }
+        let rx = src_w as f32 / dst_w as f32;
+        let ry = src_h as f32 / dst_h as f32;
+        rx.max(ry) >= 2.0
+    }
+
+    /// Resizes the image to the given dimensions.
+    ///
+    /// Pure downscales whose longer-axis ratio is ≥ 2 use **area averaging**
+    /// (box filter with fractional edge coverage) so every source pixel
+    /// contributes and high-frequency noise is low-passed. All other cases —
+    /// upscales, modest shrinks, mixed axes — use **bilinear** interpolation,
+    /// matching [`Self::bilinear_sample`].
+    ///
     /// Preserves the channel count.
     pub fn resize(&self, new_w: u32, new_h: u32) -> Self {
         if new_w == 0 || new_h == 0 {
@@ -418,6 +450,15 @@ impl FloatImage {
             return Self::new(new_w, new_h, self.channels);
         }
 
+        if Self::should_area_downsample(self.width, self.height, new_w, new_h) {
+            self.resize_area(new_w, new_h)
+        } else {
+            self.resize_bilinear(new_w, new_h)
+        }
+    }
+
+    /// Bilinear resize: each destination sample is a weighted 2×2 neighbourhood.
+    fn resize_bilinear(&self, new_w: u32, new_h: u32) -> Self {
         let ch = self.channels as usize;
         let mut result = Self::new(new_w, new_h, self.channels);
 
@@ -461,6 +502,74 @@ impl FloatImage {
                         + p11[i] * fx * fy;
                 }
                 di += ch;
+            }
+        }
+        result
+    }
+
+    /// Area (box) downsample: each destination pixel is the coverage-weighted
+    /// mean of every source pixel overlapping its preimage rectangle.
+    ///
+    /// Footprints use continuous coordinates
+    /// `[x·sw/dw, (x+1)·sw/dw) × [y·sh/dh, (y+1)·sh/dh)`, so exact integer
+    /// ratios (e.g. 2:1, 4:1) become perfect block averages and non-integer
+    /// ratios still partition the source without gaps or double-counting.
+    fn resize_area(&self, new_w: u32, new_h: u32) -> Self {
+        let ch = self.channels as usize;
+        let sw = self.width as f64;
+        let sh = self.height as f64;
+        let dw = new_w as f64;
+        let dh = new_h as f64;
+        let row_stride = self.width as usize * ch;
+        let src = &self.data;
+        let mut result = Self::new(new_w, new_h, self.channels);
+        let out = &mut result.data;
+
+        for y in 0..new_h {
+            let y0 = (y as f64) * sh / dh;
+            let y1 = ((y + 1) as f64) * sh / dh;
+            // Source rows that overlap [y0, y1).
+            let sy_first = y0.floor() as i32;
+            let sy_last = ((y1.ceil() as i32) - 1).min(self.height as i32 - 1);
+
+            for x in 0..new_w {
+                let x0 = (x as f64) * sw / dw;
+                let x1 = ((x + 1) as f64) * sw / dw;
+                let sx_first = x0.floor() as i32;
+                let sx_last = ((x1.ceil() as i32) - 1).min(self.width as i32 - 1);
+
+                let mut acc = [0.0f64; 4];
+                let mut area = 0.0f64;
+
+                for sy in sy_first.max(0)..=sy_last {
+                    let py0 = sy as f64;
+                    let wy = (y1.min(py0 + 1.0) - y0.max(py0)).max(0.0);
+                    if wy <= 0.0 {
+                        continue;
+                    }
+                    let row = sy as usize * row_stride;
+                    for sx in sx_first.max(0)..=sx_last {
+                        let px0 = sx as f64;
+                        let wx = (x1.min(px0 + 1.0) - x0.max(px0)).max(0.0);
+                        if wx <= 0.0 {
+                            continue;
+                        }
+                        let w = wx * wy;
+                        let off = row + sx as usize * ch;
+                        for c in 0..ch {
+                            acc[c] += src[off + c] as f64 * w;
+                        }
+                        area += w;
+                    }
+                }
+
+                let di = (y as usize * new_w as usize + x as usize) * ch;
+                if area > 0.0 {
+                    let inv = 1.0 / area;
+                    for c in 0..ch {
+                        out[di + c] = (acc[c] * inv) as f32;
+                    }
+                }
             }
         }
         result

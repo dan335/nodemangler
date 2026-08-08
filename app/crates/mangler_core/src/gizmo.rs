@@ -42,7 +42,18 @@ pub struct GizmoSpec {
 #[derive(Debug, Clone, Copy)]
 pub enum Gizmo {
     /// A single draggable point, drawn as a crosshair.
-    Point { x: usize, y: usize, space: SpatialSpace },
+    ///
+    /// `diameter` is an optional **display-only** input index: source-pixel
+    /// sample size (as on `sample pixel`). It is not drag-driven and does not
+    /// participate in the editable/read-only rule — connecting diameter must
+    /// not freeze the crosshair. The overlay paints a circle of that diameter
+    /// so changing the slider updates the 2D view live.
+    Point {
+        x: usize,
+        y: usize,
+        diameter: Option<usize>,
+        space: SpatialSpace,
+    },
     /// A draggable, resizable box.
     Rect { x: usize, y: usize, w: usize, h: usize, space: SpatialSpace, extent: RectExtent },
 }
@@ -97,11 +108,13 @@ const CROP: &[GizmoSpec] = &[GizmoSpec {
 }];
 
 /// `sample pixel`: the sampled point, addressed by pixel centres.
+/// `diameter` (input 3) is display-only — see [`Gizmo::Point`].
 const SAMPLE_PIXEL: &[GizmoSpec] = &[GizmoSpec {
     label: "sample",
     kind: Gizmo::Point {
         x: 1,
         y: 2,
+        diameter: Some(3),
         space: SpatialSpace::Norm01 { basis: PixelBasis::Centres },
     },
 }];
@@ -121,14 +134,32 @@ pub fn gizmos(op: &Operation) -> &'static [GizmoSpec] {
 }
 
 impl Gizmo {
-    /// The input indices this gizmo drives, in a fixed order.
+    /// The input indices this gizmo **drives** (drag / commit), in a fixed order.
     ///
-    /// Used to bounds-check the declaration, to decide whether the gizmo is
-    /// editable (every input must be unconnected), and to report which inputs a
-    /// completed gesture touched.
+    /// Used to decide whether the gizmo is editable (every input must be
+    /// unconnected) and to report which inputs a completed gesture touched.
+    /// Display-only indices such as [`Gizmo::Point`]'s `diameter` are **not**
+    /// included — see [`Self::referenced_inputs`].
     pub fn inputs(&self) -> Vec<usize> {
         match *self {
             Gizmo::Point { x, y, .. } => vec![x, y],
+            Gizmo::Rect { x, y, w, h, .. } => vec![x, y, w, h],
+        }
+    }
+
+    /// Every input index this gizmo reads, including display-only ones.
+    ///
+    /// Use for bounds-checking the declaration against `create_inputs()`. Prefer
+    /// [`Self::inputs`] when deciding editability or commit targets.
+    pub fn referenced_inputs(&self) -> Vec<usize> {
+        match *self {
+            Gizmo::Point { x, y, diameter, .. } => {
+                let mut v = vec![x, y];
+                if let Some(d) = diameter {
+                    v.push(d);
+                }
+                v
+            }
             Gizmo::Rect { x, y, w, h, .. } => vec![x, y, w, h],
         }
     }

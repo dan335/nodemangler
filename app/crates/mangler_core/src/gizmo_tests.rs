@@ -20,6 +20,8 @@ const EXPECTED_NAMES: &[(Operation, usize, &str)] = &[
     (Operation::OpImageTransformCrop, 4, "height"),
     (Operation::OpColorSampleSamplePixel, 1, "x"),
     (Operation::OpColorSampleSamplePixel, 2, "y"),
+    // Display-only: sample disk size painted on the crosshair, not drag-driven.
+    (Operation::OpColorSampleSamplePixel, 3, "diameter"),
 ];
 
 #[test]
@@ -27,7 +29,7 @@ fn every_declared_index_exists_and_is_numeric() {
     for op in Operation::all_variants() {
         let inputs = op.create_inputs();
         for spec in gizmos(&op) {
-            for idx in spec.kind.inputs() {
+            for idx in spec.kind.referenced_inputs() {
                 let input = inputs.get(idx).unwrap_or_else(|| {
                     panic!(
                         "{:?} gizmo {:?} references input {} but the op only has {}",
@@ -69,7 +71,7 @@ fn every_gizmo_input_is_covered_by_the_name_table() {
     // input names, or the reordering check silently stops covering it.
     for op in Operation::all_variants() {
         for spec in gizmos(&op) {
-            for idx in spec.kind.inputs() {
+            for idx in spec.kind.referenced_inputs() {
                 assert!(
                     EXPECTED_NAMES
                         .iter()
@@ -89,7 +91,7 @@ fn every_gizmo_input_is_covered_by_the_name_table() {
 fn gizmo_indices_are_unique_within_a_spec() {
     for op in Operation::all_variants() {
         for spec in gizmos(&op) {
-            let mut seen = spec.kind.inputs();
+            let mut seen = spec.kind.referenced_inputs();
             let before = seen.len();
             seen.sort_unstable();
             seen.dedup();
@@ -101,11 +103,29 @@ fn gizmo_indices_are_unique_within_a_spec() {
 #[test]
 fn no_input_is_claimed_by_two_gizmos_on_one_op() {
     for op in Operation::all_variants() {
-        let mut claimed: Vec<usize> = gizmos(&op).iter().flat_map(|s| s.kind.inputs()).collect();
+        let mut claimed: Vec<usize> =
+            gizmos(&op).iter().flat_map(|s| s.kind.referenced_inputs()).collect();
         let before = claimed.len();
         claimed.sort_unstable();
         claimed.dedup();
         assert_eq!(claimed.len(), before, "{op:?} has two gizmos fighting over one input");
+    }
+}
+
+#[test]
+fn sample_pixel_diameter_is_display_only() {
+    // Diameter paints the sample disk but must not join the drag/editable set —
+    // wiring diameter upstream must not freeze the crosshair.
+    let Some(spec) = gizmos(&Operation::OpColorSampleSamplePixel).first() else {
+        panic!("sample pixel should declare a gizmo");
+    };
+    match spec.kind {
+        Gizmo::Point { diameter, .. } => {
+            assert_eq!(diameter, Some(3));
+            assert_eq!(spec.kind.inputs(), vec![1, 2]);
+            assert_eq!(spec.kind.referenced_inputs(), vec![1, 2, 3]);
+        }
+        other => panic!("sample pixel should be a Point, got {other:?}"),
     }
 }
 
