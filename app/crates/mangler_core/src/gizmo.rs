@@ -31,9 +31,12 @@ pub struct GizmoSpec {
 /// The shape of a gizmo and the inputs it drives.
 #[derive(Debug, Clone, Copy)]
 pub enum Gizmo {
-    /// A draggable point (crosshair). Optional `diameter` is display-only
-    /// (source-pixel disk). Optional `radius` is a **draggable** rim written
-    /// in [`RadiusSpace`] units.
+    /// A draggable point (crosshair). Optional `diameter` is a source-pixel
+    /// sample disk (as on `sample pixel`): it paints the averaged neighbourhood
+    /// and can be resized from its rim, but is **not** part of the
+    /// editable/read-only rule — connecting diameter must not freeze the
+    /// crosshair. Optional `radius` is a **draggable** rim written in
+    /// [`RadiusSpace`] units.
     Point {
         x: usize,
         y: usize,

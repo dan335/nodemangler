@@ -343,3 +343,51 @@ fn crop_readout_survives_a_degenerate_image() {
     let (x, y, w, h) = crop_pixels([0.0, 0.0, 1.0, 1.0], (0, 0));
     assert_eq!((x, y, w, h), (0, 0, 1, 1));
 }
+
+// -------------------------------------------------------- sample-pixel disk
+
+#[test]
+fn sample_diameter_ring_grows_with_the_slider() {
+    // A 100×100 image drawn into a 100×100 rect: 1 screen px = 1 source px.
+    // Diameter is the full disk width, so radius = diameter/2.
+    let image = rect(0.0, 0.0, 100.0, 100.0);
+    let dims = Some((100, 100));
+
+    // Default single-pixel sample: no ring.
+    assert_eq!(ring_screen_radius(Some(1.0), None, None, image, dims), None);
+
+    // Diameter 20 → 10px screen radius. Doubling diameter doubles the radius.
+    let r20 = ring_screen_radius(Some(20.0), None, None, image, dims).unwrap();
+    let r40 = ring_screen_radius(Some(40.0), None, None, image, dims).unwrap();
+    assert!((r20 - 10.0).abs() < 1e-5, "r20 {r20}");
+    assert!((r40 - 20.0).abs() < 1e-5, "r40 {r40}");
+    assert!((r40 - 2.0 * r20).abs() < 1e-5, "ring must track diameter linearly");
+}
+
+#[test]
+fn sample_diameter_ring_tracks_zoom_via_image_rect() {
+    // Same 1000×1000 source, but fit into a 200×200 panel: 1 source px = 0.2 screen px.
+    // Diameter 50 → radius 25 source px → 5 screen px.
+    let image = rect(0.0, 0.0, 200.0, 200.0);
+    let r = ring_screen_radius(Some(50.0), None, None, image, Some((1000, 1000))).unwrap();
+    assert!((r - 5.0).abs() < 1e-5, "r {r}");
+}
+
+#[test]
+fn sample_diameter_ring_needs_image_dims() {
+    // Without dims the source-pixel size is unknowable — no ring, never a panic.
+    assert_eq!(
+        ring_screen_radius(Some(32.0), None, None, rect(0.0, 0.0, 100.0, 100.0), None),
+        None
+    );
+}
+
+#[test]
+fn screen_dist_to_pixel_diameter_inverts_ring_radius() {
+    let image = rect(0.0, 0.0, 200.0, 200.0);
+    let dims = (1000, 1000);
+    // diameter 50 → r = 5 (see sample_diameter_ring_tracks_zoom_via_image_rect).
+    let r = ring_screen_radius(Some(50.0), None, None, image, Some(dims)).unwrap();
+    let back = screen_dist_to_pixel_diameter(r, image, dims);
+    assert!((back - 50.0).abs() < 1e-3, "round-trip diameter {back}");
+}

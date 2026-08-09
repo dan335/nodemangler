@@ -25,7 +25,7 @@
 //! See [`crate::overlay::handle`] for the egui hit-test contract that keeps
 //! handle drags from stealing the canvas pan.
 
-use eframe::egui::{self, Pos2, Rect, Stroke, Vec2};
+use eframe::egui::{self, Color32, Pos2, Rect, Stroke, Vec2};
 use mangler_core::gizmo::{Gizmo, GizmoSpec, RadiusSpace, RectExtent, SpatialSpace};
 use mangler_core::input::{Input, InputSettings};
 use mangler_core::value::Value;
@@ -220,22 +220,63 @@ fn show_point(
     out: &mut SpatialOverlayResponse,
 ) {
     let Some(mut values) = read_pair(ctx.inputs, idx) else { return };
-    let diameter = diameter_idx.and_then(|i| read_scalar(&ctx.inputs[i].value));
+    // Diameter is re-read from the live input every frame so the settings-panel
+    // slider (and a diameter-rim drag below) both update the disk immediately.
+    let mut diameter = diameter_idx.and_then(|i| read_scalar(&ctx.inputs[i].value));
     let mut radius_val = radius.and_then(|(i, _)| read_scalar(&ctx.inputs[i].value));
     let radius_space = radius.map(|(_, s)| s);
 
     let center = norm_to_screen(image_rect, space.to_unit(ctx.image_dims, values));
-    let screen_r = ring_screen_radius(diameter, radius_val, radius_space, image_rect, ctx.image_dims);
+    let mut screen_r = ring_screen_radius(diameter, radius_val, radius_space, image_rect, ctx.image_dims);
 
     if editable {
-        // Radius rim first (registered before centre so centre wins on overlap
-        // at small radii). Catcher last so empty-space click repositions.
+        // Rims first (registered before centre so centre wins on overlap at
+        // small radii). Catcher last so empty-space click repositions.
         let mut rim_active = false;
+
+        // Pixel-diameter rim (sample pixel): display-only for the editable
+        // rule, but draggable here so the disk can be resized on-image. Must
+        // not join `drag_indices` — a connected diameter still freezes only
+        // this rim, never the crosshair.
+        if let (Some(d_idx), Some(d)) = (diameter_idx, diameter) {
+            if diameter_idx_is_editable(ctx, d_idx) {
+                if let Some(sr) = screen_r.filter(|r| *r > HANDLE_HIT_HALF) {
+                    if let Some(dims) = ctx.image_dims {
+                        let rim_pos = center + Vec2::new(sr, 0.0);
+                        let rim = handle::handle(ui, id.with("diam"), rim_pos, HANDLE_HIT_HALF);
+                        rim_active = rim.active;
+                        if let Some(to) = rim.drag_to {
+                            let dist = (to - center).length();
+                            let next = quantize(
+                                &ctx.inputs[d_idx],
+                                screen_dist_to_pixel_diameter(dist, image_rect, dims),
+                            );
+                            if (next - d).abs() > 1e-6 {
+                                diameter = Some(next);
+                                screen_r = ring_screen_radius(
+                                    diameter,
+                                    radius_val,
+                                    radius_space,
+                                    image_rect,
+                                    ctx.image_dims,
+                                );
+                                push_live(out, d_idx, &ctx.inputs[d_idx], next);
+                            }
+                        }
+                        if rim.commit {
+                            out.commit = true;
+                            out.commit_inputs.push(d_idx);
+                        }
+                    }
+                }
+            }
+        }
+
         if let (Some((r_idx, r_space)), Some(rv)) = (radius, radius_val) {
             if let Some(sr) = screen_r.filter(|r| *r > HANDLE_HIT_HALF) {
                 let rim_pos = center + Vec2::new(sr, 0.0);
                 let rim = handle::handle(ui, id.with("rim"), rim_pos, HANDLE_HIT_HALF);
-                rim_active = rim.active;
+                rim_active = rim_active || rim.active;
                 if let Some(to) = rim.drag_to {
                     if let Some(dims) = ctx.image_dims {
                         let dist = (to - center).length();
@@ -249,6 +290,13 @@ fn show_point(
                         );
                         if (next - rv).abs() > 1e-6 {
                             radius_val = Some(next);
+                            screen_r = ring_screen_radius(
+                                diameter,
+                                radius_val,
+                                radius_space,
+                                image_rect,
+                                ctx.image_dims,
+                            );
                             push_live(out, r_idx, &ctx.inputs[r_idx], next);
                         }
                     }
@@ -282,7 +330,8 @@ fn show_point(
             ui,
             image_rect,
             space.to_unit(ctx.image_dims, values),
-            ring_screen_radius(diameter, radius_val, radius_space, image_rect, ctx.image_dims),
+            screen_r,
+            diameter,
             grab.active || rim_active,
             true,
             None,
@@ -295,6 +344,7 @@ fn show_point(
             image_rect,
             space.to_unit(ctx.image_dims, values),
             screen_r,
+            diameter,
             false,
             false,
             note,
@@ -303,8 +353,32 @@ fn show_point(
     }
 }
 
+/// True when a display-only diameter input can be edited from the rim handle.
+fn diameter_idx_is_editable(ctx: &GizmoContext<'_>, idx: usize) -> bool {
+    ctx.inputs.get(idx).is_some_and(|i| i.connection.is_none())
+}
+
+/// Convert a screen-pixel distance from the crosshair to a source-pixel diameter.
+fn screen_dist_to_pixel_diameter(dist: f32, image_rect: Rect, dims: (u32, u32)) -> f32 {
+    let (iw, ih) = dims;
+    if iw == 0 || ih == 0 {
+        return 1.0;
+    }
+    // Inverse of `ring_screen_radius`'s average of the two axes.
+    let sx = image_rect.width() / iw as f32;
+    let sy = image_rect.height() / ih as f32;
+    let scale = 0.5 * (sx + sy);
+    if scale <= 1e-6 {
+        return 1.0;
+    }
+    (2.0 * dist / scale).max(1.0)
+}
+
 /// Screen radius for a point's optional disk: pixel diameter or RadiusSpace rim.
-fn ring_screen_radius(
+///
+/// Diameter is in **source-image pixels** (sample pixel). Returns `None` for the
+/// single-pixel default (`diameter ≤ 1`) so the crosshair stays a pure point.
+pub fn ring_screen_radius(
     diameter: Option<f32>,
     radius_val: Option<f32>,
     radius_space: Option<RadiusSpace>,
@@ -315,6 +389,8 @@ fn ring_screen_radius(
         if d > 1.0 && iw > 0 && ih > 0 {
             let rx = (d * 0.5) * (image_rect.width() / iw as f32);
             let ry = (d * 0.5) * (image_rect.height() / ih as f32);
+            // Average axes so a non-square image_rect still tracks the pixel
+            // disk; at aspect-correct rects this is exact.
             return Some(0.5 * (rx + ry));
         }
     }
@@ -327,13 +403,14 @@ fn ring_screen_radius(
     None
 }
 
-/// Paint the crosshair, optional ring, and centre dot.
+/// Paint the crosshair, optional sample disk, centre dot, and note/diameter chip.
 #[allow(clippy::too_many_arguments)]
 fn draw_crosshair(
     ui: &egui::Ui,
     image_rect: Rect,
     unit: [f32; 2],
     ring_r: Option<f32>,
+    diameter: Option<f32>,
     active: bool,
     editable: bool,
     note: Option<String>,
@@ -341,23 +418,20 @@ fn draw_crosshair(
 ) {
     let painter = ui.painter().with_clip_rect(image_rect);
     let center = norm_to_screen(image_rect, unit);
+    let colors = theme.get();
+    let ring_color = if editable {
+        colors.node_header_selected_border
+    } else {
+        handle::read_only_color(theme)
+    };
 
     handle::draw_guide(&painter, image_rect, center, true, theme);
     handle::draw_guide(&painter, image_rect, center, false, theme);
 
-    if let Some(r) = ring_r {
-        let colors = theme.get();
-        let stroke = Stroke::new(
-            if active { 2.0 } else { 1.5 },
-            if editable {
-                colors.node_header_selected_border
-            } else {
-                handle::read_only_color(theme)
-            },
-        );
-        painter.circle_stroke(center, r, stroke);
-    }
-
+    // Centre grip first so the sample disk (drawn next) sits on top of it —
+    // otherwise a multi-pixel diameter that is only a few screen pixels when
+    // the photo is fit-to-view is completely hidden under the grip and looks
+    // like the slider does nothing.
     if editable {
         let radius = if active { GRIP_RADIUS_ACTIVE + 1.0 } else { GRIP_RADIUS + 1.0 };
         handle::draw_handle(ui.painter(), center, radius, active, HandleShape::Dot, theme);
@@ -369,8 +443,37 @@ fn draw_crosshair(
         );
     }
 
-    if let Some(note) = note {
-        draw_readout(ui, image_rect, center + Vec2::new(10.0, 10.0), &note, theme);
+    if let Some(r) = ring_r {
+        // Soft fill marks the averaged neighbourhood even when the stroke is
+        // sub-grip-size on a zoomed-out photo.
+        let fill = Color32::from_rgba_unmultiplied(
+            ring_color.r(),
+            ring_color.g(),
+            ring_color.b(),
+            if active { 56 } else { 36 },
+        );
+        painter.circle_filled(center, r, fill);
+        painter.circle_stroke(
+            center,
+            r,
+            Stroke::new(if active { 2.0 } else { 1.5 }, ring_color),
+        );
+    }
+
+    // Diameter chip: the ring alone is often sub-pixel on large fit-to-view
+    // images, so the slider needs a readout that always tracks the live value.
+    let diam = diameter.unwrap_or(1.0).max(1.0);
+    let label = if diam > 1.0 {
+        let chip = format!("⌀{diam:.0}");
+        Some(match note {
+            Some(n) => format!("{chip}\n{n}"),
+            None => chip,
+        })
+    } else {
+        note
+    };
+    if let Some(text) = label {
+        draw_readout(ui, image_rect, center + Vec2::new(10.0, 10.0), &text, theme);
     }
 }
 
