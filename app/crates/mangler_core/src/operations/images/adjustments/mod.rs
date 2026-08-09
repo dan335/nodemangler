@@ -5,6 +5,7 @@
 
 pub(crate) mod common;
 
+pub mod auto_exposure;
 pub mod auto_levels;
 pub mod black_white;
 pub mod brighten;

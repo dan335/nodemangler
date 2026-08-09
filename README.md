@@ -130,11 +130,11 @@ Every node in the graph editor's Add Node menu, by category and subcategory
 - **Modify:** Jitter, Mirror, Offset, Resample, Reverse, Round Corners, Simplify, Smooth, Transform, Trim
 - **Simulation:** Meander
 
-### Images (217)
+### Images (218)
 
 - **Input:** Constant, From Clipboard, From Color, From File, From Folder, From Gradient, From Raw, From Text, From URL
 - **Output:** Material, To Clipboard, To File
-- **Adjustments:** Auto Levels, Black And White, Brighten, Clarity, Color Balance, Color Grade, Color Lookup, Color Match, Color To Mask, Contrast, Curves, Defringe, Dehaze, Dither, Exposure, Frequency Split, Gradient Dynamic, Gradient Map, Grain, Grayscale, Histogram Range, Histogram Scan, Histogram Select, HSL, HSL Mixer, Hue Shift, Invert, Levels, Negadoctor, Photo Filter, Posterize, Replace Color, Saturation, Selective Color, Shadows Highlights, Texture, Threshold, Tone Equalizer, Tone Map, Vibrance, Vignette, White Balance
+- **Adjustments:** Auto Exposure, Auto Levels, Black And White, Brighten, Clarity, Color Balance, Color Grade, Color Lookup, Color Match, Color To Mask, Contrast, Curves, Defringe, Dehaze, Dither, Exposure, Frequency Split, Gradient Dynamic, Gradient Map, Grain, Grayscale, Histogram Range, Histogram Scan, Histogram Select, HSL, HSL Mixer, Hue Shift, Invert, Levels, Negadoctor, Photo Filter, Posterize, Replace Color, Saturation, Selective Color, Shadows Highlights, Texture, Threshold, Tone Equalizer, Tone Map, Vibrance, Vignette, White Balance
 - **Blur:** Blur, Directional Blur, Non-Uniform Blur, Radial Blur, Slope Blur
 - **Cast:** To Image
 - **Channels:** Channel Merge, Channel Mixer, Channel Select, Channel Shuffle, Channel Split

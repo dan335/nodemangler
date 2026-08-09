@@ -456,6 +456,7 @@ operations! {
     OpImageAdjustmentHistogramRange(crate::operations::images::adjustments::histogram_range::OpImageAdjustmentHistogramRange),
     OpImageAdjustmentHistogramSelect(crate::operations::images::adjustments::histogram_select::OpImageAdjustmentHistogramSelect),
     OpImageAdjustmentAutoLevels(crate::operations::images::adjustments::auto_levels::OpImageAdjustmentAutoLevels),
+    OpImageAdjustmentAutoExposure(crate::operations::images::adjustments::auto_exposure::OpImageAdjustmentAutoExposure),
     OpImageAdjustmentColorMatch(crate::operations::images::adjustments::color_match::OpImageAdjustmentColorMatch),
     OpImageAdjustmentGradientDynamic(crate::operations::images::adjustments::gradient_dynamic::OpImageAdjustmentGradientDynamic),
     OpImageAdjustmentDistance(crate::operations::images::adjustments::distance::OpImageAdjustmentDistance),
@@ -995,6 +996,7 @@ pub fn operation_list() -> Vec<OperationListItem> {
             OperationListItem::Category { name: "adjustments".to_string(), operation_list_items: vec![
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentContrast },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentExposure },
+                OperationListItem::Operation { operation: Operation::OpImageAdjustmentAutoExposure },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentGrayscale },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentBlackWhite },
                 OperationListItem::Operation { operation: Operation::OpImageAdjustmentInvert },
