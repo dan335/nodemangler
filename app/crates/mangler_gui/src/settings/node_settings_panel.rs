@@ -421,6 +421,12 @@ pub fn show(
         }
     });
 
+    // Tone map: per-operator controls (white point / contrast / mid gray / key /
+    // adapt / bias). Exposure is always shown.
+    let sibling_tone_map_operator = node.inputs.iter().find_map(|i| {
+        if let Value::ToneMapOperator(op) = &i.value { Some(*op) } else { None }
+    });
+
     // Auto-correct: if the current color format is incompatible with the
     // selected image format, switch to a sensible default.
     if let Some(ref img_fmt) = sibling_image_format {
@@ -516,6 +522,34 @@ pub fn show(
                     let hide = match input.name.as_str() {
                         "seed" | "r²" => !random,
                         "deep/fair" | "flushed/ochre" | "cool/warm" => random,
+                        _ => false,
+                    };
+                    if hide && input.connection.is_none() && !input.is_exposed {
+                        continue;
+                    }
+                }
+
+                // Tone map: hide operator-specific controls that the current
+                // operator ignores. Connected/exposed stay visible so they
+                // can be managed.
+                if let Some(op) = sibling_tone_map_operator {
+                    let hide = match input.name.as_str() {
+                        "white point" => !matches!(
+                            op,
+                            ToneMapOperator::ReinhardExtended
+                                | ToneMapOperator::HableFilmic
+                                | ToneMapOperator::PhotographicReinhard
+                                | ToneMapOperator::Drago
+                        ),
+                        "contrast" => !matches!(
+                            op,
+                            ToneMapOperator::Sigmoid | ToneMapOperator::Gt
+                        ),
+                        "mid gray" => !matches!(op, ToneMapOperator::Sigmoid),
+                        "key" | "adapt" => {
+                            !matches!(op, ToneMapOperator::PhotographicReinhard)
+                        }
+                        "bias" => !matches!(op, ToneMapOperator::Drago),
                         _ => false,
                     };
                     if hide && input.connection.is_none() && !input.is_exposed {

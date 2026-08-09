@@ -985,28 +985,52 @@ impl ExportPreset {
 /// Tone-mapping operator for compressing HDR values into displayable [0,1] range.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ToneMapOperator {
-    /// Simple Reinhard: `v / (1 + v)`.
+    /// Exposure then hard clamp to `[0, 1]` — no compression curve.
+    Linear,
+    /// Simple Reinhard per channel: `v / (1 + v)`.
     Reinhard,
+    /// Reinhard applied to Rec.709 luminance, chrominance restored (photo-safe).
+    ReinhardLuminance,
     /// Reinhard extended with a white point: highlights above the white point
     /// stay clipped to 1.0 while the rest of the curve is Reinhard-shaped.
     ReinhardExtended,
+    /// Full photographic Reinhard (key + optional scene log-average + white point).
+    PhotographicReinhard,
     /// Narkowicz 2015 ACES filmic fit.
     Aces,
     /// Hable's Uncharted 2 filmic curve, normalized by the white point.
     HableFilmic,
+    /// Hejl–Burgess–Dawson filmic approximation.
+    Hejl,
+    /// Uchimura / Gran Turismo tonemapper (piecewise toe / linear / shoulder).
+    Gt,
+    /// Blender AgX (minimal analytic implementation).
+    Agx,
     /// Heuristic log-domain sigmoid inspired by darktable's sigmoid module.
     Sigmoid,
+    /// Drago 2003 adaptive logarithmic TMO (good for extreme still HDR).
+    Drago,
+    /// Khronos PBR Neutral — preserves base colors under grayscale light.
+    PbrNeutral,
 }
 
 impl ToneMapOperator {
     /// Returns all tone map operators in display order (matches dropdown ordering).
-    pub fn types() -> [ToneMapOperator; 5] {
+    pub fn types() -> [ToneMapOperator; 13] {
         [
+            ToneMapOperator::Linear,
             ToneMapOperator::Reinhard,
+            ToneMapOperator::ReinhardLuminance,
             ToneMapOperator::ReinhardExtended,
+            ToneMapOperator::PhotographicReinhard,
             ToneMapOperator::Aces,
             ToneMapOperator::HableFilmic,
+            ToneMapOperator::Hejl,
+            ToneMapOperator::Gt,
+            ToneMapOperator::Agx,
             ToneMapOperator::Sigmoid,
+            ToneMapOperator::Drago,
+            ToneMapOperator::PbrNeutral,
         ]
     }
 }
