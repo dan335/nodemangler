@@ -20,7 +20,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use image::ImageReader;
-#[cfg(feature = "raw")]
 use super::raw_decode;
 
 /// Operation that loads an image from a file on disk.
@@ -191,10 +190,50 @@ pub fn is_raw_file(path: &std::path::Path) -> bool {
 /// exactly the same formats.
 ///
 /// RAW files develop with the camera's own settings
-/// ([`raw_decode::RawOptions::default`]). The `from raw` node exposes the
-/// development controls; this path deliberately takes none, so RAW works
-/// identically in folder batching, drag-and-drop and library previews.
+/// ([`raw_decode::RawOptions::default`]). Prefer
+/// [`load_image_from_path_with_raw_options`] when the caller has develop
+/// controls (the `from folder` node); this path stays parameter-free so
+/// drag-and-drop and library previews stay simple.
 pub fn load_image_from_path(path: &std::path::Path) -> Result<FloatImage, String> {
+    #[cfg(feature = "raw")]
+    {
+        load_image_from_path_with_raw_options(path, &raw_decode::RawOptions::default())
+    }
+    #[cfg(not(feature = "raw"))]
+    {
+        load_image_non_raw(path)
+    }
+}
+
+/// Like [`load_image_from_path`], but develops camera RAW files with `raw_options`
+/// instead of the as-shot defaults.
+///
+/// Non-raw formats ignore `raw_options` entirely. Used by `from folder` so a
+/// batch/watch run can apply the same develop recipe (white balance, exposure,
+/// max size, linear/sRGB) to every raw in a shoot folder.
+pub fn load_image_from_path_with_raw_options(
+    path: &std::path::Path,
+    raw_options: &raw_decode::RawOptions,
+) -> Result<FloatImage, String> {
+    #[cfg(feature = "raw")]
+    {
+        if is_raw_file(path) {
+            // Must precede the `image`-crate fallback: several RAW containers
+            // are TIFF-based, and `image` would happily decode a DNG's embedded
+            // preview thumbnail from IFD0 instead of the actual photograph.
+            return raw_decode::decode_raw(path, raw_options);
+        }
+    }
+    #[cfg(not(feature = "raw"))]
+    {
+        let _ = raw_options;
+    }
+    load_image_non_raw(path)
+}
+
+/// Decode path for every non-raw format (and the only path when the `raw`
+/// feature is off).
+fn load_image_non_raw(path: &std::path::Path) -> Result<FloatImage, String> {
     let extension = path
         .extension()
         .and_then(|e| e.to_str())
@@ -203,13 +242,6 @@ pub fn load_image_from_path(path: &std::path::Path) -> Result<FloatImage, String
         Some("jxl") => OpImageInputFile::decode_jxl(path),
         Some("psd") => OpImageInputFile::decode_psd(path),
         Some("heic") | Some("heif") => OpImageInputFile::decode_heif(path),
-        // Must precede the `image`-crate fallback: several RAW containers are
-        // TIFF-based, and `image` would happily decode a DNG's embedded
-        // preview thumbnail from IFD0 instead of the actual photograph.
-        #[cfg(feature = "raw")]
-        _ if is_raw_file(path) => {
-            raw_decode::decode_raw(path, &raw_decode::RawOptions::default())
-        }
         _ => ImageReader::open(path)
             .map_err(|e| e.to_string())
             .and_then(|reader| reader.decode().map_err(|e| e.to_string()))

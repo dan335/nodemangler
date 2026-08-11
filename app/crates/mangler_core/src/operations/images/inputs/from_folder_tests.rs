@@ -1,5 +1,4 @@
 use super::*;
-use crate::input::Input;
 use std::path::Path;
 
 /// Creates (or clears) a fresh temp dir for a test, mirroring the pattern used
@@ -40,11 +39,33 @@ async fn run_from_folder_pinned(
     index: i32,
     pinned: PathBuf,
 ) -> Result<OperationResponse, OperationError> {
-    let mut inputs = vec![
-        Input::new("folder".to_string(), Value::Path(folder), None, None),
-        Input::new("index".to_string(), Value::Integer(index), None, None),
-        Input::new("pinned path".to_string(), Value::Path(pinned), None, None),
-    ];
+    // Start from the real schema so raw-develop inputs (appended after the
+    // pin) are present with their defaults; only override the selection ports.
+    let mut inputs = OpImageInputFromFolder::create_inputs();
+    inputs[FOLDER].value = Value::Path(folder);
+    inputs[INDEX].value = Value::Integer(index);
+    inputs[PINNED_PATH].value = Value::Path(pinned);
+    OpImageInputFromFolder::run(&mut inputs).await
+}
+
+/// Like [`run_from_folder_pinned`], but also sets the raw develop controls.
+async fn run_from_folder_with_raw_options(
+    folder: PathBuf,
+    index: i32,
+    white_balance: &str,
+    output: &str,
+    demosaic: bool,
+    exposure: f32,
+    max_size: i32,
+) -> Result<OperationResponse, OperationError> {
+    let mut inputs = OpImageInputFromFolder::create_inputs();
+    inputs[FOLDER].value = Value::Path(folder);
+    inputs[INDEX].value = Value::Integer(index);
+    inputs[WHITE_BALANCE].value = Value::Text(white_balance.to_string());
+    inputs[OUTPUT_ENCODING].value = Value::Text(output.to_string());
+    inputs[DEMOSAIC].value = Value::Bool(demosaic);
+    inputs[EXPOSURE].value = Value::Decimal(exposure);
+    inputs[MAX_SIZE].value = Value::Integer(max_size);
     OpImageInputFromFolder::run(&mut inputs).await
 }
 
@@ -54,8 +75,59 @@ async fn run_from_folder_pinned(
 async fn test_from_folder_exact_settings() {
     let s = OpImageInputFromFolder::settings();
     assert_eq!(s.name, "from folder");
-    assert_eq!(OpImageInputFromFolder::create_inputs().len(), 3);
+    assert_eq!(OpImageInputFromFolder::create_inputs().len(), 8);
     assert_eq!(OpImageInputFromFolder::create_outputs().len(), 4);
+}
+
+/// The raw develop ports mirror `from raw` (same labels, same defaults, same
+/// indices after the selection trio) so a shoot recipe is one place to learn.
+#[test]
+fn test_raw_develop_inputs_match_from_raw() {
+    let inputs = OpImageInputFromFolder::create_inputs();
+    assert_eq!(inputs[WHITE_BALANCE].name, "white balance");
+    assert_eq!(inputs[OUTPUT_ENCODING].name, "output");
+    assert_eq!(inputs[DEMOSAIC].name, "demosaic");
+    assert_eq!(inputs[EXPOSURE].name, "exposure");
+    assert_eq!(inputs[MAX_SIZE].name, "max size");
+
+    let Value::Text(wb) = &inputs[WHITE_BALANCE].value else { panic!("expected text") };
+    assert_eq!(wb, "as shot");
+    let Value::Text(enc) = &inputs[OUTPUT_ENCODING].value else { panic!("expected text") };
+    assert_eq!(enc, "srgb");
+    let Value::Bool(demosaic) = inputs[DEMOSAIC].value else { panic!("expected bool") };
+    assert!(demosaic);
+    let Value::Decimal(exp) = inputs[EXPOSURE].value else { panic!("expected decimal") };
+    assert_eq!(exp, 0.0);
+    let Value::Integer(max) = inputs[MAX_SIZE].value else { panic!("expected integer") };
+    assert_eq!(max, crate::operations::images::inputs::raw::DEFAULT_MAX_SIZE);
+
+    // Selection contract used by the engine must not shift when develop ports
+    // are added — they are appended after the pin.
+    assert_eq!(FOLDER, 0);
+    assert_eq!(INDEX, 1);
+    assert_eq!(PINNED_PATH, 2);
+    assert!(inputs[PINNED_PATH].hide_in_graph);
+}
+
+/// Non-raw files must still load when develop knobs are set — the options only
+/// apply to camera RAW, not JPEG/PNG.
+#[tokio::test]
+async fn test_raw_options_ignored_for_non_raw() {
+    let dir = temp_dir("raw_opts_non_raw");
+    write_tiny_png(&dir.join("shot.png"), 128);
+
+    let result = run_from_folder_with_raw_options(
+        dir, 0, "camera neutral", "linear", true, 1.5, 512,
+    )
+    .await
+    .unwrap();
+    let Value::Image { data, .. } = &result.responses[0].value else {
+        panic!("expected image output")
+    };
+    assert_eq!(data.width(), 1);
+    assert_eq!(data.height(), 1);
+    let Value::Text(name) = &result.responses[1].value else { panic!("expected file name") };
+    assert_eq!(name, "shot");
 }
 
 // --- list_image_files ----------------------------------------------------

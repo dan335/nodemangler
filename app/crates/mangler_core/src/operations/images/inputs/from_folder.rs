@@ -11,6 +11,11 @@
 //! ([`resolve_folder`], [`list_image_files`]) so those drivers reuse the exact
 //! same file set and order this node uses, instead of re-deriving it and
 //! risking drift.
+//!
+//! Camera RAW files in the folder are developed with the same controls as the
+//! `from raw` node (white balance, output encoding, demosaic, exposure, max
+//! size), so a batch or watch run can apply one develop recipe to an entire
+//! shoot. Non-raw formats ignore those inputs.
 
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -22,7 +27,9 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use super::file::load_image_from_path;
+use super::file::load_image_from_path_with_raw_options;
+use super::raw::DEFAULT_MAX_SIZE;
+use super::raw_decode::{RawOptions, RawWhiteBalance};
 
 /// Input index of the `folder` path input (a positional contract with `run`).
 pub const FOLDER: usize = 0;
@@ -31,6 +38,16 @@ pub const INDEX: usize = 1;
 /// Input index of the hidden `pinned path` input (a positional contract with
 /// `run`). Empty means "select by index", which is the normal case.
 pub const PINNED_PATH: usize = 2;
+/// Input index of the `white balance` develop control (raw files only).
+pub const WHITE_BALANCE: usize = 3;
+/// Input index of the `output` encoding develop control (raw files only).
+pub const OUTPUT_ENCODING: usize = 4;
+/// Input index of the `demosaic` develop control (raw files only).
+pub const DEMOSAIC: usize = 5;
+/// Input index of the `exposure` develop control (raw files only).
+pub const EXPOSURE: usize = 6;
+/// Input index of the `max size` develop control (raw files only).
+pub const MAX_SIZE: usize = 7;
 
 /// Operation that loads one image at a time from a folder of images, selected
 /// by a numeric index.
@@ -48,11 +65,11 @@ impl OpImageInputFromFolder {
         NodeSettings {
             name: "from folder".to_string(),
             description: "Loads one image at a time from a folder of images.".to_string(),
-            help: "Scans `folder` (non-recursively) for image files and outputs the one at `index`, along with its file name (without extension), the clamped index that was actually used, and the total number of image files found. Files are sorted case-insensitively by name for a deterministic order across runs and platforms.\n\n`index` is clamped into the available range: negative indices load the first file and indices past the end load the last file, so it's safe to sweep past either boundary. This node pairs with the \"run batch\" button in its settings panel, which re-runs the graph once per file by driving this index from 0 to count-1, force-saving any output nodes each time — output nodes name their files after each source image automatically, or wire this node's `file name` output into an output node's `file name` input for full control. If files are added to or removed from the folder mid-batch, the changing file list can cause some items to repeat or be skipped between runs.\n\nThe \"watch folder\" button in the same panel is the tethered-shooting mode: point this node at the folder your camera software downloads into, and every photo that lands from then on is developed and exported automatically. Photos already in the folder when you start watching are left alone, so you can point it at a directory holding a previous shoot. Frames are queued, so nothing is lost if you shoot faster than the graph can keep up, and each one is only loaded once it has finished being written.\n\nErrors if the folder is unset, cannot be read, or contains no recognized image files.".to_string(),
+            help: "Scans `folder` (non-recursively) for image files and outputs the one at `index`, along with its file name (without extension), the clamped index that was actually used, and the total number of image files found. Files are sorted case-insensitively by name for a deterministic order across runs and platforms.\n\n`index` is clamped into the available range: negative indices load the first file and indices past the end load the last file, so it's safe to sweep past either boundary. This node pairs with the \"run batch\" button in its settings panel, which re-runs the graph once per file by driving this index from 0 to count-1, force-saving any output nodes each time — output nodes name their files after each source image automatically, or wire this node's `file name` output into an output node's `file name` input for full control. If files are added to or removed from the folder mid-batch, the changing file list can cause some items to repeat or be skipped between runs.\n\nThe \"watch folder\" button in the same panel is the tethered-shooting mode: point this node at the folder your camera software downloads into, and every photo that lands from then on is developed and exported automatically. Photos already in the folder when you start watching are left alone, so you can point it at a directory holding a previous shoot. Frames are queued, so nothing is lost if you shoot faster than the graph can keep up, and each one is only loaded once it has finished being written.\n\nCamera RAW files (CR3, NEF, ARW, DNG, …) are developed with the same controls as the 'from raw' node — white balance, output encoding (sRGB vs scene-linear), demosaic, exposure in stops, and max size — so a batch or watch can apply one develop recipe to an entire shoot. Those inputs are ignored for non-raw files (JPEG, PNG, HEIC, …). Leave max size at 4096 while composing; set it to 0 for a full-resolution final batch.\n\nErrors if the folder is unset, cannot be read, or contains no recognized image files.".to_string(),
         }
     }
 
-    /// Creates the input definitions: the source folder and the selected index.
+    /// Creates the input definitions: folder selection, index/pin, and raw develop controls.
     pub fn create_inputs() -> Vec<Input> {
         vec![
             Input::new("folder".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path {
@@ -72,6 +89,24 @@ impl OpImageInputFromFolder {
             Input::new("pinned path".to_string(), Value::Path(PathBuf::new()), None, None)
                 .hidden_in_graph()
                 .with_description("Load this exact file instead of the one at `index`. Set automatically while watching a folder; empty the rest of the time."),
+            // Raw develop controls — same set and defaults as `from raw`, so a
+            // shoot recipe is authored once and applied by batch/watch. Non-raw
+            // files ignore them. Appended after FOLDER/INDEX/PINNED_PATH so the
+            // engine's positional contract for those three stays stable.
+            Input::new("white balance".to_string(), Value::Text("as shot".to_string()), Some(InputSettings::Dropdown {
+                options: vec!["as shot".to_string(), "camera neutral".to_string(), "none".to_string()],
+            }), None)
+                .with_description("Raw only: which white-balance multipliers to develop with. Applied to the sensor data before demosaic, so this cannot be reproduced downstream."),
+            Input::new("output".to_string(), Value::Text("srgb".to_string()), Some(InputSettings::Dropdown {
+                options: vec!["srgb".to_string(), "linear".to_string()],
+            }), None)
+                .with_description("Raw only: encode the result as sRGB (matching the rest of the graph) or leave it scene-linear for tone mapping and physically-correct blending."),
+            Input::new("demosaic".to_string(), Value::Bool(true), None, None)
+                .with_description("Raw only: reconstruct full colour from the sensor mosaic. Off returns the raw single-channel CFA pattern."),
+            Input::new("exposure".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-5.0, 5.0), step_by: Some(0.01), clamp_to_range: false }), None)
+                .with_description("Raw only: exposure adjustment in stops, applied in linear light before encoding."),
+            Input::new("max size".to_string(), Value::Integer(DEFAULT_MAX_SIZE), Some(InputSettings::DragValue { clamp: Some((0.0, 16384.0)), speed: None }), None)
+                .with_description("Raw only: cap the longest edge, in pixels. 0 loads at full resolution — expect hundreds of megabytes per node."),
         ]
     }
 
@@ -105,6 +140,11 @@ impl OpImageInputFromFolder {
         let folder_converted = convert_input(inputs, FOLDER, ValueType::Path, &mut input_errors);
         let index_converted = convert_input(inputs, INDEX, ValueType::Integer, &mut input_errors);
         let pinned_converted = convert_input(inputs, PINNED_PATH, ValueType::Path, &mut input_errors);
+        let white_balance_converted = convert_input(inputs, WHITE_BALANCE, ValueType::Text, &mut input_errors);
+        let output_converted = convert_input(inputs, OUTPUT_ENCODING, ValueType::Text, &mut input_errors);
+        let demosaic_converted = convert_input(inputs, DEMOSAIC, ValueType::Bool, &mut input_errors);
+        let exposure_converted = convert_input(inputs, EXPOSURE, ValueType::Decimal, &mut input_errors);
+        let max_size_converted = convert_input(inputs, MAX_SIZE, ValueType::Integer, &mut input_errors);
 
         // return if error
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
@@ -113,6 +153,20 @@ impl OpImageInputFromFolder {
         let Value::Path(folder) = folder_converted.unwrap() else { unreachable!() };
         let Value::Integer(index) = index_converted.unwrap() else { unreachable!() };
         let Value::Path(pinned) = pinned_converted.unwrap() else { unreachable!() };
+        let Value::Text(white_balance) = white_balance_converted.unwrap() else { unreachable!() };
+        let Value::Text(output_encoding) = output_converted.unwrap() else { unreachable!() };
+        let Value::Bool(demosaic) = demosaic_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(exposure_stops) = exposure_converted.unwrap() else { unreachable!() };
+        let Value::Integer(max_size) = max_size_converted.unwrap() else { unreachable!() };
+
+        let raw_options = RawOptions {
+            white_balance: RawWhiteBalance::from_label(&white_balance),
+            demosaic,
+            linear_output: output_encoding == "linear",
+            max_dimension: (max_size > 0).then_some(max_size as u32),
+            apply_orientation: true,
+            exposure_stops,
+        };
 
         // Resolve the folder against the graph's directory (None outside the
         // engine, e.g. a direct unit-test call — the folder must be absolute).
@@ -155,9 +209,9 @@ impl OpImageInputFromFolder {
         };
         let path = &files[clamped_index];
 
-        // Decoding is shared with the "from file" node and the GUI's library
-        // image preview.
-        match load_image_from_path(path) {
+        // Non-raw formats ignore `raw_options`; raws share the same develop
+        // path as the `from raw` node so batch/watch get a real recipe.
+        match load_image_from_path_with_raw_options(path, &raw_options) {
             Ok(float_img) => {
                 let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
                 Ok(OperationResponse {
