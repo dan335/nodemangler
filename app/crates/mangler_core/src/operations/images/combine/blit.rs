@@ -1,12 +1,14 @@
 //! Blit (pixel-copy overlay) compositing operation.
 //!
 //! Overlays a foreground image onto a background image at a specified x/y
-//! position using alpha-aware pixel copying. Reimplemented with FloatImage.
+//! position, scale and rotation, using alpha-aware pixel copying. Reimplemented
+//! with FloatImage.
 
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::images::combine::{placement, placement_inputs, PLACEMENT_HELP};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -22,12 +24,12 @@ impl OpImageCombineBlit {
         NodeSettings {
             name: "composite".to_string(),
             description: "Pastes a foreground image onto a background at a given position.".to_string(),
-            help: "Pastes the foreground onto the background using the standard Porter-Duff `over` operator: out_rgb = fg_rgb * fg_a + bg_rgb * (1 - fg_a), out_a = fg_a + bg_a * (1 - fg_a). The foreground's top-left lands at (position x, position y) relative to the background; pixels outside the background are skipped.\n\nWorks with any channel combination: missing alpha channels are treated as 1.0, grayscale inputs composite into the equivalent colour region. Will attempt to reuse the background's pixel buffer without cloning if it is the sole owner. Output matches the background's size and channel count exactly.".to_string(),
+            help: format!("Pastes the foreground onto the background using the standard Porter-Duff `over` operator: out_rgb = fg_rgb * fg_a + bg_rgb * (1 - fg_a), out_a = fg_a + bg_a * (1 - fg_a). Pixels outside the background are skipped.\n\nWorks with any channel combination: missing alpha channels are treated as 1.0, grayscale inputs composite into the equivalent colour region. Will attempt to reuse the background's pixel buffer without cloning if it is the sole owner. Output matches the background's size and channel count exactly.{PLACEMENT_HELP}"),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
-        vec![
+        let mut inputs = vec![
             Input::new("background".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
                 .with_description("Base image the foreground is pasted onto; sets the output size."),
             Input::new("foreground".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
@@ -36,7 +38,9 @@ impl OpImageCombineBlit {
                 .with_description("Horizontal pixel offset of the foreground's top-left within the background."),
             Input::new("position y".to_string(), Value::Integer(i32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
                 .with_description("Vertical pixel offset of the foreground's top-left within the background."),
-        ]
+        ];
+        inputs.extend(placement_inputs());
+        inputs
     }
 
     pub fn create_outputs() -> Vec<Output> {
@@ -53,6 +57,9 @@ impl OpImageCombineBlit {
         let foreground_converted = convert_input(inputs, 1, ValueType::Image, &mut input_errors);
         let position_x_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
         let position_y_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
+        let scale_x_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
+        let scale_y_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
+        let rotation_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
 
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
@@ -60,12 +67,47 @@ impl OpImageCombineBlit {
         let Value::Image{data:foreground, change_id:_} = foreground_converted.unwrap() else { unreachable!() };
         let Value::Integer(x_off) = position_x_converted.unwrap() else { unreachable!() };
         let Value::Integer(y_off) = position_y_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(scale_x) = scale_x_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(scale_y) = scale_y_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(rotation) = rotation_converted.unwrap() else { unreachable!() };
 
         // Try to take ownership to avoid cloning
         let mut background = Arc::try_unwrap(background_arc).unwrap_or_else(|a| (*a).clone());
         let bg_ch = background.channels() as usize;
-        let fg_ch = foreground.channels() as usize;
         let (bg_w, bg_h) = background.dimensions();
+
+        // Scale/rotation collapse back into "an image at an integer offset",
+        // which is exactly what the loop below already does. At scale 1 and
+        // rotation 0 this is the caller's own Arc and offset — no resampling.
+        // `coverage` is unused here on purpose: the over operator is already a
+        // no-op wherever alpha is zero, so the corners a rotation leaves
+        // outside the quad cancel themselves out.
+        let placed = match placement::place(
+            &foreground,
+            (bg_w, bg_h),
+            x_off,
+            y_off,
+            scale_x,
+            scale_y,
+            rotation,
+        ) {
+            Ok(Some(placed)) => placed,
+            // Nothing of the foreground lands on the background.
+            Ok(None) => {
+                return Ok(OperationResponse {
+                    time: Instant::now().duration_since(start_time),
+                    responses: vec![OutputResponse {
+                        value: Value::Image { data: Arc::new(background), change_id: get_id() },
+                    }],
+                })
+            }
+            Err(message) => {
+                return Err(OperationError { input_errors: vec![], node_error: Some(message) })
+            }
+        };
+        let foreground = placed.image;
+        let (x_off, y_off) = (placed.x, placed.y);
+        let fg_ch = foreground.channels() as usize;
 
         // Alpha-composite foreground onto background
         for fy in 0..foreground.height() {

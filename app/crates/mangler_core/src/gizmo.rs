@@ -92,6 +92,27 @@ pub enum Gizmo {
         radius: usize,
         space: RadiusSpace,
     },
+    /// Where a *second* image lands inside the backdrop's space: the placement
+    /// box of a compositing node's foreground.
+    ///
+    /// Unlike every other gizmo the box's size is not a value the user types —
+    /// it is the foreground's own pixel size times the scales, so `image` names
+    /// the input carrying that foreground. That index is deliberately **not**
+    /// part of [`Gizmo::inputs`] or [`Gizmo::referenced_inputs`]: those are the
+    /// numeric inputs a gizmo drives and reads, and a connected foreground must
+    /// not make the box read-only — a composite's foreground is *always*
+    /// connected. `gizmo_tests.rs` pins it separately.
+    ///
+    /// `x`/`y` are the unrotated top-left in **background pixels** (not a
+    /// fraction), which is why this carries no [`SpatialSpace`].
+    Placement {
+        image: usize,
+        x: usize,
+        y: usize,
+        scale_x: usize,
+        scale_y: usize,
+        rotation: usize,
+    },
 }
 
 /// How a gizmo's numbers relate to positions on the image.
@@ -266,10 +287,38 @@ const SPHERIZE: &[GizmoSpec] = &[GizmoSpec {
     },
 }];
 
+/// composite (blit): foreground placement over the background.
+const COMPOSITE: &[GizmoSpec] = &[GizmoSpec {
+    label: "foreground",
+    kind: Gizmo::Placement {
+        image: 1,
+        x: 2,
+        y: 3,
+        scale_x: 4,
+        scale_y: 5,
+        rotation: 6,
+    },
+}];
+
+/// blend: same placement box, further down the input list.
+const BLEND: &[GizmoSpec] = &[GizmoSpec {
+    label: "foreground",
+    kind: Gizmo::Placement {
+        image: 1,
+        x: 6,
+        y: 7,
+        scale_x: 8,
+        scale_y: 9,
+        rotation: 10,
+    },
+}];
+
 /// The spatial gizmos this operation exposes on the 2D preview, in draw order
 /// (later entries hit-test on top). Empty for the vast majority of operations.
 pub fn gizmos(op: &Operation) -> &'static [GizmoSpec] {
     match op {
+        Operation::OpImageCombineBlit => COMPOSITE,
+        Operation::OpImageCombineBlend => BLEND,
         Operation::OpImageTransformCrop => CROP,
         Operation::OpColorSampleSamplePixel => SAMPLE_PIXEL,
         Operation::OpImageMaskRadialGradient => RADIAL_MASK,
@@ -329,6 +378,23 @@ impl Gizmo {
             }
             Gizmo::OffsetPx { x, y } => vec![x, y],
             Gizmo::CenterRadius { radius, .. } => vec![radius],
+            Gizmo::Placement { x, y, scale_x, scale_y, rotation, .. } => {
+                vec![x, y, scale_x, scale_y, rotation]
+            }
+        }
+    }
+
+    /// The image input a gizmo measures itself against, when it needs one that
+    /// is *not* the backdrop it is drawn over.
+    ///
+    /// Only [`Gizmo::Placement`] has one. Kept out of [`Self::inputs`] and
+    /// [`Self::referenced_inputs`] because those two answer "which numeric
+    /// inputs does this drive / read", and this is neither numeric nor
+    /// draggable — it supplies the box's natural size.
+    pub fn image_input(&self) -> Option<usize> {
+        match *self {
+            Gizmo::Placement { image, .. } => Some(image),
+            _ => None,
         }
     }
 

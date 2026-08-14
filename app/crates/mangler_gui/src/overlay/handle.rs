@@ -44,6 +44,11 @@ pub struct HandleResponse {
     /// The drag ended this frame. Note the pointer has not moved on this frame,
     /// so `drag_to` is `None` — see [`super::Gesture`] for the full asymmetry.
     pub commit: bool,
+    /// The drag *began* this frame. The cue for snapshotting the values a drag
+    /// should be measured from, which is what makes a drag exact on an integer
+    /// input: per-frame deltas can each round to zero at high zoom and lose the
+    /// whole gesture, while `value at press + total pointer travel` cannot.
+    pub started: bool,
     /// A delete was requested (double-click or right-click). The caller applies
     /// its own floor; this only reports the input.
     pub delete: bool,
@@ -64,6 +69,7 @@ pub fn handle(ui: &mut egui::Ui, id: egui::Id, center: Pos2, hit_half: f32) -> H
         drag_to: resp.dragged().then(|| resp.interact_pointer_pos()).flatten(),
         drag_delta: resp.drag_delta(),
         commit: resp.drag_stopped(),
+        started: resp.drag_started(),
         delete: resp.double_clicked() || resp.clicked_by(egui::PointerButton::Secondary),
         active: resp.hovered() || resp.dragged(),
     }
@@ -77,6 +83,7 @@ pub fn region(ui: &mut egui::Ui, id: egui::Id, rect: Rect) -> HandleResponse {
         drag_to: resp.dragged().then(|| resp.interact_pointer_pos()).flatten(),
         drag_delta: resp.drag_delta(),
         commit: resp.drag_stopped(),
+        started: resp.drag_started(),
         delete: false,
         active: resp.hovered() || resp.dragged(),
     }
@@ -90,6 +97,7 @@ pub fn knob(ui: &mut egui::Ui, id: egui::Id, center: Pos2, hit_half: f32) -> Han
         drag_to: resp.dragged().then(|| resp.interact_pointer_pos()).flatten(),
         drag_delta: resp.drag_delta(),
         commit: resp.drag_stopped(),
+        started: resp.drag_started(),
         delete: false,
         active: resp.hovered() || resp.dragged(),
     }

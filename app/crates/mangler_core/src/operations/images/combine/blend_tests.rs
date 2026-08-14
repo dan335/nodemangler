@@ -15,19 +15,27 @@ fn test_image(w: u32, h: u32) -> Arc<FloatImage> {
 }
 fn image_input(w: u32, h: u32) -> Value { Value::Image { data: test_image(w, h), change_id: get_id() } }
 
+/// Append the placement trio at its defaults (scale 1, rotation 0) so each test
+/// lists only the inputs it actually cares about. The defaults are the identity
+/// placement, so every assertion below is about the untransformed path.
+fn with_placement(mut inputs: Vec<Input>) -> Vec<Input> {
+    inputs.extend(placement_inputs());
+    inputs
+}
+
 #[tokio::test]
-async fn test_blend_settings() { assert_eq!(OpImageCombineBlend::settings().name, "blend"); assert_eq!(OpImageCombineBlend::create_inputs().len(), 8); }
+async fn test_blend_settings() { assert_eq!(OpImageCombineBlend::settings().name, "blend"); assert_eq!(OpImageCombineBlend::create_inputs().len(), 11); }
 
 #[tokio::test]
 async fn test_blend_1x1() {
     let make = |v: f32| Value::Image { data: Arc::new(FloatImage::from_pixel(1, 1, 4, &[v, v, v, 1.0])), change_id: get_id() };
-    let mut inputs = vec![
+    let mut inputs = with_placement(vec![
         Input::new("background".to_string(), make(0.4), None, None), Input::new("foreground".to_string(), make(0.8), None, None),
         Input::new("amount".to_string(), Value::Decimal(0.5), None, None), Input::new("alpha".to_string(), make(1.0), None, None),
         Input::new("blend mode".to_string(), Value::BlendMode(BlendMode::Over), None, None),
         Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Srgb), None, None),
         Input::new("position x".to_string(), Value::Integer(0), None, None), Input::new("position y".to_string(), Value::Integer(0), None, None),
-    ];
+    ]);
     assert!(OpImageCombineBlend::run(&mut inputs).await.is_ok());
 }
 
@@ -36,13 +44,13 @@ async fn test_blend_amount_zero_is_background() {
     let bg = Value::Image { data: Arc::new(FloatImage::from_pixel(4, 4, 4, &[0.4, 0.4, 0.4, 1.0])), change_id: get_id() };
     let fg = Value::Image { data: Arc::new(FloatImage::from_pixel(4, 4, 4, &[0.8, 0.8, 0.8, 1.0])), change_id: get_id() };
     let alpha = Value::Image { data: Arc::new(FloatImage::from_pixel(4, 4, 4, &[1.0, 1.0, 1.0, 1.0])), change_id: get_id() };
-    let mut inputs = vec![
+    let mut inputs = with_placement(vec![
         Input::new("background".to_string(), bg, None, None), Input::new("foreground".to_string(), fg, None, None),
         Input::new("amount".to_string(), Value::Decimal(0.0), None, None), Input::new("alpha".to_string(), alpha, None, None),
         Input::new("blend mode".to_string(), Value::BlendMode(BlendMode::Over), None, None),
         Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Srgb), None, None),
         Input::new("position x".to_string(), Value::Integer(0), None, None), Input::new("position y".to_string(), Value::Integer(0), None, None),
-    ];
+    ]);
     let result = OpImageCombineBlend::run(&mut inputs).await.unwrap();
     match &result.responses[0].value {
         Value::Image { data, .. } => { let p = data.get_pixel(2, 2); assert!((p[0] - 0.4).abs() < 0.02, "amount=0 should be bg, got {}", p[0]); }
@@ -55,13 +63,13 @@ async fn test_blend_all_blend_modes() {
     let modes = [BlendMode::Over, BlendMode::Lerp, BlendMode::Multiply, BlendMode::Screen, BlendMode::Overlay, BlendMode::SoftLight, BlendMode::HardLight, BlendMode::ColorDodge, BlendMode::ColorBurn, BlendMode::Darken, BlendMode::Lighten, BlendMode::Difference, BlendMode::Exclusion, BlendMode::LinearBurn, BlendMode::LinearDodge, BlendMode::Divide, BlendMode::Subtract];
     for mode in &modes {
         let make = |v: f32| Value::Image { data: Arc::new(FloatImage::from_pixel(2, 2, 4, &[v, v, v, 1.0])), change_id: get_id() };
-        let mut inputs = vec![
+        let mut inputs = with_placement(vec![
             Input::new("background".to_string(), make(0.4), None, None), Input::new("foreground".to_string(), make(0.6), None, None),
             Input::new("amount".to_string(), Value::Decimal(0.5), None, None), Input::new("alpha".to_string(), make(1.0), None, None),
             Input::new("blend mode".to_string(), Value::BlendMode(mode.clone()), None, None),
             Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Srgb), None, None),
             Input::new("position x".to_string(), Value::Integer(0), None, None), Input::new("position y".to_string(), Value::Integer(0), None, None),
-        ];
+        ]);
         assert!(OpImageCombineBlend::run(&mut inputs).await.is_ok(), "blend mode {:?} failed", mode);
     }
 }
@@ -149,7 +157,7 @@ async fn test_blend_matches_reference() {
     for (space, mode) in &cases {
         let expected = reference_blend(&bg, &fg, &mask, 0.7, mode, *space, 1, 1);
 
-        let mut inputs = vec![
+        let mut inputs = with_placement(vec![
             Input::new("background".to_string(), Value::Image { data: Arc::new(bg.clone()), change_id: get_id() }, None, None),
             Input::new("foreground".to_string(), Value::Image { data: Arc::new(fg.clone()), change_id: get_id() }, None, None),
             Input::new("amount".to_string(), Value::Decimal(0.7), None, None),
@@ -158,7 +166,7 @@ async fn test_blend_matches_reference() {
             Input::new("color space".to_string(), Value::ColorSpace(*space), None, None),
             Input::new("position x".to_string(), Value::Integer(1), None, None),
             Input::new("position y".to_string(), Value::Integer(1), None, None),
-        ];
+        ]);
         let result = OpImageCombineBlend::run(&mut inputs).await.unwrap();
         let Value::Image { data: actual, .. } = &result.responses[0].value else { panic!("expected image output") };
 
@@ -178,7 +186,7 @@ async fn test_blend_negative_position() {
     let mask = FloatImage::from_pixel(4, 4, 4, &[1.0, 1.0, 1.0, 1.0]);
     let expected = reference_blend(&bg, &fg, &mask, 1.0, &BlendMode::Over, ColorSpace::Srgb, -2, -1);
 
-    let mut inputs = vec![
+    let mut inputs = with_placement(vec![
         Input::new("background".to_string(), Value::Image { data: Arc::new(bg), change_id: get_id() }, None, None),
         Input::new("foreground".to_string(), Value::Image { data: Arc::new(fg), change_id: get_id() }, None, None),
         Input::new("amount".to_string(), Value::Decimal(1.0), None, None),
@@ -187,7 +195,7 @@ async fn test_blend_negative_position() {
         Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Srgb), None, None),
         Input::new("position x".to_string(), Value::Integer(-2), None, None),
         Input::new("position y".to_string(), Value::Integer(-1), None, None),
-    ];
+    ]);
     let result = OpImageCombineBlend::run(&mut inputs).await.unwrap();
     let Value::Image { data: actual, .. } = &result.responses[0].value else { panic!("expected image output") };
 
@@ -213,7 +221,7 @@ async fn test_blend_non_rgba_channel_counts() {
     for y in 0..4u32 { for x in 0..4u32 { mask.put_pixel(x, y, &[x as f32 / 3.0]); } }
     let expected = reference_blend(&bg, &fg, &mask, 0.8, &BlendMode::Over, ColorSpace::Srgb, 1, 0);
 
-    let mut inputs = vec![
+    let mut inputs = with_placement(vec![
         Input::new("background".to_string(), Value::Image { data: Arc::new(bg), change_id: get_id() }, None, None),
         Input::new("foreground".to_string(), Value::Image { data: Arc::new(fg), change_id: get_id() }, None, None),
         Input::new("amount".to_string(), Value::Decimal(0.8), None, None),
@@ -222,7 +230,7 @@ async fn test_blend_non_rgba_channel_counts() {
         Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Srgb), None, None),
         Input::new("position x".to_string(), Value::Integer(1), None, None),
         Input::new("position y".to_string(), Value::Integer(0), None, None),
-    ];
+    ]);
     let result = OpImageCombineBlend::run(&mut inputs).await.unwrap();
     let Value::Image { data: actual, .. } = &result.responses[0].value else { panic!("expected image output") };
 
@@ -235,13 +243,115 @@ async fn test_blend_non_rgba_channel_counts() {
 
 #[tokio::test]
 async fn test_blend() {
-    let mut inputs = vec![
+    let mut inputs = with_placement(vec![
         Input::new("background".to_string(), image_input(4, 4), None, None), Input::new("foreground".to_string(), image_input(4, 4), None, None),
         Input::new("amount".to_string(), Value::Decimal(0.5), None, None), Input::new("alpha".to_string(), image_input(4, 4), None, None),
         Input::new("blend mode".to_string(), Value::BlendMode(BlendMode::Over), None, None),
         Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Srgb), None, None),
         Input::new("position x".to_string(), Value::Integer(0), None, None), Input::new("position y".to_string(), Value::Integer(0), None, None),
-    ];
+    ]);
     let result = OpImageCombineBlend::run(&mut inputs).await.unwrap();
     match &result.responses[0].value { Value::Image { .. } => {} other => panic!("{:?}", other) }
+}
+
+// ------------------------------------------------------ placed foregrounds
+
+fn solid(w: u32, h: u32, v: &[f32]) -> Value {
+    Value::Image { data: Arc::new(FloatImage::from_pixel(w, h, 4, v)), change_id: get_id() }
+}
+
+/// Run blend with an explicit placement. `mode` matters here: Lerp is the one
+/// mode that ignores the foreground's alpha.
+async fn blended(
+    bg: Value,
+    fg: Value,
+    mode: BlendMode,
+    (x, y, sx, sy, rot): (i32, i32, f32, f32, f32),
+) -> Arc<FloatImage> {
+    let mut inputs = vec![
+        Input::new("background".to_string(), bg, None, None),
+        Input::new("foreground".to_string(), fg, None, None),
+        Input::new("amount".to_string(), Value::Decimal(1.0), None, None),
+        Input::new("alpha".to_string(), solid(1, 1, &[1.0, 1.0, 1.0, 1.0]), None, None),
+        Input::new("blend mode".to_string(), Value::BlendMode(mode), None, None),
+        Input::new("color space".to_string(), Value::ColorSpace(ColorSpace::Srgb), None, None),
+        Input::new("position x".to_string(), Value::Integer(x), None, None),
+        Input::new("position y".to_string(), Value::Integer(y), None, None),
+        Input::new("scale x".to_string(), Value::Decimal(sx), None, None),
+        Input::new("scale y".to_string(), Value::Decimal(sy), None, None),
+        Input::new("rotation".to_string(), Value::Decimal(rot), None, None),
+    ];
+    let result = OpImageCombineBlend::run(&mut inputs).await.unwrap();
+    match &result.responses[0].value {
+        Value::Image { data, .. } => data.clone(),
+        other => panic!("Expected Image, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn lerp_leaves_the_background_outside_a_rotated_quad() {
+    // Lerp is the one mode that ignores the foreground's alpha, so it is the
+    // one that needs the coverage mask: without it the empty corners of a
+    // rotation's bounding box would fade the background towards transparent
+    // black even though no foreground is there.
+    let out = blended(
+        solid(32, 32, &[1.0, 1.0, 1.0, 1.0]),
+        solid(16, 16, &[0.0, 0.0, 0.0, 1.0]),
+        BlendMode::Lerp,
+        (8, 8, 1.0, 1.0, 45.0),
+    )
+    .await;
+    // The unrotated top-left corner is inside the bounding box but outside the
+    // turned square.
+    let corner = out.get_pixel(8, 8);
+    assert!(corner[0] > 0.99, "corner should still be background white: {corner:?}");
+    assert!(corner[3] > 0.99, "and still opaque: {corner:?}");
+    // The centre is squarely inside, so it takes the foreground.
+    assert!(out.get_pixel(16, 16)[0] < 0.01, "centre should be the foreground");
+}
+
+#[tokio::test]
+async fn lerp_is_unaffected_by_an_unrotated_placement() {
+    // No rotation means no coverage mask at all, so this path must behave
+    // exactly as it did before placement existed.
+    let out = blended(
+        solid(16, 16, &[1.0, 1.0, 1.0, 1.0]),
+        solid(4, 4, &[0.0, 0.0, 0.0, 1.0]),
+        BlendMode::Lerp,
+        (2, 2, 1.0, 1.0, 0.0),
+    )
+    .await;
+    assert!(out.get_pixel(3, 3)[0] < 0.01, "inside the paste");
+    assert!(out.get_pixel(1, 1)[0] > 0.99, "outside it");
+    assert!(out.get_pixel(6, 6)[0] > 0.99, "past it");
+}
+
+#[tokio::test]
+async fn scaling_the_foreground_widens_where_over_applies() {
+    let out = blended(
+        solid(32, 32, &[1.0, 1.0, 1.0, 1.0]),
+        solid(4, 4, &[0.0, 0.0, 0.0, 1.0]),
+        BlendMode::Over,
+        (0, 0, 4.0, 4.0, 0.0),
+    )
+    .await;
+    assert!(out.get_pixel(15, 15)[0] < 0.01, "the 4x scale reaches 16 pixels across");
+    assert!(out.get_pixel(16, 16)[0] > 0.99, "and stops there");
+}
+
+#[tokio::test]
+async fn a_placement_off_canvas_leaves_the_background_alone() {
+    let out = blended(
+        solid(8, 8, &[0.5, 0.5, 0.5, 1.0]),
+        solid(4, 4, &[0.0, 0.0, 0.0, 1.0]),
+        BlendMode::Over,
+        (200, 200, 1.0, 1.0, 20.0),
+    )
+    .await;
+    assert_eq!(out.dimensions(), (8, 8));
+    for y in 0..8 {
+        for x in 0..8 {
+            assert!((out.get_pixel(x, y)[0] - 0.5).abs() < 1e-6, "({x},{y}) was touched");
+        }
+    }
 }

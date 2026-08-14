@@ -62,6 +62,28 @@ const EXPECTED_NAMES: &[(Operation, usize, &str)] = &[
     (Operation::OpImageAdjustmentVignette, 2, "radius"),
     (Operation::OpImageTransformSwirl, 2, "radius"),
     (Operation::OpImageTransformSpherize, 2, "radius"),
+    // composite (blit) foreground placement
+    (Operation::OpImageCombineBlit, 2, "position x"),
+    (Operation::OpImageCombineBlit, 3, "position y"),
+    (Operation::OpImageCombineBlit, 4, "scale x"),
+    (Operation::OpImageCombineBlit, 5, "scale y"),
+    (Operation::OpImageCombineBlit, 6, "rotation"),
+    // blend foreground placement
+    (Operation::OpImageCombineBlend, 6, "position x"),
+    (Operation::OpImageCombineBlend, 7, "position y"),
+    (Operation::OpImageCombineBlend, 8, "scale x"),
+    (Operation::OpImageCombineBlend, 9, "scale y"),
+    (Operation::OpImageCombineBlend, 10, "rotation"),
+];
+
+/// Every `(operation, input index)` a placement gizmo names as its foreground.
+///
+/// The numeric table above cannot cover these — the input is an image — but a
+/// wrong index here would size the box from the wrong picture, so it gets its
+/// own gate.
+const EXPECTED_IMAGE_INPUTS: &[(Operation, usize, &str)] = &[
+    (Operation::OpImageCombineBlit, 1, "foreground"),
+    (Operation::OpImageCombineBlend, 1, "foreground"),
 ];
 
 #[test]
@@ -124,6 +146,54 @@ fn every_gizmo_input_is_covered_by_the_name_table() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn every_image_input_is_an_image_and_is_pinned() {
+    // Both directions: each declared image index really is an image input with
+    // the expected name, and no gizmo declares one without a row here.
+    for op in Operation::all_variants() {
+        let inputs = op.create_inputs();
+        for spec in gizmos(&op) {
+            let Some(idx) = spec.kind.image_input() else { continue };
+            let input = inputs.get(idx).unwrap_or_else(|| {
+                panic!("{op:?} gizmo {:?} names image input {idx}, out of range", spec.label)
+            });
+            assert!(
+                matches!(input.value, Value::Image { .. }),
+                "{op:?} gizmo {:?} image input {idx} ({}) is {:?}, not an image",
+                spec.label,
+                input.name,
+                input.value
+            );
+            let row = EXPECTED_IMAGE_INPUTS.iter().find(|(o, i, _)| {
+                std::mem::discriminant(o) == std::mem::discriminant(&op) && *i == idx
+            });
+            let Some((_, _, expected)) = row else {
+                panic!(
+                    "{op:?} gizmo {:?} image input {idx} has no row in EXPECTED_IMAGE_INPUTS",
+                    spec.label
+                )
+            };
+            assert_eq!(&input.name, expected, "{op:?} input {idx} was renamed");
+        }
+    }
+}
+
+#[test]
+fn placement_image_input_is_not_draggable() {
+    // A composite's foreground is always connected. Were it part of the drag
+    // set, the all-or-nothing editable rule would freeze the box permanently.
+    for op in [Operation::OpImageCombineBlit, Operation::OpImageCombineBlend] {
+        let Some(spec) = gizmos(&op).first() else { panic!("{op:?} should declare a gizmo") };
+        let image = spec.kind.image_input().expect("placement names a foreground");
+        assert!(!spec.kind.inputs().contains(&image), "{op:?} drags its foreground input");
+        assert!(
+            !spec.kind.referenced_inputs().contains(&image),
+            "{op:?} reads its foreground as a number"
+        );
+        assert_eq!(spec.kind.inputs().len(), 5, "{op:?} should drive x, y, scale x/y, rotation");
     }
 }
 
@@ -209,7 +279,7 @@ fn gizmos_never_panics_and_is_empty_for_ops_without_one() {
             with_gizmos += 1;
         }
     }
-    assert_eq!(with_gizmos, 13, "update this count when a gizmo is added");
+    assert_eq!(with_gizmos, 15, "update this count when a gizmo is added");
     // Spot-check a few unrelated ops across categories.
     for op in [
         Operation::OpNumberMathAdd,

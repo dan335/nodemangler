@@ -29,6 +29,7 @@ use eframe::egui::{self, Color32, Pos2, Rect, Stroke, Vec2};
 use mangler_core::gizmo::{Gizmo, GizmoSpec, RadiusSpace, RectExtent, SpatialSpace};
 use mangler_core::input::{Input, InputSettings};
 use mangler_core::value::Value;
+use std::collections::HashMap;
 
 use crate::overlay::handle::{self, HandleShape};
 use crate::overlay::mapping::{norm_to_screen, screen_delta_to_norm, screen_to_norm};
@@ -52,6 +53,11 @@ const MIN_RECT_NORM: f32 = 0.001;
 /// Below this on-screen size the whole gizmo is drawn as a plain outline with no
 /// interaction — the handles would be indistinguishable anyway.
 const MIN_INTERACTIVE_PX: f32 = MIN_RECT_PX * 3.0;
+/// Screen gap between a placement box's top edge and its rotation knob. Fixed
+/// in screen pixels, so the knob stays grabbable however far you zoom out.
+const ROTATE_KNOB_GAP: f32 = 26.0;
+/// Rotation snap, in degrees, while Shift is held.
+const ROTATE_SNAP_DEG: f32 = 15.0;
 
 /// The result of one overlay frame.
 #[derive(Default)]
@@ -82,6 +88,14 @@ pub struct GizmoContext<'a> {
     pub inputs: &'a [Input],
     /// Pixel size of the backdrop, when one is displayed.
     pub image_dims: Option<(u32, u32)>,
+    /// Pixel size of each *connected* image input, keyed by input index.
+    ///
+    /// For [`Gizmo::Placement`], which draws a second image inside the
+    /// backdrop's space: the box's natural size is the foreground's own pixel
+    /// size, which no number on the node records. Resolved upstream by the
+    /// caller (the same walk the backdrop uses) so the widget holds no borrow
+    /// on the graph.
+    pub image_input_dims: &'a HashMap<usize, (u32, u32)>,
 }
 
 /// Draw every gizmo the node declares and return any change made this frame.
@@ -197,6 +211,17 @@ pub fn show(
             Gizmo::CenterRadius { radius, space } => {
                 show_center_radius(ui, id, image_rect, ctx, radius, space, editable, theme, &mut out)
             }
+            Gizmo::Placement { image, x, y, scale_x, scale_y, rotation } => show_placement(
+                ui,
+                id,
+                image_rect,
+                ctx,
+                image,
+                [x, y, scale_x, scale_y, rotation],
+                editable,
+                theme,
+                &mut out,
+            ),
         }
     }
     out
@@ -965,6 +990,375 @@ fn show_center_radius(
         handle::draw_handle(ui.painter(), rim, GRIP_RADIUS, grab.active, HandleShape::Square, theme);
     }
     let _ = rv;
+}
+
+// ------------------------------------------------------------ placement gizmo
+
+/// The eight resize grips of a placement box, as signs in the box's **own
+/// unrotated frame**: `(1, -1)` is the top-right corner, `(1, 0)` the right
+/// edge. Edges come first so a corner wins where the two overlap.
+const PLACEMENT_GRIPS: [(i8, i8); 8] =
+    [(0, -1), (0, 1), (-1, 0), (1, 0), (-1, -1), (1, -1), (1, 1), (-1, 1)];
+
+/// Where a compositing node's foreground lands inside the background.
+///
+/// Unlike the other gizmos this box's *size* is not a value the user types: it
+/// is the foreground image's own pixel size times the scales, so the whole
+/// thing is unavailable until a foreground is connected. Positions are
+/// background pixels rather than a fraction, which is why the mapping here is
+/// written out instead of going through `SpatialSpace`.
+///
+/// Geometry is derived fresh from the (round-tripped) values every frame, so
+/// the box is always exactly what `placement::place` will render — including
+/// its rounding of the scaled size to whole pixels.
+#[allow(clippy::too_many_arguments)]
+fn show_placement(
+    ui: &mut egui::Ui,
+    id: egui::Id,
+    image_rect: Rect,
+    ctx: &GizmoContext<'_>,
+    image_idx: usize,
+    idx: [usize; 5],
+    editable: bool,
+    theme: &Theme,
+    out: &mut SpatialOverlayResponse,
+) {
+    let [x_idx, y_idx, sx_idx, sy_idx, rot_idx] = idx;
+    // No foreground, no box: its size has nowhere to come from.
+    let Some((fw, fh)) = ctx.image_input_dims.get(&image_idx).copied() else { return };
+    // Positions are background pixels, so the backdrop supplies the mapping.
+    let Some((bw, bh)) = ctx.image_dims else { return };
+    if fw == 0 || fh == 0 || bw == 0 || bh == 0 {
+        return;
+    }
+
+    let Some(mut px) = read_scalar(&ctx.inputs[x_idx].value) else { return };
+    let Some(mut py) = read_scalar(&ctx.inputs[y_idx].value) else { return };
+    let Some(mut sx) = read_scalar(&ctx.inputs[sx_idx].value) else { return };
+    let Some(mut sy) = read_scalar(&ctx.inputs[sy_idx].value) else { return };
+    let Some(mut rot) = read_scalar(&ctx.inputs[rot_idx].value) else { return };
+
+    let (bwf, bhf) = (bw as f32, bh as f32);
+    let to_screen = |p: [f32; 2]| {
+        Pos2::new(
+            image_rect.left() + p[0] / bwf * image_rect.width(),
+            image_rect.top() + p[1] / bhf * image_rect.height(),
+        )
+    };
+    let to_image = |s: Pos2| {
+        [
+            (s.x - image_rect.left()) / image_rect.width() * bwf,
+            (s.y - image_rect.top()) / image_rect.height() * bhf,
+        ]
+    };
+    let to_image_delta = |d: Vec2| {
+        [d.x / image_rect.width() * bwf, d.y / image_rect.height() * bhf]
+    };
+
+    // Mirrors `placement::place`: the drawn size is the whole-pixel size the
+    // operation will really produce, never the raw slider product.
+    let derive = |px: f32, py: f32, sx: f32, sy: f32, rot: f32| {
+        let hw = (fw as f32 * sx).round().max(1.0) * 0.5;
+        let hh = (fh as f32 * sy).round().max(1.0) * 0.5;
+        let (sin_t, cos_t) = rot.to_radians().sin_cos();
+        Placement { hw, hh, centre: [px + hw, py + hh], sin_t, cos_t }
+    };
+
+    let mut geom = derive(px, py, sx, sy, rot);
+    let mut active = false;
+
+    if editable {
+        // On-screen floor for the box, so the eight grips can't knot together
+        // however far the view is zoomed out.
+        let min_half_w = (MIN_RECT_PX * bwf / image_rect.width()).max(1.0) * 0.5;
+        let min_half_h = (MIN_RECT_PX * bhf / image_rect.height()).max(1.0) * 0.5;
+
+        // --- body: move ---
+        // Registered only while the pointer is genuinely inside the rotated
+        // quad (or already dragging it). egui can only interact with a rect, and
+        // a rotated box's bounding rect covers empty canvas — claiming that
+        // would kill drag-to-pan beside its corners.
+        let body_id = id.with("body");
+        let corners = geom.corners(&to_screen);
+        let inside = ui
+            .ctx()
+            .pointer_latest_pos()
+            .is_some_and(|p| quad_contains(&corners, p));
+        if inside || ui.ctx().is_being_dragged(body_id) {
+            let body = handle::region(ui, body_id, Rect::from_points(&corners));
+            let anchor = press_anchor(ui, body_id, body.started, [px, py]);
+            active |= body.active;
+            if let (Some(to), Some(press)) =
+                (body.drag_to, ui.ctx().input(|i| i.pointer.press_origin()))
+            {
+                // Total travel from the press, not this frame's delta: on an
+                // integer input a per-frame delta can round to zero at high
+                // zoom and lose the gesture entirely.
+                let travel = to_image_delta(to - press);
+                let nx = quantize(&ctx.inputs[x_idx], anchor[0] + travel[0]);
+                let ny = quantize(&ctx.inputs[y_idx], anchor[1] + travel[1]);
+                if (nx - px).abs() > 1e-6 || (ny - py).abs() > 1e-6 {
+                    px = nx;
+                    py = ny;
+                    geom = derive(px, py, sx, sy, rot);
+                    push_live(out, x_idx, &ctx.inputs[x_idx], nx);
+                    push_live(out, y_idx, &ctx.inputs[y_idx], ny);
+                    out.commit = true;
+                    out.commit_inputs.extend([x_idx, y_idx]);
+                }
+            }
+            if body.commit {
+                out.commit = true;
+                out.commit_inputs.extend([x_idx, y_idx]);
+            }
+        }
+
+        // --- grips: scale, pinning the opposite corner/edge ---
+        for (n, (ax, ay)) in PLACEMENT_GRIPS.iter().copied().enumerate() {
+            let pos = to_screen(geom.local_to_image([
+                ax as f32 * geom.hw,
+                ay as f32 * geom.hh,
+            ]));
+            let grip = handle::handle(ui, id.with(("grip", n as u8)), pos, HANDLE_HIT_HALF);
+            active |= grip.active;
+            if let Some(to) = grip.drag_to {
+                let l = geom.image_to_local(to_image(to));
+                let nhw =
+                    if ax != 0 { (ax as f32 * l[0]).max(min_half_w) } else { geom.hw };
+                let nhh =
+                    if ay != 0 { (ay as f32 * l[1]).max(min_half_h) } else { geom.hh };
+
+                let nsx = quantize(&ctx.inputs[sx_idx], 2.0 * nhw / fw as f32);
+                let nsy = quantize(&ctx.inputs[sy_idx], 2.0 * nhh / fh as f32);
+                // Re-derive from the *quantized* scales before placing the
+                // top-left, so the box's corner matches the size that will
+                // actually be rendered rather than the raw drag.
+                let sized = derive(0.0, 0.0, nsx, nsy, rot);
+                let top_left = pinned_top_left(&geom, (ax, ay), &sized);
+                let nx = quantize(&ctx.inputs[x_idx], top_left[0]);
+                let ny = quantize(&ctx.inputs[y_idx], top_left[1]);
+
+                if (nsx - sx).abs() > 1e-6
+                    || (nsy - sy).abs() > 1e-6
+                    || (nx - px).abs() > 1e-6
+                    || (ny - py).abs() > 1e-6
+                {
+                    sx = nsx;
+                    sy = nsy;
+                    px = nx;
+                    py = ny;
+                    geom = derive(px, py, sx, sy, rot);
+                    push_live(out, sx_idx, &ctx.inputs[sx_idx], nsx);
+                    push_live(out, sy_idx, &ctx.inputs[sy_idx], nsy);
+                    push_live(out, x_idx, &ctx.inputs[x_idx], nx);
+                    push_live(out, y_idx, &ctx.inputs[y_idx], ny);
+                    out.commit = true;
+                    out.commit_inputs.extend([x_idx, y_idx, sx_idx, sy_idx]);
+                }
+            }
+            if grip.commit {
+                out.commit = true;
+                out.commit_inputs.extend([x_idx, y_idx, sx_idx, sy_idx]);
+            }
+        }
+
+        // --- knob: rotate ---
+        let knob_pos = geom.knob_position(&to_screen);
+        let knob = handle::handle(ui, id.with("rot"), knob_pos, HANDLE_HIT_HALF);
+        active |= knob.active;
+        if let Some(to) = knob.drag_to {
+            let p = to_image(to);
+            let d = [p[0] - geom.centre[0], p[1] - geom.centre[1]];
+            if d[0].hypot(d[1]) > 1e-3 {
+                // The knob sits straight up from the centre, i.e. at -90°.
+                let mut deg = d[1].atan2(d[0]).to_degrees() + 90.0;
+                if ui.input(|i| i.modifiers.shift) {
+                    deg = (deg / ROTATE_SNAP_DEG).round() * ROTATE_SNAP_DEG;
+                }
+                // atan2 wraps at ±180; pick the equivalent turn nearest the
+                // current value so dragging across the wrap doesn't spin the
+                // box a full revolution.
+                deg += ((rot - deg) / 360.0).round() * 360.0;
+                let next = quantize(&ctx.inputs[rot_idx], deg);
+                if (next - rot).abs() > 1e-4 {
+                    rot = next;
+                    geom = derive(px, py, sx, sy, rot);
+                    push_live(out, rot_idx, &ctx.inputs[rot_idx], next);
+                    out.commit = true;
+                    out.commit_inputs.push(rot_idx);
+                }
+            }
+        }
+        if knob.commit {
+            out.commit = true;
+            out.commit_inputs.push(rot_idx);
+        }
+    }
+
+    let note = (!editable).then(|| driven_note(ctx, &idx)).flatten();
+    draw_placement(ui, image_rect, &geom, &to_screen, active, editable, note, theme);
+}
+
+/// A placement box's geometry in background pixels, derived from the node's
+/// (already round-tripped) values.
+struct Placement {
+    /// Half the placed width / height, in background pixels.
+    hw: f32,
+    hh: f32,
+    /// The rotation pivot: the centre of the placed rect.
+    centre: [f32; 2],
+    sin_t: f32,
+    cos_t: f32,
+}
+
+impl Placement {
+    /// An offset in the box's own unrotated frame → background pixels.
+    fn local_to_image(&self, l: [f32; 2]) -> [f32; 2] {
+        let r = rotate(l, self.sin_t, self.cos_t);
+        [self.centre[0] + r[0], self.centre[1] + r[1]]
+    }
+
+    /// Exact inverse of [`Self::local_to_image`].
+    fn image_to_local(&self, w: [f32; 2]) -> [f32; 2] {
+        let d = [w[0] - self.centre[0], w[1] - self.centre[1]];
+        // Rotation matrices are orthonormal, so the inverse is the transpose.
+        [
+            d[0] * self.cos_t + d[1] * self.sin_t,
+            -d[0] * self.sin_t + d[1] * self.cos_t,
+        ]
+    }
+
+    /// The four corners on screen, clockwise from the box's own top-left.
+    fn corners(&self, to_screen: &impl Fn([f32; 2]) -> Pos2) -> [Pos2; 4] {
+        [
+            to_screen(self.local_to_image([-self.hw, -self.hh])),
+            to_screen(self.local_to_image([self.hw, -self.hh])),
+            to_screen(self.local_to_image([self.hw, self.hh])),
+            to_screen(self.local_to_image([-self.hw, self.hh])),
+        ]
+    }
+
+    /// The rotation knob, a fixed *screen* distance out from the top edge so it
+    /// stays reachable whatever the zoom or the box's pixel size.
+    fn knob_position(&self, to_screen: &impl Fn([f32; 2]) -> Pos2) -> Pos2 {
+        let top = to_screen(self.local_to_image([0.0, -self.hh]));
+        let centre = to_screen(self.centre);
+        let up = top - centre;
+        let dir = if up.length() > 1e-3 { up / up.length() } else { Vec2::new(0.0, -1.0) };
+        top + dir * ROTATE_KNOB_GAP
+    }
+}
+
+/// Rotate an offset by the angle whose sine and cosine are given. Positive is
+/// clockwise on screen, matching `placement::place` (and the y-down convention
+/// every image op uses).
+fn rotate(l: [f32; 2], sin_t: f32, cos_t: f32) -> [f32; 2] {
+    [l[0] * cos_t - l[1] * sin_t, l[0] * sin_t + l[1] * cos_t]
+}
+
+/// The unrotated top-left of a box resized from `geom` to `sized`'s half-extents
+/// while the grip *opposite* `sign` stays exactly where it was.
+///
+/// Without this a resize would grow the box symmetrically about its centre and
+/// the far edge would slide out from under the pointer. Solving for the centre
+/// (rather than nudging it) is also what keeps the pin exact when the box is
+/// rotated, where "the opposite corner" is not an axis-aligned position.
+fn pinned_top_left(geom: &Placement, sign: (i8, i8), sized: &Placement) -> [f32; 2] {
+    let opposite = [-(sign.0 as f32), -(sign.1 as f32)];
+    let pinned = geom.local_to_image([opposite[0] * geom.hw, opposite[1] * geom.hh]);
+    let offset =
+        rotate([opposite[0] * sized.hw, opposite[1] * sized.hh], geom.sin_t, geom.cos_t);
+    [pinned[0] - offset[0] - sized.hw, pinned[1] - offset[1] - sized.hh]
+}
+
+/// Is `p` inside the convex quad? True when every edge puts it on the same
+/// side, which stays correct for a quad wound either way.
+fn quad_contains(quad: &[Pos2; 4], p: Pos2) -> bool {
+    let (mut positive, mut negative) = (false, false);
+    for i in 0..4 {
+        let a = quad[i];
+        let b = quad[(i + 1) % 4];
+        let cross = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+        positive |= cross > 0.0;
+        negative |= cross < 0.0;
+    }
+    !(positive && negative)
+}
+
+/// The value a drag started from, stashed in egui's per-id memory.
+///
+/// The one piece of state this module keeps, and it earns its place: an integer
+/// input driven by per-frame `drag_delta` loses every displacement that rounds
+/// to zero, so a slow drag at high zoom moves nothing at all. Anchoring to the
+/// value at press plus the pointer's *total* travel is exact at any zoom. Keyed
+/// by widget id, so it needs no lifetime here and cannot leak across panels.
+fn press_anchor(ui: &egui::Ui, id: egui::Id, started: bool, current: [f32; 2]) -> [f32; 2] {
+    let key = id.with("press");
+    if started {
+        ui.data_mut(|d| d.insert_temp(key, current));
+        return current;
+    }
+    ui.data(|d| d.get_temp(key)).unwrap_or(current)
+}
+
+/// Paint the placement box: outline, grips, centre mark and rotation knob.
+#[allow(clippy::too_many_arguments)]
+fn draw_placement(
+    ui: &egui::Ui,
+    image_rect: Rect,
+    geom: &Placement,
+    to_screen: &impl Fn([f32; 2]) -> Pos2,
+    active: bool,
+    editable: bool,
+    note: Option<String>,
+    theme: &Theme,
+) {
+    let colors = theme.get();
+    let painter = ui.painter().with_clip_rect(image_rect);
+    let outline =
+        if editable { colors.grid_connection_line } else { handle::read_only_color(theme) };
+    let corners = geom.corners(to_screen);
+
+    for i in 0..4 {
+        painter.line_segment([corners[i], corners[(i + 1) % 4]], Stroke::new(2.0, outline));
+    }
+    // Centre mark: the pivot rotation turns about, so it is worth showing.
+    let centre = to_screen(geom.centre);
+    let tick = Stroke::new(1.0, colors.text_faint.gamma_multiply(0.6));
+    painter.line_segment([centre - Vec2::new(4.0, 0.0), centre + Vec2::new(4.0, 0.0)], tick);
+    painter.line_segment([centre - Vec2::new(0.0, 4.0), centre + Vec2::new(0.0, 4.0)], tick);
+
+    if editable {
+        let knob = geom.knob_position(to_screen);
+        let top = to_screen(geom.local_to_image([0.0, -geom.hh]));
+        painter.line_segment([top, knob], Stroke::new(1.0, outline));
+        let radius = if active { GRIP_RADIUS_ACTIVE } else { GRIP_RADIUS };
+        for (ax, ay) in PLACEMENT_GRIPS.iter().copied() {
+            let pos = to_screen(geom.local_to_image([ax as f32 * geom.hw, ay as f32 * geom.hh]));
+            let hovered = ui.rect_contains_pointer(handle::hit_rect(pos, HANDLE_HIT_HALF));
+            handle::draw_handle(
+                ui.painter(),
+                pos,
+                radius,
+                hovered || active,
+                HandleShape::Square,
+                theme,
+            );
+        }
+        let knob_hot = ui.rect_contains_pointer(handle::hit_rect(knob, HANDLE_HIT_HALF));
+        handle::draw_handle(
+            ui.painter(),
+            knob,
+            radius,
+            knob_hot || active,
+            HandleShape::Dot,
+            theme,
+        );
+    }
+
+    if let Some(note) = note {
+        draw_readout(ui, image_rect, corners[0] + Vec2::new(4.0, 4.0), &note, theme);
+    }
 }
 
 // ----------------------------------------------------------------- rect gizmo

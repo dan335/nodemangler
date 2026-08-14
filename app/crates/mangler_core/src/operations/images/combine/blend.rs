@@ -12,6 +12,7 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::images::combine::{placement, placement_inputs, PLACEMENT_HELP};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use rayon::prelude::*;
@@ -28,12 +29,12 @@ impl OpImageCombineBlend {
         NodeSettings {
             name: "blend".to_string(),
             description: "Blends an image onto another using a blend mode.".to_string(),
-            help: "Walks every background pixel, samples the foreground at the same coordinate minus the position offset, and composites it using the selected BlendMode (Over, Lerp, Multiply, Overlay, SoftLight, and 12 more). Math is performed in the chosen ColorSpace; all 14 spaces (sRGB, Linear RGB, HSL, HSV, HWB, Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YCbCr, YUV) are supported and results are converted back to sRGBA for storage.\n\nThe amount input provides a global opacity; the alpha image (per-pixel, RGB channels averaged) multiplies that opacity so you can restrict the blend with a mask. Source alpha channels feed into the blend math. Foreground pixels outside the background's bounds leave the background untouched. Output size is taken from the background; positions may be negative to shift the foreground past the top-left edge.".to_string(),
+            help: format!("Walks every background pixel, samples the placed foreground at the matching coordinate, and composites it using the selected BlendMode (Over, Lerp, Multiply, Overlay, SoftLight, and 12 more). Math is performed in the chosen ColorSpace; all 14 spaces (sRGB, Linear RGB, HSL, HSV, HWB, Lab, LCH, Oklab, Oklch, CMYK, XYZ, xyY, YCbCr, YUV) are supported and results are converted back to sRGBA for storage.\n\nThe amount input provides a global opacity; the alpha image (per-pixel, RGB channels averaged) multiplies that opacity so you can restrict the blend with a mask. Source alpha channels feed into the blend math. Foreground pixels outside the background's bounds leave the background untouched. Output size is taken from the background; positions may be negative to shift the foreground past the top-left edge.{PLACEMENT_HELP}"),
         }
     }
 
     pub fn create_inputs() -> Vec<Input> {
-        vec![
+        let mut inputs = vec![
             Input::new("background".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
                 .with_description("Base image the foreground is composited onto; sets the output size."),
             Input::new("foreground".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
@@ -50,7 +51,9 @@ impl OpImageCombineBlend {
                 .with_description("Horizontal offset in pixels from the background's origin to place the foreground."),
             Input::new("position y".to_string(), Value::Integer(i32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
                 .with_description("Vertical offset in pixels from the background's origin to place the foreground."),
-        ]
+        ];
+        inputs.extend(placement_inputs());
+        inputs
     }
 
     pub fn create_outputs() -> Vec<Output> {
@@ -71,6 +74,9 @@ impl OpImageCombineBlend {
         let color_space_converted = convert_input(inputs, 5, ValueType::ColorSpace, &mut input_errors);
         let position_x_converted = convert_input(inputs, 6, ValueType::Integer, &mut input_errors);
         let position_y_converted = convert_input(inputs, 7, ValueType::Integer, &mut input_errors);
+        let scale_x_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
+        let scale_y_converted = convert_input(inputs, 9, ValueType::Decimal, &mut input_errors);
+        let rotation_converted = convert_input(inputs, 10, ValueType::Decimal, &mut input_errors);
 
         if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
 
@@ -82,10 +88,40 @@ impl OpImageCombineBlend {
         let Value::ColorSpace(color_space) = color_space_converted.unwrap() else { unreachable!() };
         let Value::Integer(position_x) = position_x_converted.unwrap() else { unreachable!() };
         let Value::Integer(position_y) = position_y_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(scale_x) = scale_x_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(scale_y) = scale_y_converted.unwrap() else { unreachable!() };
+        let Value::Decimal(rotation) = rotation_converted.unwrap() else { unreachable!() };
 
         // Output same size as background, 4-channel
         let (bg_w, bg_h) = background.dimensions();
         let bg_ch = background.channels() as usize;
+
+        // Scale and rotation collapse back into "an image at an integer
+        // offset", the shape the loop below already handles. At scale 1 and
+        // rotation 0 this is the input's own Arc and position, so the
+        // untransformed path resamples nothing.
+        let placed = match placement::place(
+            &foreground,
+            (bg_w, bg_h),
+            position_x,
+            position_y,
+            scale_x,
+            scale_y,
+            rotation,
+        ) {
+            Ok(placed) => placed,
+            Err(message) => {
+                return Err(OperationError { input_errors: vec![], node_error: Some(message) })
+            }
+        };
+        // Nothing placed becomes an empty foreground rather than a second code
+        // path: a 0-height image fails every row's bounds check, so the loop
+        // copies the background through exactly as it does off the edges.
+        let empty = Arc::new(FloatImage::new(0, 0, 1));
+        let (foreground, position_x, position_y, coverage) = match &placed {
+            Some(p) => (&p.image, p.x, p.y, p.coverage.as_ref()),
+            None => (&empty, 0, 0, None),
+        };
         let (fg_w, fg_h) = foreground.dimensions();
         let fg_ch = foreground.channels() as usize;
         let (al_w, al_h) = alpha.dimensions();
@@ -127,6 +163,12 @@ impl OpImageCombineBlend {
         let bg_raw = background.as_raw();
         let fg_raw = foreground.as_raw();
         let al_raw = alpha.as_raw();
+        // Present only where the placed quad actually covers a pixel. Needed
+        // because Lerp ignores the foreground's alpha, so without this the
+        // corners a rotation leaves outside the quad would fade the background
+        // towards transparent black. `None` whenever the placement was a pure
+        // offset/scale and every pixel is inside.
+        let cov_raw = coverage.map(|c| c.as_raw());
 
         if out_row_len > 0 {
             output
@@ -139,6 +181,8 @@ impl OpImageCombineBlend {
                     let foreground_y = y as i32 - position_y;
                     let fg_row = (foreground_y >= 0 && (foreground_y as u32) < fg_h)
                         .then(|| &fg_raw[foreground_y as usize * fg_w as usize * fg_ch..][..fg_w as usize * fg_ch]);
+                    let cov_row = cov_raw.filter(|_| foreground_y >= 0 && (foreground_y as u32) < fg_h)
+                        .map(|raw| &raw[foreground_y as usize * fg_w as usize..][..fg_w as usize]);
                     let al_row = ((y as u32) < al_h)
                         .then(|| &al_raw[y * al_w as usize * al_ch..][..al_w as usize * al_ch]);
 
@@ -146,8 +190,12 @@ impl OpImageCombineBlend {
                         let (br, bg_val, bb, ba) = expand_rgba(bg_px);
 
                         let foreground_x = x as i32 - position_x;
+                        let in_bounds = foreground_x >= 0 && (foreground_x as u32) < fg_w;
                         let fg_px = fg_row
-                            .filter(|_| foreground_x >= 0 && (foreground_x as u32) < fg_w)
+                            .filter(|_| in_bounds)
+                            .filter(|_| {
+                                cov_row.is_none_or(|row| row[foreground_x as usize] > 0.0)
+                            })
                             .map(|row| &row[foreground_x as usize * fg_ch..foreground_x as usize * fg_ch + fg_ch]);
 
                         if let Some(fg_px) = fg_px {

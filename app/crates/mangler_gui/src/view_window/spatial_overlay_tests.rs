@@ -391,3 +391,145 @@ fn screen_dist_to_pixel_diameter_inverts_ring_radius() {
     let back = screen_dist_to_pixel_diameter(r, image, dims);
     assert!((back - 50.0).abs() < 1e-3, "round-trip diameter {back}");
 }
+
+// ------------------------------------------------------- placement geometry
+
+/// A placement box at `(x, y)` sized `w x h` background pixels, turned `deg`
+/// degrees about its own centre.
+fn placement(x: f32, y: f32, w: f32, h: f32, deg: f32) -> Placement {
+    let (hw, hh) = (w * 0.5, h * 0.5);
+    let (sin_t, cos_t) = deg.to_radians().sin_cos();
+    Placement { hw, hh, centre: [x + hw, y + hh], sin_t, cos_t }
+}
+
+fn close(a: [f32; 2], b: [f32; 2], what: &str) {
+    assert!(
+        (a[0] - b[0]).abs() < 1e-3 && (a[1] - b[1]).abs() < 1e-3,
+        "{what}: {a:?} vs {b:?}"
+    );
+}
+
+#[test]
+fn unrotated_corners_are_the_plain_box() {
+    let p = placement(10.0, 20.0, 40.0, 30.0, 0.0);
+    close(p.local_to_image([-p.hw, -p.hh]), [10.0, 20.0], "top-left");
+    close(p.local_to_image([p.hw, p.hh]), [50.0, 50.0], "bottom-right");
+}
+
+#[test]
+fn positive_rotation_is_clockwise_on_screen() {
+    // Same convention as `placement::place` and the transform node: with y
+    // pointing down, +90 degrees takes the local +x axis to screen-down.
+    let p = placement(0.0, 0.0, 20.0, 20.0, 90.0);
+    close(p.local_to_image([10.0, 0.0]), [10.0, 20.0], "local +x after a quarter turn");
+}
+
+#[test]
+fn local_and_image_coordinates_round_trip() {
+    for deg in [0.0, 17.0, 90.0, 180.0, -73.5] {
+        let p = placement(30.0, -12.0, 64.0, 40.0, deg);
+        for l in [[0.0, 0.0], [p.hw, -p.hh], [-p.hw, p.hh], [5.0, -9.0]] {
+            close(p.image_to_local(p.local_to_image(l)), l, &format!("{deg} deg"));
+        }
+    }
+}
+
+#[test]
+fn resizing_a_corner_pins_the_opposite_corner() {
+    // The load-bearing property of a resize grip: whichever corner you are not
+    // dragging must not move, or the box slides away under the pointer.
+    let before = placement(10.0, 20.0, 40.0, 30.0, 0.0);
+    let sized = placement(0.0, 0.0, 90.0, 70.0, 0.0);
+    // Drag the bottom-right (+1, +1); the top-left is pinned.
+    let tl = pinned_top_left(&before, (1, 1), &sized);
+    close(tl, [10.0, 20.0], "top-left stays put");
+
+    // Drag the top-left (-1, -1); the bottom-right is pinned at (50, 50).
+    let tl = pinned_top_left(&before, (-1, -1), &sized);
+    close(tl, [50.0 - 90.0, 50.0 - 70.0], "bottom-right stays put");
+}
+
+#[test]
+fn resizing_pins_the_opposite_corner_when_rotated() {
+    // Rotated, "the opposite corner" is no longer an axis-aligned position, so
+    // this is the case a naive `x += dw` would silently get wrong.
+    for deg in [30.0, 90.0, 145.0, -60.0] {
+        let before = placement(10.0, 20.0, 40.0, 30.0, deg);
+        let pinned_before = before.local_to_image([-before.hw, -before.hh]);
+        let sized = placement(0.0, 0.0, 90.0, 70.0, deg);
+        let tl = pinned_top_left(&before, (1, 1), &sized);
+
+        let after = Placement {
+            hw: sized.hw,
+            hh: sized.hh,
+            centre: [tl[0] + sized.hw, tl[1] + sized.hh],
+            sin_t: before.sin_t,
+            cos_t: before.cos_t,
+        };
+        close(
+            after.local_to_image([-after.hw, -after.hh]),
+            pinned_before,
+            &format!("{deg} deg top-left"),
+        );
+    }
+}
+
+#[test]
+fn resizing_an_edge_keeps_the_other_axis_centred() {
+    // An edge grip pins the opposite *edge*, so the untouched axis must not
+    // drift: only the dragged axis moves.
+    let before = placement(10.0, 20.0, 40.0, 30.0, 0.0);
+    let sized = placement(0.0, 0.0, 90.0, 30.0, 0.0);
+    let tl = pinned_top_left(&before, (1, 0), &sized);
+    close(tl, [10.0, 20.0], "left edge and vertical position both stay");
+}
+
+#[test]
+fn quad_contains_is_true_inside_and_false_outside() {
+    let p = placement(0.0, 0.0, 40.0, 40.0, 45.0);
+    let to_screen = |v: [f32; 2]| Pos2::new(v[0], v[1]);
+    let corners = p.corners(&to_screen);
+    assert!(quad_contains(&corners, Pos2::new(20.0, 20.0)), "the centre is inside");
+    // A 45-degree square's bounding-box corners fall outside the quad — this is
+    // exactly the region the body handle must not claim, or panning dies there.
+    assert!(!quad_contains(&corners, Pos2::new(-8.0, -8.0)), "bounding-box corner");
+    assert!(!quad_contains(&corners, Pos2::new(100.0, 20.0)), "well outside");
+}
+
+#[test]
+fn quad_contains_handles_an_unrotated_box() {
+    let p = placement(10.0, 10.0, 20.0, 20.0, 0.0);
+    let to_screen = |v: [f32; 2]| Pos2::new(v[0], v[1]);
+    let corners = p.corners(&to_screen);
+    assert!(quad_contains(&corners, Pos2::new(15.0, 15.0)));
+    assert!(!quad_contains(&corners, Pos2::new(9.0, 15.0)));
+}
+
+#[test]
+fn the_rotation_knob_sits_beyond_the_top_edge() {
+    // Fixed screen offset, so it stays grabbable however small the box is.
+    let p = placement(0.0, 0.0, 40.0, 40.0, 0.0);
+    let to_screen = |v: [f32; 2]| Pos2::new(v[0], v[1]);
+    let knob = p.knob_position(&to_screen);
+    assert!((knob.x - 20.0).abs() < 1e-3, "knob x {}", knob.x);
+    assert!((knob.y - (0.0 - ROTATE_KNOB_GAP)).abs() < 1e-3, "knob y {}", knob.y);
+}
+
+#[test]
+fn the_rotation_knob_follows_the_box_around() {
+    // Turned upside down the knob must hang below the box, not stay above it.
+    let p = placement(0.0, 0.0, 40.0, 40.0, 180.0);
+    let to_screen = |v: [f32; 2]| Pos2::new(v[0], v[1]);
+    let knob = p.knob_position(&to_screen);
+    assert!(knob.y > 40.0, "knob should be below a flipped box, got {}", knob.y);
+}
+
+#[test]
+fn a_degenerate_box_still_produces_a_finite_knob() {
+    // A zero-height box gives no direction to push the knob along; the fallback
+    // must be finite rather than NaN from normalising a zero vector.
+    let p = placement(5.0, 5.0, 10.0, 0.0, 0.0);
+    let to_screen = |v: [f32; 2]| Pos2::new(v[0], v[1]);
+    let knob = p.knob_position(&to_screen);
+    assert!(knob.x.is_finite() && knob.y.is_finite(), "knob {knob:?}");
+}

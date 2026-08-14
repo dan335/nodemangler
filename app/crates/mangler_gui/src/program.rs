@@ -1598,6 +1598,12 @@ impl Program {
                 }
             }
             PreviewEditor::Gizmos { node_id, specs } => {
+                // A placement gizmo sizes its box from a *second* image (the
+                // composited foreground), whose dimensions live upstream rather
+                // than in any of the node's numbers. Resolved before the node
+                // borrow so the widget gets plain data.
+                let image_input_dims =
+                    connected_image_dims(&graph_editor.graph_nodes, &node_id);
                 let Some(node) = graph_editor.graph_nodes.get(&node_id) else {
                     return;
                 };
@@ -1610,6 +1616,7 @@ impl Program {
                         specs,
                         inputs: &node.inputs,
                         image_dims: displayed_dims.map(|(w, h)| (w as u32, h as u32)),
+                        image_input_dims: &image_input_dims,
                     },
                     theme,
                 );
@@ -2707,11 +2714,21 @@ pub fn gizmo_backdrop_source(
     let consumes_image = node.inputs.iter().any(|i| matches!(i.value, Value::Image { .. }));
 
     if consumes_image {
+        // A placement gizmo's foreground is an image input that is emphatically
+        // *not* the space its numbers live in — a composite's positions are
+        // background pixels. Skipping it keeps a graph whose background is
+        // still unwired from drawing the box over the foreground instead.
+        let placed = placement_image_inputs(node);
         let (upstream_id, upstream_index) = node
             .inputs
             .iter()
-            .find(|i| matches!(i.value, Value::Image { .. }) && i.connection.is_some())
-            .and_then(|i| i.connection.clone())?;
+            .enumerate()
+            .find(|(i, inp)| {
+                matches!(inp.value, Value::Image { .. })
+                    && inp.connection.is_some()
+                    && !placed.contains(i)
+            })
+            .and_then(|(_, i)| i.connection.clone())?;
         // Verify the far end really produces an image before naming it.
         image_output(nodes, &upstream_id, upstream_index)?;
         Some((upstream_id, upstream_index))
@@ -2719,6 +2736,40 @@ pub fn gizmo_backdrop_source(
         let index = node.outputs.iter().position(|o| matches!(o.value, Value::Image { .. }))?;
         Some((node_id.to_owned(), index))
     }
+}
+
+/// Input indices this node's gizmos name as a placement foreground.
+///
+/// Empty for everything except the two compositing nodes.
+fn placement_image_inputs(node: &GraphNode) -> Vec<usize> {
+    let Some(AddNodeType::Operation(op)) = node.node_type.as_ref() else {
+        return Vec::new();
+    };
+    mangler_core::gizmo::gizmos(op).iter().filter_map(|s| s.kind.image_input()).collect()
+}
+
+/// Pixel size of every *connected* image input, keyed by input index.
+///
+/// The placement gizmo needs the foreground's own dimensions to size its box,
+/// and a connected input's local value is a stale placeholder — the real image
+/// lives on the upstream node's output, the same walk
+/// [`gizmo_backdrop_source`] makes.
+fn connected_image_dims(
+    nodes: &HashMap<String, GraphNode>,
+    node_id: &str,
+) -> HashMap<usize, (u32, u32)> {
+    let mut dims = HashMap::new();
+    let Some(node) = nodes.get(node_id) else { return dims };
+    for (index, input) in node.inputs.iter().enumerate() {
+        if !matches!(input.value, Value::Image { .. }) {
+            continue;
+        }
+        let Some((up_id, up_index)) = input.connection.as_ref() else { continue };
+        if let Some((data, _)) = image_output(nodes, up_id, *up_index) {
+            dims.insert(index, (data.width(), data.height()));
+        }
+    }
+    dims
 }
 
 /// The image at `(node id, output index)`, with its change id, when that output
