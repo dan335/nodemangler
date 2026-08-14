@@ -216,8 +216,8 @@ const CIRCLE: &[GizmoSpec] = &[GizmoSpec {
 const TEXT: &[GizmoSpec] = &[GizmoSpec {
     label: "text",
     kind: Gizmo::Point {
-        x: 4,
-        y: 5,
+        x: 5,
+        y: 6,
         diameter: None,
         radius: None,
         space: SpatialSpace::Norm01 { basis: PixelBasis::Extent },

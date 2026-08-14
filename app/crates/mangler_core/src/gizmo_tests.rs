@@ -35,8 +35,8 @@ const EXPECTED_NAMES: &[(Operation, usize, &str)] = &[
     (Operation::OpImageShapesCircle, 3, "center_x"),
     (Operation::OpImageShapesCircle, 4, "center_y"),
     // from text
-    (Operation::OpImageInputText, 4, "x_position"),
-    (Operation::OpImageInputText, 5, "y_position"),
+    (Operation::OpImageInputText, 5, "x_position"),
+    (Operation::OpImageInputText, 6, "y_position"),
     // mirror
     (Operation::OpImageTransformMirror, 3, "offset x"),
     (Operation::OpImageTransformMirror, 4, "offset y"),

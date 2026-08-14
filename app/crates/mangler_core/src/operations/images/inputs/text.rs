@@ -1,16 +1,18 @@
 //! Text-to-image rendering operation.
 //!
-//! Renders one or more lines of text onto a grayscale image using the embedded
-//! Manrope Regular font via `ab_glyph`. Supports:
+//! Renders one or more lines of text onto a grayscale image via `ab_glyph`,
+//! using any font installed on the machine (see [`crate::fonts`]) or the
+//! embedded Manrope Regular. Supports:
 //! - Multi-line text via `\n` and optional automatic word-wrapping
 //! - Horizontal alignment (Left, Center, Right) relative to the anchor point
 //! - Vertical alignment (Top, Middle, Bottom) of the text block relative to the anchor
 //! - Adjustable letter spacing and line spacing multiplier
 //! - Arbitrary rotation of the text block around the anchor point
 
-use ab_glyph::{Font, FontArc, PxScale, ScaleFont};
+use ab_glyph::{Font, PxScale, ScaleFont};
 use image::{DynamicImage, GrayImage};
 use crate::float_image::FloatImage;
+use crate::fonts;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
@@ -21,8 +23,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
-/// Bytes of the embedded Manrope Regular font used for text rendering.
-static FONT_BYTES: &[u8] = include_bytes!("../../../../assets/Manrope-Regular.ttf");
+/// Index of the `font` input. The gizmo table addresses this node's anchor
+/// inputs positionally, so anything inserted before them shifts those too —
+/// `gizmo_tests.rs` fails loudly if the two fall out of step.
+const FONT: usize = 1;
 
 /// Operation that renders a text string onto a grayscale image.
 ///
@@ -40,7 +44,7 @@ impl OpImageInputText {
         NodeSettings {
             name: "from text".to_string(),
             description: "Renders a text string to a grayscale image.".to_string(),
-            help: "Rasterises the input string using the embedded Manrope Regular font into a 1-channel FloatImage, with white glyphs on a black background suitable for use as a mask. Explicit line breaks come from \\n in the text; setting wrap_width above 0 adds automatic word-wrap at that pixel column (at a 1024px reference; scales with image size).\n\nx_position and y_position are normalised 0-1 fractions of the canvas that define the text anchor. h_align and v_align place the block relative to that anchor, and a non-zero rotation rotates the full block clockwise around the anchor with bilinear resampling. letter_spacing and line_spacing fine-tune tracking and leading.".to_string(),
+            help: "Rasterises the input string into a 1-channel FloatImage, with white glyphs on a black background suitable for use as a mask. Explicit line breaks come from \\n in the text; setting wrap_width above 0 adds automatic word-wrap at that pixel column (at a 1024px reference; scales with image size).\n\nThe font dropdown lists every face installed on this machine — TrueType and OpenType, including the individual weights inside a .ttc collection — plus the built-in Manrope Regular that ships with the app. What the graph stores is the family *name*, not the file, so a graph opened on a machine without that font renders with the built-in and picks the real one back up when reopened somewhere it is installed; the name you chose is never overwritten. Bitmap and Type-1 fonts (.fon, .pfb) are not listed because they cannot be rasterised here.\n\nx_position and y_position are normalised 0-1 fractions of the canvas that define the text anchor. h_align and v_align place the block relative to that anchor, and a non-zero rotation rotates the full block clockwise around the anchor with bilinear resampling. letter_spacing and line_spacing fine-tune tracking and leading.".to_string(),
         }
     }
 
@@ -59,6 +63,21 @@ impl OpImageInputText {
         vec![
             Input::new("text".to_string(), Value::Text("Hello".to_string()), Some(InputSettings::MultiLineText), None)
                 .with_description("Text string to render; use newlines for explicit line breaks."),
+            // Options are the machine's installed faces, so this list differs
+            // per machine. That is fine: the *value* is a family name, and
+            // `Graph::load` re-derives settings from here, so a graph opened
+            // elsewhere keeps its name and simply renders with the built-in
+            // until it is opened somewhere that has the font.
+            Input::new(
+                "font".to_string(),
+                Value::Text(fonts::BUILT_IN.to_string()),
+                Some(InputSettings::Dropdown { options: fonts::options() }),
+                None,
+            )
+                .with_description(
+                    "Typeface to render with: the built-in font, or any face installed on this \
+                     machine. A font that isn't installed here falls back to the built-in.",
+                ),
             Input::new(
                 "font_size".to_string(),
                 Value::Decimal(64.0),
@@ -155,23 +174,25 @@ impl OpImageInputText {
         let mut input_errors: Vec<(usize, String)> = vec![];
 
         let text_c        = convert_input(inputs, 0,  ValueType::Text,      &mut input_errors);
-        let font_size_c   = convert_input(inputs, 1,  ValueType::Decimal,   &mut input_errors);
-        let width_c       = convert_input(inputs, 2,  ValueType::Integer,   &mut input_errors);
-        let height_c      = convert_input(inputs, 3,  ValueType::Integer,   &mut input_errors);
-        let x_pos_c       = convert_input(inputs, 4,  ValueType::Decimal,   &mut input_errors);
-        let y_pos_c       = convert_input(inputs, 5,  ValueType::Decimal,   &mut input_errors);
-        let letter_sp_c   = convert_input(inputs, 6,  ValueType::Decimal,   &mut input_errors);
-        let line_sp_c     = convert_input(inputs, 7,  ValueType::Decimal,   &mut input_errors);
-        let wrap_w_c      = convert_input(inputs, 8,  ValueType::Integer,   &mut input_errors);
-        let h_align_c     = convert_input(inputs, 9,  ValueType::TextHAlign, &mut input_errors);
-        let v_align_c     = convert_input(inputs, 10, ValueType::TextVAlign, &mut input_errors);
-        let rotation_c    = convert_input(inputs, 11, ValueType::Decimal,   &mut input_errors);
+        let font_c        = convert_input(inputs, FONT, ValueType::Text,    &mut input_errors);
+        let font_size_c   = convert_input(inputs, 2,  ValueType::Decimal,   &mut input_errors);
+        let width_c       = convert_input(inputs, 3,  ValueType::Integer,   &mut input_errors);
+        let height_c      = convert_input(inputs, 4,  ValueType::Integer,   &mut input_errors);
+        let x_pos_c       = convert_input(inputs, 5,  ValueType::Decimal,   &mut input_errors);
+        let y_pos_c       = convert_input(inputs, 6,  ValueType::Decimal,   &mut input_errors);
+        let letter_sp_c   = convert_input(inputs, 7,  ValueType::Decimal,   &mut input_errors);
+        let line_sp_c     = convert_input(inputs, 8,  ValueType::Decimal,   &mut input_errors);
+        let wrap_w_c      = convert_input(inputs, 9,  ValueType::Integer,   &mut input_errors);
+        let h_align_c     = convert_input(inputs, 10, ValueType::TextHAlign, &mut input_errors);
+        let v_align_c     = convert_input(inputs, 11, ValueType::TextVAlign, &mut input_errors);
+        let rotation_c    = convert_input(inputs, 12, ValueType::Decimal,   &mut input_errors);
 
         if !input_errors.is_empty() {
             return Err(OperationError { input_errors, node_error: None });
         }
 
         let Value::Text(text)             = text_c.unwrap()       else { unreachable!() };
+        let Value::Text(font_name)        = font_c.unwrap()        else { unreachable!() };
         let Value::Decimal(font_size)     = font_size_c.unwrap()   else { unreachable!() };
         let Value::Integer(img_width)     = width_c.unwrap()       else { unreachable!() };
         let Value::Integer(img_height)    = height_c.unwrap()      else { unreachable!() };
@@ -200,11 +221,11 @@ impl OpImageInputText {
         };
         let wrap_px     = wrap_width as f32;
 
-        // Load the embedded font and create a scaled instance.
-        let font = FontArc::try_from_slice(FONT_BYTES).map_err(|e| OperationError {
-            input_errors: vec![],
-            node_error: Some(format!("Failed to load embedded font: {e}")),
-        })?;
+        // Resolve the selected face. Never fails: a family this machine does
+        // not have falls back to the built-in rather than blanking the node, so
+        // a graph made elsewhere still renders. The name stays in the input, so
+        // it comes back correctly on a machine that has the font.
+        let (font, _honoured) = fonts::load(font_name.trim());
         let scale  = PxScale::from(font_size);
         let scaled = font.as_scaled(scale);
 
