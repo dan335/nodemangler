@@ -36,6 +36,25 @@ pub struct Input {
     /// Skipped during serialization — reconstructed from the operation definition.
     #[serde(skip)]
     pub default_value: Value,
+    /// Pixels this input must carry across a save, as a base64-encoded PNG.
+    ///
+    /// `value` deliberately drops image data (see `value_skip_images`), and for
+    /// almost every node that is right: the pixels can be rebuilt from
+    /// something the file *does* keep — a path, a URL, an upstream connection.
+    /// `from clipboard` is the exception. The OS clipboard it sampled is gone
+    /// by the next session, so nothing in the graph can reproduce the image and
+    /// it has to travel in the file itself.
+    ///
+    /// Written by the operation's `run`, which is the only place that knows the
+    /// pixels are worth keeping (`Node::run` hands the mutated inputs back, so
+    /// the write reaches the next save). PNG rather than raw f32 because the
+    /// graph file is text: a 1920x1080 RGBA f32 buffer is 33 MB raw and
+    /// serialises to well over 100 MB as a JSON number array, while the same
+    /// frame as PNG is a couple of MB.
+    ///
+    /// `skip_serializing_if` keeps it out of every other node's JSON entirely.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embedded_image: Option<String>,
     /// Optional UI widget configuration (drag value, slider, file picker, etc.).
     pub settings: Option<InputSettings>,
     /// If connected, the (node_id, output_index) of the upstream source.
@@ -85,6 +104,7 @@ impl Input {
             description: String::new(),
             value: default_value.clone(),
             default_value,
+            embedded_image: None,
             settings,
             connection: None,
             is_error: false,

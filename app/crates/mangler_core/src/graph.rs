@@ -282,6 +282,13 @@ impl Graph {
                                     fresh.value = saved.value.clone();
                                     fresh.connection = saved.connection.clone();
                                     fresh.is_exposed = saved.is_exposed;
+                                    // Pixels the node has no other way to
+                                    // rebuild (`from clipboard`). User state
+                                    // like the three above, not schema, so it
+                                    // has to survive this rebuild — dropping it
+                                    // here is exactly the "my image vanished on
+                                    // reload" bug, just one step later.
+                                    fresh.embedded_image = saved.embedded_image.clone();
                                 }
                             }
                             node.inputs = fresh_inputs;

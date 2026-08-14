@@ -3367,3 +3367,76 @@ async fn test_load_adopts_new_outputs_added_since_the_graph_was_saved() {
 
     let _ = fs::remove_file(&tmp_path);
 }
+
+// === embedded images survive a save (from clipboard) ===
+
+#[tokio::test]
+async fn test_embedded_image_survives_save_and_load() {
+    // The bug: a `from clipboard` node's pixels vanished on reload, because
+    // `Input.value` drops image data and the OS clipboard it sampled is gone by
+    // the next session. The captured PNG now rides along in the graph file.
+    use crate::operations::images::inputs::encode_png_base64;
+
+    let mut graph = create_test_graph();
+    let node_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpImageInputClipboard), glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+
+    let mut source = crate::float_image::FloatImage::new(3, 2, 4);
+    for y in 0..2 {
+        for x in 0..3 {
+            source.put_pixel(x, y, &[x as f32 / 3.0, y as f32 / 2.0, 0.5, 1.0]);
+        }
+    }
+    let encoded = encode_png_base64(&source).unwrap();
+    graph.nodes.get_mut(&node_id).unwrap().inputs[0].embedded_image = Some(encoded.clone());
+
+    let tmp_path = std::env::temp_dir().join(format!("test_embedded_{}.mangler.json", get_id()));
+    graph.set_save_path(tmp_path.clone());
+    graph.save_to_file().unwrap();
+
+    // It really is in the JSON, not just in memory.
+    let raw: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&tmp_path).unwrap()).unwrap();
+    assert_eq!(
+        raw["nodes"][&node_id]["inputs"][0]["embedded_image"].as_str(),
+        Some(encoded.as_str()),
+        "the captured PNG should be written to the graph file"
+    );
+
+    let loaded = Graph::load(tmp_path.clone(), None, None, false).unwrap();
+    assert_eq!(
+        loaded.nodes.get(&node_id).unwrap().inputs[0].embedded_image.as_deref(),
+        Some(encoded.as_str())
+    );
+
+    let _ = std::fs::remove_file(tmp_path);
+}
+
+#[tokio::test]
+async fn test_nodes_without_an_embedded_image_do_not_carry_the_field() {
+    // `skip_serializing_if` keeps it out of every other node's JSON, so the
+    // format cost of this feature is zero for graphs that never use it.
+    let mut graph = create_test_graph();
+    let node_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpNumberMathAdd), glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+
+    let tmp_path = std::env::temp_dir().join(format!("test_no_embed_{}.mangler.json", get_id()));
+    graph.set_save_path(tmp_path.clone());
+    graph.save_to_file().unwrap();
+
+    let raw: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&tmp_path).unwrap()).unwrap();
+    let input = &raw["nodes"][&node_id]["inputs"][0];
+    assert!(
+        input.get("embedded_image").is_none(),
+        "embedded_image must not appear on inputs that have none"
+    );
+
+    // And a file written without the field still loads.
+    let loaded = Graph::load(tmp_path.clone(), None, None, false).unwrap();
+    assert!(loaded.nodes.get(&node_id).unwrap().inputs[0].embedded_image.is_none());
+
+    let _ = std::fs::remove_file(tmp_path);
+}
