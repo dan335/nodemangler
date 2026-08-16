@@ -66,8 +66,20 @@
   </script>
 
   <!-- Privacy-friendly traffic stats (self-hosted). `defer` keeps it off the
-       critical rendering path. -->
+       critical rendering path. Clicks on `a[data-event]` fire custom events
+       via `pa.track`; the listener is safe to attach before the deferred
+       snippet runs because it only reads `pa` at click time. -->
   <script defer src="https://analytics.danp.us/script.js" data-site="6k0gy5oc"></script>
+  <script>
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest && e.target.closest("a[data-event]");
+      if (!a || !window.pa || !pa.track) return;
+      pa.track(a.getAttribute("data-event"), {
+        dest: a.getAttribute("data-event-dest"),
+        place: a.getAttribute("data-event-place")
+      });
+    });
+  </script>
 </head>
 <body>
   <div class="page">
@@ -84,7 +96,7 @@
           </svg>
           <span class="wordmark">nodemangler</span>
         </div>
-        <a href="https://github.com/dan335/nodemangler" class="github-link">github &rarr;</a>
+        <a href="https://github.com/dan335/nodemangler" class="github-link" data-event="outbound" data-event-dest="github_repo" data-event-place="header">github &rarr;</a>
       </div>
 
       <!-- intro -->
@@ -139,10 +151,10 @@
       <div class="download-section">
         <h2 class="eyebrow">Download</h2>
         <div class="download-actions">
-          <a href="https://danp.itch.io/nodemangler" class="btn btn-primary">Download on itch.io</a>
-          <a href="https://github.com/dan335/nodemangler/releases/latest" class="btn btn-primary">Download on GitHub</a>
+          <a href="https://danp.itch.io/nodemangler" class="btn btn-primary" data-event="download" data-event-dest="itch" data-event-place="hero">Download on itch.io</a>
+          <a href="https://github.com/dan335/nodemangler/releases/latest" class="btn btn-primary" data-event="download" data-event-dest="github" data-event-place="hero">Download on GitHub</a>
         </div>
-        <p class="download-note">Prebuilt binaries for Windows, macOS, and Linux (including a single-file AppImage) on the <a href="https://github.com/dan335/nodemangler/releases">releases page</a>. Or install with a package manager:</p>
+        <p class="download-note">Prebuilt binaries for Windows, macOS, and Linux (including a single-file AppImage) on the <a href="https://github.com/dan335/nodemangler/releases" data-event="outbound" data-event-dest="github_releases" data-event-place="note">releases page</a>. Or install with a package manager:</p>
         <pre class="code-block"><code><span class="code-comment"># macOS / Linux — Homebrew</span>
 brew tap dan335/nodemangler https://github.com/dan335/nodemangler
 brew install nodemangler
@@ -160,7 +172,7 @@ cargo run -p mangler_cli    <span class="code-comment"># headless cli</span></co
       <!-- license line -->
       <div class="license-row">
         <span>mit or apache-2.0, at your option</span>
-        <span><a href="https://github.com/dan335/nodemangler">github</a> &middot; <a href="https://danp.itch.io/nodemangler">itch.io</a></span>
+        <span><a href="https://github.com/dan335/nodemangler" data-event="outbound" data-event-dest="github_repo" data-event-place="footer">github</a> &middot; <a href="https://danp.itch.io/nodemangler" data-event="outbound" data-event-dest="itch" data-event-place="footer">itch.io</a></span>
       </div>
 
     </main>
