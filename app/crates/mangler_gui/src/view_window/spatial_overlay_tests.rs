@@ -344,6 +344,98 @@ fn crop_readout_survives_a_degenerate_image() {
     assert_eq!((x, y, w, h), (0, 0, 1, 1));
 }
 
+#[test]
+fn crop_pixels_delegates_to_resolve_crop_when_free() {
+    // Same numbers as the historical rounding tests — the overlay must not
+    // grow its own copy of the arithmetic.
+    let dims = (512, 256);
+    let v = [0.25, 0.25, 0.5, 0.5];
+    let p = mangler_core::operations::images::transform::crop::resolve_crop(
+        v[0], v[1], v[2], v[3], 0, 0, dims.0, dims.1,
+    );
+    assert_eq!(crop_pixels(v, dims), (p.x, p.y, p.w, p.h));
+}
+
+#[test]
+fn crop_pixels_aspect_matches_resolve_crop() {
+    let dims = (8, 4);
+    let v = [0.0, 0.0, 1.0, 1.0];
+    let p = mangler_core::operations::images::transform::crop::resolve_crop(
+        v[0], v[1], v[2], v[3], 1, 1, dims.0, dims.1,
+    );
+    assert_eq!(crop_pixels_aspect(v, 1, 1, dims), (p.x, p.y, p.w, p.h));
+    assert_eq!((p.x, p.y, p.w, p.h), (2, 0, 4, 4));
+}
+
+// --------------------------------------------------------- aspect-locked resize
+
+/// Pixel width/height of a normalized corner quad on `dims`.
+fn pixel_size(c: [f32; 4], dims: (u32, u32)) -> (f32, f32) {
+    ((c[2] - c[0]) * dims.0 as f32, (c[3] - c[1]) * dims.1 as f32)
+}
+
+#[test]
+fn aspect_corner_drag_keeps_pixel_ratio_on_a_wide_image() {
+    // 200×100: a 1:1 lock is a 2:1 *normalized* box. Asserting equality in
+    // fraction space would be the wrong check.
+    let dims = (200, 100);
+    let start = [0.25, 0.25, 0.5, 0.75];
+    let c = resize_corners_aspect(start, RectHandle::SE, [0.9, 0.9], MIN, (1, 1), dims);
+    let (pw, ph) = pixel_size(c, dims);
+    assert!((pw - ph).abs() < 1e-3, "pixel size {pw}×{ph} should be square: {c:?}");
+    // Opposite corner stays put.
+    assert!((c[0] - start[0]).abs() < 1e-6 && (c[1] - start[1]).abs() < 1e-6, "{c:?}");
+    assert!(c[2] > c[0] && c[3] > c[1], "must not flip: {c:?}");
+}
+
+#[test]
+fn aspect_east_edge_recenters_and_does_not_flip() {
+    let dims = (200, 100);
+    let start = [0.2, 0.2, 0.5, 0.6];
+    let c = resize_corners_aspect(start, RectHandle::E, [0.8, 0.4], MIN, (1, 1), dims);
+    let (pw, ph) = pixel_size(c, dims);
+    assert!((pw - ph).abs() < 1e-3, "pixel size {pw}×{ph}: {c:?}");
+    assert!(c[2] > c[0] && c[3] > c[1], "must not flip: {c:?}");
+    // Left edge stays; y recenters (and may clamp to the image).
+    assert!((c[0] - start[0]).abs() < 1e-5, "x0 walked: {c:?}");
+}
+
+#[test]
+fn aspect_resize_clamps_by_shrinking_about_the_fixed_corner() {
+    // Drag SE toward the far corner of a 1:1 lock on a 2:1 image: height
+    // hits the image edge first and width must shrink with it, not break
+    // the ratio.
+    let dims = (200, 100);
+    let start = [0.1, 0.1, 0.3, 0.5];
+    let c = resize_corners_aspect(start, RectHandle::SE, [1.4, 1.4], MIN, (1, 1), dims);
+    let (pw, ph) = pixel_size(c, dims);
+    assert!((pw - ph).abs() < 1e-3, "pixel size {pw}×{ph}: {c:?}");
+    assert!((c[0] - 0.1).abs() < 1e-6 && (c[1] - 0.1).abs() < 1e-6, "fixed corner moved: {c:?}");
+    assert!(c[2] <= 1.0 + 1e-6 && c[3] <= 1.0 + 1e-6, "left the image: {c:?}");
+}
+
+#[test]
+fn aspect_resize_past_the_fixed_corner_does_not_flip() {
+    let dims = (100, 100);
+    let start = [0.4, 0.4, 0.7, 0.7];
+    let c = resize_corners_aspect(start, RectHandle::SE, [0.1, 0.1], MIN, (1, 1), dims);
+    assert!(c[2] > c[0] && c[3] > c[1], "flipped: {c:?}");
+    let (pw, ph) = pixel_size(c, dims);
+    assert!((pw - ph).abs() < 1e-3, "pixel size {pw}×{ph}: {c:?}");
+}
+
+#[test]
+fn locked_resize_touches_all_four_origin_size_inputs() {
+    assert_eq!(
+        spec_inputs_touched_aspect(RectHandle::E, RectExtent::OriginSize, true),
+        [true, true, true, true]
+    );
+    assert_eq!(
+        spec_inputs_touched_aspect(RectHandle::Body, RectExtent::OriginSize, true),
+        [true, true, false, false]
+    );
+}
+
 // -------------------------------------------------------- sample-pixel disk
 
 #[test]

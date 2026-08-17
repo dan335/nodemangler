@@ -19,6 +19,8 @@ const EXPECTED_NAMES: &[(Operation, usize, &str)] = &[
     (Operation::OpImageTransformCrop, 2, "y"),
     (Operation::OpImageTransformCrop, 3, "width"),
     (Operation::OpImageTransformCrop, 4, "height"),
+    (Operation::OpImageTransformCrop, 5, "aspect w"), // referenced, not driven
+    (Operation::OpImageTransformCrop, 6, "aspect h"),
     // sample pixel
     (Operation::OpColorSampleSamplePixel, 1, "x"),
     (Operation::OpColorSampleSamplePixel, 2, "y"),
@@ -248,12 +250,24 @@ fn crop_declares_origin_size_not_two_corner() {
         panic!("crop should declare a gizmo");
     };
     match spec.kind {
-        Gizmo::Rect { extent, space, .. } => {
+        Gizmo::Rect { extent, space, aspect, .. } => {
             assert_eq!(extent, RectExtent::OriginSize);
             assert_eq!(space, SpatialSpace::Norm01 { basis: PixelBasis::Extent });
+            assert_eq!(aspect, Some((5, 6)));
         }
         other => panic!("crop should be a Rect, got {other:?}"),
     }
+}
+
+#[test]
+fn crop_aspect_is_referenced_not_driven() {
+    // Wiring aspect w/h must not freeze the box — same rule as sample pixel's
+    // diameter. The pair is read for the lock, never written by a drag.
+    let Some(spec) = gizmos(&Operation::OpImageTransformCrop).first() else {
+        panic!("crop should declare a gizmo");
+    };
+    assert_eq!(spec.kind.inputs(), vec![1, 2, 3, 4]);
+    assert_eq!(spec.kind.referenced_inputs(), vec![1, 2, 3, 4, 5, 6]);
 }
 
 #[test]

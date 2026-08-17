@@ -52,6 +52,11 @@ pub enum Gizmo {
         h: usize,
         space: SpatialSpace,
         extent: RectExtent,
+        /// Optional integer W:H pair (`aspect w`, `aspect h`). Both `> 0`
+        /// lock the box's *pixel* aspect. Referenced, not driven — wiring
+        /// the ratio must not freeze the box (same rule as `sample pixel`'s
+        /// diameter).
+        aspect: Option<(usize, usize)>,
     },
     /// Graduated-filter line: `angle` in degrees, `position` 0–1 along the
     /// gradient axis (mid-transition).
@@ -164,6 +169,7 @@ const CROP: &[GizmoSpec] = &[GizmoSpec {
         h: 4,
         space: SpatialSpace::Norm01 { basis: PixelBasis::Extent },
         extent: RectExtent::OriginSize,
+        aspect: Some((5, 6)),
     },
 }];
 
@@ -414,6 +420,21 @@ impl Gizmo {
                 }
                 if let Some((r, _)) = radius {
                     v.push(r);
+                }
+                v
+            }
+            Gizmo::Rect {
+                x,
+                y,
+                w,
+                h,
+                aspect,
+                ..
+            } => {
+                let mut v = vec![x, y, w, h];
+                if let Some((a, b)) = aspect {
+                    v.push(a);
+                    v.push(b);
                 }
                 v
             }

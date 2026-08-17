@@ -162,12 +162,14 @@ pub fn show(
                 h,
                 space,
                 extent,
+                aspect,
             } => show_rect(
                 ui,
                 id,
                 image_rect,
                 ctx,
                 [x, y, w, h],
+                aspect,
                 space,
                 extent,
                 editable,
@@ -1400,6 +1402,7 @@ fn show_rect(
     image_rect: Rect,
     ctx: &GizmoContext<'_>,
     idx: [usize; 4],
+    aspect: Option<(usize, usize)>,
     _space: SpatialSpace,
     extent: RectExtent,
     editable: bool,
@@ -1407,6 +1410,14 @@ fn show_rect(
     out: &mut SpatialOverlayResponse,
 ) {
     let Some(mut values) = read_quad(ctx.inputs, idx) else { return };
+    let ratio = read_aspect(ctx.inputs, aspect);
+    let locked = ratio.filter(|&(rw, rh)| rw > 0 && rh > 0);
+    // When locked, draw and grab the *fitted* crop so the overlay matches
+    // what `run()` will actually copy. A later drag writes that fitted
+    // rect back, which is how the sliders catch up.
+    if let (Some((rw, rh)), Some(dims)) = (locked, ctx.image_dims) {
+        values = fit_values(values, rw, rh, dims);
+    }
 
     if editable {
         let min = min_size(image_rect, ctx.image_dims);
@@ -1462,11 +1473,22 @@ fn show_rect(
             corners = if h == RectHandle::Body {
                 move_corners(corners, screen_delta_to_norm(image_rect, body_delta))
             } else if let Some(to) = grab_to {
-                resize_corners(corners, h, screen_to_norm(image_rect, to), min)
+                let pointer = screen_to_norm(image_rect, to);
+                match (locked, ctx.image_dims) {
+                    (Some((rw, rh)), Some(dims)) => {
+                        resize_corners_aspect(corners, h, pointer, min, (rw, rh), dims)
+                    }
+                    _ => resize_corners(corners, h, pointer, min),
+                }
             } else {
                 corners
             };
-            let next = quantize_quad(ctx.inputs, idx, corners_to_spec(extent, corners));
+            let mut next = quantize_quad(ctx.inputs, idx, corners_to_spec(extent, corners));
+            // Round-trip through the same resolver `run()` uses, so the drawn
+            // box is exactly the committed crop.
+            if let (Some((rw, rh)), Some(dims)) = (locked, ctx.image_dims) {
+                next = fit_values(next, rw, rh, dims);
+            }
             if next != values {
                 values = next;
                 for (slot, &i) in idx.iter().enumerate() {
@@ -1475,7 +1497,7 @@ fn show_rect(
                 // Live engine update while dragging — crop re-runs every frame
                 // so the output tracks the box, not just the mouse-up size.
                 out.commit = true;
-                for (slot, touched) in spec_inputs_touched(h, extent).iter().enumerate() {
+                for (slot, touched) in spec_inputs_touched_aspect(h, extent, locked.is_some()).iter().enumerate() {
                     if *touched {
                         out.commit_inputs.push(idx[slot]);
                     }
@@ -1484,7 +1506,7 @@ fn show_rect(
         }
         if let Some(h) = released {
             out.commit = true;
-            for (slot, touched) in spec_inputs_touched(h, extent).iter().enumerate() {
+            for (slot, touched) in spec_inputs_touched_aspect(h, extent, locked.is_some()).iter().enumerate() {
                 if *touched {
                     out.commit_inputs.push(idx[slot]);
                 }
@@ -1562,18 +1584,41 @@ fn draw_rect(
 
 /// Resolve an origin/size box to pixels exactly as `crop`'s `run()` does.
 ///
-/// Mirrors the operation deliberately: the far edge is rounded from
-/// `origin + size` rather than the size alone (so abutting crops share an edge),
-/// and the region always keeps at least one pixel. Keep in sync with
-/// `operations::images::transform::crop`.
+/// Delegates to [`mangler_core::operations::images::transform::crop::resolve_crop`]
+/// so the overlay and the operation cannot drift. `ratio` is the optional
+/// integer W:H lock (both 0 = free).
 pub fn crop_pixels(values: [f32; 4], dims: (u32, u32)) -> (i64, i64, i64, i64) {
-    let iw = dims.0.max(1) as i64;
-    let ih = dims.1.max(1) as i64;
-    let x0 = ((values[0] * iw as f32).round() as i64).clamp(0, iw - 1);
-    let y0 = ((values[1] * ih as f32).round() as i64).clamp(0, ih - 1);
-    let x1 = (((values[0] + values[2]) * iw as f32).round() as i64).clamp(x0 + 1, iw);
-    let y1 = (((values[1] + values[3]) * ih as f32).round() as i64).clamp(y0 + 1, ih);
-    (x0, y0, x1 - x0, y1 - y0)
+    crop_pixels_aspect(values, 0, 0, dims)
+}
+
+/// Same as [`crop_pixels`] with an explicit aspect-lock pair.
+pub fn crop_pixels_aspect(
+    values: [f32; 4],
+    ratio_w: i32,
+    ratio_h: i32,
+    dims: (u32, u32),
+) -> (i64, i64, i64, i64) {
+    let p = mangler_core::operations::images::transform::crop::resolve_crop(
+        values[0], values[1], values[2], values[3], ratio_w, ratio_h, dims.0, dims.1,
+    );
+    (p.x, p.y, p.w, p.h)
+}
+
+/// Fit an origin-size fraction quad to the pixel crop `run()` will produce.
+fn fit_values(values: [f32; 4], ratio_w: i32, ratio_h: i32, dims: (u32, u32)) -> [f32; 4] {
+    mangler_core::operations::images::transform::crop::resolve_crop(
+        values[0], values[1], values[2], values[3], ratio_w, ratio_h, dims.0, dims.1,
+    )
+    .to_norm(dims.0, dims.1)
+}
+
+/// Read the optional integer W:H pair a rect gizmo names. Missing or
+/// non-numeric slots are treated as 0 (free).
+fn read_aspect(inputs: &[Input], aspect: Option<(usize, usize)>) -> Option<(i32, i32)> {
+    let (a, b) = aspect?;
+    let rw = inputs.get(a).and_then(|i| read_scalar(&i.value)).unwrap_or(0.0) as i32;
+    let rh = inputs.get(b).and_then(|i| read_scalar(&i.value)).unwrap_or(0.0) as i32;
+    Some((rw, rh))
 }
 
 // ------------------------------------------------------------- rect geometry
@@ -1614,7 +1659,19 @@ pub fn handle_moves(h: RectHandle) -> [bool; 4] {
 /// Under [`RectExtent::OriginSize`] the size is `x1 - x0`, so moving *either* x
 /// corner changes `width` while only the near one changes `x`; moving the whole
 /// body shifts both corners equally and so leaves the size untouched.
+///
+/// When `aspect_locked`, every resize handle rewrites all four values: the
+/// orthogonal side is derived from the ratio (and an edge recenters on the
+/// free axis). Body still only translates.
 pub fn spec_inputs_touched(h: RectHandle, extent: RectExtent) -> [bool; 4] {
+    spec_inputs_touched_aspect(h, extent, false)
+}
+
+/// [`spec_inputs_touched`] with the aspect-lock rule applied when `locked`.
+pub fn spec_inputs_touched_aspect(h: RectHandle, extent: RectExtent, locked: bool) -> [bool; 4] {
+    if locked && h != RectHandle::Body {
+        return [true, true, true, true];
+    }
     let m = handle_moves(h);
     match extent {
         RectExtent::TwoCorner => m,
@@ -1658,6 +1715,181 @@ pub fn resize_corners(mut c: [f32; 4], h: RectHandle, to: [f32; 2], min: [f32; 2
     if m[3] {
         c[3] = (c[3]).max(c[1] + min[1]).min(1.0);
     }
+    c
+}
+
+/// Aspect-locked resize: the box's *pixel* width/height stays `ratio`, not its
+/// normalized width/height. A non-square image therefore produces a
+/// non-square normalized box for a 1:1 lock.
+///
+/// Corner: opposite corner stays fixed; the pointer is projected onto the
+/// aspect-correct size (whichever axis it overshoots), then the box shrinks
+/// about that fixed corner to stay in the unit square.
+/// Edge: the dragged edge moves; the orthogonal size is derived from the
+/// ratio and the box recenters on the free axis so an east drag does not
+/// walk the crop up or down.
+pub fn resize_corners_aspect(
+    c: [f32; 4],
+    h: RectHandle,
+    to: [f32; 2],
+    min: [f32; 2],
+    ratio: (i32, i32),
+    dims: (u32, u32),
+) -> [f32; 4] {
+    let (rw, rh) = ratio;
+    if rw <= 0 || rh <= 0 || dims.0 == 0 || dims.1 == 0 {
+        return resize_corners(c, h, to, min);
+    }
+    // Desired normalized width/height: (rw / iw) / (rh / ih).
+    let aspect_norm = (rw as f32 * dims.1 as f32) / (rh as f32 * dims.0 as f32);
+    if !aspect_norm.is_finite() || aspect_norm <= 0.0 {
+        return resize_corners(c, h, to, min);
+    }
+    let min = [
+        min[0].clamp(0.0, 1.0),
+        min[1].clamp(0.0, 1.0),
+    ];
+    // Minimum size that satisfies both the floor and the ratio.
+    let min_w = min[0].max(min[1] * aspect_norm).min(1.0);
+    let min_h = min[1].max(min[0] / aspect_norm).min(1.0);
+
+    match h {
+        RectHandle::Body => c,
+        RectHandle::NW | RectHandle::NE | RectHandle::SE | RectHandle::SW => {
+            resize_corner_aspect(c, h, to, aspect_norm, min_w, min_h)
+        }
+        RectHandle::N | RectHandle::S | RectHandle::W | RectHandle::E => {
+            resize_edge_aspect(c, h, to, aspect_norm, min_w, min_h)
+        }
+    }
+}
+
+fn resize_corner_aspect(
+    c: [f32; 4],
+    h: RectHandle,
+    to: [f32; 2],
+    aspect_norm: f32,
+    min_w: f32,
+    min_h: f32,
+) -> [f32; 4] {
+    let (fx, fy, sx, sy) = match h {
+        RectHandle::SE => (c[0], c[1], 1.0, 1.0),
+        RectHandle::SW => (c[2], c[1], -1.0, 1.0),
+        RectHandle::NE => (c[0], c[3], 1.0, -1.0),
+        RectHandle::NW => (c[2], c[3], -1.0, -1.0),
+        _ => return c,
+    };
+    // Signed proposals: positive = pointer is on the handle's side of the
+    // fixed corner. Past the fixed corner we stop at the minimum rather than
+    // flipping (crop cannot represent an inverted region).
+    let pw = ((to[0] - fx) * sx).max(0.0);
+    let ph = ((to[1] - fy) * sy).max(0.0);
+    let (mut w, mut hgt) = if pw >= ph * aspect_norm {
+        let w = pw;
+        (w, w / aspect_norm)
+    } else {
+        let hgt = ph;
+        (hgt * aspect_norm, hgt)
+    };
+    // Room from the fixed corner to the image edge in the handle's direction.
+    let max_w = if sx > 0.0 { (1.0 - fx).max(0.0) } else { fx.max(0.0) };
+    let max_h = if sy > 0.0 { (1.0 - fy).max(0.0) } else { fy.max(0.0) };
+    if w > max_w {
+        w = max_w;
+        hgt = w / aspect_norm;
+    }
+    if hgt > max_h {
+        hgt = max_h;
+        w = hgt * aspect_norm;
+    }
+    w = w.max(min_w.min(max_w));
+    hgt = w / aspect_norm;
+    if hgt > max_h {
+        hgt = max_h.max(min_h.min(max_h));
+        w = hgt * aspect_norm;
+    }
+    [
+        if sx > 0.0 { fx } else { fx - w },
+        if sy > 0.0 { fy } else { fy - hgt },
+        if sx > 0.0 { fx + w } else { fx },
+        if sy > 0.0 { fy + hgt } else { fy },
+    ]
+}
+
+fn resize_edge_aspect(
+    c: [f32; 4],
+    h: RectHandle,
+    to: [f32; 2],
+    aspect_norm: f32,
+    min_w: f32,
+    min_h: f32,
+) -> [f32; 4] {
+    let (mut x0, mut y0, mut x1, mut y1) = (c[0], c[1], c[2], c[3]);
+    match h {
+        RectHandle::E => {
+            x1 = to[0].clamp(x0 + min_w, 1.0);
+            let w = (x1 - x0).max(min_w);
+            let hgt = w / aspect_norm;
+            (y0, y1) = recenter_axis(y0, y1, hgt, min_h);
+            x1 = x0 + w;
+        }
+        RectHandle::W => {
+            x0 = to[0].clamp(0.0, x1 - min_w);
+            let w = (x1 - x0).max(min_w);
+            let hgt = w / aspect_norm;
+            (y0, y1) = recenter_axis(y0, y1, hgt, min_h);
+            x0 = x1 - w;
+        }
+        RectHandle::S => {
+            y1 = to[1].clamp(y0 + min_h, 1.0);
+            let hgt = (y1 - y0).max(min_h);
+            let w = hgt * aspect_norm;
+            (x0, x1) = recenter_axis(x0, x1, w, min_w);
+            y1 = y0 + hgt;
+        }
+        RectHandle::N => {
+            y0 = to[1].clamp(0.0, y1 - min_h);
+            let hgt = (y1 - y0).max(min_h);
+            let w = hgt * aspect_norm;
+            (x0, x1) = recenter_axis(x0, x1, w, min_w);
+            y0 = y1 - hgt;
+        }
+        _ => return c,
+    }
+    // If recentering overflowed the image, slide, then shrink if still too big.
+    clamp_box_into_unit([x0, y0, x1, y1], aspect_norm)
+}
+
+/// Place a span of `size` on `axis`, centered on the old span, then slide
+/// into `[0, 1]`. Does not shrink — [`clamp_box_into_unit`] does that after.
+fn recenter_axis(a0: f32, a1: f32, size: f32, _min: f32) -> (f32, f32) {
+    let mid = 0.5 * (a0 + a1);
+    (mid - 0.5 * size, mid + 0.5 * size)
+}
+
+/// Slide a box into the unit square; if it is still larger than the image
+/// along an axis, shrink about the centre keeping `aspect_norm`.
+fn clamp_box_into_unit(mut c: [f32; 4], aspect_norm: f32) -> [f32; 4] {
+    let mut w = c[2] - c[0];
+    let mut h = c[3] - c[1];
+    if w > 1.0 || h > 1.0 {
+        if w > 1.0 {
+            w = 1.0;
+            h = w / aspect_norm;
+        }
+        if h > 1.0 {
+            h = 1.0;
+            w = h * aspect_norm;
+        }
+        w = w.min(1.0);
+        h = h.min(1.0);
+    }
+    let x0 = c[0].clamp(0.0, (1.0 - w).max(0.0));
+    let y0 = c[1].clamp(0.0, (1.0 - h).max(0.0));
+    c[0] = x0;
+    c[1] = y0;
+    c[2] = x0 + w;
+    c[3] = y0 + h;
     c
 }
 
