@@ -1,6 +1,6 @@
 # NodeMangler
 
-An node-based image editor and procedural texture generator. Similar to Substance Designer and Material Maker but open source, free and not built on top of a game engine.  100% Rust and very fast.  GUI to create graphs and CLI to integrate them into your workflow.
+An node-based image editor and procedural texture generator.  Open source and free. Similar to Substance Designer and Material Maker.  Generate textures, edit raw photos, create vector shapes.  100% Rust and very fast.  GUI to create graphs and CLI to integrate them into your workflow.
 
 ![NodeMangler screenshot](screenshot.jpg)
 
