@@ -7,7 +7,7 @@ Node-based visual programming tool for image and color manipulation.
 - `app/` — Rust application (Cargo workspace)
 - `website/` — Project marketing site: standalone Rust crate (`mangler_site`, not in the `app/` workspace) serving static files with axum + tower-http; deployed via Docker to a host running Traefik
 - `scripts/` — test/build/release scripts (`.sh` + `.bat`); see `scripts/README.md`
-- `Formula/`, `bucket/`, `packaging/` — package-manager distribution (Homebrew formula, Scoop manifest, winget manifests + AppImage assets). `Formula/` and `bucket/` are forced to the repo root because this repo doubles as the Homebrew tap and Scoop bucket. All manifests are **generated** by `scripts/update_manifests.sh` (CI re-runs it after each release and commits to main — `git pull` after releasing); edit the script, not the files. See `packaging/README.md`, including why Homebrew is a formula and not a cask (cask downloads get quarantined; our ad-hoc-signed binaries then get SIGKILLed by Gatekeeper).
+- `Formula/`, `bucket/`, `packaging/` — package-manager distribution (Homebrew formula, Scoop manifest, winget manifests, AUR PKGBUILD + AppImage assets). `Formula/` and `bucket/` are forced to the repo root because this repo doubles as the Homebrew tap and Scoop bucket. All manifests are **generated** by `scripts/update_manifests.sh` (CI re-runs it after each release and commits to main — `git pull` after releasing); edit the script, not the files. See `packaging/README.md`, including why Homebrew is a formula and not a cask (cask downloads get quarantined; our ad-hoc-signed binaries then get SIGKILLed by Gatekeeper).
 
 ## Versioning & Releases
 
@@ -18,7 +18,14 @@ Node-based visual programming tool for image and color manipulation.
   `.github/workflows/release.yml`, which builds Windows/Linux/macOS executables on
   native runners and publishes them to GitHub Releases (archives + a Linux
   AppImage + `SHA256SUMS.txt`), pushes to itch.io via butler, then regenerates
-  the package-manager manifests and commits them back to main.
+  the package-manager manifests and commits them back to main. A final `aur`
+  job pushes the regenerated `packaging/aur/PKGBUILD` + `.SRCINFO` to the AUR
+  as `nodemangler-bin` (the `-bin` package repackages the linux-x86_64 archive
+  rather than building from source); it no-ops until the `AUR_SSH_PRIVATE_KEY`
+  secret is set, since the AUR authenticates by SSH key. Getting into AUR is
+  also what reaches Arch derivatives like Omarchy — its own repo
+  (pkgs.omarchy.org) is a curated build cache that mostly mirrors AUR, so
+  there's little to gain from it for a `-bin` package.
 
 ## Project Structure
 

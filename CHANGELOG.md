@@ -10,6 +10,13 @@ Rewire or re-export affected graphs after those releases.
 
 ## [Unreleased]
 
+### Added
+
+- AUR package `nodemangler-bin`, generated alongside the other package
+  manifests and pushed to the AUR on each release, so Arch and its derivatives
+  (Omarchy, EndeavourOS, CachyOS) can install with `yay -S nodemangler-bin`.
+  Linux archives now also carry the desktop entry and icon it installs.
+
 ### Changed
 
 - egui-phosphor comes from crates.io (0.13) instead of a git fork, which leaves

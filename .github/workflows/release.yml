@@ -72,6 +72,13 @@ jobs:
           cp "app/target/${{ matrix.target }}/release/mangler_gui" \
              "app/target/${{ matrix.target }}/release/mangler_cli" \
              README.md LICENSE.md "$STAGE/"
+          # Linux archives also carry the desktop entry and icon so the AUR
+          # package (and anyone unpacking by hand) can register a menu entry.
+          # Harmless extra files in the Homebrew-on-Linux install.
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            cp packaging/appimage/nodemangler.desktop "$STAGE/"
+            cp app/crates/mangler_gui/assets/mangler_icon.png "$STAGE/nodemangler.png"
+          fi
           tar czf "$STAGE.tar.gz" "$STAGE"
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -191,10 +198,59 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898270+github-actions[bot]@users.noreply.github.com"
-          git add Formula bucket packaging/winget
+          git add Formula bucket packaging/winget packaging/aur
           if git diff --cached --quiet; then
             echo "manifests unchanged"
             exit 0
           fi
           git commit -m "Update package manifests for ${GITHUB_REF_NAME}"
           git push origin main || (git pull --rebase origin main && git push origin main)
+
+  # Publish the generated PKGBUILD to the AUR as `nodemangler-bin`, which is
+  # what puts the release in reach of Arch and its derivatives (Omarchy,
+  # EndeavourOS, CachyOS) via `yay -S nodemangler-bin`. It repackages the
+  # linux-x86_64 archive rather than building from source, so installing is a
+  # download instead of a full Rust compile.
+  #
+  # Runs after `manifests` so it picks up the PKGBUILD that job just committed.
+  # Skips itself until the AUR_SSH_PRIVATE_KEY secret exists, so releases keep
+  # working before the AUR package is claimed (same idea as the itch job — but
+  # gated inside the step, since `secrets` can't be read from a job-level `if`).
+  aur:
+    needs: manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - name: Push to the AUR
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "$AUR_SSH_PRIVATE_KEY" ]; then
+            echo "AUR_SSH_PRIVATE_KEY is not set - skipping the AUR push."
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          echo "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          # Host key pinned instead of trust-on-first-use. If this ever needs
+          # replacing, check it against the fingerprint the AUR publishes:
+          # SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4
+          echo "aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN" > ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/aur -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+          # An unclaimed package name clones as an empty repo; the first push
+          # is what creates it.
+          git clone ssh://aur@aur.archlinux.org/nodemangler-bin.git aur-repo
+          cp packaging/aur/PKGBUILD packaging/aur/.SRCINFO aur-repo/
+          cd aur-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898270+github-actions[bot]@users.noreply.github.com"
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then
+            echo "AUR package already at ${GITHUB_REF_NAME} - nothing to push."
+            exit 0
+          fi
+          git commit -m "Update to ${GITHUB_REF_NAME#v}"
+          git branch -M master
+          git push origin master

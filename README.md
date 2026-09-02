@@ -52,10 +52,15 @@ scoop bucket add nodemangler https://github.com/dan335/nodemangler
 scoop install nodemangler
 ```
 
+```bash
+# Arch, and derivatives like Omarchy / EndeavourOS / CachyOS — AUR
+yay -S nodemangler-bin
+```
+
 On Linux there's also a single-file `.AppImage` on the releases page:
 download, `chmod +x`, run. The [itch.io app](https://itch.io/app) auto-updates
-its installs; Homebrew/Scoop update through their normal `upgrade`/`update`
-commands.
+its installs; Homebrew/Scoop/AUR update through their normal
+`upgrade`/`update`/`-Syu` commands.
 
 ## Build & run
 

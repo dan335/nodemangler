@@ -41,12 +41,62 @@ look there:
 
 The rest lives here:
 
+- **`aur/`** — the AUR package (`PKGBUILD` + `.SRCINFO`), regenerated each
+  release and pushed to the AUR by the `aur` job in `release.yml`. See below.
 - **`winget/`** — winget manifest set (version + installer + locale YAML),
   regenerated each release so it's always ready to submit. See below.
 - **`appimage/`** — the `.desktop` file for the Linux AppImage; the release
   workflow assembles the AppDir (reusing the GUI's icon from
   `app/crates/mangler_gui/assets/mangler_icon.png`) and builds
   `nodemangler-vX.Y.Z-linux-x86_64.AppImage` with appimagetool.
+
+## AUR: one-time setup
+
+The AUR package is **`nodemangler-bin`**. It repackages the `linux-x86_64`
+archive from the releases page rather than building from source, so installing
+is a download instead of a full Rust compile:
+
+```bash
+yay -S nodemangler-bin      # or paru, or makepkg -si from a clone
+```
+
+Arch derivatives inherit it for free — on Omarchy that's *Install > AUR* in the
+menu, or `omarchy pkg add nodemangler-bin`.
+
+Unlike winget, publishing is automated — but only once the account exists,
+because the AUR authenticates by SSH key rather than by pull request:
+
+1. Register at <https://aur.archlinux.org/> and add an SSH **public** key under
+   *My Account*.
+2. Add the matching **private** key to this repo as the `AUR_SSH_PRIVATE_KEY`
+   secret (Settings > Secrets and variables > Actions).
+
+The `aur` job skips itself while that secret is missing, so releases keep
+working before the package is claimed. Once it's set, every release pushes the
+regenerated PKGBUILD — and because an unclaimed name clones as an empty repo,
+that first push is also what creates the package. To do it by hand instead:
+
+```bash
+git clone ssh://aur@aur.archlinux.org/nodemangler-bin.git
+cp packaging/aur/PKGBUILD packaging/aur/.SRCINFO nodemangler-bin/
+cd nodemangler-bin && git add -A && git commit -m "Update to X.Y.Z" && git push
+```
+
+Two things worth knowing:
+
+- The package installs the GUI as `nodemangler` and the CLI as `mangle`, the
+  same names Homebrew and Scoop use. It also installs a desktop entry and
+  icon, which it takes from the Linux archive — the release workflow only
+  started putting them there alongside this package, so the AUR package can't
+  point at any release older than that.
+- `.SRCINFO` is written by `update_manifests.sh` next to the PKGBUILD instead
+  of by `makepkg --printsrcinfo`, because CI has no Arch box. If the PKGBUILD
+  gains fields, add them in both places. On an Arch machine you can confirm
+  they still agree:
+
+  ```bash
+  cd packaging/aur && makepkg --printsrcinfo | diff - .SRCINFO
+  ```
 
 ## winget: one-time manual submission
 
