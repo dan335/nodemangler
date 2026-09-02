@@ -26,9 +26,7 @@ rfd = "0.17"
 time = "0.3"
 glam = "0.32"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-# egui-phosphor 0.12 (crates.io) pins egui = "0.34"; use the egui-0.35 fork (upstream PR #41)
-# until a 0.35-compatible release lands on crates.io, then switch back to a version number.
-egui-phosphor = { git = "https://github.com/crumblingstatue/egui-phosphor", rev = "5a0075f68a463f6b316d39776fff519a2762b729" }
+egui-phosphor = "0.13"
 fastrand = "2.0"
 egui_extras = "0.35"
 dirs = "6"

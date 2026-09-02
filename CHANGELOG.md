@@ -10,6 +10,11 @@ Rewire or re-export affected graphs after those releases.
 
 ## [Unreleased]
 
+### Changed
+
+- egui-phosphor comes from crates.io (0.13) instead of a git fork, which leaves
+  the dependency tree with no git sources at all.
+
 ## [1.0.11] - 2026-08-14
 
 ### Added
