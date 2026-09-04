@@ -102,6 +102,10 @@ fn poll_preview_slot<T>(
     }
 }
 
+/// Horizontal gap (graph-space units) between an OS-dropped image node and
+/// the `to file` node created alongside it, on top of one `NODE_SIZE.x`.
+const COMPANION_NODE_GAP: f32 = 60.0;
+
 pub struct Program {
     pub app: mangler_core::app::App,
     tx_change_graph: mpsc::Sender<ChangeGraphMessage>,
@@ -405,9 +409,18 @@ impl Program {
     /// drag-and-drop handler and the Libraries panel's "add to current graph"
     /// action.
     pub fn add_image_from_file(&mut self, path: PathBuf) {
+        let graph_pos = self.jittered_add_position();
+        self.add_image_from_file_at(path, graph_pos);
+    }
+
+    /// A graph-space point near the focused graph panel's centre, jittered so
+    /// repeated adds don't stack exactly, for nodes added without an explicit
+    /// drop point (an OS file drop lands wherever the OS reports it, which
+    /// egui doesn't map to a panel; the Libraries "add" has no pointer at all).
+    fn jittered_add_position(&self) -> Pos2 {
         // Pick a screen point inside the focused graph panel, then map it into
         // graph space through that panel's camera. `main_graph_rects` holds
-        // last frame's panel rects â€” the same source `camera_at` relies on for
+        // last frame's panel rects — the same source `camera_at` relies on for
         // pre-render pointer conversions.
         let rect = self
             .main_graph_rects
@@ -420,8 +433,73 @@ impl Program {
             rect.center().y + fastrand::f32() * jitter - jitter * 0.5,
         );
         let (zoom, position) = self.camera_at(screen);
-        let graph_pos = view_to_graph_space_pos2(zoom, screen) - position.to_vec2();
-        self.add_image_from_file_at(path, graph_pos);
+        view_to_graph_space_pos2(zoom, screen) - position.to_vec2()
+    }
+
+    /// Creates an image input node for `path` **and** a `to file` node wired
+    /// to its image output, so a file dropped in from the OS arrives as a
+    /// ready-to-export pair: the export node targets the dropped image's own
+    /// folder, is named `{image stem}_{N}` (never the bare stem, which would
+    /// overwrite the source) and keeps the source's format where the node can
+    /// write it. See `OpImageOutputFile::inputs_for_source` for those rules.
+    ///
+    /// This is the OS-drop flow only. A Libraries-panel drop or double-click
+    /// keeps adding the single image node: a library image is browsed from
+    /// inside the app, usually to feed an existing graph, whereas dragging a
+    /// file in from Explorer/Finder is "process this file", which wants the
+    /// output in place.
+    ///
+    /// Both nodes go through `AddNode` with their values inline (see
+    /// `add_image_from_file_at` for why `SetInput` won't do), and the
+    /// connection follows on the same channel; the engine handles messages in
+    /// order, so it exists by the time the connection is added.
+    pub fn add_image_with_output_from_file(&mut self, path: PathBuf) {
+        use mangler_core::operations::images::outputs::file::OpImageOutputFile;
+        use mangler_core::operations::Operation;
+
+        let image_pos = self.jittered_add_position();
+        let Some(image_id) = self.add_image_from_file_at(path.clone(), image_pos) else {
+            return;
+        };
+
+        // Stems the graph's existing output nodes already claim, from the
+        // GUI's mirror of the nodes (the engine's copy is the same set: every
+        // node in it was echoed here via `AddedNode`/`LoadedNode`).
+        let taken: Vec<String> = self
+            .graph_editor
+            .graph_nodes
+            .values()
+            .filter_map(|node| {
+                let Some(AddNodeType::Operation(op)) = &node.node_type else { return None };
+                let (_, file_name_idx) = mangler_core::graph::output_node_path_inputs(op)?;
+                match node.inputs.get(file_name_idx).map(|i| &i.value) {
+                    Some(Value::Text(name)) if !name.trim().is_empty() => Some(name.clone()),
+                    _ => None,
+                }
+            })
+            .collect();
+        let values = OpImageOutputFile::inputs_for_source(&path, taken);
+
+        // Sit the export node one node-width to the right, plus a gap wide
+        // enough that the connection reads as a wire rather than a seam.
+        let output_pos = image_pos + egui::vec2(crate::NODE_SIZE.x + COMPANION_NODE_GAP, 0.0);
+        let output_id = match self.add_node(
+            AddNodeType::Operation(Operation::OpImageOutputFile),
+            output_pos,
+            true,
+            None,
+            values,
+        ) {
+            Ok(id) => id,
+            Err(err) => {
+                println!("Error adding to-file node: {}", err.0);
+                return;
+            }
+        };
+
+        // Image output is index 0 on both `from file` and `from raw`; the
+        // image input is index 0 on `to file`.
+        self.add_connection(output_id, 0, image_id, 0);
     }
 
     /// Creates an image input node wired to `path` at an explicit graph-space
@@ -435,7 +513,10 @@ impl Program {
     /// puts the white-balance, encoding and resolution controls in front of the
     /// user instead of making them swap the node out first. Their `path` input
     /// is index 0 in both cases.
-    pub fn add_image_from_file_at(&mut self, path: PathBuf, graph_pos: Pos2) {
+    ///
+    /// Returns the new node's id (the one the engine will echo back), or
+    /// `None` if the add message could not be sent.
+    pub fn add_image_from_file_at(&mut self, path: PathBuf, graph_pos: Pos2) -> Option<String> {
         use mangler_core::operations::Operation;
         let operation = if mangler_core::operations::images::inputs::file::is_raw_file(&path) {
             Operation::OpImageInputRaw
@@ -447,14 +528,18 @@ impl Program {
         // GUI builds its local node from â€” already carries it. A `SetInput`
         // sent after `AddNode` is never echoed back, leaving the settings
         // panel showing an empty path even though the engine loaded the file.
-        if let Err(err) = self.add_node(
+        match self.add_node(
             AddNodeType::Operation(operation),
             graph_pos,
             true,
             None,
             vec![(0, Value::Path(path))],
         ) {
-            println!("Error adding image node: {}", err.0);
+            Ok(id) => Some(id),
+            Err(err) => {
+                println!("Error adding image node: {}", err.0);
+                None
+            }
         }
     }
 
@@ -991,7 +1076,10 @@ impl Program {
             }
         });
         for path in dropped_image_paths {
-            self.add_image_from_file(path);
+            // An image from the OS arrives with a `to file` node already wired
+            // up, targeting the image's own folder (see the method's docs for
+            // why the Libraries panel's adds don't).
+            self.add_image_with_output_from_file(path);
         }
         // Bubble dropped graphs up for `App` to open (needs the programs map).
         self.pending_open_graphs.extend(dropped_graph_paths);

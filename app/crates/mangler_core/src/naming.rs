@@ -58,6 +58,47 @@ pub fn graph_file_name(name: &str) -> String {
     format!("{}{}", sanitize_name(name), GRAPH_EXTENSION)
 }
 
+/// Picks the first `{base}_{N}` stem (N ≥ 1) that is neither in `taken` nor
+/// already a file stem inside `dir`.
+///
+/// This is the one rule behind every auto-named output file: a fresh output
+/// node's `{graph name}_{N}` (see `Graph::add_node`) and the `to file` node
+/// created alongside a dropped image (`{image stem}_{N}`). `taken` carries the
+/// stems other output nodes in the graph already claim; `dir` (when given and
+/// readable) adds what is on disk, extension ignored, so a stem is considered
+/// used whatever its extension — `photo_1.png` blocks `photo_1.jpg` too, which
+/// is what stops a new node quietly overwriting an unrelated file. Comparison
+/// is case-insensitive so it holds on case-insensitive filesystems; an
+/// unreadable or nonexistent `dir` simply contributes nothing.
+pub fn unique_stem(
+    base: &str,
+    dir: Option<&std::path::Path>,
+    taken: impl IntoIterator<Item = String>,
+) -> String {
+    let mut used: std::collections::HashSet<String> =
+        taken.into_iter().map(|s| s.trim().to_lowercase()).collect();
+
+    // Stems already present on disk in the target folder (extension stripped).
+    if let Some(dir) = dir {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                if let Some(stem) = std::path::Path::new(&entry.file_name()).file_stem() {
+                    used.insert(stem.to_string_lossy().to_lowercase());
+                }
+            }
+        }
+    }
+
+    let mut n: u32 = 1;
+    loop {
+        let candidate = format!("{}_{}", base, n);
+        if !used.contains(&candidate.to_lowercase()) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
 #[cfg(test)]
 #[path = "naming_tests.rs"]
 mod tests;

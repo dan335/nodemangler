@@ -134,7 +134,8 @@ async fn test_file_output_exact_settings() {
         "image", "folder", "file name", "format", "quality", "color format",
         "png compression", "auto save", "save",
     ]);
-    assert_eq!(OpImageOutputFile::create_outputs().len(), 1);
+    // Image passthrough + file path (layout pinned by `outputs_put_the_image_passthrough_first`).
+    assert_eq!(OpImageOutputFile::create_outputs().len(), 2);
     // Format defaults to jpg.
     match &inputs[3].value {
         Value::ImageType(f) => assert_eq!(*f, ImageFormat::Jpeg, "format should default to jpg"),
@@ -153,7 +154,7 @@ async fn test_file_output_auto_save_off_writes_nothing() {
     inputs[7].value = Value::Bool(false); // auto save off
 
     let result = OpImageOutputFile::run(&mut inputs).await.unwrap();
-    match &result.responses[0].value {
+    match &result.responses[OUT_PATH].value {
         Value::Path(p) => assert!(p.as_os_str().is_empty(), "no write → empty path, got {:?}", p),
         other => panic!("expected Path output, got {:?}", other),
     }
@@ -180,7 +181,7 @@ async fn test_file_output_save_button_writes_once_then_resets() {
     // A second run with the pulse now false must not write.
     std::fs::remove_file(&path).ok();
     let result = OpImageOutputFile::run(&mut inputs).await.unwrap();
-    match &result.responses[0].value {
+    match &result.responses[OUT_PATH].value {
         Value::Path(p) => assert!(p.as_os_str().is_empty(), "second run should not write"),
         other => panic!("expected Path output, got {:?}", other),
     }
@@ -262,7 +263,7 @@ async fn test_file_output_returns_path_on_success() {
     let path = out_path(&dir, "out", ImageFormat::Png);
     let mut inputs = make_file_inputs(img, &dir, "out", ImageFormat::Png);
     let result = OpImageOutputFile::run(&mut inputs).await.unwrap();
-    match &result.responses[0].value {
+    match &result.responses[OUT_PATH].value {
         Value::Path(p) => {
             assert!(!p.as_os_str().is_empty(), "output path should not be empty");
             assert!(p.exists(), "output file should exist at the returned path");
@@ -290,7 +291,7 @@ async fn test_file_output_defaults_name_to_graph_name() {
     let result = OpImageOutputFile::run(&mut inputs).await.unwrap();
     drop(_guard);
 
-    match &result.responses[0].value {
+    match &result.responses[OUT_PATH].value {
         Value::Path(p) => assert_eq!(p, &dir.join("my graph.png"), "empty name → graph name"),
         other => panic!("Expected Path output, got {:?}", other),
     }
@@ -314,7 +315,7 @@ async fn test_file_output_relative_folder_resolves_against_graph_dir() {
     drop(_guard);
 
     let expected = base.join("renders").join("out.png");
-    match &result.responses[0].value {
+    match &result.responses[OUT_PATH].value {
         Value::Path(p) => assert_eq!(p, &expected, "relative folder should join graph dir"),
         other => panic!("Expected Path output, got {:?}", other),
     }
@@ -597,4 +598,124 @@ async fn test_file_output_avif_wrong_color_format_errors() {
     let result = OpImageOutputFile::run(&mut inputs).await;
     assert!(result.is_err(), "AVIF + Rgba16 should be rejected");
     std::fs::remove_dir_all(&dir).ok();
+}
+
+// === inputs_for_source (companion node for a dropped image) ===
+
+/// Looks up the value written for input `index`, if any.
+fn value_at(values: &[(usize, Value)], index: usize) -> Option<&Value> {
+    values.iter().find(|(i, _)| *i == index).map(|(_, v)| v)
+}
+
+#[test]
+fn inputs_for_source_targets_the_source_folder_and_a_derived_name() {
+    let source = PathBuf::from("/photos/trip/beach.png");
+    let values = OpImageOutputFile::inputs_for_source(&source, Vec::new());
+
+    assert!(matches!(value_at(&values, FOLDER), Some(Value::Path(p)) if p == Path::new("/photos/trip")));
+    // Never the bare stem: that would overwrite the dropped file itself.
+    assert!(matches!(value_at(&values, FILE_NAME), Some(Value::Text(t)) if t == "beach_1"));
+    // A PNG source round-trips as PNG (alpha survives), not the JPEG default.
+    assert!(matches!(value_at(&values, FORMAT), Some(Value::ImageType(ImageFormat::Png))));
+}
+
+#[test]
+fn inputs_for_source_skips_stems_other_output_nodes_use() {
+    let source = PathBuf::from("/photos/beach.jpg");
+    let taken = vec!["beach_1".to_string(), "Beach_2".to_string()];
+    let values = OpImageOutputFile::inputs_for_source(&source, taken);
+    // Case-insensitive, so "Beach_2" blocks "beach_2" as well.
+    assert!(matches!(value_at(&values, FILE_NAME), Some(Value::Text(t)) if t == "beach_3"));
+    assert!(matches!(value_at(&values, FORMAT), Some(Value::ImageType(ImageFormat::Jpeg))));
+}
+
+#[test]
+fn inputs_for_source_skips_stems_already_on_disk() {
+    let dir = std::env::temp_dir().join(format!("mangler_companion_{}", get_id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let source = dir.join("shot.jpg");
+    std::fs::write(&source, b"not really a jpeg").unwrap();
+    // A different extension still claims the stem.
+    std::fs::write(dir.join("shot_1.png"), b"x").unwrap();
+
+    let values = OpImageOutputFile::inputs_for_source(&source, Vec::new());
+    assert!(matches!(value_at(&values, FOLDER), Some(Value::Path(p)) if p == &dir));
+    assert!(matches!(value_at(&values, FILE_NAME), Some(Value::Text(t)) if t == "shot_2"));
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn inputs_for_source_leaves_the_default_format_for_unwritable_sources() {
+    // Camera raw: not a writable format at all.
+    let values = OpImageOutputFile::inputs_for_source(Path::new("/cards/IMG_0001.CR3"), Vec::new());
+    assert!(value_at(&values, FORMAT).is_none());
+    assert!(matches!(value_at(&values, FILE_NAME), Some(Value::Text(t)) if t == "IMG_0001_1"));
+
+    // HDR is writable, but only from Rgb32F; the node's default colour
+    // format is Rgb8, so matching it would make the first save fail.
+    let values = OpImageOutputFile::inputs_for_source(Path::new("/sky/probe.hdr"), Vec::new());
+    assert!(value_at(&values, FORMAT).is_none());
+    let values = OpImageOutputFile::inputs_for_source(Path::new("/sky/probe.exr"), Vec::new());
+    assert!(value_at(&values, FORMAT).is_none());
+}
+
+#[test]
+fn inputs_for_source_extension_match_is_case_insensitive() {
+    let values = OpImageOutputFile::inputs_for_source(Path::new("/x/PHOTO.JPG"), Vec::new());
+    assert!(matches!(value_at(&values, FORMAT), Some(Value::ImageType(ImageFormat::Jpeg))));
+    let values = OpImageOutputFile::inputs_for_source(Path::new("/x/icon.WebP"), Vec::new());
+    assert!(matches!(value_at(&values, FORMAT), Some(Value::ImageType(ImageFormat::WebP))));
+}
+
+#[test]
+fn inputs_for_source_without_a_parent_leaves_the_folder_to_the_engine() {
+    // A bare file name has no directory to point at; omitting `folder` lets
+    // `Graph::add_node` pre-fill the graph's own directory as usual.
+    let values = OpImageOutputFile::inputs_for_source(Path::new("lonely.png"), Vec::new());
+    assert!(value_at(&values, FOLDER).is_none());
+    assert!(matches!(value_at(&values, FILE_NAME), Some(Value::Text(t)) if t == "lonely_1"));
+}
+
+// === Output layout: image passthrough first, path second ===
+
+#[test]
+fn outputs_put_the_image_passthrough_first() {
+    // The GUI draws a node's preview from output 0, so it must be the image.
+    let outputs = OpImageOutputFile::create_outputs();
+    assert_eq!(outputs.len(), 2);
+    assert_eq!(outputs[OUT_IMAGE].name, "image");
+    assert!(matches!(outputs[OUT_IMAGE].value, Value::Image { .. }));
+    assert_eq!(outputs[OUT_PATH].name, "file path");
+    assert!(matches!(outputs[OUT_PATH].value, Value::Path(_)));
+}
+
+#[tokio::test]
+async fn image_passes_through_untouched_whether_or_not_it_saves() {
+    let img = float_from_dynamic(DynamicImage::ImageRgba8(image::RgbaImage::new(4, 4)));
+    let dir = temp_dir("passthrough");
+
+    for auto_save in [false, true] {
+        let mut inputs = make_file_inputs(img.clone(), &dir, "pass", ImageFormat::Png);
+        inputs[7].value = Value::Bool(auto_save);
+        let Value::Image { change_id: in_change_id, .. } = inputs[0].value.clone() else { unreachable!() };
+
+        let result = OpImageOutputFile::run(&mut inputs).await.unwrap();
+        assert_eq!(result.responses.len(), 2);
+        match &result.responses[OUT_IMAGE].value {
+            Value::Image { data, change_id } => {
+                // Same allocation, same identity: a save that only touched
+                // disk must not look like a new image to anything downstream.
+                assert!(Arc::ptr_eq(data, &img), "auto_save={auto_save}: expected the input Arc back");
+                assert_eq!(*change_id, in_change_id, "auto_save={auto_save}: change id must be preserved");
+            }
+            other => panic!("expected Image on output 0, got {:?}", other),
+        }
+        match &result.responses[OUT_PATH].value {
+            Value::Path(p) => assert_eq!(!p.as_os_str().is_empty(), auto_save, "path is empty exactly when nothing was written"),
+            other => panic!("expected Path on output 1, got {:?}", other),
+        }
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
 }

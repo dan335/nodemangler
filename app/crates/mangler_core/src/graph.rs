@@ -30,13 +30,31 @@ use crate::NodeChangedMessage::SubgraphLoaded;
 /// to pre-fill a fresh node's save destination and to detect stem collisions.
 /// Returns `None` for any other operation. Keep in sync with each op's input
 /// layout (`to file`: 1/2; `material`: 9/10).
-fn output_node_path_inputs(op: &crate::operations::Operation) -> Option<(usize, usize)> {
+pub fn output_node_path_inputs(op: &crate::operations::Operation) -> Option<(usize, usize)> {
     use crate::operations::Operation;
     match op {
         Operation::OpImageOutputFile => Some((1, 2)),
         Operation::OpImageOutputMaterial => Some((9, 10)),
         _ => None,
     }
+}
+
+/// The file-name stems the image-output nodes among `nodes` already claim
+/// (their non-blank `file name` input), untrimmed and in original case —
+/// [`crate::naming::unique_stem`] normalises. Feeds the unique-stem pick for
+/// a new output node so two nodes in one graph never target the same file.
+pub fn output_stems_in_use<'a>(nodes: impl IntoIterator<Item = &'a Node>) -> Vec<String> {
+    let mut stems = Vec::new();
+    for node in nodes {
+        let NodeType::Operation { operation } = &node.node_type else { continue };
+        let Some((_, file_name_idx)) = output_node_path_inputs(operation) else { continue };
+        if let Some(Value::Text(name)) = node.inputs.get(file_name_idx).map(|i| &i.value) {
+            if !name.trim().is_empty() {
+                stems.push(name.clone());
+            }
+        }
+    }
+    stems
 }
 
 /// Hash of a save file's content, as recorded in `Graph::last_synced_hash`
@@ -454,49 +472,14 @@ impl Graph {
     ///
     /// `N` is the smallest integer ≥ 1 whose stem is not already used by another
     /// image-output node's explicit file name in this graph ("to file" or
-    /// "material"), nor by an existing file in `dir` (extension ignored — a stem
-    /// is considered taken whatever its extension). Comparison is
-    /// case-insensitive so it holds on case-insensitive filesystems. The base is
-    /// the graph's own (sanitized) name; when the graph has no name yet it falls
+    /// "material"), nor by an existing file in `dir` (see
+    /// [`crate::naming::unique_stem`] for the exact rule). The base is the
+    /// graph's own (sanitized) name; when the graph has no name yet it falls
     /// back to "untitled".
     fn next_unique_output_stem(&self, dir: Option<&std::path::Path>) -> String {
         let mut base = crate::naming::sanitize_name(&self.name);
         if base.is_empty() { base = "untitled".to_string(); }
-
-        // Stems already claimed by other output nodes' explicit file names.
-        let mut taken: HashSet<String> = HashSet::new();
-        for other in self.nodes.values() {
-            let crate::node_type::NodeType::Operation { operation } = &other.node_type else { continue };
-            let Some((_, file_name_idx)) = output_node_path_inputs(operation) else { continue };
-            if let Some(input) = other.inputs.get(file_name_idx) {
-                if let Value::Text(name) = &input.value {
-                    let name = name.trim();
-                    if !name.is_empty() {
-                        taken.insert(name.to_lowercase());
-                    }
-                }
-            }
-        }
-
-        // Stems already present on disk in the target folder (extension stripped).
-        if let Some(dir) = dir {
-            if let Ok(entries) = std::fs::read_dir(dir) {
-                for entry in entries.flatten() {
-                    if let Some(stem) = std::path::Path::new(&entry.file_name()).file_stem() {
-                        taken.insert(stem.to_string_lossy().to_lowercase());
-                    }
-                }
-            }
-        }
-
-        let mut n: u32 = 1;
-        loop {
-            let candidate = format!("{}_{}", base, n);
-            if !taken.contains(&candidate.to_lowercase()) {
-                return candidate;
-            }
-            n += 1;
-        }
+        crate::naming::unique_stem(&base, dir, output_stems_in_use(self.nodes.values()))
     }
 
     /// Remove a node from the graph, cleaning up all its inbound and outbound

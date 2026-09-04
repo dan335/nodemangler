@@ -70,3 +70,40 @@ fn graph_file_name_sanitizes_and_appends_extension() {
 fn graph_file_name_strips_illegal_chars_but_keeps_spaces() {
     assert_eq!(graph_file_name("a/b c"), "ab c.mangler.json");
 }
+
+// === unique_stem ===
+
+#[test]
+fn unique_stem_starts_at_one_when_nothing_is_taken() {
+    assert_eq!(unique_stem("graph", None, Vec::new()), "graph_1");
+}
+
+#[test]
+fn unique_stem_skips_taken_names_case_insensitively_and_trimmed() {
+    let taken = vec!["graph_1".to_string(), " GRAPH_2 ".to_string()];
+    assert_eq!(unique_stem("graph", None, taken), "graph_3");
+}
+
+#[test]
+fn unique_stem_fills_the_first_gap() {
+    let taken = vec!["graph_1".to_string(), "graph_3".to_string()];
+    assert_eq!(unique_stem("graph", None, taken), "graph_2");
+}
+
+#[test]
+fn unique_stem_counts_files_on_disk_whatever_their_extension() {
+    let dir = std::env::temp_dir().join(format!("mangler_unique_stem_{}", crate::get_id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("graph_1.png"), b"x").unwrap();
+    std::fs::write(dir.join("GRAPH_2.jpg"), b"x").unwrap();
+
+    assert_eq!(unique_stem("graph", Some(&dir), Vec::new()), "graph_3");
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn unique_stem_ignores_an_unreadable_dir() {
+    let dir = std::path::PathBuf::from("/no/such/dir/anywhere");
+    assert_eq!(unique_stem("graph", Some(&dir), Vec::new()), "graph_1");
+}
