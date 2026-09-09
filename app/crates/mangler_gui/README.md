@@ -24,7 +24,8 @@ zoomable grid, and the graph re-evaluates automatically whenever an input change
 
 - **Pan** by dragging the background
 - **Zoom** with the scroll wheel
-- **Add nodes** by dragging them out of the node menu
+- **Add nodes** by clicking or dragging them out of the node list, or by pressing
+  Tab over the canvas to search
 - **Connect** by dragging from an output dot to an input dot
 - **Select** by clicking; selected nodes show a highlight border
 - **Delete** via keyboard or context menu
@@ -32,9 +33,16 @@ zoomable grid, and the graph re-evaluates automatically whenever an input change
 ### Node menu
 
 A categorized, searchable panel on the left listing every available operation, grouped
-into Numbers, Colors, Images, Logic, and Text (with subcategories like input,
-transform, adjustments, filter, noise, …). Drag an operation onto the canvas to create a
-node.
+into Numbers, Colors, Images, Logic, Text, and Curves (with subcategories like input,
+transform, adjustments, filter, noise, …).
+
+**Click** a row to add that node to the focused graph, or **drag** it onto a canvas to
+place it precisely — the panel it would drop into is outlined while you drag, and the
+ghost node is drawn at that panel's zoom. Hovering a row shows what the node does.
+
+The search box filters on node name *or* category path, so `noise` and `blur` both
+match whole groups. Results are ranked with name matches ahead of category-only ones.
+Escape (or the clear button) resets the filter and restores the tree.
 
 ### Settings panel
 
@@ -84,7 +92,7 @@ compatibility for older files — they re-wire or re-export.
 | `app.rs` | Top-level `App` (`eframe::App`) — manages programs, themes, the menu bar |
 | `program.rs` | `Program` — owns one engine instance plus all UI panels for one graph |
 | `graph/` | Editor canvas: node rendering, input/output dots, connection drawing |
-| `node_menu/` | Categorized, searchable operation list with drag-to-create |
+| `node_menu/` | Categorized, searchable operation list with click- and drag-to-create |
 | `settings/` | Node and graph settings panels |
 | `view_window/` | Image viewer and view panel |
 | `themes/` | The four theme definitions and switching |

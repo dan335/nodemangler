@@ -192,6 +192,13 @@ impl GraphEditor {
 
         self.draw_background_grid(ui, editor_rect, camera.position, camera.zoom, theme);
 
+        // Teach the ways in on an empty graph, where there is nothing else to
+        // look at. Painted, not a widget, so panning and selection are
+        // unaffected.
+        if self.graph_nodes.is_empty() {
+            self.draw_empty_graph_hint(ui, editor_rect, theme);
+        }
+
         let cursor_inside = editor_rect.contains(cursor_position);
 
         let mut is_cursor_over_node = false;
@@ -541,6 +548,31 @@ impl GraphEditor {
 
     //     ui.painter().add(egui::Shape::line(points, stroke));
     // }
+
+    /// Centred "how do I start" text for a graph with no nodes in it.
+    fn draw_empty_graph_hint(&self, ui: &egui::Ui, editor_rect: Rect, theme: &Theme) {
+        // Below this the text would wrap into the panel edges and look broken;
+        // a panel that narrow isn't being used to build a graph anyway.
+        if editor_rect.width() < MIN_HINT_PANEL_WIDTH {
+            return;
+        }
+
+        let is_main_window = ui.ctx().viewport_id() == egui::ViewportId::ROOT;
+        let lines = empty_graph_hint_lines(is_main_window);
+        let color = theme.get().text_faint;
+        let line_height = 20.0;
+        let top = editor_rect.center().y - (lines.len() as f32 - 1.0) * line_height * 0.5;
+
+        for (index, line) in lines.iter().enumerate() {
+            ui.painter().text(
+                Pos2::new(editor_rect.center().x, top + index as f32 * line_height),
+                egui::Align2::CENTER_CENTER,
+                line,
+                egui::FontId::proportional(14.0),
+                color,
+            );
+        }
+    }
 
     pub fn draw_background_grid(&self, ui: &mut egui::Ui, editor_rect: Rect, graph_position: Pos2, zoom: f32, theme: &Theme) {
         let stroke = Stroke::new(1.0, theme.get().grid_lines);
@@ -942,6 +974,22 @@ pub struct TempConnection {
     pub from_value_type: ValueType,
     /// Whether the source input accepts any type (for pass-through nodes like select).
     pub from_accepts_any_type: bool,
+}
+
+/// Narrower than this and the empty-graph hint would collide with the panel
+/// edges, so it is omitted.
+const MIN_HINT_PANEL_WIDTH: f32 = 260.0;
+
+/// The lines of the empty-graph hint.
+///
+/// Tab-to-search is a main-window-only overlay, so a graph panel living in a
+/// secondary OS window must not advertise it.
+pub fn empty_graph_hint_lines(is_main_window: bool) -> Vec<&'static str> {
+    let mut lines = vec!["click a node in the node list to add it, or drag it here"];
+    if is_main_window {
+        lines.push("press Tab to search for a node");
+    }
+    lines
 }
 
 pub struct GraphEditorResponse {

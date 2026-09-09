@@ -367,3 +367,29 @@ fn test_multi_drag_preserves_relative_positions() {
     assert!((c_offset.x - 90.0).abs() < 0.001);
     assert!((c_offset.y - 10.0).abs() < 0.001);
 }
+
+/// The empty-graph hint teaches Tab only where Tab actually works: the
+/// Tab-to-search overlay is main-window-only.
+#[test]
+fn empty_graph_hint_mentions_tab_only_in_the_main_window() {
+    let main = empty_graph_hint_lines(true);
+    assert!(
+        main.iter().any(|line| line.contains("Tab")),
+        "the main window should advertise Tab search"
+    );
+
+    let secondary = empty_graph_hint_lines(false);
+    assert!(
+        !secondary.iter().any(|line| line.contains("Tab")),
+        "a secondary window has no Tab search to advertise"
+    );
+
+    // Both should still explain the node list, which works everywhere.
+    for lines in [&main, &secondary] {
+        assert!(
+            lines.iter().any(|line| line.contains("node list")),
+            "every hint should point at the node list"
+        );
+        assert!(!lines.is_empty());
+    }
+}

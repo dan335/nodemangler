@@ -81,6 +81,18 @@ changes, affected nodes are marked dirty and re-execute in dependency order, wit
 results propagating downstream. Graphs save as JSON and round-trip freely between the
 GUI and the CLI.
 
+### Creating nodes
+
+Four ways, all equivalent:
+
+- **Click** a node in the Node List panel to drop it into the focused graph.
+- **Drag** one out of the Node List to place it exactly where you want it.
+- **Press Tab** over the graph canvas to search by name and add at the cursor.
+- **Drag a wire** into empty space to search only for nodes that fit that connection.
+
+The Node List's search box filters by node name *or* category, so typing `noise`
+or `blur` pulls up everything in those groups.
+
 See the [mangler_core README](app/crates/mangler_core/README.md) for the engine
 internals.
 

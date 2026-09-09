@@ -25,7 +25,10 @@ use crate::{
     },
     graph_to_view_space,
     libraries::libraries_state::LibrariesState,
-    node_menu::{menu_item::MenuItemsResult, menu_panel::MenuPanel},
+    node_menu::{
+        menu_item::{abandoned_drag_is_click, MenuItemsResult},
+        menu_panel::MenuPanel,
+    },
     panels::{panel_kind::PanelKind, panel_tree::LeafId},
     settings::{graph_settings_panel, node_settings_panel},
     themes::theme::Theme,
@@ -172,6 +175,12 @@ pub struct Program {
     /// published by the window holding the mouse capture so every window can
     /// hit-test and draw the ghost node.
     menu_drag_pointer_screen: Option<Pos2>,
+    /// Where a node-list drag was first pressed, in screen points. Compared
+    /// against the release point to tell a real drag from a slow click: egui
+    /// promotes a motionless press to a drag once it outlasts
+    /// `max_click_duration` (0.8s), so without this a deliberate click on a
+    /// node row would arm a drag, find no drop target, and do nothing at all.
+    menu_drag_press_screen: Option<Pos2>,
     /// Image file being dragged out of the Libraries panel, if any. Set when
     /// an image row's drag starts (via `LibraryAction::BeginImageDrag`) and
     /// dropped onto a graph panel by `show_menu_drag`, which creates an "image
@@ -330,6 +339,7 @@ impl Program {
                 main_graph_rects: Vec::new(),
                 graph_rects_screen: HashMap::new(),
                 menu_drag_pointer_screen: None,
+                menu_drag_press_screen: None,
                 dragging_library_image: None,
                 fallback_name: "new graph".to_string(),
                 graph_name_buffer: String::new(),
@@ -1129,14 +1139,39 @@ impl Program {
 
     fn show_node_list_panel(&mut self, ui: &mut egui::Ui, theme: &Theme) {
         puffin::profile_scope!("menu panel");
-        let r = self.menu_panel.show(ui, theme);
+        let out = self.menu_panel.show(ui, theme);
 
-        if r.subgraph_being_created {
-            self.dragging_menu_button.subgraph_being_created = true;
+        // A drag is armed here and consumed later by `show_menu_drag`; a click
+        // is handled immediately. Keeping them on separate channels is what
+        // stops a click from leaving a phantom drag armed.
+        if !out.drag.is_empty() {
+            self.dragging_menu_button = out.drag;
         }
 
-        if r.operation_being_created.is_some() {
-            self.dragging_menu_button.operation_being_created = r.operation_being_created;
+        if let Some(node_type) = out.add_now {
+            self.add_node_at_focused_panel(node_type);
+        }
+    }
+
+    /// Adds a node without a drop point, near the focused graph panel's centre.
+    /// Used by the node list's click-to-add.
+    ///
+    /// The empty check is load-bearing: `jittered_add_position` falls back to a
+    /// fictitious 800x600 rect when no graph panel is open, which would place
+    /// the node somewhere the user cannot see.
+    fn add_node_at_focused_panel(&mut self, node_type: AddNodeType) {
+        if self.main_graph_rects.is_empty() {
+            self.status_message = Some((
+                "no graph panel open â€” use a panel's corner menu to add one".to_string(),
+                std::time::Instant::now(),
+            ));
+            return;
+        }
+
+        let graph_pos = self.jittered_add_position();
+        match self.add_node(node_type, graph_pos, true, None, Vec::new()) {
+            Ok(node_id) => self.edit_node(node_id),
+            Err(err) => println!("Error adding node: {}", err.0),
         }
     }
 
@@ -2058,11 +2093,12 @@ impl Program {
             return;
         }
 
-        let (primary_down, primary_released, local_pointer) = ui.ctx().input(|i| {
+        let (primary_down, primary_released, local_pointer, press_origin) = ui.ctx().input(|i| {
             (
                 i.pointer.primary_down(),
                 i.pointer.primary_released(),
                 i.pointer.latest_pos(),
+                i.pointer.press_origin(),
             )
         });
 
@@ -2072,6 +2108,16 @@ impl Program {
         if primary_down || primary_released {
             if let Some(local) = local_pointer {
                 self.menu_drag_pointer_screen = Some(origin + local.to_vec2());
+            }
+        }
+
+        // Where the gesture began, recorded once from the capturing window.
+        // `press_origin` rather than the first pointer position we happen to
+        // observe: a fast drag can already be several pixels along by the first
+        // frame we see, which would make it measure as a click.
+        if self.menu_drag_press_screen.is_none() {
+            if let Some(press) = press_origin {
+                self.menu_drag_press_screen = Some(origin + press.to_vec2());
             }
         }
 
@@ -2111,11 +2157,36 @@ impl Program {
                         self.edit_node(node_id);
                     }
                 }
+            } else if self.dragging_library_image.is_none() {
+                // Released outside every graph panel. If the pointer never
+                // actually travelled, this was a click that egui promoted to a
+                // drag by duration alone â€” honour it as a click rather than
+                // silently dropping it. A real drag abandoned over another
+                // panel still creates nothing. (Library drags keep their own
+                // semantics, where a click means "preview".)
+                let is_click = self
+                    .menu_drag_press_screen
+                    .is_some_and(|press| abandoned_drag_is_click(press, pointer_screen));
+                if is_click {
+                    let node_type = if let Some(operation) =
+                        &self.dragging_menu_button.operation_being_created
+                    {
+                        Some(AddNodeType::Operation(operation.clone()))
+                    } else if self.dragging_menu_button.subgraph_being_created {
+                        Some(AddNodeType::Subgraph)
+                    } else {
+                        None
+                    };
+                    if let Some(node_type) = node_type {
+                        self.add_node_at_focused_panel(node_type);
+                    }
+                }
             }
 
             self.dragging_menu_button = MenuItemsResult::default();
             self.dragging_library_image = None;
             self.menu_drag_pointer_screen = None;
+            self.menu_drag_press_screen = None;
             return;
         }
 
@@ -2138,31 +2209,51 @@ impl Program {
             name = "image".to_string();
         }
 
-        let drag_rect = Rect::from_center_size(pointer, NODE_SIZE);
-
-        ui.painter().add(egui::Shape::rect_filled(
-            drag_rect,
-            CornerRadius::ZERO,
-            theme.get().node_header_bg,
-        ));
-
-        // Ghost node font size follows the zoom of whichever graph panel the
-        // pointer is currently over, falling back to zoom 1.0 when it isn't
-        // over any graph panel.
-        let hovered_zoom = graph_rects
-            .iter()
-            .find(|(_, r)| r.contains(pointer))
+        // Which graph panel the drop would land in, if any. This has to be a
+        // geometric test rather than `hovered()`: for the whole drag egui keeps
+        // hover routed to the source row, so a target panel never reports it.
+        let hovered_panel = graph_rects.iter().find(|(_, r)| r.contains(pointer));
+        let hovered_zoom = hovered_panel
             .map(|(id, _)| self.camera_transform(Some(*id)).0)
             .unwrap_or(1.0);
+
+        let colors = theme.get();
+
+        // Outline the panel that would receive the drop, so the target is
+        // unambiguous while dragging across a multi-panel layout.
+        if let Some((_, rect)) = hovered_panel {
+            ui.painter().rect_stroke(
+                rect.shrink(1.0),
+                CornerRadius::ZERO,
+                egui::Stroke::new(2.0, colors.node_header_selected_border),
+                egui::StrokeKind::Inside,
+            );
+        }
+
+        // Size the ghost the way the real node will be sized, so what the user
+        // sees is what they get at any zoom. Dimmed when it isn't over a graph
+        // panel, where releasing would create nothing.
+        let ghost_size = egui::vec2(
+            graph_to_view_space(hovered_zoom, NODE_SIZE.x),
+            graph_to_view_space(hovered_zoom, NODE_SIZE.y),
+        );
+        let drag_rect = Rect::from_center_size(pointer, ghost_size);
+        let fill = if hovered_panel.is_some() {
+            colors.node_header_bg
+        } else {
+            colors.node_header_bg.gamma_multiply(0.5)
+        };
+
+        ui.painter()
+            .add(egui::Shape::rect_filled(drag_rect, CornerRadius::ZERO, fill));
 
         // node name
         ui.painter().text(
             drag_rect.center(),
             egui::Align2::CENTER_CENTER,
             name,
-            //egui::style::Style::text_styles(),
             egui::FontId::proportional(graph_to_view_space(hovered_zoom, 14.0)),
-            Color32::from(theme.get().override_text_color),
+            Color32::from(colors.override_text_color),
         );
     }
 
