@@ -830,7 +830,7 @@ fn setup_fonts(ctx: &egui::Context) {
     // Start with the default fonts (we will be adding to them rather than replacing them).
     let mut fonts = egui::FontDefinitions::default();
 
-    egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+    crate::icons::add_to_fonts(&mut fonts);
 
     std::sync::Arc::make_mut(fonts.font_data.get_mut("phosphor").unwrap()).tweak.y_offset_factor = 0.1;
 

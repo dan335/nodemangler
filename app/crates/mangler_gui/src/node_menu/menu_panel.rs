@@ -149,7 +149,7 @@ impl MenuPanel {
                         .put(
                             clear_rect,
                             egui::Button::new(
-                                egui::RichText::new(egui_phosphor::regular::X)
+                                egui::RichText::new(crate::icons::X)
                                     .color(colors.text_faint),
                             )
                             .frame(false),

@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use eframe::egui;
-use egui_phosphor::regular as icons;
+use crate::icons as icons;
 
 use crate::themes::theme::{Theme, ThemeValues};
 

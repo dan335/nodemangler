@@ -1068,19 +1068,19 @@ impl Program {
         let mut dropped_graph_paths: Vec<PathBuf> = Vec::new();
         ctx.input(|i| {
             for file in i.raw.dropped_files.iter() {
-                let Some(path) = &file.path else { continue };
+                let path = file.path();
                 let file_name = path
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_default();
                 if crate::libraries::library_scanner::is_graph_file(&file_name) {
                     // A NodeMangler graph: let `App` open it in a tab.
-                    dropped_graph_paths.push(path.clone());
+                    dropped_graph_paths.push(path.to_path_buf());
                 } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                     if ValueType::file_extensions(&ValueType::Image)
                         .contains(&ext.to_lowercase())
                     {
-                        dropped_image_paths.push(path.clone());
+                        dropped_image_paths.push(path.to_path_buf());
                     }
                 }
             }

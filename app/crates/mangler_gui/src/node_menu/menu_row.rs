@@ -102,11 +102,11 @@ fn paint_row(
     // hover. Painting (not layout) is what changes, so the row never reflows.
     let glyph = match spec.kind {
         RowKind::Category { collapsed } => Some(if collapsed {
-            egui_phosphor::regular::CARET_RIGHT
+            crate::icons::CARET_RIGHT
         } else {
-            egui_phosphor::regular::CARET_DOWN
+            crate::icons::CARET_DOWN
         }),
-        _ if response.hovered() => Some(egui_phosphor::regular::DOTS_SIX_VERTICAL),
+        _ if response.hovered() => Some(crate::icons::DOTS_SIX_VERTICAL),
         _ => None,
     };
     if let Some(glyph) = glyph {

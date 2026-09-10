@@ -7,6 +7,7 @@ mod app;
 mod app_menu;
 mod config;
 mod graph;
+mod icons;
 mod libraries;
 mod node_menu;
 mod overlay;

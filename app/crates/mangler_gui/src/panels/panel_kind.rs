@@ -40,12 +40,12 @@ impl PanelKind {
     /// Phosphor icon glyph shown on the panel's corner button.
     pub fn icon(&self) -> &'static str {
         match self {
-            PanelKind::Graph => egui_phosphor::regular::GRAPH,
-            PanelKind::Preview2D => egui_phosphor::regular::IMAGE,
-            PanelKind::Preview3D => egui_phosphor::regular::CUBE,
-            PanelKind::NodeList => egui_phosphor::regular::LIST,
-            PanelKind::Libraries => egui_phosphor::regular::BOOKS,
-            PanelKind::Settings => egui_phosphor::regular::SLIDERS,
+            PanelKind::Graph => crate::icons::GRAPH,
+            PanelKind::Preview2D => crate::icons::IMAGE,
+            PanelKind::Preview3D => crate::icons::CUBE,
+            PanelKind::NodeList => crate::icons::LIST,
+            PanelKind::Libraries => crate::icons::BOOKS,
+            PanelKind::Settings => crate::icons::SLIDERS,
         }
     }
 }

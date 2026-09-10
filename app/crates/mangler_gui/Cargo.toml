@@ -11,10 +11,10 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-eframe = { version = "0.35", default-features = false, features = ["glow", "default_fonts", "wayland", "x11", "accesskit"] }
-egui_glow = "0.35"
-epaint = "0.35"
-glow = "0.17"  # egui_glow 0.35 still requires glow ^0.17 (not 0.18)
+eframe = { version = "0.36", default-features = false, features = ["glow", "default_fonts", "wayland", "x11", "accesskit"] }
+egui_glow = "0.36"
+epaint = "0.36"
+glow = "0.17"  # egui_glow 0.36 still requires glow ^0.17 (not 0.18)
 image = "0.25"
 # Scaled-IDCT JPEG decode for library thumbs (zune-jpeg via `image` has no scale path).
 jpeg-decoder = "0.3"
@@ -26,9 +26,8 @@ rfd = "0.17"
 time = "0.3"
 glam = "0.32"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-egui-phosphor = "0.13"
 fastrand = "2.0"
-egui_extras = "0.35"
+egui_extras = "0.36"
 dirs = "6"
 rayon = "1"
 # Library-panel deletes go to the OS recycle bin (recoverable), never
@@ -37,3 +36,8 @@ trash = "5"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.9", features = ["winuser", "windef"] }
+
+[dev-dependencies]
+# `icons_tests.rs` checks every vendored codepoint resolves to a real glyph in
+# `res/Phosphor.ttf`. A wrong codepoint renders as tofu, which is silent.
+ab_glyph = "0.2"
