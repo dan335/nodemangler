@@ -9,7 +9,7 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::tone_curve::{anti_diagonal_tone_curve, sample_lut, tone_curve_lut, TONE_LUT_SIZE};
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -47,7 +47,7 @@ impl OpImageShapeParaboloid {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Grayscale dome height shape, 1.0 at the center and 0.0 outside."),
         ]
     }

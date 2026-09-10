@@ -123,7 +123,7 @@ macro_rules! convert_inputs {
             // Converted up front into a small buffer rather than straight into
             // the bindings: every input must be *attempted* before the first
             // failure returns, so a node with two bad inputs reports both.
-            let converted: ::std::vec::Vec<::std::option::Option<$crate::value::Value>> = ::std::vec![
+            let converted = [
                 $(
                     $crate::operations::convert_input(
                         $inputs,
@@ -262,6 +262,19 @@ pub fn image_input(name: &str) -> Input {
         name.to_string(),
         Value::Image { data: default_image(), change_id: crate::get_id() },
         None,
+        None,
+    )
+}
+
+/// The plain image *output* port: the placeholder image plus a fresh change id.
+///
+/// The mirror of [`image_input`], and by far the more common of the two — an
+/// operation may take no image and still emit one. Same rule applies: an output
+/// that needs a link or a non-placeholder default calls [`Output::new`].
+pub fn image_output(name: &str) -> Output {
+    Output::new(
+        name.to_string(),
+        Value::Image { data: default_image(), change_id: crate::get_id() },
         None,
     )
 }

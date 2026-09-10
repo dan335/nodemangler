@@ -7,9 +7,9 @@
 
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, convert_input, image_input};
+use crate::operations::{OperationResponse, OperationError, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::convert_inputs;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use arboard::ImageData;
@@ -71,21 +71,14 @@ impl OpImageOutputClipboard {
         let honor_force = crate::run_context::current().map_or(true, |c| c.batch_item_stem.is_none());
         let should_copy = should_save_and_consume(inputs, AUTO_SAVE, SAVE, honor_force);
 
-        let mut input_errors: Vec<(usize, String)> = vec![];
-
-        // convert inputs
-        let image_converted = convert_input(inputs, IMAGE, ValueType::Image, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
+        convert_inputs! { inputs;
+            Image(data) = IMAGE,
+        }
 
         // Nothing to copy this run (auto save off, button not pressed, not forced).
         if !should_copy {
             return Ok(OperationResponse { time: Instant::now().duration_since(start_time), responses: vec![] });
         }
-
-        // get values
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
 
         // run node — convert FloatImage to RGBA8 and prepare arboard ImageData
         let rgba8 = data.to_rgba8();

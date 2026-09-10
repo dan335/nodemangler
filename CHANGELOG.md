@@ -10,8 +10,23 @@ Rewire or re-export affected graphs after those releases.
 
 ## [Unreleased]
 
+## [1.0.15] - 2026-09-10
+
 ### Changed
 
+- Large speed-ups across the node library. Operations that work a pixel at a
+  time now use every CPU core instead of one, and several were doing far more
+  work than they needed to. Measured on a 24-megapixel photo: `dehaze` 260s ->
+  162ms, `clarity` 104s -> 270ms, `hsl mixer` 1061ms -> 135ms, with 2-8x gains
+  across the rest of `adjustments/`. The affine `transform` node, the whole
+  `pbr/` category, `edge detect`, `convolution`, `ordered dither`, the mask
+  nodes and several filters were parallelised in the same pass. Every one of
+  the ~443 operations produces bit-identical output to before.
+- The app uses less memory per node and per graph message, and no longer
+  rebuilds the entire theme (~78 colour-space conversions) on every lookup from
+  inside per-node and per-row drawing loops.
+- Auto-save writes smaller graph files: two input fields were being saved and
+  then discarded on load, accounting for 26% of the logo example's file.
 - Dependency refresh: glam 0.33, dirs 7, puffin 0.20, rawler 0.8, and
   semver-compatible bumps across the rest of the tree. rawler 0.8 adds a
   Fuji-rotate step to its default develop pipeline, which camera raw decode now
@@ -23,6 +38,27 @@ Rewire or re-export affected graphs after those releases.
   OS clipboard from the engine's worker threads, and the platform clipboard is
   not prepared for concurrent use; every access is now serialized behind a
   single lock.
+- Dragging a connection showed the wrong drop targets: the editor both hid
+  sockets that were legal and highlighted ones that were not, which were then
+  silently dropped on release. Whether an output may feed an input is a
+  directional rule, and it had been hand-written at eight places in the editor
+  with four of them inverted.
+- The socket conversion menus reported that nothing at all could feed a blend
+  mode, edge mode, colour space, image type or tone-map operator input — not
+  even its own type.
+- Rendering from a detached graph snapshot failed with "No folder set" instead
+  of writing the file.
+- `mangle run` wrote the graph back after a plain run, stamping a file saved by
+  a newer NodeMangler back down to the running version. Opening or running a
+  graph now never rewrites it.
+- `mangle new` accepted a plain `foo.json` name the GUI treats as impossible,
+  and embedded the wrong name inside the file.
+- The CLI's `--stats` and `--sample` clamped and quantized their input, so
+  measurements on masks, height fields, distance fields and noise — all
+  1-channel raw linear — reported a maximum of 1.0 and disagreed with the
+  in-graph measurement nodes about the same image. They now read the real
+  values.
+- Several node input conversion error messages named the wrong types.
 
 ## [1.0.14] - 2026-09-10
 
@@ -351,7 +387,8 @@ format in both.
 - Dual MIT OR Apache-2.0 license.
 - Multi-OS release builds (Windows, Linux, macOS Apple Silicon + Intel).
 
-[Unreleased]: https://github.com/dan335/nodemangler/compare/v1.0.14...HEAD
+[Unreleased]: https://github.com/dan335/nodemangler/compare/v1.0.15...HEAD
+[1.0.15]: https://github.com/dan335/nodemangler/compare/v1.0.14...v1.0.15
 [1.0.14]: https://github.com/dan335/nodemangler/compare/v1.0.13...v1.0.14
 [1.0.13]: https://github.com/dan335/nodemangler/compare/v1.0.12...v1.0.13
 [1.0.12]: https://github.com/dan335/nodemangler/compare/v1.0.11...v1.0.12

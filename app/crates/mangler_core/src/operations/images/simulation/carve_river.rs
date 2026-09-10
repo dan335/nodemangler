@@ -29,7 +29,7 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::tone_curve::{sample_lut, tone_curve_lut, TONE_LUT_SIZE};
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, scale_to_resolution, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -168,9 +168,9 @@ impl OpImageSimulationCarveRiver {
     /// Creates the two outputs: the carved heightmap and the water-depth map.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("height".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("height")
                 .with_description("Carved grayscale heightmap, normalized to the 0-1 range."),
-            Output::new("water depth".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("water depth")
                 .with_description("Water depth in the channel (distance from the carved bed up to the enforced water line), normalized to its own maximum; black outside the channel."),
         ]
     }

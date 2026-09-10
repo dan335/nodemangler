@@ -9,7 +9,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use crate::float_image::FloatImage;
@@ -93,7 +93,7 @@ impl OpImageTransformPerspective {
     /// Creates the output port: the perspective-warped image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Image warped to the displaced corner quadrilateral."),
         ]
     }

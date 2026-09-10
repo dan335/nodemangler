@@ -31,7 +31,7 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -83,7 +83,7 @@ impl OpImageSimulationHillslopeDiffusion {
     /// Creates the default output: the diffused heightmap.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("height".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("height")
                 .with_description("Seamlessly tiling diffused grayscale heightmap, normalized to the 0-1 range."),
         ]
     }

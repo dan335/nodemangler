@@ -4,6 +4,9 @@
 //! This directory holds cross-cutting tests that exercise multiple subsystems
 //! together (serialization round-trips, performance benchmarks, etc.).
 
+#[cfg(test)]
+pub(crate) mod op_harness;
+
 mod serialization_tests;
 mod perf_tests;
 mod all_operations_perf_tests;

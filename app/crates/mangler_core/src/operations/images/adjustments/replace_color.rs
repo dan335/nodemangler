@@ -10,8 +10,9 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
+use super::common::smooth_select;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -49,7 +50,7 @@ impl OpImageAdjustmentReplaceColor {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Image with matched pixels lerped toward the target color."),
         ]
     }
@@ -88,10 +89,10 @@ impl OpImageAdjustmentReplaceColor {
                     let dg = src[1] - from.g;
                     let db = src[2] - from.b;
                     let dist = (dr * dr + dg * dg + db * db).sqrt() / norm;
-                    smooth_weight(dist, tolerance, outer)
+                    smooth_select(dist, tolerance, outer)
                 } else {
                     let dist = (src[0] - from_luma).abs();
-                    smooth_weight(dist, tolerance, outer)
+                    smooth_select(dist, tolerance, outer)
                 };
 
                 if ch >= 3 {
@@ -119,16 +120,6 @@ impl OpImageAdjustmentReplaceColor {
             ],
         })
     }
-}
-
-/// Soft selection weight matching `color_to_mask::smooth_select`.
-#[inline]
-fn smooth_weight(d: f32, tol: f32, outer: f32) -> f32 {
-    if d <= tol { return 1.0; }
-    if d >= outer || outer <= tol { return 0.0; }
-    let t = (d - tol) / (outer - tol);
-    let s = t * t * (3.0 - 2.0 * t);
-    1.0 - s
 }
 
 #[cfg(test)]

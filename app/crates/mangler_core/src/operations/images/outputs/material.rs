@@ -10,10 +10,9 @@
 
 use image::ImageFormat;
 use image::codecs::png::CompressionType as PngCompression;
-use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input, image_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType, ColorFormat, ExportPreset};
 use serde::{Deserialize, Serialize};
@@ -55,20 +54,16 @@ impl OpImageOutputMaterial {
     /// Creates the 34 inputs. The order is a frozen contract (positional zip
     /// reconcile in graph.rs); future additions must append.
     pub fn create_inputs() -> Vec<Input> {
-        let image_input = |name: &str, desc: &str| {
-            Input::new(name.to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
-                .with_description(desc)
-        };
         let mut inputs = vec![
             // 0..=7 — the eight PBR maps (indices match SourceMap discriminants).
-            image_input("albedo", "Base color / diffuse map. Alpha is taken from opacity when connected."),
-            image_input("opacity", "Opacity map; supplies the alpha channel of the base color texture when connected."),
-            image_input("normal", "Tangent-space normal map (OpenGL Y+ convention; Unreal flips green on export)."),
-            image_input("roughness", "Roughness map; also drives Unity smoothness as 1 − roughness."),
-            image_input("metallic", "Metallic map."),
-            image_input("ambient occlusion", "Ambient occlusion map."),
-            image_input("height", "Height / displacement map (exported as 16-bit grayscale)."),
-            image_input("emission", "Emissive color map."),
+            image_input("albedo").with_description("Base color / diffuse map. Alpha is taken from opacity when connected."),
+            image_input("opacity").with_description("Opacity map; supplies the alpha channel of the base color texture when connected."),
+            image_input("normal").with_description("Tangent-space normal map (OpenGL Y+ convention; Unreal flips green on export)."),
+            image_input("roughness").with_description("Roughness map; also drives Unity smoothness as 1 − roughness."),
+            image_input("metallic").with_description("Metallic map."),
+            image_input("ambient occlusion").with_description("Ambient occlusion map."),
+            image_input("height").with_description("Height / displacement map (exported as 16-bit grayscale)."),
+            image_input("emission").with_description("Emissive color map."),
             // 8 — engine preset.
             Input::new("preset".to_string(), Value::ExportPreset(ExportPreset::Godot), None, None)
                 .with_description("Target engine convention: chooses the file set, channel packing, normal space, and bit depth."),

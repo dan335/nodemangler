@@ -24,10 +24,11 @@ mod all_operations_golden {
 
     use crate::{
         float_image::FloatImage,
-        get_id,
-        input::Input,
-        operations::{operation_list, Operation, OperationListItem},
+        operations::{operation_list, Operation},
         value::Value,
+    };
+    use crate::tests::op_harness::{
+        flatten_operations, format_run_error, gradient_image_alpha_ramp, prepare_inputs,
     };
 
     /// Operations that need the filesystem, network, or OS clipboard.
@@ -42,49 +43,6 @@ mod all_operations_golden {
         "from raw",
         "from folder",
     ];
-
-    /// A 256x256 gradient with a non-trivial alpha ramp, so alpha-aware paths
-    /// (premultiplied resampling, compositing) are exercised rather than
-    /// running against a fully opaque image.
-    fn make_test_image() -> Arc<FloatImage> {
-        let mut data = Vec::with_capacity(256 * 256 * 4);
-        for y in 0..256u32 {
-            for x in 0..256u32 {
-                data.push(x as f32 / 255.0);
-                data.push(y as f32 / 255.0);
-                data.push(((x ^ y) % 256) as f32 / 255.0);
-                data.push(0.25 + 0.75 * (y as f32 / 255.0));
-            }
-        }
-        Arc::new(FloatImage::from_raw(256, 256, 4, data).expect("data length matches"))
-    }
-
-    fn flatten_operations(items: &[OperationListItem]) -> Vec<Operation> {
-        let mut ops = Vec::new();
-        for item in items {
-            match item {
-                OperationListItem::Category { operation_list_items, .. } => {
-                    ops.extend(flatten_operations(operation_list_items));
-                }
-                OperationListItem::Operation { operation } => ops.push(operation.clone()),
-                OperationListItem::Subgraph => {}
-            }
-        }
-        ops
-    }
-
-    fn prepare_inputs(inputs: &mut [Input], test_image: &Arc<FloatImage>) {
-        for input in inputs.iter_mut() {
-            if matches!(input.value, Value::Image { .. }) {
-                let img_value = Value::Image {
-                    data: Arc::clone(test_image),
-                    change_id: get_id(),
-                };
-                input.value = img_value.clone();
-                input.default_value = img_value;
-            }
-        }
-    }
 
     /// Hash a value's *content* — for images, every pixel bit — so any change
     /// in output shows up. `change_id` is deliberately excluded: it is a fresh
@@ -143,13 +101,7 @@ mod all_operations_golden {
                 .iter()
                 .map(|r| hash_value(&r.value))
                 .collect()),
-            Err(e) => Err(e.node_error.unwrap_or_else(|| {
-                e.input_errors
-                    .iter()
-                    .map(|(i, m)| format!("input {}: {}", i, m))
-                    .collect::<Vec<_>>()
-                    .join("; ")
-            })),
+            Err(e) => Err(format_run_error(&e)),
         }
     }
 
@@ -157,7 +109,9 @@ mod all_operations_golden {
     #[ignore = "manual refactor tool; prints a table rather than asserting"]
     async fn all_operations_golden() {
         let all_ops = flatten_operations(&operation_list());
-        let test_image = make_test_image();
+        // 256x256 with an alpha ramp — the image every golden hash was
+        // captured against; changing it invalidates the whole table.
+        let test_image = gradient_image_alpha_ramp(256, 256);
 
         let mut rows: Vec<String> = Vec::new();
         let mut unstable: Vec<String> = Vec::new();

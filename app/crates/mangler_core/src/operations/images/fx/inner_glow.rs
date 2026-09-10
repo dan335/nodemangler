@@ -13,7 +13,7 @@ use crate::operations::images::filter::morphology::erode::separable_morphology;
 use crate::operations::images::fx::outer_glow::{subtract_fields, tint_field, to_mask_field};
 use crate::operations::images::tone_curve::{optional_lut, sample_lut, tone_curve_input};
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, scale_to_resolution, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -49,7 +49,7 @@ impl OpImageFxInnerGlow {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("RGBA layer with a blurred glow ring sitting inside the mask boundary."),
         ]
     }

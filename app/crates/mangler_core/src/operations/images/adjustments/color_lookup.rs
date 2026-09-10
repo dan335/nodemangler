@@ -8,10 +8,10 @@
 //! returned unchanged).
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, image_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -78,7 +78,7 @@ impl OpImageAdjustmentColorLookup {
     /// Creates the output port: the graded image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Image with the LUT applied, blended by strength; alpha preserved."),
         ]
     }
@@ -89,20 +89,11 @@ impl OpImageAdjustmentColorLookup {
     /// error if the file cannot be read or the `.cube` content is malformed.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
-
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let lut_converted = convert_input(inputs, 1, ValueType::Path, &mut input_errors);
-        let strength_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Path(path) = lut_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(strength) = strength_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Path(path) = 1,
+            Decimal(strength) = 2,
+        }
 
         // Empty path is a pass-through: hand the source image straight back.
         if path.as_os_str().is_empty() {

@@ -4,15 +4,11 @@
 
 #[cfg(test)]
 mod all_operations_perf {
-    use std::sync::Arc;
     use std::time::Duration;
 
-    use crate::{
-        float_image::FloatImage,
-        get_id,
-        input::Input,
-        operations::{operation_list, Operation, OperationListItem},
-        value::Value,
+    use crate::operations::operation_list;
+    use crate::tests::op_harness::{
+        flatten_operations, format_run_error, gradient_image_flat_blue, prepare_inputs,
     };
 
     /// Names of operations to skip (need filesystem, network, or clipboard).
@@ -25,51 +21,6 @@ mod all_operations_perf {
         "text from clipboard",
     ];
 
-    /// Create a 512x512 gradient test image as a 4-channel FloatImage.
-    fn make_test_image() -> Arc<FloatImage> {
-        let mut data = Vec::with_capacity(512 * 512 * 4);
-        for y in 0..512u32 {
-            for x in 0..512u32 {
-                data.push((x % 256) as f32 / 255.0); // r
-                data.push((y % 256) as f32 / 255.0); // g
-                data.push(128.0 / 255.0);             // b
-                data.push(1.0);                        // a
-            }
-        }
-        Arc::new(FloatImage::from_raw(512, 512, 4, data).expect("data length matches"))
-    }
-
-    /// Recursively flatten the operation menu tree into a list of operations.
-    fn flatten_operations(items: &[OperationListItem]) -> Vec<Operation> {
-        let mut ops = Vec::new();
-        for item in items {
-            match item {
-                OperationListItem::Category { operation_list_items, .. } => {
-                    ops.extend(flatten_operations(operation_list_items));
-                }
-                OperationListItem::Operation { operation } => {
-                    ops.push(operation.clone());
-                }
-                OperationListItem::Subgraph => {}
-            }
-        }
-        ops
-    }
-
-    /// Replace any Image inputs with a 512x512 test image.
-    fn prepare_inputs(inputs: &mut [Input], test_image: &Arc<FloatImage>) {
-        for input in inputs.iter_mut() {
-            if matches!(input.value, Value::Image { .. }) {
-                let img_value = Value::Image {
-                    data: Arc::clone(test_image),
-                    change_id: get_id(),
-                };
-                input.value = img_value.clone();
-                input.default_value = img_value;
-            }
-        }
-    }
-
     enum RunResult {
         Ok { time: Duration },
         Err { message: String },
@@ -80,7 +31,9 @@ mod all_operations_perf {
     async fn all_operations_perf() {
         let list = operation_list();
         let all_ops = flatten_operations(&list);
-        let test_image = make_test_image();
+        // 512x512 with a flat blue channel: the original benchmark image, kept
+        // so timings stay comparable with previously captured tables.
+        let test_image = gradient_image_flat_blue(512, 512);
 
         let mut results: Vec<(String, RunResult)> = Vec::new();
 
@@ -100,16 +53,7 @@ mod all_operations_perf {
                     results.push((name, RunResult::Ok { time: response.time }));
                 }
                 Err(e) => {
-                    let msg = e
-                        .node_error
-                        .unwrap_or_else(|| {
-                            e.input_errors
-                                .iter()
-                                .map(|(i, m)| format!("input {}: {}", i, m))
-                                .collect::<Vec<_>>()
-                                .join("; ")
-                        });
-                    results.push((name, RunResult::Err { message: msg }));
+                    results.push((name, RunResult::Err { message: format_run_error(&e) }));
                 }
             }
         }

@@ -15,12 +15,12 @@
 //! picture being saved rather than a path string, and so the node can sit
 //! inline in a chain), and the resulting file path (output 1).
 
-use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
-use crate::value::{Value, ValueType, ColorFormat};
+use crate::value::{Value, ColorFormat};
+use crate::convert_inputs;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Instant;
@@ -104,7 +104,7 @@ impl OpImageOutputFile {
     /// [`Self::run`] (see `OUT_IMAGE` / `OUT_PATH`).
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("image")
                 .with_description("The input image, unchanged. Gives the node an image preview and lets it sit inline in a chain."),
             Output::new("file path".to_string(), Value::Path(PathBuf::new()), None)
                 .with_description("Full path of the file that was written (empty when nothing was written)."),
@@ -174,19 +174,23 @@ impl OpImageOutputFile {
         // conversions below). `to file` always honors a forced headless run.
         let should_save = should_save_and_consume(inputs, AUTO_SAVE, SAVE, true);
 
-        let mut input_errors: Vec<(usize, String)> = vec![];
-        let image_converted = convert_input(inputs, IMAGE, ValueType::Image, &mut input_errors);
-        let folder_converted = convert_input(inputs, FOLDER, ValueType::Path, &mut input_errors);
-        let name_converted = convert_input(inputs, FILE_NAME, ValueType::Text, &mut input_errors);
-        let format_converted = convert_input(inputs, FORMAT, ValueType::ImageType, &mut input_errors);
-        let quality_converted = convert_input(inputs, QUALITY, ValueType::Integer, &mut input_errors);
-        let color_format_converted = convert_input(inputs, COLOR_FORMAT, ValueType::ColorFormat, &mut input_errors);
-        let png_compression_converted = convert_input(inputs, PNG_COMPRESSION, ValueType::Text, &mut input_errors);
+        // The passthrough output needs the *original* Value (same Arc, same
+        // change id — see the doc above), not just the macro-unwrapped data,
+        // so it's captured up front. `try_convert_to(Image)` on a `Value::Image`
+        // is always `Ok` and an exact clone, so this equals what the longhand's
+        // `image_converted.unwrap()` produced.
+        let image_value = inputs[IMAGE].value.clone();
 
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // The passthrough output: same Arc, same change id (see the doc above).
-        let image_value = image_converted.unwrap();
+        convert_inputs! { inputs;
+            Image(data) = IMAGE,
+            Path(folder) = FOLDER,
+            Text(file_name) = FILE_NAME,
+            ImageType(image_type) = FORMAT,
+            Integer(quality) = QUALITY,
+            ColorFormat(color_format) = COLOR_FORMAT,
+            Text(png_compression_text) = PNG_COMPRESSION,
+        }
+        let quality = quality.clamp(1, 100) as u8;
 
         // Nothing to write this run: report an empty path and skip all
         // validation so an idle manual-mode node never shows an error.
@@ -196,16 +200,6 @@ impl OpImageOutputFile {
                 responses: Self::responses(image_value, PathBuf::new()),
             });
         }
-
-        // get values
-        let Value::Image{data, change_id:_} = image_value.clone() else { unreachable!() };
-        let Value::Path(folder) = folder_converted.unwrap() else { unreachable!() };
-        let Value::Text(file_name) = name_converted.unwrap() else { unreachable!() };
-        let Value::ImageType(image_type) = format_converted.unwrap() else { unreachable!() };
-        let Value::Integer(quality) = quality_converted.unwrap() else { unreachable!() };
-        let quality = quality.clamp(1, 100) as u8;
-        let Value::ColorFormat(color_format) = color_format_converted.unwrap() else { unreachable!() };
-        let Value::Text(png_compression_text) = png_compression_converted.unwrap() else { unreachable!() };
 
         // Resolve the destination folder and file stem from the graph context
         // (shared with the `material` node so both behave identically). Read

@@ -12,6 +12,7 @@ use crate::convert_inputs;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -52,17 +53,31 @@ impl OpImagePbrNormalFromHeight {
         let height = data.height() as i32;
         let ch = data.channels() as usize;
 
-        // Compute luminance (Rec. 709) of a pixel, clamping coords to image bounds
+        // Luminance (Rec. 709) plane, computed once per pixel instead of once
+        // per Sobel tap — the stencil reads each pixel up to eight times.
+        let mut luma_plane = vec![0.0f32; (width as usize) * (height as usize)];
+        luma_plane
+            .par_chunks_mut((width as usize).max(1))
+            .enumerate()
+            .for_each(|(y, row)| {
+                for (x, v) in row.iter_mut().enumerate() {
+                    let p = data.get_pixel(x as u32, y as u32);
+                    *v = if ch >= 3 { crate::luma::rec709(p[0], p[1], p[2]) } else { p[0] };
+                }
+            });
+
+        // Same clamped lookup the per-tap closure did, now off the plane.
         let luminance = |x: i32, y: i32| -> f32 {
-            let cx = x.clamp(0, width - 1) as u32;
-            let cy = y.clamp(0, height - 1) as u32;
-            let p = data.get_pixel(cx, cy);
-            if ch >= 3 { crate::luma::rec709(p[0], p[1], p[2]) } else { p[0] }
+            let cx = x.clamp(0, width - 1) as usize;
+            let cy = y.clamp(0, height - 1) as usize;
+            luma_plane[cy * width as usize + cx]
         };
 
         let mut buffer = FloatImage::new(width as u32, height as u32, 4);
 
-        for y in 0..height {
+        let row_len = (width as usize * 4).max(1);
+        buffer.as_raw_mut().par_chunks_mut(row_len).enumerate().for_each(|(y, out_row)| {
+            let y = y as i32;
             for x in 0..width {
                 let tl = luminance(x - 1, y - 1);
                 let top = luminance(x, y - 1);
@@ -88,9 +103,10 @@ impl OpImagePbrNormalFromHeight {
                 let g = (ny / len) * 0.5 + 0.5;
                 let b = (nz / len) * 0.5 + 0.5;
 
-                buffer.put_pixel(x as u32, y as u32, &[r, g, b, 1.0]);
+                let i = x as usize * 4;
+                out_row[i..i + 4].copy_from_slice(&[r, g, b, 1.0]);
             }
-        }
+        });
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

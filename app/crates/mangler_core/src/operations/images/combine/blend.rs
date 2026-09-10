@@ -11,10 +11,11 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::convert_inputs;
 use crate::operations::images::combine::{placement, placement_inputs, PLACEMENT_HELP};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -64,33 +65,20 @@ impl OpImageCombineBlend {
     /// Composites the foreground onto the background using FloatImage directly.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let background_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let foreground_converted = convert_input(inputs, 1, ValueType::Image, &mut input_errors);
-        let amount_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let alpha_converted = convert_input(inputs, 3, ValueType::Image, &mut input_errors);
-        let blend_mode_converted = convert_input(inputs, 4, ValueType::BlendMode, &mut input_errors);
-        let color_space_converted = convert_input(inputs, 5, ValueType::ColorSpace, &mut input_errors);
-        let position_x_converted = convert_input(inputs, 6, ValueType::Integer, &mut input_errors);
-        let position_y_converted = convert_input(inputs, 7, ValueType::Integer, &mut input_errors);
-        let scale_x_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
-        let scale_y_converted = convert_input(inputs, 9, ValueType::Decimal, &mut input_errors);
-        let rotation_converted = convert_input(inputs, 10, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image{data:background, change_id:_} = background_converted.unwrap() else { unreachable!() };
-        let Value::Image{data:foreground, change_id:_} = foreground_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
-        let Value::Image{data:alpha, change_id:_} = alpha_converted.unwrap() else { unreachable!() };
-        let Value::BlendMode(blend_mode) = blend_mode_converted.unwrap() else { unreachable!() };
-        let Value::ColorSpace(color_space) = color_space_converted.unwrap() else { unreachable!() };
-        let Value::Integer(position_x) = position_x_converted.unwrap() else { unreachable!() };
-        let Value::Integer(position_y) = position_y_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(scale_x) = scale_x_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(scale_y) = scale_y_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(rotation) = rotation_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(background) = 0,
+            Image(foreground) = 1,
+            Decimal(amount) = 2,
+            Image(alpha) = 3,
+            BlendMode(blend_mode) = 4,
+            ColorSpace(color_space) = 5,
+            Integer(position_x) = 6,
+            Integer(position_y) = 7,
+            Decimal(scale_x) = 8,
+            Decimal(scale_y) = 9,
+            Decimal(rotation) = 10,
+        }
 
         // Output same size as background, 4-channel
         let (bg_w, bg_h) = background.dimensions();

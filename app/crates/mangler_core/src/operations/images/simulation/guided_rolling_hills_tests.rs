@@ -1,4 +1,5 @@
 use super::*;
+use crate::operations::default_image;
 
 use crate::curve::{Curve, CurveInterpolation};
 use crate::input::Input;

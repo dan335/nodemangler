@@ -15,9 +15,10 @@
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{convert_input, default_image, OperationError, OperationResponse, OutputResponse};
+use crate::operations::{OperationError, OperationResponse, OutputResponse, image_output};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use crate::convert_inputs;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -93,7 +94,7 @@ impl OpImageInputRaw {
     /// Creates the output definitions.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("The developed image."),
             Output::new("width".to_string(), Value::Integer(1), None)
                 .with_description("Width of the developed image in pixels."),
@@ -105,26 +106,15 @@ impl OpImageInputRaw {
     /// Executes the operation: develops the raw file at the given path.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let path_converted = convert_input(inputs, PATH, ValueType::Path, &mut input_errors);
-        let white_balance_converted = convert_input(inputs, WHITE_BALANCE, ValueType::Text, &mut input_errors);
-        let output_converted = convert_input(inputs, OUTPUT_ENCODING, ValueType::Text, &mut input_errors);
-        let demosaic_converted = convert_input(inputs, DEMOSAIC, ValueType::Bool, &mut input_errors);
-        let exposure_converted = convert_input(inputs, EXPOSURE, ValueType::Decimal, &mut input_errors);
-        let max_size_converted = convert_input(inputs, MAX_SIZE, ValueType::Integer, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Path(path) = path_converted.unwrap() else { unreachable!() };
-        let Value::Text(white_balance) = white_balance_converted.unwrap() else { unreachable!() };
-        let Value::Text(output_encoding) = output_converted.unwrap() else { unreachable!() };
-        let Value::Bool(demosaic) = demosaic_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(exposure_stops) = exposure_converted.unwrap() else { unreachable!() };
-        let Value::Integer(max_size) = max_size_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Path(path) = PATH,
+            Text(white_balance) = WHITE_BALANCE,
+            Text(output_encoding) = OUTPUT_ENCODING,
+            Bool(demosaic) = DEMOSAIC,
+            Decimal(exposure_stops) = EXPOSURE,
+            Integer(max_size) = MAX_SIZE,
+        }
 
         // run node
         let options = RawOptions {
@@ -150,7 +140,7 @@ impl OpImageInputRaw {
                     ],
                 })
             }
-            Err(e) => Err(OperationError { input_errors, node_error: Some(format!("Error developing raw file: {}", e)) }),
+            Err(e) => Err(OperationError { input_errors: vec![], node_error: Some(format!("Error developing raw file: {}", e)) }),
         }
     }
 }

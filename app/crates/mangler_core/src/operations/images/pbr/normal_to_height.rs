@@ -20,9 +20,10 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -51,7 +52,7 @@ impl OpImagePbrNormalToHeight {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Reconstructed 1-channel height map normalised to [0, 1]."),
         ]
     }
@@ -144,24 +145,22 @@ impl OpImagePbrNormalToHeight {
         let range = max - min;
         let mut output = FloatImage::new(w, h, 1);
         if range < 1e-8 {
-            for y in 0..h {
-                for x in 0..w {
-                    output.put_pixel(x, y, &[0.5]);
-                }
-            }
+            // Single channel, one constant everywhere: a memset.
+            output.as_raw_mut().fill(0.5);
         } else {
             let inv = 1.0 / range;
-            for y in 0..h {
-                for x in 0..w {
-                    let v = (combined[(y as usize) * width + (x as usize)] - min) * inv;
+            output
+                .as_raw_mut()
+                .par_iter_mut()
+                .zip(combined.par_iter())
+                .for_each(|(out, &c)| {
+                    let v = (c - min) * inv;
                     // Apply `scale` about mid-grey AFTER normalisation, where it
                     // is not cancelled by the stretch. Larger scale compresses
                     // the relief toward 0.5 (gentler); smaller scale expands it
                     // (steeper). At scale 1 this is the identity.
-                    let v = (0.5 + (v - 0.5) / scale).clamp(0.0, 1.0);
-                    output.put_pixel(x, y, &[v]);
-                }
-            }
+                    *out = (0.5 + (v - 0.5) / scale).clamp(0.0, 1.0);
+                });
         }
 
         Ok(OperationResponse {

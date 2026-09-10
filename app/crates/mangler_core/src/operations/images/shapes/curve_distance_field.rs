@@ -13,7 +13,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::images::simulation::distance_field_labeled;
 use crate::operations::images::tone_curve::{optional_lut, sample_lut, tone_curve_input};
 use crate::convert_inputs;
-use crate::operations::{default_image, scale_to_resolution, OperationError, OperationResponse, OutputResponse};
+use crate::operations::{scale_to_resolution, OperationError, OperationResponse, OutputResponse, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -65,7 +65,7 @@ impl OpImageShapeCurveDistanceField {
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Grayscale distance field, white on the curve fading outward."),
         ]
     }

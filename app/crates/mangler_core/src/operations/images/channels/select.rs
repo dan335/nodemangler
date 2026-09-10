@@ -10,25 +10,14 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
-/// Minimum pixel count before extraction is parallelized.
-const PARALLEL_PIXELS: usize = 1 << 16;
-
-/// Extracts one scalar per pixel from an interleaved raw buffer.
-fn extract_channel<F: Fn(&[f32]) -> f32 + Sync>(src: &[f32], ch: usize, f: F) -> Vec<f32> {
-    if src.len() / ch >= PARALLEL_PIXELS {
-        src.par_chunks_exact(ch).map(&f).collect()
-    } else {
-        src.chunks_exact(ch).map(f).collect()
-    }
-}
+use super::extract_channel;
 
 /// Extracts one channel of an image as a 1-channel grayscale image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,7 +43,7 @@ impl OpImageChannelSelect {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("1-channel grayscale image of the selected channel."),
         ]
     }

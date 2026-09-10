@@ -8,6 +8,22 @@
 // the crate's other interpolation primitives.
 pub(crate) use crate::math::{smoothstep, smoothstep_f64};
 
+/// Returns 1 when `d <= tol`, 0 when `d >= outer`, and a smoothstep fade
+/// between the two. Collapses to a hard threshold if `outer <= tol`.
+///
+/// Shared by `color to mask` and `replace color`, which each carried an
+/// identical copy. Note this is **not** `1 - smoothstep(tol, outer, d)`: the
+/// `outer <= tol` guard returns 0, where a clamped smoothstep would return 1.
+#[inline]
+pub(crate) fn smooth_select(d: f32, tol: f32, outer: f32) -> f32 {
+    if d <= tol { return 1.0; }
+    if d >= outer || outer <= tol { return 0.0; }
+    let t = (d - tol) / (outer - tol);
+    // 1 - smoothstep: 1 at t=0, 0 at t=1.
+    let s = t * t * (3.0 - 2.0 * t);
+    1.0 - s
+}
+
 /// Converts an RGB colour (each in 0..1) to HSL (hue in 0..360, s/l in 0..1).
 ///
 /// **A deliberate second HSL implementation.** [`crate::color::Color::to_hsl`]

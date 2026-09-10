@@ -12,7 +12,7 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::blur::blur::gaussian_blur_image;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, scale_to_resolution, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -44,9 +44,9 @@ impl OpImageAdjustmentFrequencySplit {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("low".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("low")
                 .with_description("Low-frequency (blurred) component of the source."),
-            Output::new("high".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("high")
                 .with_description("High-frequency (detail) component, biased so zero detail sits at mid-grey."),
         ]
     }

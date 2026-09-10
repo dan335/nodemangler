@@ -28,8 +28,8 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
-use crate::operations::images::filter::smoothing::guided::box_blur_2d;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, scale_to_resolution, image_input, image_output};
+use crate::operations::images::blur::blur::box_blur_2d;
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -80,7 +80,7 @@ impl OpImageAdjustmentAnisotropicKuwahara {
     /// Creates the output port.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Painterly anisotropic-Kuwahara smoothed image that follows edge contours."),
         ]
     }

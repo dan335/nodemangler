@@ -25,8 +25,8 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
-use crate::operations::images::filter::smoothing::guided::box_blur_2d;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, scale_to_resolution, image_input, image_output};
+use crate::operations::images::blur::blur::box_blur_2d;
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -77,7 +77,7 @@ impl OpImageAdjustmentToon {
     /// Creates the output port: the toon-shaded image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Cel-shaded image with banded lightness and overlaid cel-boundary outlines."),
         ]
     }
@@ -216,8 +216,7 @@ impl OpImageAdjustmentToon {
             // falls off via smoothstep — gives a clean visible outline rather
             // than a uniformly faint band the width of the blur kernel
             blurred.into_par_iter().map(|v| {
-                let t = (v * 4.0).clamp(0.0, 1.0);
-                t * t * (3.0 - 2.0 * t)
+                crate::math::smoothstep01_f32(v * 4.0)
             }).collect::<Vec<f32>>()
         };
 

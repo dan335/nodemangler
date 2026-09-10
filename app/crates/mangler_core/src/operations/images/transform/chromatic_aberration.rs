@@ -13,9 +13,10 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::transform::transform::sample_bilinear;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::{EdgeMode, Value};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -53,7 +54,7 @@ impl OpImageTransformChromaticAberration {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("The image with per-channel radial fringing applied, same size and channel count as the input."),
         ]
     }
@@ -93,12 +94,15 @@ impl OpImageTransformChromaticAberration {
         let f_b = 1.0 + blue_yellow * CA_STRENGTH;
 
         let mut output = FloatImage::new(width, height, data.channels());
-        let mut acc_r = vec![0.0f32; nch];
-        let mut acc_g = vec![0.0f32; nch];
-        let mut acc_b = vec![0.0f32; nch];
-        let mut out_px = [0.0f32; 4];
-        for y in 0..height {
-            for x in 0..width {
+        let row_len = (width as usize * nch).max(1);
+        let src_ref = &*src;
+        let fill_ref = &fill_px[..];
+        output.as_raw_mut().par_chunks_mut(row_len).enumerate().for_each(|(y, row)| {
+            let mut acc_r = vec![0.0f32; nch];
+            let mut acc_g = vec![0.0f32; nch];
+            let mut acc_b = vec![0.0f32; nch];
+            let mut out_px = [0.0f32; 4];
+            for x in 0..width as usize {
                 let dx = x as f32 + 0.5 - cx;
                 let dy = y as f32 + 0.5 - cy;
 
@@ -110,9 +114,9 @@ impl OpImageTransformChromaticAberration {
                 let sx_b = cx + dx * f_b - 0.5;
                 let sy_b = cy + dy * f_b - 0.5;
 
-                sample_bilinear(&src, sx_r, sy_r, edge, &fill_px, &mut acc_r);
-                sample_bilinear(&src, sx0, sy0, edge, &fill_px, &mut acc_g);
-                sample_bilinear(&src, sx_b, sy_b, edge, &fill_px, &mut acc_b);
+                sample_bilinear(src_ref, sx_r, sy_r, edge, fill_ref, &mut acc_r);
+                sample_bilinear(src_ref, sx0, sy0, edge, fill_ref, &mut acc_g);
+                sample_bilinear(src_ref, sx_b, sy_b, edge, fill_ref, &mut acc_b);
 
                 if premul {
                     // Each colour channel was interpolated in premultiplied
@@ -134,9 +138,9 @@ impl OpImageTransformChromaticAberration {
                     out_px[2] = acc_b[2];
                 }
 
-                output.put_pixel(x, y, &out_px[..nch]);
+                row[x * nch..(x + 1) * nch].copy_from_slice(&out_px[..nch]);
             }
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

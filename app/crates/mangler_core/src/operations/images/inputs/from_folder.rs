@@ -20,9 +20,10 @@
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_output};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use crate::convert_inputs;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -114,7 +115,7 @@ impl OpImageInputFromFolder {
     /// clamped index used, and the total file count.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("The image selected by index."),
             Output::new("file name".to_string(), Value::Text(String::new()), None)
                 .with_description("The selected file's name without its extension."),
@@ -134,30 +135,17 @@ impl OpImageInputFromFolder {
     /// if the selected file fails to decode.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let folder_converted = convert_input(inputs, FOLDER, ValueType::Path, &mut input_errors);
-        let index_converted = convert_input(inputs, INDEX, ValueType::Integer, &mut input_errors);
-        let pinned_converted = convert_input(inputs, PINNED_PATH, ValueType::Path, &mut input_errors);
-        let white_balance_converted = convert_input(inputs, WHITE_BALANCE, ValueType::Text, &mut input_errors);
-        let output_converted = convert_input(inputs, OUTPUT_ENCODING, ValueType::Text, &mut input_errors);
-        let demosaic_converted = convert_input(inputs, DEMOSAIC, ValueType::Bool, &mut input_errors);
-        let exposure_converted = convert_input(inputs, EXPOSURE, ValueType::Decimal, &mut input_errors);
-        let max_size_converted = convert_input(inputs, MAX_SIZE, ValueType::Integer, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Path(folder) = folder_converted.unwrap() else { unreachable!() };
-        let Value::Integer(index) = index_converted.unwrap() else { unreachable!() };
-        let Value::Path(pinned) = pinned_converted.unwrap() else { unreachable!() };
-        let Value::Text(white_balance) = white_balance_converted.unwrap() else { unreachable!() };
-        let Value::Text(output_encoding) = output_converted.unwrap() else { unreachable!() };
-        let Value::Bool(demosaic) = demosaic_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(exposure_stops) = exposure_converted.unwrap() else { unreachable!() };
-        let Value::Integer(max_size) = max_size_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Path(folder) = FOLDER,
+            Integer(index) = INDEX,
+            Path(pinned) = PINNED_PATH,
+            Text(white_balance) = WHITE_BALANCE,
+            Text(output_encoding) = OUTPUT_ENCODING,
+            Bool(demosaic) = DEMOSAIC,
+            Decimal(exposure_stops) = EXPOSURE,
+            Integer(max_size) = MAX_SIZE,
+        }
 
         let raw_options = RawOptions {
             white_balance: RawWhiteBalance::from_label(&white_balance),

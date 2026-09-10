@@ -10,7 +10,7 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -78,7 +78,7 @@ impl OpImageAdjustmentAutoExposure {
     /// Creates the output ports: corrected image and the exposure in stops that was applied.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Image scaled by 2^exposure; alpha preserved, values unclamped."),
             Output::new("exposure".to_string(), Value::Decimal(0.0), None)
                 .with_description("Exposure in stops that was applied (after strength). +1 doubles, −1 halves."),

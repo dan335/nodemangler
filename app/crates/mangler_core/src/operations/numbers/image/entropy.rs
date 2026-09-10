@@ -50,16 +50,18 @@ impl OpNumberImageEntropy {
             Image(data) = 0,
         }
 
-        let v = super::luma_values(&data);
-        let entropy = if v.is_empty() {
+        let (w, h) = data.dimensions();
+        let n_pixels = (w as usize) * (h as usize);
+        let entropy = if n_pixels == 0 {
             0.0f32
         } else {
             let mut hist = [0u64; 256];
-            for &x in &v {
+            for px in data.pixels() {
+                let x = super::pixel_luma(px);
                 let idx = (x.clamp(0.0, 1.0) * 255.0).round() as usize;
                 hist[idx.min(255)] += 1;
             }
-            let n = v.len() as f64;
+            let n = n_pixels as f64;
             let mut e = 0.0f64;
             for &count in hist.iter() {
                 if count > 0 {

@@ -18,7 +18,7 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::noise::voronoi_common::cell_hash;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -73,7 +73,7 @@ impl OpImageNoiseSpectralTerrain {
     /// Creates the default output: a single grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Seamlessly tiling grayscale spectral-synthesis terrain heightmap normalized to [0, 1]."),
         ]
     }

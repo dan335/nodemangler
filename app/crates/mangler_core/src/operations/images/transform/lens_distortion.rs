@@ -13,9 +13,10 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::transform::transform::sample_bilinear;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::{EdgeMode, Value};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -52,7 +53,7 @@ impl OpImageTransformLensDistortion {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("The distorted image, same size and channel count as the input."),
         ]
     }
@@ -108,9 +109,12 @@ impl OpImageTransformLensDistortion {
         let r_ref = width.max(height) as f32 / 2.0;
 
         let mut output = FloatImage::new(width, height, data.channels());
-        let mut acc = vec![0.0f32; nch];
-        for y in 0..height {
-            for x in 0..width {
+        let row_len = (width as usize * nch).max(1);
+        let src_ref = &*src;
+        let fill_ref = &fill_px[..];
+        output.as_raw_mut().par_chunks_mut(row_len).enumerate().for_each(|(y, row)| {
+            let mut acc = vec![0.0f32; nch];
+            for x in 0..width as usize {
                 let nx = (x as f32 + 0.5 - cx) / r_ref;
                 let ny = (y as f32 + 0.5 - cy) / r_ref;
                 let r2 = nx * nx + ny * ny;
@@ -119,10 +123,10 @@ impl OpImageTransformLensDistortion {
                 let sx = cx + nx * f * r_ref / safe_scale - 0.5;
                 let sy = cy + ny * f * r_ref / safe_scale - 0.5;
 
-                sample_bilinear(&src, sx, sy, edge, &fill_px, &mut acc);
-                output.put_pixel(x, y, &acc);
+                sample_bilinear(src_ref, sx, sy, edge, fill_ref, &mut acc);
+                row[x * nch..(x + 1) * nch].copy_from_slice(&acc);
             }
-        }
+        });
 
         if premul { output.unpremultiply_alpha(); }
 

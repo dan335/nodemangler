@@ -8,10 +8,11 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use crate::float_image::FloatImage;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -59,7 +60,7 @@ impl OpImageAdjustmentConvolution {
     /// Creates the output port: the convolved image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Image filtered by the 3x3 kernel."),
         ]
     }
@@ -93,7 +94,10 @@ impl OpImageAdjustmentConvolution {
         let hi = h as i32;
 
         let mut out = FloatImage::new(w, h, data.channels());
-        for y in 0..h {
+        let row_len = (w as usize * ch).max(1);
+        let src = &*data;
+        out.as_raw_mut().par_chunks_mut(row_len).enumerate().for_each(|(y, out_row)| {
+            let y = y as u32;
             for x in 0..w {
                 let mut acc = [0.0f32; 4];
                 for ky in 0..3 {
@@ -102,7 +106,7 @@ impl OpImageAdjustmentConvolution {
                         if k == 0.0 { continue; }
                         let sxp = (x as i32 + kx as i32 - 1).clamp(0, wi - 1) as u32;
                         let syp = (y as i32 + ky as i32 - 1).clamp(0, hi - 1) as u32;
-                        let p = data.get_pixel(sxp, syp);
+                        let p = src.get_pixel(sxp, syp);
                         for c in 0..color_ch {
                             acc[c] += k * p[c];
                         }
@@ -114,11 +118,12 @@ impl OpImageAdjustmentConvolution {
                 }
                 // Preserve the alpha channel verbatim, if present.
                 if color_ch < ch {
-                    op[color_ch] = data.get_pixel(x, y)[color_ch];
+                    op[color_ch] = src.get_pixel(x, y)[color_ch];
                 }
-                out.put_pixel(x, y, &op[0..ch]);
+                let i = x as usize * ch;
+                out_row[i..i + ch].copy_from_slice(&op[0..ch]);
             }
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

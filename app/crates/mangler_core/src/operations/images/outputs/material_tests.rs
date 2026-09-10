@@ -1,5 +1,6 @@
 use super::*;
 use crate::float_image::FloatImage;
+use crate::get_id;
 use crate::operations::OperationResponse;
 
 /// Builds a `w × h` image with the given per-pixel channel `values`.

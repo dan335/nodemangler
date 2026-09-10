@@ -11,8 +11,9 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
+use super::common::smooth_select;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -48,7 +49,7 @@ impl OpImageAdjustmentColorToMask {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Single-channel mask image; 1 = matches target color, 0 = rejected."),
         ]
     }
@@ -104,18 +105,6 @@ impl OpImageAdjustmentColorToMask {
             ],
         })
     }
-}
-
-/// Returns 1 when `d <= tol`, 0 when `d >= outer`, and a smoothstep fade
-/// between the two. Collapses to a hard threshold if `outer <= tol`.
-#[inline]
-fn smooth_select(d: f32, tol: f32, outer: f32) -> f32 {
-    if d <= tol { return 1.0; }
-    if d >= outer || outer <= tol { return 0.0; }
-    let t = (d - tol) / (outer - tol);
-    // 1 - smoothstep: 1 at t=0, 0 at t=1.
-    let s = t * t * (3.0 - 2.0 * t);
-    1.0 - s
 }
 
 #[cfg(test)]

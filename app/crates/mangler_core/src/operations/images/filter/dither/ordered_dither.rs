@@ -19,9 +19,10 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -57,7 +58,7 @@ impl OpImageAdjustmentOrderedDither {
     /// Creates the output port: the dithered image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Ordered-dithered image quantized via the tiled Bayer pattern."),
         ]
     }
@@ -92,24 +93,25 @@ impl OpImageAdjustmentOrderedDither {
         let color_ch = if ch == 2 || ch == 4 { ch - 1 } else { ch };
 
         let mut out = FloatImage::new(width, height, ch as u32);
-        for y in 0..height {
-            for x in 0..width {
-                // Sample the tiled Bayer matrix; the offset is scaled by the
-                // quantization step so it nudges pixels across level boundaries
-                let t = bayer[(y as usize % matrix_size) * matrix_size + (x as usize % matrix_size)];
-                let offset = t * step;
-                let src = data.get_pixel(x, y);
-                let mut pixel = [0.0f32; 4];
-                for c in 0..color_ch {
-                    // Add the dither offset, then snap to the nearest quant level
-                    let v = (src[c] + offset).clamp(0.0, 1.0);
-                    let q = (v * (levels - 1) as f32).round() / (levels - 1) as f32;
-                    pixel[c] = q;
-                }
-                if ch == 2 || ch == 4 { pixel[ch - 1] = src[ch - 1]; }
-                out.put_pixel(x, y, &pixel[..ch]);
+        // Ordered dithering carries no state between pixels (unlike error
+        // diffusion): the threshold is a pure function of (x % m, y % m).
+        let src_img = &*data;
+        out.par_enumerate_pixels_mut().for_each(|(x, y, out_px)| {
+            // Sample the tiled Bayer matrix; the offset is scaled by the
+            // quantization step so it nudges pixels across level boundaries
+            let t = bayer[(y as usize % matrix_size) * matrix_size + (x as usize % matrix_size)];
+            let offset = t * step;
+            let src = src_img.get_pixel(x, y);
+            let mut pixel = [0.0f32; 4];
+            for c in 0..color_ch {
+                // Add the dither offset, then snap to the nearest quant level
+                let v = (src[c] + offset).clamp(0.0, 1.0);
+                let q = (v * (levels - 1) as f32).round() / (levels - 1) as f32;
+                pixel[c] = q;
             }
-        }
+            if ch == 2 || ch == 4 { pixel[ch - 1] = src[ch - 1]; }
+            out_px.copy_from_slice(&pixel[..ch]);
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

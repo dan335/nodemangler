@@ -9,7 +9,7 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, scale_to_resolution, image_input, image_output};
 use crate::operations::images::filter::morphology::erode::separable_morphology;
 use crate::output::Output;
 use crate::value::Value;
@@ -45,7 +45,7 @@ impl OpImageAdjustmentMorphGradient {
     /// Creates the output port: the gradient (edge band) image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Edge band where local max and min differ; flat areas are black."),
         ]
     }

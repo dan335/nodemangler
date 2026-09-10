@@ -15,9 +15,10 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::pbr::{normalize, pack_normal, unpack_normal};
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -49,7 +50,7 @@ impl OpImagePbrNormalCombine {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Combined, re-normalised normal map of base plus detail."),
         ]
     }
@@ -69,27 +70,27 @@ impl OpImagePbrNormalCombine {
         // Scale factor maps output (x, y) into detail-image UVs — handles mismatched sizes.
         let sx = if detail.width() > 0 { detail.width() as f32 / width.max(1) as f32 } else { 1.0 };
         let sy = if detail.height() > 0 { detail.height() as f32 / height.max(1) as f32 } else { 1.0 };
-        let mut detail_buf = [0.0f32; 4];
         let detail_ch = detail.channels() as usize;
 
-        for y in 0..height {
-            for x in 0..width {
-                let base_px = base.get_pixel(x, y);
-                // Bilinear sample the detail map so it stretches over the base if sizes differ.
-                detail.bilinear_sample(x as f32 * sx, y as f32 * sy, &mut detail_buf[..detail_ch]);
-                let n1 = unpack_normal(base_px);
-                let n2 = unpack_normal(&detail_buf[..detail_ch]);
+        let base_ref = &*base;
+        let detail_ref = &*detail;
+        output.par_enumerate_pixels_mut().for_each(|(x, y, out_px)| {
+            let mut detail_buf = [0.0f32; 4];
+            let base_px = base_ref.get_pixel(x, y);
+            // Bilinear sample the detail map so it stretches over the base if sizes differ.
+            detail_ref.bilinear_sample(x as f32 * sx, y as f32 * sy, &mut detail_buf[..detail_ch]);
+            let n1 = unpack_normal(base_px);
+            let n2 = unpack_normal(&detail_buf[..detail_ch]);
 
-                let combined = match mode {
-                    1 => rnm(n1, n2),
-                    2 => partial_derivative(n1, n2),
-                    3 => linear(n1, n2),
-                    _ => whiteout(n1, n2),
-                };
+            let combined = match mode {
+                1 => rnm(n1, n2),
+                2 => partial_derivative(n1, n2),
+                3 => linear(n1, n2),
+                _ => whiteout(n1, n2),
+            };
 
-                output.put_pixel(x, y, &pack_normal(combined));
-            }
-        }
+            out_px.copy_from_slice(&pack_normal(combined));
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

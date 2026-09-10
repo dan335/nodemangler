@@ -113,7 +113,9 @@ channels) have no chroma dark channel and pass through unchanged.".to_string(),
         // O(r^2), parallel, and exact — min folds are order-independent and its
         // edge handling is the same replicate-clamp this used to do by hand.
         let darkmin = {
-            let plane = FloatImage::from_raw(w, h, 1, dark.clone())
+            // `dark` is not read again, so it moves in rather than being cloned
+            // (a full extra f32 plane — 96 MB at 24 MP).
+            let plane = FloatImage::from_raw(w, h, 1, dark)
                 .expect("dark channel has one value per pixel");
             let eroded = separable_morphology(&plane, r, f32::min);
             eroded.as_raw().to_vec()

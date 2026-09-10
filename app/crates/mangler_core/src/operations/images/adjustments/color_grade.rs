@@ -12,7 +12,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input, image_input, image_output};
 use super::common::{hsl_to_rgb, smoothstep};
 use crate::output::Output;
 use crate::value::Value;
@@ -87,7 +87,7 @@ impl OpImageAdjustmentColorGrade {
     /// Creates the output port: the graded image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Image with the three-way tonal color grade applied."),
         ]
     }

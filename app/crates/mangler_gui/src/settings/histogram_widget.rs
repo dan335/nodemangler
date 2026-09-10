@@ -53,7 +53,7 @@ pub fn compute_histogram(data: &FloatImage) -> HistogramCache {
                 acc.3[b_bin.clamp(0, 255) as usize] += 1;
 
                 // Luminance (Rec. 709)
-                let lum = 0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2];
+                let lum = mangler_core::luma::rec709(pixel[0], pixel[1], pixel[2]);
                 let lum_bin = (lum * 255.0) as i32;
                 acc.0[lum_bin.clamp(0, 255) as usize] += 1;
             } else {

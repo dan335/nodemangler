@@ -12,94 +12,62 @@
 
 #[cfg(test)]
 mod adjustment_perf {
-    use std::sync::Arc;
     use std::time::Instant;
 
-    use crate::{
-        float_image::FloatImage,
-        get_id,
-        input::{Input, InputSettings},
-        operations::{operation_list, Operation, OperationListItem},
-        value::Value,
-    };
+    use crate::{input::InputSettings, operations::operation_list, value::Value};
+    use crate::tests::op_harness::{flatten_with_path, gradient_image, prepare_inputs};
 
     /// 6000x4000 — a 24 MP frame, the size a camera raw develops to.
     const WIDTH: u32 = 6000;
     const HEIGHT: u32 = 4000;
 
-    /// The operations this measures: everything under `adjustments/`, plus the
-    /// two that were doing asymptotically more work than they needed to.
-    const MEASURED: &[&str] = &[
-        "clarity",
-        "dehaze",
-        "tone map",
-        "hsl mixer",
-        "color grade",
-        "curves",
-        "levels",
-        "white balance",
-        "selective color",
-        "vibrance",
-        "color balance",
-        "tone equalizer",
-        "photo filter",
-        "exposure",
-        "saturation",
-        "negadoctor",
-        "black and white",
-        "shadows highlights",
-        "color lookup",
-        "threshold",
-        "posterize",
-        "vignette",
-        "texture",
-        "defringe",
-    ];
+    /// The menu category whose every operation is measured. Selecting by
+    /// category rather than by name means a new adjustment node joins the table
+    /// on its own, and a renamed one cannot silently drop out of it.
+    const MEASURED_CATEGORY: &str = "adjustments";
 
-    fn make_test_image() -> Arc<FloatImage> {
-        let mut data = Vec::with_capacity((WIDTH * HEIGHT * 4) as usize);
-        for y in 0..HEIGHT {
-            for x in 0..WIDTH {
-                data.push((x % 256) as f32 / 255.0);
-                data.push((y % 256) as f32 / 255.0);
-                data.push(((x ^ y) % 256) as f32 / 255.0);
-                data.push(1.0);
-            }
-        }
-        Arc::new(FloatImage::from_raw(WIDTH, HEIGHT, 4, data).expect("data length matches"))
-    }
-
-    fn flatten(items: &[OperationListItem], out: &mut Vec<Operation>) {
-        for item in items {
-            match item {
-                OperationListItem::Category { operation_list_items, .. } => {
-                    flatten(operation_list_items, out)
-                }
-                OperationListItem::Operation { operation } => out.push(operation.clone()),
-                OperationListItem::Subgraph => {}
-            }
-        }
-    }
+    /// Operations measured even though they live outside `adjustments/` —
+    /// nodes that were doing asymptotically more work than they needed to and
+    /// are worth watching at full resolution. Every name here must resolve to a
+    /// real operation; `adjustment_perf` asserts it, so a rename fails loudly
+    /// instead of shrinking the table.
+    const EXTRA_OPERATIONS: &[&str] = &[];
 
     #[tokio::test]
     #[ignore = "timing benchmark; run with --release --ignored --nocapture"]
     async fn adjustment_perf() {
-        let mut ops = Vec::new();
-        flatten(&operation_list(), &mut ops);
-        let image = make_test_image();
+        let ops = flatten_with_path(&operation_list());
+        let mut unmatched: Vec<&str> = EXTRA_OPERATIONS.to_vec();
+        let mut measured = Vec::new();
+        for (path, op) in &ops {
+            let name = op.settings().name;
+            let in_category = path.split('/').any(|segment| segment == MEASURED_CATEGORY);
+            let extra = EXTRA_OPERATIONS.contains(&name.as_str());
+            if extra {
+                unmatched.retain(|n| *n != name.as_str());
+            }
+            if in_category || extra {
+                measured.push((name, op.clone()));
+            }
+        }
+        assert!(
+            unmatched.is_empty(),
+            "EXTRA_OPERATIONS names that match no operation: {:?}",
+            unmatched
+        );
+        assert!(
+            !measured.is_empty(),
+            "no operations found in the '{}' menu category — has it been renamed?",
+            MEASURED_CATEGORY
+        );
+
+        let image = gradient_image(WIDTH, HEIGHT);
 
         let mut rows: Vec<(String, f64)> = Vec::new();
-        for op in &ops {
-            let name = op.settings().name;
-            if !MEASURED.contains(&name.as_str()) {
-                continue;
-            }
+        let mut failed: Vec<String> = Vec::new();
+        for (name, op) in &measured {
             let mut inputs = op.create_inputs();
-            for input in inputs.iter_mut() {
-                if matches!(input.value, Value::Image { .. }) {
-                    input.value = Value::Image { data: Arc::clone(&image), change_id: get_id() };
-                }
-            }
+            prepare_inputs(&mut inputs, &image);
             // Most of these nodes short-circuit on their neutral default (an
             // amount of 0 is the identity), which would time an early return
             // rather than the pass being measured. Input 1 is the main
@@ -119,9 +87,10 @@ mod adjustment_perf {
             }
             let start = Instant::now();
             if op.run(&mut inputs).await.is_err() {
+                failed.push(name.clone());
                 continue;
             }
-            rows.push((name, start.elapsed().as_secs_f64() * 1000.0));
+            rows.push((name.clone(), start.elapsed().as_secs_f64() * 1000.0));
         }
 
         rows.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
@@ -131,6 +100,11 @@ mod adjustment_perf {
         println!("{}", "-".repeat(40));
         for (name, ms) in &rows {
             println!(" {:<24}| {:>8.1} ms", name, ms);
+        }
+        println!();
+        println!("{} operations measured", rows.len());
+        if !failed.is_empty() {
+            println!("did not run (errored with default inputs): {:?}", failed);
         }
         println!();
     }

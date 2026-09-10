@@ -9,9 +9,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
+use crate::convert_inputs;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -62,17 +63,10 @@ impl OpImageInputUrl {
     /// or the image format is unsupported.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let url_converted = convert_input(inputs, 0, ValueType::Text, &mut input_errors);
-
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Text(url) = url_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Text(url) = 0,
+        }
 
         // run node
         if let Ok(image_response) =  reqwest::get(url.clone()).await {
@@ -93,13 +87,13 @@ impl OpImageInputUrl {
                         ],
                     })
                 } else {
-                    Err(OperationError{ input_errors, node_error: Some("Format not supported.".to_string())  })
+                    Err(OperationError{ input_errors: vec![], node_error: Some("Format not supported.".to_string())  })
                 }
             } else {
-                Err(OperationError{ input_errors, node_error: Some("Could not parse into bytes.".to_string())  })
+                Err(OperationError{ input_errors: vec![], node_error: Some("Could not parse into bytes.".to_string())  })
             }
         } else {
-            Err(OperationError{ input_errors, node_error: Some("Error getting url.".to_string())  })
+            Err(OperationError{ input_errors: vec![], node_error: Some("Error getting url.".to_string())  })
         }
 
         

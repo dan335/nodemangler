@@ -52,14 +52,14 @@ impl OpNumberImageStdDev {
             Image(data) = 0,
         }
 
-        let v = super::luma_values(&data);
-        let n = v.len();
+        let (w, h) = data.dimensions();
+        let n = (w as usize) * (h as usize);
         let (std, variance) = if n == 0 {
             (0.0f32, 0.0f32)
         } else {
             let nf = n as f64;
-            let mean = v.iter().map(|&x| x as f64).sum::<f64>() / nf;
-            let var = v.iter().map(|&x| { let d = x as f64 - mean; d * d }).sum::<f64>() / nf;
+            let mean = data.pixels().map(|px| super::pixel_luma(px) as f64).sum::<f64>() / nf;
+            let var = data.pixels().map(|px| { let d = super::pixel_luma(px) as f64 - mean; d * d }).sum::<f64>() / nf;
             (var.sqrt() as f32, var as f32)
         };
 

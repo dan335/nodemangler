@@ -54,12 +54,12 @@ impl OpNumberImageMinMax {
             Image(data) = 0,
         }
 
-        let v = super::luma_values(&data);
-        let (min, max, range) = if v.is_empty() {
+        let (w, h) = data.dimensions();
+        let (min, max, range) = if w == 0 || h == 0 {
             (0.0f32, 0.0f32, 0.0f32)
         } else {
-            let min = v.iter().copied().fold(f32::INFINITY, f32::min);
-            let max = v.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+            let min = data.pixels().map(super::pixel_luma).fold(f32::INFINITY, f32::min);
+            let max = data.pixels().map(super::pixel_luma).fold(f32::NEG_INFINITY, f32::max);
             (min, max, max - min)
         };
 

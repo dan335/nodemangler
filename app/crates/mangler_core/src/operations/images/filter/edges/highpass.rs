@@ -10,9 +10,10 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::blur::blur::gaussian_blur_image;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, scale_to_resolution, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -41,7 +42,7 @@ impl OpImageAdjustmentHighpass {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("High-frequency detail image biased to mid-grey at zero difference."),
         ]
     }
@@ -65,21 +66,20 @@ impl OpImageAdjustmentHighpass {
         let color_ch = if has_alpha { ch - 1 } else { ch };
 
         let mut output = FloatImage::new(width, height, data.channels());
-        let mut buf = [0.0f32; 4];
-        for y in 0..height {
-            for x in 0..width {
-                let src = data.get_pixel(x, y);
-                let blur = blurred.get_pixel(x, y);
-                for c in 0..color_ch {
-                    // +0.5 bias so zero detail sits at mid-grey.
-                    buf[c] = (src[c] - blur[c] + 0.5).clamp(0.0, 1.0);
-                }
-                if has_alpha {
-                    buf[ch - 1] = src[ch - 1];
-                }
-                output.put_pixel(x, y, &buf[..ch]);
+        let src_img = &*data;
+        output.par_enumerate_pixels_mut().for_each(|(x, y, out_px)| {
+            let mut buf = [0.0f32; 4];
+            let src = src_img.get_pixel(x, y);
+            let blur = blurred.get_pixel(x, y);
+            for c in 0..color_ch {
+                // +0.5 bias so zero detail sits at mid-grey.
+                buf[c] = (src[c] - blur[c] + 0.5).clamp(0.0, 1.0);
             }
-        }
+            if has_alpha {
+                buf[ch - 1] = src[ch - 1];
+            }
+            out_px.copy_from_slice(&buf[..ch]);
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

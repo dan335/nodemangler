@@ -9,9 +9,10 @@ use crate::get_id;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -42,7 +43,7 @@ impl OpImagePbrNormalInvert {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Normal map with the selected axes inverted."),
         ]
     }
@@ -62,16 +63,15 @@ impl OpImagePbrNormalInvert {
         let ch = data.channels();
         let mut output = FloatImage::new(w, h, ch);
         let ch_usize = ch as usize;
-        for y in 0..h {
-            for x in 0..w {
-                let src = data.get_pixel(x, y);
-                let mut px = [0.0f32; 4];
-                px[..ch_usize].copy_from_slice(&src[..ch_usize]);
-                if invert_x && ch_usize >= 1 { px[0] = 1.0 - px[0]; }
-                if invert_y && ch_usize >= 2 { px[1] = 1.0 - px[1]; }
-                output.put_pixel(x, y, &px[..ch_usize]);
-            }
-        }
+        let src_ref = &*data;
+        output.par_enumerate_pixels_mut().for_each(|(x, y, out_px)| {
+            let src = src_ref.get_pixel(x, y);
+            let mut px = [0.0f32; 4];
+            px[..ch_usize].copy_from_slice(&src[..ch_usize]);
+            if invert_x && ch_usize >= 1 { px[0] = 1.0 - px[0]; }
+            if invert_y && ch_usize >= 2 { px[1] = 1.0 - px[1]; }
+            out_px.copy_from_slice(&px[..ch_usize]);
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

@@ -9,9 +9,10 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -44,7 +45,7 @@ impl OpImageAdjustmentEmboss {
 
     /// Creates the output port: the embossed image.
     pub fn create_outputs() -> Vec<Output> {
-        vec![Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+        vec![image_output("output")
             .with_description("Embossed image centered at mid-grey with relief along the chosen angle.")]
     }
 
@@ -68,26 +69,30 @@ impl OpImageAdjustmentEmboss {
         let dx = angle_rad.cos();
         let dy = angle_rad.sin();
 
-        for y in 0..height {
+        let row_len = (width as usize * ch).max(1);
+        let src = &*data;
+        output.as_raw_mut().par_chunks_mut(row_len).enumerate().for_each(|(y, out_row)| {
+            let y = y as u32;
             for x in 0..width {
                 let fx = x as f32;
                 let fy = y as f32;
 
-                let pixel = output.get_pixel_mut(x, y);
+                let i = x as usize * ch;
+                let pixel = &mut out_row[i..i + ch];
                 for (c, val) in pixel.iter_mut().enumerate().take(color_ch) {
                     // Sample forward pixel
                     let fpx = (fx + dx).round().clamp(0.0, (width - 1) as f32) as u32;
                     let fpy = (fy + dy).round().clamp(0.0, (height - 1) as f32) as u32;
-                    let forward = data.get_pixel(fpx, fpy)[c];
+                    let forward = src.get_pixel(fpx, fpy)[c];
                     // Sample backward pixel
                     let bpx = (fx - dx).round().clamp(0.0, (width - 1) as f32) as u32;
                     let bpy = (fy - dy).round().clamp(0.0, (height - 1) as f32) as u32;
-                    let backward = data.get_pixel(bpx, bpy)[c];
+                    let backward = src.get_pixel(bpx, bpy)[c];
                     *val = (0.5 + intensity * (forward - backward)).clamp(0.0, 1.0);
                 }
                 // alpha unchanged
             }
-        }
+        });
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

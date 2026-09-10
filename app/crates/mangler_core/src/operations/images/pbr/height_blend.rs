@@ -8,9 +8,10 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -43,9 +44,9 @@ impl OpImagePbrHeightBlend {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Color image produced by height-masked blending of the two materials."),
-            Output::new("height".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("height")
                 .with_description("Combined height map of the two materials after blending."),
         ]
     }
@@ -88,27 +89,35 @@ impl OpImagePbrHeightBlend {
             }
         };
 
-        for y in 0..height {
-            for x in 0..width {
-                let base_c = get_rgba(&base_color_data, x, y);
-                let overlay_c = get_rgba(&overlay_color_data, x, y);
-                let bh = lum(&base_height_data, x, y);
-                let oh = lum(&overlay_height_data, x, y);
+        let row_len = (width as usize * 4).max(1);
+        color_output
+            .as_raw_mut()
+            .par_chunks_mut(row_len)
+            .zip(height_output.as_raw_mut().par_chunks_mut(row_len))
+            .enumerate()
+            .for_each(|(y, (color_row, height_row))| {
+                let y = y as u32;
+                for x in 0..width {
+                    let base_c = get_rgba(&base_color_data, x, y);
+                    let overlay_c = get_rgba(&overlay_color_data, x, y);
+                    let bh = lum(&base_height_data, x, y);
+                    let oh = lum(&overlay_height_data, x, y);
 
-                let height_diff = oh - bh;
-                let depth = (1.0 - contrast).max(0.001);
-                let t = ((height_diff + blend_amount * 2.0 - 1.0) / depth * 0.5 + 0.5).clamp(0.0, 1.0);
+                    let height_diff = oh - bh;
+                    let depth = (1.0 - contrast).max(0.001);
+                    let t = ((height_diff + blend_amount * 2.0 - 1.0) / depth * 0.5 + 0.5).clamp(0.0, 1.0);
 
-                let r = base_c[0] * (1.0 - t) + overlay_c[0] * t;
-                let g = base_c[1] * (1.0 - t) + overlay_c[1] * t;
-                let b = base_c[2] * (1.0 - t) + overlay_c[2] * t;
-                let a = base_c[3] * (1.0 - t) + overlay_c[3] * t;
-                color_output.put_pixel(x, y, &[r, g, b, a]);
+                    let r = base_c[0] * (1.0 - t) + overlay_c[0] * t;
+                    let g = base_c[1] * (1.0 - t) + overlay_c[1] * t;
+                    let b = base_c[2] * (1.0 - t) + overlay_c[2] * t;
+                    let a = base_c[3] * (1.0 - t) + overlay_c[3] * t;
+                    let i = x as usize * 4;
+                    color_row[i..i + 4].copy_from_slice(&[r, g, b, a]);
 
-                let blended_h = bh * (1.0 - t) + oh * t;
-                height_output.put_pixel(x, y, &[blended_h, blended_h, blended_h, 1.0]);
-            }
-        }
+                    let blended_h = bh * (1.0 - t) + oh * t;
+                    height_row[i..i + 4].copy_from_slice(&[blended_h, blended_h, blended_h, 1.0]);
+                }
+            });
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

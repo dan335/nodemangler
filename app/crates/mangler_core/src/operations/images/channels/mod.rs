@@ -14,3 +14,18 @@ pub mod shuffle;
 pub mod select;
 /// Per-output-channel linear combinations of the input R/G/B channels plus bias.
 pub mod mixer;
+
+use rayon::prelude::*;
+
+/// Minimum pixel count before extraction is parallelized; below this the
+/// rayon dispatch overhead outweighs the trivial per-pixel work.
+pub(crate) const PARALLEL_PIXELS: usize = 1 << 16;
+
+/// Extracts one scalar per pixel from an interleaved raw buffer.
+pub(crate) fn extract_channel<F: Fn(&[f32]) -> f32 + Sync>(src: &[f32], ch: usize, f: F) -> Vec<f32> {
+    if src.len() / ch >= PARALLEL_PIXELS {
+        src.par_chunks_exact(ch).map(&f).collect()
+    } else {
+        src.chunks_exact(ch).map(f).collect()
+    }
+}

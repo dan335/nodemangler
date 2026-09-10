@@ -35,8 +35,7 @@ use crate::operations::curves::common::{
 };
 use crate::operations::images::simulation::{guidance_map_to_grid, is_unconnected};
 use crate::convert_inputs;
-use crate::operations::{
-    default_image, OperationError, OperationResponse, OutputResponse, image_input};
+use crate::operations::{OperationError, OperationResponse, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -529,8 +528,7 @@ fn finalize_field(field: Vec<f32>) -> Vec<f32> {
     field
         .into_iter()
         .map(|v| {
-            let t = ((v + 1.0) * 0.5).clamp(0.0, 1.0);
-            t * t * (3.0 - 2.0 * t)
+            crate::math::smoothstep01_f32((v + 1.0) * 0.5)
         })
         .collect()
 }
@@ -618,11 +616,11 @@ impl OpCurveSimulationMeander {
         vec![
             Output::new("curve".to_string(), Value::Curve(Curve::default()), None)
                 .with_description("The evolved river centerline (main channel only; oxbows are in the rasters). Feed into rasterize curve or carve river."),
-            Output::new("river mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("river mask")
                 .with_description("The live channel at channel width, white on black. Oxbow lakes are not included - blend in the oxbows output if you want both."),
-            Output::new("oxbows".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("oxbows")
                 .with_description("Only the cut-off oxbow lakes, white on black; black when none have formed yet."),
-            Output::new("migration map".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("migration map")
                 .with_description("Age-graded corridor the channel swept while migrating (newer = brighter): scroll-bar/point-bar scarring for floodplain texturing."),
         ]
     }

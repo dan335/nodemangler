@@ -4,10 +4,9 @@
 //! using `try_convert_to`. This provides an explicit cast node for generating
 //! images from scalar values.
 
-use crate::get_id;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_output};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -42,7 +41,7 @@ impl OpImageCastToImage {
     /// Creates the default output list: a single image output.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("1x1 RGBA image representing the input value."),
         ]
     }

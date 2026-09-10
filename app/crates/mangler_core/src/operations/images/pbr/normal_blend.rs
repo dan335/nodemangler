@@ -9,9 +9,10 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::pbr::{normalize, pack_normal, unpack_normal};
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -42,7 +43,7 @@ impl OpImagePbrNormalBlend {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Re-normalised normal map blended from A and B by opacity."),
         ]
     }
@@ -61,25 +62,25 @@ impl OpImagePbrNormalBlend {
 
         let sx = if b.width() > 0 { b.width() as f32 / width.max(1) as f32 } else { 1.0 };
         let sy = if b.height() > 0 { b.height() as f32 / height.max(1) as f32 } else { 1.0 };
-        let mut b_buf = [0.0f32; 4];
         let b_ch = b.channels() as usize;
 
         let mut output = FloatImage::new(width, height, 4);
-        for y in 0..height {
-            for x in 0..width {
-                let na = unpack_normal(a.get_pixel(x, y));
-                b.bilinear_sample(x as f32 * sx, y as f32 * sy, &mut b_buf[..b_ch]);
-                let nb = unpack_normal(&b_buf[..b_ch]);
+        let a_ref = &*a;
+        let b_ref = &*b;
+        output.par_enumerate_pixels_mut().for_each(|(x, y, out_px)| {
+            let mut b_buf = [0.0f32; 4];
+            let na = unpack_normal(a_ref.get_pixel(x, y));
+            b_ref.bilinear_sample(x as f32 * sx, y as f32 * sy, &mut b_buf[..b_ch]);
+            let nb = unpack_normal(&b_buf[..b_ch]);
 
-                let mixed = normalize([
-                    na[0] * (1.0 - opacity) + nb[0] * opacity,
-                    na[1] * (1.0 - opacity) + nb[1] * opacity,
-                    na[2] * (1.0 - opacity) + nb[2] * opacity,
-                ]);
+            let mixed = normalize([
+                na[0] * (1.0 - opacity) + nb[0] * opacity,
+                na[1] * (1.0 - opacity) + nb[1] * opacity,
+                na[2] * (1.0 - opacity) + nb[2] * opacity,
+            ]);
 
-                output.put_pixel(x, y, &pack_normal(mixed));
-            }
-        }
+            out_px.copy_from_slice(&pack_normal(mixed));
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

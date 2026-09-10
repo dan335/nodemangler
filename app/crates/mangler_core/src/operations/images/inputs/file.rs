@@ -12,9 +12,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
+use crate::convert_inputs;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -73,17 +74,10 @@ impl OpImageInputFile {
     /// Returns an error if the file cannot be opened or the image format is unsupported.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let path_converted = convert_input(inputs, 0, ValueType::Path, &mut input_errors);
-
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Path(path) = path_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Path(path) = 0,
+        }
 
         // run node — decoding is shared with the GUI's library image preview.
         let decode_result = load_image_from_path(&path);
@@ -102,7 +96,7 @@ impl OpImageInputFile {
                     ],
                 })
             }
-            Err(e) => Err(OperationError { input_errors, node_error: Some(format!("Error opening image: {}", e)) }),
+            Err(e) => Err(OperationError { input_errors: vec![], node_error: Some(format!("Error opening image: {}", e)) }),
         }
     }
 

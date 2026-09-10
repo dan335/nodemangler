@@ -19,7 +19,7 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, scale_to_resolution, image_input, image_output};
 use crate::operations::images::adjustments::common::smoothstep;
 use crate::output::Output;
 use crate::value::Value;
@@ -56,7 +56,7 @@ impl OpImageAdjustmentOutline {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("RGBA image containing only the outline; alpha is zero where the source mask is unchanged."),
         ]
     }
@@ -185,39 +185,59 @@ fn edt_squared(feature: &[bool], w: usize, h: usize) -> Vec<f32> {
 
     let grid: Vec<f32> = feature.iter().map(|&f| if f { 0.0 } else { INF }).collect();
 
-    // Column pass: transform each column independently.
-    let cols: Vec<Vec<f32>> = (0..w).into_par_iter().map(|x| {
-        let f: Vec<f32> = (0..h).map(|y| grid[y * w + x]).collect();
-        dt_1d(&f)
-    }).collect();
+    // Column pass: transform each column independently, written *transposed*
+    // into one flat buffer (`cols[x * h + y]`) so the row pass below reads a
+    // single allocation instead of one heap Vec per column.
+    let mut cols = vec![0.0f32; w * h];
+    cols.par_chunks_mut(h.max(1))
+        .enumerate()
+        .for_each_init(|| Scratch::new(h), |scratch, (x, col)| {
+            for y in 0..h {
+                scratch.f[y] = grid[y * w + x];
+            }
+            dt_1d_into(&scratch.f, col, &mut scratch.v, &mut scratch.z);
+        });
 
     // Row pass: feed the column results back in, one row at a time.
-    let rows: Vec<Vec<f32>> = (0..h).into_par_iter().map(|y| {
-        let f: Vec<f32> = (0..w).map(|x| cols[x][y]).collect();
-        dt_1d(&f)
-    }).collect();
-
     let mut out = vec![0.0f32; w * h];
-    for (y, row) in rows.iter().enumerate() {
-        out[y * w..(y + 1) * w].copy_from_slice(row);
-    }
+    out.par_chunks_mut(w.max(1))
+        .enumerate()
+        .for_each_init(|| Scratch::new(w), |scratch, (y, row)| {
+            for x in 0..w {
+                scratch.f[x] = cols[x * h + y];
+            }
+            dt_1d_into(&scratch.f, row, &mut scratch.v, &mut scratch.z);
+        });
     out
+}
+
+/// Reusable per-thread working buffers for [`dt_1d_into`], so the transform
+/// allocates once per worker rather than once per row/column.
+struct Scratch {
+    f: Vec<f32>,
+    v: Vec<usize>,
+    z: Vec<f32>,
+}
+
+impl Scratch {
+    fn new(n: usize) -> Self {
+        Scratch { f: vec![0.0f32; n], v: vec![0usize; n], z: vec![0.0f32; n + 1] }
+    }
 }
 
 /// One-dimensional squared distance transform: `d[q] = min_p f[p] + (q − p)²`.
 ///
 /// Computes the lower envelope of the parabolas rooted at each sample, walking
 /// left to right. `v` holds the indices of the parabolas currently forming the
-/// envelope and `z` the boundaries between them.
-fn dt_1d(f: &[f32]) -> Vec<f32> {
+/// envelope and `z` the boundaries between them; both are caller-owned scratch
+/// (`v.len() >= n`, `z.len() >= n + 1`) so the transform allocates nothing.
+/// The result is written into `d` (`d.len() == n`).
+fn dt_1d_into(f: &[f32], d: &mut [f32], v: &mut [usize], z: &mut [f32]) {
     let n = f.len();
-    let mut d = vec![0.0f32; n];
     if n == 0 {
-        return d;
+        return;
     }
 
-    let mut v = vec![0usize; n]; // parabola indices in the lower envelope
-    let mut z = vec![0.0f32; n + 1]; // breakpoints between consecutive parabolas
     let mut k = 0usize;
     v[0] = 0;
     z[0] = f32::NEG_INFINITY;
@@ -250,7 +270,6 @@ fn dt_1d(f: &[f32]) -> Vec<f32> {
         let dq = q as f32 - p as f32;
         d[q] = dq * dq + f[p];
     }
-    d
 }
 
 #[cfg(test)]

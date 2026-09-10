@@ -15,11 +15,19 @@ use crate::operations::{
 };
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
 /// Circular absolute difference between two hues in degrees, result in [0, 180].
+///
+/// **Deliberately not shared with `hsl_mixer::hue_distance`.** That one folds a
+/// `rem_euclid(360)` with `d.min(360 - d)`, which is mathematically the same
+/// function but not bit-identical in f32: for `a < b` it evaluates
+/// `360 - (360 - |a - b|)`, and the double subtraction loses an ulp on roughly
+/// one input in seven. Both forms are correct; swapping either node onto the
+/// other's would shift its pixels, so they stay separate.
 #[inline]
 fn hue_distance(a: f32, b: f32) -> f32 {
     let mut d = (a - b).abs() % 360.0;
@@ -145,11 +153,7 @@ impl OpImageMaskHueRange {
         // Grayscale has no meaningful hue — emit zeros (or ones if inverted).
         if ch < 3 {
             let fill = if invert { 1.0 } else { 0.0 };
-            for y in 0..h {
-                for x in 0..w {
-                    output.put_pixel(x, y, &[fill]);
-                }
-            }
+            output.as_raw_mut().fill(fill);
             return Ok(OperationResponse {
                 time: Instant::now().duration_since(start_time),
                 responses: vec![OutputResponse {
@@ -161,25 +165,25 @@ impl OpImageMaskHueRange {
             });
         }
 
-        for y in 0..h {
-            for x in 0..w {
-                let p = data.get_pixel(x, y);
-                let (ph, ps, _pl) = rgb_to_hsl(p[0], p[1], p[2]);
-                let dist = hue_distance(ph, hue);
-                // 1 inside range, fade to 0 over softness.
-                let mut m = 1.0 - smoothstep(e0, e1, dist);
-                // Soft chroma gate: fully reject below min_chroma; above is untouched.
-                // A tiny ramp (0.02) avoids a hard cut when min_chroma is small.
-                if min_chroma > 0.0 {
-                    let gate = smoothstep(min_chroma * 0.5, min_chroma, ps);
-                    m *= gate;
-                }
-                if invert {
-                    m = 1.0 - m;
-                }
-                output.put_pixel(x, y, &[m]);
+        // Each output pixel depends only on the matching source pixel, so this
+        // is order-independent and bit-identical to the serial loop.
+        output.par_enumerate_pixels_mut().for_each(|(x, y, dst)| {
+            let p = data.get_pixel(x, y);
+            let (ph, ps, _pl) = rgb_to_hsl(p[0], p[1], p[2]);
+            let dist = hue_distance(ph, hue);
+            // 1 inside range, fade to 0 over softness.
+            let mut m = 1.0 - smoothstep(e0, e1, dist);
+            // Soft chroma gate: fully reject below min_chroma; above is untouched.
+            // A tiny ramp (0.02) avoids a hard cut when min_chroma is small.
+            if min_chroma > 0.0 {
+                let gate = smoothstep(min_chroma * 0.5, min_chroma, ps);
+                m *= gate;
             }
-        }
+            if invert {
+                m = 1.0 - m;
+            }
+            dst[0] = m;
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

@@ -16,9 +16,10 @@ use crate::fonts;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, scale_to_resolution, image_output};
 use crate::output::Output;
-use crate::value::{Value, ValueType, TextHAlign, TextVAlign};
+use crate::value::{Value, TextHAlign, TextVAlign};
+use crate::convert_inputs;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -151,11 +152,7 @@ impl OpImageInputText {
     /// Creates the output definitions: the rendered grayscale image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new(
-                "output".to_string(),
-                Value::Image { data: default_image(), change_id: get_id() },
-                None,
-            )
+            image_output("output")
                 .with_description("Grayscale mask with rasterised white text on a black background."),
         ]
     }
@@ -171,39 +168,22 @@ impl OpImageInputText {
     ///    the final canvas at the anchor position.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let text_c        = convert_input(inputs, 0,  ValueType::Text,      &mut input_errors);
-        let font_c        = convert_input(inputs, FONT, ValueType::Text,    &mut input_errors);
-        let font_size_c   = convert_input(inputs, 2,  ValueType::Decimal,   &mut input_errors);
-        let width_c       = convert_input(inputs, 3,  ValueType::Integer,   &mut input_errors);
-        let height_c      = convert_input(inputs, 4,  ValueType::Integer,   &mut input_errors);
-        let x_pos_c       = convert_input(inputs, 5,  ValueType::Decimal,   &mut input_errors);
-        let y_pos_c       = convert_input(inputs, 6,  ValueType::Decimal,   &mut input_errors);
-        let letter_sp_c   = convert_input(inputs, 7,  ValueType::Decimal,   &mut input_errors);
-        let line_sp_c     = convert_input(inputs, 8,  ValueType::Decimal,   &mut input_errors);
-        let wrap_w_c      = convert_input(inputs, 9,  ValueType::Integer,   &mut input_errors);
-        let h_align_c     = convert_input(inputs, 10, ValueType::TextHAlign, &mut input_errors);
-        let v_align_c     = convert_input(inputs, 11, ValueType::TextVAlign, &mut input_errors);
-        let rotation_c    = convert_input(inputs, 12, ValueType::Decimal,   &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Text(text) = 0,
+            Text(font_name) = FONT,
+            Decimal(font_size) = 2,
+            Integer(img_width) = 3,
+            Integer(img_height) = 4,
+            Decimal(x_pos) = 5,
+            Decimal(y_pos) = 6,
+            Decimal(letter_sp) = 7,
+            Decimal(line_sp) = 8,
+            Integer(wrap_width) = 9,
+            TextHAlign(h_align) = 10,
+            TextVAlign(v_align) = 11,
+            Decimal(rotation_deg) = 12,
         }
-
-        let Value::Text(text)             = text_c.unwrap()       else { unreachable!() };
-        let Value::Text(font_name)        = font_c.unwrap()        else { unreachable!() };
-        let Value::Decimal(font_size)     = font_size_c.unwrap()   else { unreachable!() };
-        let Value::Integer(img_width)     = width_c.unwrap()       else { unreachable!() };
-        let Value::Integer(img_height)    = height_c.unwrap()      else { unreachable!() };
-        let Value::Decimal(x_pos)         = x_pos_c.unwrap()       else { unreachable!() };
-        let Value::Decimal(y_pos)         = y_pos_c.unwrap()       else { unreachable!() };
-        let Value::Decimal(letter_sp)     = letter_sp_c.unwrap()   else { unreachable!() };
-        let Value::Decimal(line_sp)       = line_sp_c.unwrap()     else { unreachable!() };
-        let Value::Integer(wrap_width)    = wrap_w_c.unwrap()      else { unreachable!() };
-        let Value::TextHAlign(h_align)    = h_align_c.unwrap()     else { unreachable!() };
-        let Value::TextVAlign(v_align)    = v_align_c.unwrap()     else { unreachable!() };
-        let Value::Decimal(rotation_deg)  = rotation_c.unwrap()    else { unreachable!() };
 
         let img_width   = img_width.max(1) as u32;
         let img_height  = img_height.max(1) as u32;

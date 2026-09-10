@@ -10,9 +10,10 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::blur::blur::gaussian_blur_image;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, scale_to_resolution, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -41,7 +42,7 @@ impl OpImageAdjustmentLuminanceHighpass {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Image with the luminance high-pass delta added back into each color channel."),
         ]
     }
@@ -65,36 +66,33 @@ impl OpImageAdjustmentLuminanceHighpass {
         let mut output = FloatImage::new(width, height, data.channels());
 
         // Single-channel inputs collapse to the plain highpass case.
+        let src_img = &*data;
         if ch < 3 {
-            let mut buf = [0.0f32; 4];
-            for y in 0..height {
-                for x in 0..width {
-                    let src = data.get_pixel(x, y);
-                    let blur = blurred.get_pixel(x, y);
-                    buf[0] = (src[0] - blur[0] + 0.5).clamp(0.0, 1.0);
-                    if ch == 2 { buf[1] = src[1]; }
-                    output.put_pixel(x, y, &buf[..ch]);
-                }
-            }
+            output.par_enumerate_pixels_mut().for_each(|(x, y, out_px)| {
+                let mut buf = [0.0f32; 4];
+                let src = src_img.get_pixel(x, y);
+                let blur = blurred.get_pixel(x, y);
+                buf[0] = (src[0] - blur[0] + 0.5).clamp(0.0, 1.0);
+                if ch == 2 { buf[1] = src[1]; }
+                out_px.copy_from_slice(&buf[..ch]);
+            });
         } else {
             // For RGB(A), compute luminance on source + blur, take the
             // delta, and add it to each colour channel uniformly — this
             // sharpens brightness without shifting hue.
-            let mut buf = [0.0f32; 4];
-            for y in 0..height {
-                for x in 0..width {
-                    let src = data.get_pixel(x, y);
-                    let blur = blurred.get_pixel(x, y);
-                    let lum_src = crate::luma::rec709(src[0], src[1], src[2]);
-                    let lum_blur = crate::luma::rec709(blur[0], blur[1], blur[2]);
-                    let delta = lum_src - lum_blur;
-                    buf[0] = (src[0] + delta).clamp(0.0, 1.0);
-                    buf[1] = (src[1] + delta).clamp(0.0, 1.0);
-                    buf[2] = (src[2] + delta).clamp(0.0, 1.0);
-                    if ch == 4 { buf[3] = src[3]; }
-                    output.put_pixel(x, y, &buf[..ch]);
-                }
-            }
+            output.par_enumerate_pixels_mut().for_each(|(x, y, out_px)| {
+                let mut buf = [0.0f32; 4];
+                let src = src_img.get_pixel(x, y);
+                let blur = blurred.get_pixel(x, y);
+                let lum_src = crate::luma::rec709(src[0], src[1], src[2]);
+                let lum_blur = crate::luma::rec709(blur[0], blur[1], blur[2]);
+                let delta = lum_src - lum_blur;
+                buf[0] = (src[0] + delta).clamp(0.0, 1.0);
+                buf[1] = (src[1] + delta).clamp(0.0, 1.0);
+                buf[2] = (src[2] + delta).clamp(0.0, 1.0);
+                if ch == 4 { buf[3] = src[3]; }
+                out_px.copy_from_slice(&buf[..ch]);
+            });
         }
 
         Ok(OperationResponse {

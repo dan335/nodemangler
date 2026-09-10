@@ -9,26 +9,15 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
+use crate::operations::images::patterns::{lcg, lcg_float};
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
-
-/// Advances the LCG state by one step using Knuth's constants.
-fn lcg(seed: u64) -> u64 {
-    seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)
-}
-
-/// Returns a pseudo-random float in `[0, 1)` and the next LCG state.
-fn lcg_float(seed: u64) -> (f64, u64) {
-    let next = lcg(seed);
-    let val = (next >> 33) as f64 / (1u64 << 31) as f64;
-    (val, next)
-}
 
 /// Precomputed placement of a single pattern instance.
 struct Stamp {
@@ -92,7 +81,7 @@ impl OpImagePatternTileSampler {
     /// Creates the default output: a single image matching the input pattern's channel count.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Composite image of all grid-placed pattern instances, max-blended."),
         ]
     }

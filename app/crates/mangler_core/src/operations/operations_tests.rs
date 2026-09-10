@@ -225,7 +225,6 @@ fn test_no_operation_panics_on_default_inputs() {
 // ---------------------------------------------------------------------------
 
 mod convert_inputs_macro {
-    use crate::convert_inputs;
     use crate::float_image::FloatImage;
     use crate::input::Input;
     use crate::operations::{OperationError, OperationResponse, OutputResponse};

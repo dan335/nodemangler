@@ -6,9 +6,10 @@
 
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input, image_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -51,15 +52,8 @@ impl OpTextImageDataUri {
     /// Executes the data-URI encoding.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let max_size_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Integer(max_size) = max_size_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs; Image(data) = 0, Integer(max_size) = 1 }
 
         let (w, h) = data.dimensions();
         let maxd = max_size.clamp(16, 4096) as u32;

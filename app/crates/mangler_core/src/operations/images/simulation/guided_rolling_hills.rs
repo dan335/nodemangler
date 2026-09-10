@@ -24,7 +24,7 @@ use crate::node_settings::NodeSettings;
 use crate::operations::images::noise::voronoi_common::{cell_hash, wrap_cell};
 use crate::operations::images::tone_curve::{optional_lut, sample_lut, tone_curve_input, tone_curve_lut, TONE_LUT_SIZE};
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, scale_to_resolution, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -288,9 +288,9 @@ impl OpImageSimulationGuidedRollingHills {
     /// Creates the two outputs: the composed heightmap and the channel mask.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("height".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("height")
                 .with_description("Composed grayscale heightmap in [0, 1], sRGB-encoded. Tiles only when no guidance map is connected."),
-            Output::new("channel mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("channel mask")
                 .with_description("Bright in the channel, fading to black at the valley rim; all black when nothing is connected. A ready-made water/wetness mask aligned with the carve."),
         ]
     }
@@ -400,8 +400,7 @@ impl OpImageSimulationGuidedRollingHills {
             // distance, output = wall height fraction. LUT endpoint bins are
             // exact, so the identity default gives wall = dv (straight V).
             let wall = sample_lut(&wall_lut, dv as f32) as f64;
-            let ct = ((dist - river_width_px) / feather_px).clamp(0.0, 1.0);
-            let cut = ct * ct * (3.0 - 2.0 * ct);
+            let cut = crate::math::smoothstep01((dist - river_width_px) / feather_px);
             // Hann bump peaking at d=0.25 (mid-bank), zero at d=0 and d>=0.5.
             let levee = 0.5 + 0.5 * (pi * ((dv - 0.25).abs() / 0.25).min(1.0)).cos();
             let composed = (r * wall + (1.0 - r) * cut * hills01[p] + b * levee) / (1.0 + b);

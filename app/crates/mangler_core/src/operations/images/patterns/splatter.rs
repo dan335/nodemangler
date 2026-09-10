@@ -9,26 +9,15 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::images::patterns::{draw_stamp, StampPlacement};
+use crate::operations::images::patterns::{draw_stamp, lcg, lcg_float, StampPlacement};
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, scale_to_resolution, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
-
-/// Advances an LCG state by one step using Knuth's constants.
-fn lcg(seed: u64) -> u64 {
-    seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)
-}
-
-fn lcg_float(seed: u64) -> (f64, u64) {
-    let next = lcg(seed);
-    let val = (next >> 33) as f64 / (1u64 << 31) as f64;
-    (val, next)
-}
 
 /// Free-placement pattern splatter.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,7 +57,7 @@ impl OpImagePatternSplatter {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Composite image with all stamps placed using max blending."),
         ]
     }

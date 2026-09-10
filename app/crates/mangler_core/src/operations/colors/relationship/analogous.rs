@@ -12,11 +12,7 @@ use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
-
-/// Rotates a hue value (0–360) by a given number of degrees, wrapping correctly.
-fn rotate_hue(h: f32, degrees: f32) -> f32 {
-    ((h + degrees) % 360.0 + 360.0) % 360.0
-}
+use super::rotate_hue;
 
 /// Operation that generates two analogous harmony colors offset by a configurable angle.
 #[derive(Debug, Clone, Serialize, Deserialize)]

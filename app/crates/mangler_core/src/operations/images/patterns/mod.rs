@@ -16,6 +16,26 @@ pub mod tile_generator;
 pub mod tile_sampler;
 pub mod weave;
 
+/// Advances an LCG state by one step using Knuth's constants.
+///
+/// Shared by every seeded pattern node (`splatter`, `scatter on curve`,
+/// `tile sampler`), which each carried an identical private copy. The constants
+/// and the shift below are part of those nodes' output contract — a change here
+/// changes their pixels.
+#[inline]
+pub(crate) fn lcg(seed: u64) -> u64 {
+    seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)
+}
+
+/// Draws a float in `[0,1)` from an LCG state, returning the value and the
+/// advanced state.
+#[inline]
+pub(crate) fn lcg_float(seed: u64) -> (f64, u64) {
+    let next = lcg(seed);
+    let val = (next >> 33) as f64 / (1u64 << 31) as f64;
+    (val, next)
+}
+
 /// Precomputed placement of a single rotated/scaled pattern stamp, shared by
 /// the `splatter` and `scatter on curve` ops.
 ///

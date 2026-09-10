@@ -11,7 +11,7 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, scale_to_resolution, image_input, image_output};
 use crate::operations::images::filter::morphology::erode::separable_morphology;
 use crate::output::Output;
 use crate::value::Value;
@@ -46,7 +46,7 @@ impl OpImageAdjustmentDilate {
     /// Creates the output port: the dilated image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Dilated image where bright regions have expanded by the chosen radius."),
         ]
     }

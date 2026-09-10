@@ -4,13 +4,15 @@
 //! the Rec. 709 luminance of each pixel, then outputs the gradient magnitude
 //! as a grayscale image.
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -41,7 +43,7 @@ impl OpImageAdjustmentEdgeDetect {
 
     /// Creates the output port: grayscale edge magnitude image.
     pub fn create_outputs() -> Vec<Output> {
-        vec![Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+        vec![image_output("output")
             .with_description("Grayscale image of the Sobel gradient magnitude at each pixel.")]
     }
 
@@ -56,16 +58,32 @@ impl OpImageAdjustmentEdgeDetect {
 
         // run node — work directly on FloatImage pixels
         let (width, height) = (data.width(), data.height());
-        let mut output = (*data).clone();
         let ch = data.channels() as usize;
+        // Only the colour channels are rewritten; alpha is copied from the
+        // source, so the output is built fresh rather than cloning the whole
+        // image just to preserve one channel.
+        let mut output = FloatImage::new(width, height, data.channels());
 
-        // Helper: compute luminance from a pixel
+        // Luminance plane, computed once per pixel: the Sobel stencil reads
+        // each neighbour up to twice and eight neighbours per pixel.
+        let mut luma_plane = vec![0.0f32; (width as usize) * (height as usize)];
+        luma_plane
+            .par_chunks_mut((width as usize).max(1))
+            .enumerate()
+            .for_each(|(y, row)| {
+                for (x, v) in row.iter_mut().enumerate() {
+                    let p = data.get_pixel(x as u32, y as u32);
+                    *v = if ch >= 3 { crate::luma::rec709(p[0], p[1], p[2]) } else { p[0] };
+                }
+            });
         let lum_at = |px: u32, py: u32| -> f32 {
-            let p = data.get_pixel(px.clamp(0, width - 1), py.clamp(0, height - 1));
-            if ch >= 3 { crate::luma::rec709(p[0], p[1], p[2]) } else { p[0] }
+            luma_plane[py as usize * width as usize + px as usize]
         };
 
-        for y in 0..height {
+        let row_len = (width as usize * ch).max(1);
+        let src = &*data;
+        output.as_raw_mut().par_chunks_mut(row_len).enumerate().for_each(|(y, out_row)| {
+            let y = y as u32;
             for x in 0..width {
                 let x0 = if x > 0 { x - 1 } else { 0 };
                 let x2 = if x + 1 < width { x + 1 } else { width - 1 };
@@ -81,15 +99,16 @@ impl OpImageAdjustmentEdgeDetect {
 
                 let magnitude = ((gx * gx + gy * gy).sqrt() * intensity).clamp(0.0, 1.0);
 
-                let pixel = output.get_pixel_mut(x, y);
-                let alpha = if ch == 2 || ch == 4 { pixel[ch - 1] } else { 1.0 };
+                let i = x as usize * ch;
+                let pixel = &mut out_row[i..i + ch];
                 // Write grayscale magnitude to all color channels
-                for c in 0..pixel.len().min(3) {
+                for c in 0..ch.min(3) {
                     pixel[c] = magnitude;
                 }
-                if ch == 2 || ch == 4 { pixel[ch - 1] = alpha; }
+                // Alpha (channel 1 of 2, or 3 of 4) is carried over untouched.
+                if ch == 2 || ch == 4 { pixel[ch - 1] = src.get_pixel(x, y)[ch - 1]; }
             }
-        }
+        });
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

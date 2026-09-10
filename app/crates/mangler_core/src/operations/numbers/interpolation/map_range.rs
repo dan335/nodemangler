@@ -5,9 +5,10 @@
 
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -60,24 +61,15 @@ impl OpNumberMathMapRange {
     /// Returns an error if `in_min == in_max` (zero-width input range).
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let input_val = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
-        let in_min_val = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let in_max_val = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let out_min_val = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let out_max_val = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Decimal(input) = input_val.unwrap() else { unreachable!() };
-        let Value::Decimal(in_min) = in_min_val.unwrap() else { unreachable!() };
-        let Value::Decimal(in_max) = in_max_val.unwrap() else { unreachable!() };
-        let Value::Decimal(out_min) = out_min_val.unwrap() else { unreachable!() };
-        let Value::Decimal(out_max) = out_max_val.unwrap() else { unreachable!() };
+        convert_inputs! {
+            inputs;
+            Decimal(input) = 0,
+            Decimal(in_min) = 1,
+            Decimal(in_max) = 2,
+            Decimal(out_min) = 3,
+            Decimal(out_max) = 4,
+        }
 
         // validate input range is not zero
         if in_min == in_max {

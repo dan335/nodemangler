@@ -42,11 +42,6 @@ fn hash2(ix: i32, iy: i32, seed: u32) -> f32 {
     (h as f32) / (u32::MAX as f32)
 }
 
-/// Smoothstep-eased fractional interpolant (3t² − 2t³) for smoother grain.
-fn smooth_frac(t: f32) -> f32 {
-    t * t * (3.0 - 2.0 * t)
-}
-
 /// Deterministic low-resolution value noise sampled at pixel `(px, py)`.
 ///
 /// The pixel is divided by `cell` to land in a coarse lattice; the four surrounding
@@ -60,8 +55,8 @@ fn value_noise(px: f32, py: f32, cell: f32, seed: u32) -> f32 {
     let ix = cx.floor() as i32;
     let iy = cy.floor() as i32;
     // Fractional position inside the cell, eased for smoother transitions.
-    let fx = smooth_frac(cx - ix as f32);
-    let fy = smooth_frac(cy - iy as f32);
+    let fx = crate::math::smoothstep01_f32(cx - ix as f32);
+    let fy = crate::math::smoothstep01_f32(cy - iy as f32);
     // Hash the four corners.
     let c00 = hash2(ix,     iy,     seed);
     let c10 = hash2(ix + 1, iy,     seed);

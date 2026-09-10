@@ -14,6 +14,7 @@ use crate::operations::{
 };
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -128,27 +129,33 @@ impl OpImageMaskCombine {
         let b_ch = b.channels() as usize;
         let mut output = FloatImage::new(w, h, 1);
 
-        for y in 0..h {
-            for x in 0..w {
-                let av = mask_scalar(a.get_pixel(x, y), a_ch);
-                let bv = if x < bw && y < bh {
-                    mask_scalar(b.get_pixel(x, y), b_ch)
-                } else {
-                    0.0
-                };
-                let combined = match mode.as_str() {
-                    "min" => av.min(bv),
-                    "max" => av.max(bv),
-                    "screen" => 1.0 - (1.0 - av) * (1.0 - bv),
-                    "subtract" => (av - bv).clamp(0.0, 1.0),
-                    "average" => (av + bv) * 0.5,
-                    // multiply (default for unknown too)
-                    _ => av * bv,
-                };
-                let out = av + amount * (combined - av);
-                output.put_pixel(x, y, &[out.clamp(0.0, 1.0)]);
-            }
-        }
+        // The mode is a string, but it is the same string for every pixel:
+        // resolve it to a function pointer once instead of running up to five
+        // string comparisons per pixel. The `_` arm keeps multiply as the
+        // behaviour for an unknown mode, exactly as the inline match did.
+        let combine: fn(f32, f32) -> f32 = match mode.as_str() {
+            "min" => |av, bv| av.min(bv),
+            "max" => |av, bv| av.max(bv),
+            "screen" => |av, bv| 1.0 - (1.0 - av) * (1.0 - bv),
+            "subtract" => |av, bv| (av - bv).clamp(0.0, 1.0),
+            "average" => |av, bv| (av + bv) * 0.5,
+            // multiply (default for unknown too)
+            _ => |av, bv| av * bv,
+        };
+
+        // Each output pixel depends only on the matching input pixels, so the
+        // pass is order-independent and bit-identical to the serial loop.
+        output.par_enumerate_pixels_mut().for_each(|(x, y, dst)| {
+            let av = mask_scalar(a.get_pixel(x, y), a_ch);
+            let bv = if x < bw && y < bh {
+                mask_scalar(b.get_pixel(x, y), b_ch)
+            } else {
+                0.0
+            };
+            let combined = combine(av, bv);
+            let out = av + amount * (combined - av);
+            dst[0] = out.clamp(0.0, 1.0);
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

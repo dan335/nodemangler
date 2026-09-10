@@ -11,7 +11,7 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, scale_to_resolution, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -43,7 +43,7 @@ impl OpImageAdjustmentBlur {
 
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Blurred image produced by three box passes approximating a Gaussian."),
         ]
     }
@@ -318,3 +318,64 @@ fn box_blur_v(src: &[f32], dst: &mut [f32], width: u32, height: u32, channels: u
 #[cfg(test)]
 #[path = "blur_tests.rs"]
 mod tests;
+
+/// Separable 2D box blur over a single-channel plane, averaging only the
+/// pixels that exist at the edges (a *truncated* window).
+///
+/// This is the second box blur in this module and the distinction matters:
+/// [`box_blur_planar_passes`] replicates the edge pixel instead, so the two
+/// disagree on border pixels. Truncated-window is what the guided filter and
+/// the structure-tensor smoothing want (a mean over real samples only);
+/// replicate-extend is what a visual blur wants.
+///
+/// Uses 1D prefix sums per row then per column, giving O(1) work per pixel
+/// regardless of radius. This is what makes the guided filter cheap at
+/// arbitrary radii. Rows (and columns) are independent, so both passes are
+/// rayon-parallel; the per-row/per-column arithmetic is unchanged, so results
+/// are bit-identical to the serial version.
+pub(crate) fn box_blur_2d(input: &[f32], width: usize, height: usize, radius: usize) -> Vec<f32> {
+    if width == 0 || height == 0 {
+        return Vec::new();
+    }
+
+    // horizontal pass: for each row, build a prefix sum then read out
+    // the mean over [x-r, x+r] (clamped to row bounds) at each x.
+    let mut h_pass = vec![0.0f32; input.len()];
+    h_pass.par_chunks_mut(width).enumerate().for_each(|(y, out_row)| {
+        let row_start = y * width;
+        let mut prefix = vec![0.0f64; width + 1];
+        for x in 0..width {
+            prefix[x + 1] = prefix[x] + input[row_start + x] as f64;
+        }
+        for x in 0..width {
+            let lo = x.saturating_sub(radius);
+            let hi = (x + radius + 1).min(width);
+            let cnt = (hi - lo) as f64;
+            out_row[x] = ((prefix[hi] - prefix[lo]) / cnt) as f32;
+        }
+    });
+
+    // vertical pass: same idea over columns, computed in parallel into a
+    // column-major buffer then gathered back to row-major.
+    let columns: Vec<f32> = (0..width).into_par_iter().flat_map_iter(|x| {
+        let mut col_prefix = vec![0.0f64; height + 1];
+        for y in 0..height {
+            col_prefix[y + 1] = col_prefix[y] + h_pass[y * width + x] as f64;
+        }
+        (0..height).map(move |y| {
+            let lo = y.saturating_sub(radius);
+            let hi = (y + radius + 1).min(height);
+            let cnt = (hi - lo) as f64;
+            ((col_prefix[hi] - col_prefix[lo]) / cnt) as f32
+        })
+    }).collect();
+
+    let mut out = vec![0.0f32; input.len()];
+    out.par_chunks_mut(width).enumerate().for_each(|(y, out_row)| {
+        for x in 0..width {
+            out_row[x] = columns[x * height + y];
+        }
+    });
+
+    out
+}

@@ -14,12 +14,13 @@
 //! - **Sigmoid** — exposure + contrast + mid gray
 //! - **Drago** — exposure + white point + bias
 
+use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::value::ToneMapOperator;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::operations::images::adjustments::common::smoothstep;
 use crate::output::Output;
 use crate::value::Value;
@@ -122,7 +123,7 @@ impl OpImageAdjustmentToneMap {
     /// Creates the output port: the tone-mapped image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Tone-mapped image, clamped to [0, 1]; alpha preserved."),
         ]
     }
@@ -217,60 +218,74 @@ impl OpImageAdjustmentToneMap {
             });
         } else if luminance_scaled {
             // --- Luminance operators (3+ channels) ---
-            let map_lum: Box<dyn Fn(f32) -> f32 + Sync> = match operator {
-                ToneMapOperator::ReinhardLuminance => Box::new(reinhard),
-                ToneMapOperator::PhotographicReinhard => {
-                    Box::new(move |lum| reinhard_extended(lum * photo_scale, white_point))
+            // The mapping is handed to a generic driver rather than boxed into
+            // a `dyn Fn`: each arm monomorphises `map_luminance`, so the curve
+            // inlines into the pixel loop instead of costing an indirect call
+            // per pixel. The arithmetic is unchanged.
+            match operator {
+                ToneMapOperator::ReinhardLuminance => {
+                    map_luminance(&mut result, exposure_gain, reinhard)
                 }
-                ToneMapOperator::Drago => {
-                    Box::new(move |lum| drago_normalized(lum, drago_lmax, bias, drago_at_white))
-                }
+                ToneMapOperator::PhotographicReinhard => map_luminance(
+                    &mut result,
+                    exposure_gain,
+                    |lum| reinhard_extended(lum * photo_scale, white_point),
+                ),
+                ToneMapOperator::Drago => map_luminance(&mut result, exposure_gain, |lum| {
+                    drago_raw(lum, drago_lmax, bias) / drago_at_white
+                }),
                 _ => unreachable!("luminance_scaled is only set for the three luminance operators"),
-            };
-            result.par_pixels_mut().for_each(|pixel| {
-                let r = pixel[0] * exposure_gain;
-                let g = pixel[1] * exposure_gain;
-                let b = pixel[2] * exposure_gain;
-                let lum = crate::luma::rec709(r, g, b).max(0.0);
-                let lum_mapped = map_lum(lum);
-                let scale = if lum > 1e-8 { lum_mapped / lum } else { 0.0 };
-                pixel[0] = (r * scale).clamp(0.0, 1.0);
-                pixel[1] = (g * scale).clamp(0.0, 1.0);
-                pixel[2] = (b * scale).clamp(0.0, 1.0);
-            });
+            }
         } else {
             // --- Per-channel (and grayscale fallbacks) ---
-            let map_channel: Box<dyn Fn(f32) -> f32 + Sync> = match operator {
-                ToneMapOperator::Linear => Box::new(|v| v),
-                ToneMapOperator::Reinhard | ToneMapOperator::ReinhardLuminance => Box::new(reinhard),
+            // Same monomorphisation as above: one `map_channels` instantiation
+            // per operator, no `dyn Fn` call per channel per pixel.
+            match operator {
+                ToneMapOperator::Linear => map_channels(&mut result, color_ch, exposure_gain, |v| v),
+                ToneMapOperator::Reinhard | ToneMapOperator::ReinhardLuminance => {
+                    map_channels(&mut result, color_ch, exposure_gain, reinhard)
+                }
                 ToneMapOperator::ReinhardExtended => {
-                    Box::new(move |v| reinhard_extended(v, white_point))
+                    map_channels(&mut result, color_ch, exposure_gain, |v| {
+                        reinhard_extended(v, white_point)
+                    })
                 }
                 ToneMapOperator::PhotographicReinhard => {
-                    Box::new(move |v| reinhard_extended(v * photo_scale, white_point))
+                    map_channels(&mut result, color_ch, exposure_gain, |v| {
+                        reinhard_extended(v * photo_scale, white_point)
+                    })
                 }
-                ToneMapOperator::Aces => Box::new(aces),
-                ToneMapOperator::HableFilmic => Box::new(move |v| {
-                    if hable_norm.abs() < 1e-6 {
-                        0.0
-                    } else {
-                        hable_filmic_curve(v) / hable_norm
-                    }
+                ToneMapOperator::Aces => map_channels(&mut result, color_ch, exposure_gain, aces),
+                ToneMapOperator::HableFilmic => {
+                    map_channels(&mut result, color_ch, exposure_gain, |v| {
+                        if hable_norm.abs() < 1e-6 {
+                            0.0
+                        } else {
+                            hable_filmic_curve(v) / hable_norm
+                        }
+                    })
+                }
+                ToneMapOperator::Hejl => map_channels(&mut result, color_ch, exposure_gain, hejl),
+                ToneMapOperator::Gt => map_channels(&mut result, color_ch, exposure_gain, |v| {
+                    gt_uchimura(v, contrast)
                 }),
-                ToneMapOperator::Hejl => Box::new(hejl),
-                ToneMapOperator::Gt => Box::new(move |v| gt_uchimura(v, contrast)),
-                ToneMapOperator::Agx => Box::new(|v| agx_rgb([v, v, v])[0]),
-                ToneMapOperator::Sigmoid => Box::new(move |v| sigmoid(v, contrast, mid_gray)),
-                ToneMapOperator::Drago => {
-                    Box::new(move |v| drago_normalized(v, drago_lmax, bias, drago_at_white))
+                ToneMapOperator::Agx => map_channels(&mut result, color_ch, exposure_gain, |v| {
+                    agx_rgb([v, v, v])[0]
+                }),
+                ToneMapOperator::Sigmoid => {
+                    map_channels(&mut result, color_ch, exposure_gain, |v| {
+                        sigmoid(v, contrast, mid_gray)
+                    })
                 }
-                ToneMapOperator::PbrNeutral => Box::new(|v| pbr_neutral_rgb([v, v, v])[0]),
-            };
-            result.par_pixels_mut().for_each(|pixel| {
-                for val in pixel.iter_mut().take(color_ch) {
-                    *val = map_channel(*val * exposure_gain).clamp(0.0, 1.0);
+                ToneMapOperator::Drago => map_channels(&mut result, color_ch, exposure_gain, |v| {
+                    drago_raw(v, drago_lmax, bias) / drago_at_white
+                }),
+                ToneMapOperator::PbrNeutral => {
+                    map_channels(&mut result, color_ch, exposure_gain, |v| {
+                        pbr_neutral_rgb([v, v, v])[0]
+                    })
                 }
-            });
+            }
         }
 
         Ok(OperationResponse {
@@ -285,6 +300,43 @@ impl OpImageAdjustmentToneMap {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Applies `map` to each colour channel (after `exposure_gain`) and clamps to
+/// 0..1.
+///
+/// Generic over the mapping so every operator gets its own inlined copy of the
+/// loop; the alternative — one `Box<dyn Fn(f32) -> f32>` shared by all thirteen
+/// — put an un-inlinable indirect call in the hottest loop in the node (three
+/// or four per pixel, ~72M at 24 MP).
+fn map_channels(
+    image: &mut FloatImage,
+    color_ch: usize,
+    exposure_gain: f32,
+    map: impl Fn(f32) -> f32 + Sync,
+) {
+    image.par_pixels_mut().for_each(|pixel| {
+        for val in pixel.iter_mut().take(color_ch) {
+            *val = map(*val * exposure_gain).clamp(0.0, 1.0);
+        }
+    });
+}
+
+/// Maps Rec. 709 luminance through `map` and rescales RGB by the ratio, so hue
+/// and saturation are preserved. Generic for the same reason as
+/// [`map_channels`].
+fn map_luminance(image: &mut FloatImage, exposure_gain: f32, map: impl Fn(f32) -> f32 + Sync) {
+    image.par_pixels_mut().for_each(|pixel| {
+        let r = pixel[0] * exposure_gain;
+        let g = pixel[1] * exposure_gain;
+        let b = pixel[2] * exposure_gain;
+        let lum = crate::luma::rec709(r, g, b).max(0.0);
+        let lum_mapped = map(lum);
+        let scale = if lum > 1e-8 { lum_mapped / lum } else { 0.0 };
+        pixel[0] = (r * scale).clamp(0.0, 1.0);
+        pixel[1] = (g * scale).clamp(0.0, 1.0);
+        pixel[2] = (b * scale).clamp(0.0, 1.0);
+    });
+}
 
 
 /// Log-average and max Rec.709 luminance over color channels (post exposure gain).
@@ -394,22 +446,17 @@ fn sigmoid(v: f32, contrast: f32, mid_gray: f32) -> f32 {
 /// reaches at the white point, which every pixel is divided by.
 ///
 /// It depends only on `lmax` and `bias`, both fixed for a whole image, so it is
-/// computed once per run and handed to [`drago_normalized`]. It used to be
-/// recomputed *inside* `drago_normalized`, i.e. once per pixel (and once per
-/// channel on the per-channel path), which put a `ln`, two `log10`s and a
-/// `powf` of loop-invariant work in the hot loop. `hable_filmic`'s equivalent
-/// normalizer was already hoisted this way; Drago's was not.
+/// computed once per run and the pixel loops just divide [`drago_raw`] by it.
+/// It used to be recomputed once per pixel (and once per channel on the
+/// per-channel path), which put a `ln`, two `log10`s and a `powf` of
+/// loop-invariant work in the hot loop. `hable_filmic`'s equivalent normalizer
+/// was already hoisted this way; Drago's was not.
 fn drago_normalizer(lmax: f32, bias: f32) -> f32 {
     drago_raw(lmax, lmax, bias).max(1e-6)
 }
 
-/// Drago 2003 adaptive logarithmic map, normalized so `Lmax → ~1`.
-///
-/// `at_white` comes from [`drago_normalizer`], hoisted out of the pixel loop.
-fn drago_normalized(lum: f32, lmax: f32, bias: f32, at_white: f32) -> f32 {
-    drago_raw(lum, lmax, bias) / at_white
-}
-
+/// Drago 2003 adaptive logarithmic map, unnormalized; callers divide by
+/// [`drago_normalizer`] so `Lmax → ~1`.
 fn drago_raw(lum: f32, lmax: f32, bias: f32) -> f32 {
     let lum = lum.max(0.0);
     let lmax = lmax.max(1e-6);

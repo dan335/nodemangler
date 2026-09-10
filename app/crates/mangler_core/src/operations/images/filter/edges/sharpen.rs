@@ -7,9 +7,10 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::convert_inputs;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -41,7 +42,7 @@ impl OpImageAdjustmentSharpen {
     /// Creates the output port: the sharpened image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Sharpened image with edge contrast enhanced."),
         ]
     }
@@ -65,20 +66,24 @@ impl OpImageAdjustmentSharpen {
         let center = 1.0 + 4.0 * intensity;
         let edge = -intensity;
 
-        for y in 0..height {
+        let row_len = (width as usize * ch).max(1);
+        let src = &*data;
+        output.as_raw_mut().par_chunks_mut(row_len).enumerate().for_each(|(y, out_row)| {
+            let y = y as u32;
             for x in 0..width {
                 let x0 = if x > 0 { x - 1 } else { 0 };
                 let x2 = if x + 1 < width { x + 1 } else { width - 1 };
                 let y0 = if y > 0 { y - 1 } else { 0 };
                 let y2 = if y + 1 < height { y + 1 } else { height - 1 };
 
-                let c_val = data.get_pixel(x, y);
-                let top = data.get_pixel(x, y0);
-                let bottom = data.get_pixel(x, y2);
-                let left = data.get_pixel(x0, y);
-                let right = data.get_pixel(x2, y);
+                let c_val = src.get_pixel(x, y);
+                let top = src.get_pixel(x, y0);
+                let bottom = src.get_pixel(x, y2);
+                let left = src.get_pixel(x0, y);
+                let right = src.get_pixel(x2, y);
 
-                let pixel = output.get_pixel_mut(x, y);
+                let i = x as usize * ch;
+                let pixel = &mut out_row[i..i + ch];
                 for c in 0..color_ch {
                     let val = center * c_val[c]
                         + edge * top[c]
@@ -89,7 +94,7 @@ impl OpImageAdjustmentSharpen {
                 }
                 // alpha unchanged
             }
-        }
+        });
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

@@ -2,7 +2,7 @@
 
 > Free, open-source node-based image editor and procedural texture generator written in Rust. A Substance Designer / Material Maker alternative that is not built on a game engine. Desktop GUI plus a headless CLI that share the same JSON graph format, designed to be easy for scripts and LLMs to drive.
 
-Key facts (as of v1.0.14, 2026-09-10):
+Key facts (as of v1.0.15, 2026-09-10):
 
 - 449 nodes across 6 categories — Images (218), Numbers (104), Colors (54), Text (26), Curves (25), Logic (22) — plus subgraph nodes for packaging a pipeline into one reusable node.
 - 47 procedural noise generators (basic, fractal, cellular, structural, grunge, process) plus a simulation category (hydraulic erosion, river meandering, hillslope diffusion, and more).

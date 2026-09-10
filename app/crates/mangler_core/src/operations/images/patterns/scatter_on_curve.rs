@@ -12,9 +12,9 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::curves::common::{cumulative_arc, flatten_f64};
-use crate::operations::images::patterns::{draw_stamp, StampPlacement};
+use crate::operations::images::patterns::{draw_stamp, lcg, lcg_float, StampPlacement};
 use crate::convert_inputs;
-use crate::operations::{default_image, scale_to_resolution, OperationError, OperationResponse, OutputResponse, image_input};
+use crate::operations::{scale_to_resolution, OperationError, OperationResponse, OutputResponse, image_input, image_output};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -28,19 +28,6 @@ mod tests;
 
 /// Hard cap on stamp count so a tiny spacing on a long curve can't runaway.
 const MAX_STAMPS: usize = 100_000;
-
-/// Advances an LCG state by one step using Knuth's constants.
-fn lcg(seed: u64) -> u64 {
-    seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)
-}
-
-/// Draws a float in `[0,1)` from an LCG state, returning the value and the
-/// advanced state.
-fn lcg_float(seed: u64) -> (f64, u64) {
-    let next = lcg(seed);
-    let val = (next >> 33) as f64 / (1u64 << 31) as f64;
-    (val, next)
-}
 
 /// Position and unit tangent at arc distance `a` along the pixel-space polyline
 /// `poly` with cumulative arc lengths `arc`. Clamps to the endpoints.
@@ -114,7 +101,7 @@ impl OpImagePatternScatterOnCurve {
     /// Creates the default output: a single composite image.
     pub fn create_outputs() -> Vec<Output> {
         vec![
-            Output::new("output".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None)
+            image_output("output")
                 .with_description("Composite image with the pattern stamped along the curve using max blending."),
         ]
     }

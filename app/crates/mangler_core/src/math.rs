@@ -46,6 +46,18 @@ pub fn smoothstep01(x: f64) -> f64 {
     t * t * (3.0 - 2.0 * t)
 }
 
+/// [`smoothstep`] over the unit interval: `smoothstep(0.0, 1.0, x)`.
+///
+/// The `f32` twin of [`smoothstep01`], and the most common shape of all — a
+/// value already normalised into 0..1 that wants the ease curve and nothing
+/// else. It was hand-inlined as `t * t * (3.0 - 2.0 * t)` at ten sites before
+/// this existed.
+#[inline]
+pub fn smoothstep01_f32(x: f32) -> f32 {
+    let t = x.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
 /// Linear interpolation: `a` at `t == 0`, `b` at `t == 1`.
 ///
 /// The `a + t * (b - a)` form, not `(1 - t) * a + t * b` — the two differ in
