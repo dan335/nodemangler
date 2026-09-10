@@ -465,11 +465,19 @@ impl GraphNode {
         output_index: usize,
     ) {
         puffin::profile_scope!("graph node.set_input_connection()");
-        self.inputs[input_index].connection = Some((output_id, output_index));
+        // `get_mut`, not `[]`: the index comes off the engine's message
+        // channel, and a node's input list can be rebuilt underneath a queued
+        // message (`SubgraphLoaded` replaces it wholesale). A stale index must
+        // be ignored, not panic — every other handler in the pump uses `get`.
+        if let Some(input) = self.inputs.get_mut(input_index) {
+            input.connection = Some((output_id, output_index));
+        }
     }
 
     pub fn clear_input_connection(&mut self, input_index: usize) {
-        self.inputs[input_index].connection = None;
+        if let Some(input) = self.inputs.get_mut(input_index) {
+            input.connection = None;
+        }
     }
 
     pub fn set_output_connection(
@@ -479,14 +487,13 @@ impl GraphNode {
         input_index: usize,
     ) {
         puffin::profile_scope!("graph node.set_output_connection()");
-        if self.outputs[output_index].connection.is_some() {
-            self.outputs[output_index]
+        // Same stale-index tolerance as `set_input_connection`, and the same
+        // `get_mut` shape `clear_output_connection` below already uses.
+        if let Some(output) = self.outputs.get_mut(output_index) {
+            output
                 .connection
-                .as_mut()
-                .unwrap()
+                .get_or_insert_with(Vec::new)
                 .push((input_id, input_index));
-        } else {
-            self.outputs[output_index].connection = Some(vec![(input_id, input_index)]);
         }
     }
 

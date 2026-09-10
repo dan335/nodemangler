@@ -1,6 +1,17 @@
 use super::*;
-use egui_file_dialog::FileDialogConfig;
+use egui_file_dialog::{FileDialogConfig, OpeningMode};
 use std::path::PathBuf;
+
+/// The reset value `AppFileDialog` passes for a request that seeds no
+/// directory of its own (in the app it is the crate's own construction-time
+/// default).
+const NEUTRAL: &str = "/neutral";
+
+/// `configure` with the neutral fallback filled in, so each test reads as one
+/// call instead of repeating the third argument.
+fn conf(config: &mut FileDialogConfig, request: &FileDialogRequest) {
+    configure(config, request, Path::new(NEUTRAL));
+}
 
 fn save_graph(stem: &str, dir: Option<&str>) -> FileDialogRequest {
     FileDialogRequest::SaveGraph {
@@ -35,19 +46,24 @@ fn input_path(
 fn configure_does_not_leak_state_between_requests() {
     let mut config = FileDialogConfig::default();
 
-    configure(&mut config, &save_graph("my graph", Some("/tmp")));
+    conf(&mut config, &save_graph("my graph", Some("/tmp")));
     assert_eq!(config.file_filters.len(), 1);
     assert!(!config.default_file_name.is_empty());
     assert!(config.default_file_filter.is_some());
 
     // A request that sets none of those must leave none of them behind.
-    configure(&mut config, &FileDialogRequest::AddLibrary);
+    conf(&mut config, &FileDialogRequest::AddLibrary);
     assert!(config.file_filters.is_empty(), "filter leaked");
     assert!(config.default_file_filter.is_none(), "default filter leaked");
     assert!(config.default_file_name.is_empty(), "file name leaked");
     assert!(config.save_extensions.is_empty(), "save extension leaked");
     assert!(config.default_save_extension.is_none());
     assert_eq!(config.title.as_deref(), Some("add library folder"));
+    assert_eq!(
+        config.initial_directory,
+        PathBuf::from(NEUTRAL),
+        "directory leaked"
+    );
 }
 
 /// A save extension would be applied with `PathBuf::set_extension`, which
@@ -56,7 +72,7 @@ fn configure_does_not_leak_state_between_requests() {
 #[test]
 fn configure_save_graph_prefills_the_name_and_sets_no_save_extension() {
     let mut config = FileDialogConfig::default();
-    configure(&mut config, &save_graph("my graph", None));
+    conf(&mut config, &save_graph("my graph", None));
 
     assert_eq!(config.default_file_name, naming::graph_file_name("my graph"));
     assert!(config.save_extensions.is_empty());
@@ -66,13 +82,57 @@ fn configure_save_graph_prefills_the_name_and_sets_no_save_extension() {
 #[test]
 fn configure_save_graph_seeds_the_directory_when_given_one() {
     let mut config = FileDialogConfig::default();
-    let untouched = config.initial_directory.clone();
 
-    configure(&mut config, &save_graph("g", None));
-    assert_eq!(config.initial_directory, untouched, "no dir means no change");
+    conf(&mut config, &save_graph("g", None));
+    assert_eq!(
+        config.initial_directory,
+        PathBuf::from(NEUTRAL),
+        "no dir falls back to the neutral default"
+    );
 
-    configure(&mut config, &save_graph("g", Some("/tmp/graphs")));
+    conf(&mut config, &save_graph("g", Some("/tmp/graphs")));
     assert_eq!(config.initial_directory, PathBuf::from("/tmp/graphs"));
+}
+
+/// The crate's default opening mode is `LastPickedDir`, under which
+/// `initial_directory` is read only while nothing has been picked yet. One
+/// `FileDialog` lives for the whole app, so leaving that mode in place made
+/// every seeded directory dead after the user's first pick — a first save no
+/// longer started in the default library, and a `Value::Path` input no longer
+/// started in the graph's folder. A seeded request must pin the mode.
+#[test]
+fn a_seeded_directory_is_actually_opened() {
+    let mut config = FileDialogConfig::default();
+
+    conf(&mut config, &save_graph("g", Some("/tmp/graphs")));
+    assert_eq!(config.opening_mode, OpeningMode::AlwaysInitialDir);
+
+    conf(
+        &mut config,
+        &input_path(&["png"], Some("/explicit"), None, None),
+    );
+    assert_eq!(config.opening_mode, OpeningMode::AlwaysInitialDir);
+
+    conf(&mut config, &input_path(&["png"], None, None, Some("/graph")));
+    assert_eq!(config.opening_mode, OpeningMode::AlwaysInitialDir);
+}
+
+/// ...and a request that seeds nothing must hand the mode back, so opening a
+/// graph or linking a library still resumes where the user left off rather
+/// than being pinned to whatever the last seeded caller chose.
+#[test]
+fn an_unseeded_request_resumes_from_the_last_picked_directory() {
+    let mut config = FileDialogConfig::default();
+
+    conf(&mut config, &save_graph("g", Some("/tmp/graphs")));
+    conf(&mut config, &FileDialogRequest::OpenGraph);
+
+    assert_eq!(config.opening_mode, OpeningMode::LastPickedDir);
+    assert_eq!(
+        config.initial_directory,
+        PathBuf::from(NEUTRAL),
+        "the previous caller's directory must not leak into an unseeded request"
+    );
 }
 
 /// An input's own `set_directory` is explicit intent; the graph folder is only
@@ -81,20 +141,19 @@ fn configure_save_graph_seeds_the_directory_when_given_one() {
 fn configure_input_path_prefers_set_directory_over_the_graph_folder() {
     let mut config = FileDialogConfig::default();
 
-    configure(
-        &mut config,
+    conf(&mut config,
         &input_path(&["png"], Some("/explicit"), None, Some("/graph")),
     );
     assert_eq!(config.initial_directory, PathBuf::from("/explicit"));
 
-    configure(&mut config, &input_path(&["png"], None, None, Some("/graph")));
+    conf(&mut config, &input_path(&["png"], None, None, Some("/graph")));
     assert_eq!(config.initial_directory, PathBuf::from("/graph"));
 }
 
 #[test]
 fn configure_input_path_with_no_extensions_adds_no_filter() {
     let mut config = FileDialogConfig::default();
-    configure(&mut config, &input_path(&[], None, None, None));
+    conf(&mut config, &input_path(&[], None, None, None));
 
     assert!(config.file_filters.is_empty());
     assert!(config.default_file_filter.is_none());

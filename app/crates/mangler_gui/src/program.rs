@@ -799,14 +799,16 @@ impl Program {
                     let mut output: Option<(String, usize)> = None;
 
                     if let Some(node) = self.graph_editor.graph_nodes.get_mut(&node_id) {
-                        if let Some((output_node_id, output_index)) =
-                            &node.inputs[input_index].connection
+                        // `get`, not `[]`: the index is engine-supplied and the
+                        // node's input list can have been rebuilt underneath a
+                        // queued message (see `GraphNode::set_input_connection`).
+                        if let Some(Some((output_node_id, output_index))) =
+                            node.inputs.get(input_index).map(|i| &i.connection)
                         {
                             output = Some((output_node_id.clone(), *output_index));
                         }
 
                         node.clear_input_connection(input_index);
-                        //node.inputs[input_index].connection = None;
                     }
 
                     if let Some((output_node_id, output_index)) = output {

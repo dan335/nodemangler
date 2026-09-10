@@ -127,3 +127,21 @@ fn test_clear_output_connection_out_of_bounds_output_index() {
     let mut node = make_test_node("node_a", 0, 1);
     node.clear_output_connection(5, "node_b", 0);
 }
+
+/// Connection indices arrive on the engine's message channel, and a node's
+/// input/output lists can be rebuilt underneath a message that is already in
+/// flight (`SubgraphLoaded` replaces both wholesale). A stale index must be
+/// ignored, the way `clear_output_connection` already ignores one — indexing
+/// with `[]` would take the whole GUI down instead.
+#[test]
+fn connection_setters_ignore_an_out_of_range_index() {
+    let mut node = make_test_node("node_a", 2, 2);
+
+    node.set_input_connection(9, "upstream".to_string(), 0);
+    node.clear_input_connection(9);
+    node.set_output_connection(9, "downstream".to_string(), 0);
+
+    // Nothing panicked, and the real slots are untouched.
+    assert!(node.inputs.iter().all(|i| i.connection.is_none()));
+    assert!(node.outputs.iter().all(|o| o.connection.is_none()));
+}

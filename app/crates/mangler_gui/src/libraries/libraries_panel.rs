@@ -903,8 +903,10 @@ fn apply_dialog(state: &mut LibrariesState, dialog: LibraryDialog) {
             // so the display name and the on-disk file-name stem agree.
             let file_name = mangler_core::naming::graph_file_name(&name);
             if file_name != mangler_core::naming::GRAPH_EXTENSION {
-                let path = folder.join(file_name);
-                state.push_action(LibraryAction::CreateGraph { path, name });
+                // Goes through `create_graph`, not a bare `push_action`: the
+                // engine writes the target unconditionally, and this dialog is
+                // a plain name field that confirms no overwrite.
+                state.create_graph(folder.join(file_name), name);
             }
         }
         LibraryDialog::RenameEntry { path, is_folder: _, name } => {

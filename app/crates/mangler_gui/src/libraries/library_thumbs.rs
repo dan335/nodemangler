@@ -241,12 +241,13 @@ impl LibraryThumbCache {
     }
 
     fn evict_over_cap(&mut self) {
-        while should_evict_lru(self.entries.len(), LIBRARY_THUMB_LRU_CAP) {
-            let Some(old) = self.lru.pop_front() else {
-                break;
-            };
-            self.entries.remove(&old);
-            self.queued.remove(&old);
+        for path in evict_lru(
+            &mut self.lru,
+            &self.queued,
+            self.entries.len(),
+            LIBRARY_THUMB_LRU_CAP,
+        ) {
+            self.entries.remove(&path);
         }
     }
 }
@@ -308,6 +309,42 @@ fn promote_job(jobs: &Mutex<VecDeque<PathBuf>>, path: &Path) {
             }
         }
     }
+}
+
+/// Drains the LRU down to `cap` and returns the paths to evict, **skipping any
+/// still queued or held by a worker**. Survivors stay in `lru`, with the
+/// skipped (in-flight) ones back at the front in their original order — they
+/// are still the least recently touched, so they are the first candidates again
+/// once their decodes land.
+///
+/// The skip is what stops a decode loop. Evicting an in-flight path drops its
+/// slot but leaves the job on the queue, so the result comes back, fails
+/// `poll`'s still-Loading check and is discarded — and since the path also left
+/// `queued`, the next frame's `request` for a cell that is *still on screen*
+/// enqueues the very same decode again, for as long as the cache stays over
+/// cap. Pure helper for tests.
+pub fn evict_lru(
+    lru: &mut VecDeque<PathBuf>,
+    in_flight: &HashSet<PathBuf>,
+    entry_count: usize,
+    cap: usize,
+) -> Vec<PathBuf> {
+    let mut evicted: Vec<PathBuf> = Vec::new();
+    let mut skipped: Vec<PathBuf> = Vec::new();
+    while should_evict_lru(entry_count.saturating_sub(evicted.len()), cap) {
+        let Some(old) = lru.pop_front() else {
+            break;
+        };
+        if in_flight.contains(&old) {
+            skipped.push(old);
+            continue;
+        }
+        evicted.push(old);
+    }
+    for path in skipped.into_iter().rev() {
+        lru.push_front(path);
+    }
+    evicted
 }
 
 /// Whether the LRU should drop an entry given current length and cap.

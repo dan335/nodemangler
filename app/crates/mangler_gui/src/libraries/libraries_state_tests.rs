@@ -176,6 +176,113 @@ fn rename_path_queues_path_renamed_with_sanitized_new_name() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// `fs::rename` REPLACES an existing destination file, so without a guard the
+/// Libraries panel's rename would destroy a sibling graph with no error at all
+/// — the same collision `Graph::rename_file` already refuses on the in-app
+/// rename path.
+#[test]
+fn rename_path_refuses_to_overwrite_an_existing_sibling() {
+    let dir = temp_dir_for_test("collide");
+    let from = dir.join("keep_me.mangler.json");
+    let victim = dir.join("existing.mangler.json");
+    std::fs::write(&from, "{\"a\":1}").unwrap();
+    std::fs::write(&victim, "{\"victim\":true}").unwrap();
+
+    let mut state = state_with(&[]);
+    state.rename_path(&from, "existing");
+
+    // Neither file moved, and the one that would have been clobbered is intact.
+    assert!(from.exists(), "the source must stay put");
+    assert_eq!(std::fs::read_to_string(&victim).unwrap(), "{\"victim\":true}");
+    assert!(state.error.is_some(), "the refusal must be reported");
+    // A refused rename is not a rename: no tab should be re-targeted.
+    assert!(state.take_pending().is_empty());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The guard must not block renaming a file onto *itself* in a different case.
+/// On a case-insensitive filesystem (macOS, Windows) the destination "exists"
+/// because it IS the source, so a bare `exists()` check would wrongly refuse a
+/// legitimate `graph` → `Graph` rename.
+#[test]
+fn rename_path_allows_a_case_only_rename() {
+    let dir = temp_dir_for_test("case");
+    let from = dir.join("lower.mangler.json");
+    std::fs::write(&from, "{}").unwrap();
+
+    let mut state = state_with(&[]);
+    state.rename_path(&from, "LOWER");
+
+    assert!(state.error.is_none(), "a case-only rename must be allowed");
+    assert_eq!(
+        state.take_pending().len(),
+        1,
+        "a successful graph rename queues PathRenamed"
+    );
+    assert!(dir.join("LOWER.mangler.json").exists());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The engine writes a `CreateGraph` target unconditionally, so the Libraries
+/// panel's name-field dialog — which confirms no overwrite — must refuse a name
+/// that is already taken, or creating "wood" a second time replaces the real
+/// graph with a blank one.
+#[test]
+fn create_graph_refuses_to_replace_an_existing_graph() {
+    let dir = temp_dir_for_test("create");
+    let path = dir.join("wood.mangler.json");
+    std::fs::write(&path, "{\"nodes\":[]}").unwrap();
+
+    let mut state = state_with(&[]);
+    state.create_graph(path.clone(), "wood".to_string());
+
+    assert!(
+        state.take_pending().is_empty(),
+        "no tab should be opened onto an existing graph's path"
+    );
+    assert!(state.error.is_some(), "the refusal must be reported");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "{\"nodes\":[]}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// ...and a free name still goes through, so the guard didn't break creation.
+#[test]
+fn create_graph_queues_the_action_for_a_free_name() {
+    let dir = temp_dir_for_test("create_free");
+
+    let mut state = state_with(&[]);
+    let path = dir.join("fresh.mangler.json");
+    state.create_graph(path.clone(), "fresh".to_string());
+
+    let drained = state.take_pending();
+    assert_eq!(drained.len(), 1);
+    match &drained[0] {
+        LibraryAction::CreateGraph { path: queued, name } => {
+            assert_eq!(queued, &path);
+            assert_eq!(name, "fresh");
+        }
+        other => panic!("expected CreateGraph, got {:?}", other),
+    }
+    assert!(state.error.is_none());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A fresh, empty temp directory named for this test run.
+fn temp_dir_for_test(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "mangler_gui_libstate_{}_{}_{}",
+        tag,
+        std::process::id(),
+        get_id_for_test(),
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
 /// Small unique-id helper so parallel test runs never collide on the same
 /// temp directory name (mirrors `library_scanner_tests.rs`'s `UNIQUE`
 /// counter, kept local since this is the only test here that needs one).

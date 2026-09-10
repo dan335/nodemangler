@@ -292,6 +292,29 @@ impl LibrariesState {
         self.request_rescan();
     }
 
+    /// Requests a brand-new graph at `path`, refusing to replace one that is
+    /// already there.
+    ///
+    /// The guard is the whole point of routing this through a method. The
+    /// queued `CreateGraph` hands `path` to a blank `Program`, whose
+    /// `SetSavePath` writes it out synchronously and *unconditionally* — the
+    /// engine deliberately skips its disk-conflict check there, because that
+    /// path is normally reached through the save dialog, which confirms
+    /// overwrites itself. This flow reaches it from a plain name field with no
+    /// such confirmation, so an existing graph would be silently replaced by an
+    /// empty one.
+    pub fn create_graph(&mut self, path: PathBuf, name: String) {
+        if path.exists() {
+            let file_name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.display().to_string());
+            self.set_error(format!("'{}' already exists", file_name));
+            return;
+        }
+        self.push_action(LibraryAction::CreateGraph { path, name });
+    }
+
     /// Renames a folder or graph file on disk to `new_name` (already
     /// sanitized; for graphs the caller passes the stem — the
     /// `.mangler.json` extension is re-appended here). On a successful graph
@@ -313,6 +336,26 @@ impl LibrariesState {
         let to = from.with_file_name(file_name);
 
         if to == from {
+            return;
+        }
+
+        // `fs::rename` REPLACES an existing destination (POSIX `rename(2)`,
+        // and `MoveFileEx(MOVEFILE_REPLACE_EXISTING)` on Windows), so without
+        // this guard renaming onto a sibling's name destroys that sibling with
+        // no error at all. Same guard `Graph::rename_file` already applies to
+        // the in-app rename path.
+        //
+        // `exists()` alone would be wrong on a case-insensitive filesystem
+        // (macOS, Windows): renaming `graph` to `Graph` is a legal rename of
+        // the file onto itself, and the destination "exists" because it IS the
+        // source. Canonicalizing both sides resolves that to the same path, so
+        // a case-only rename is allowed through while a real collision is not.
+        if to.exists() && to.canonicalize().ok() != from.canonicalize().ok() {
+            let name = to
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| to.display().to_string());
+            self.set_error(format!("'{}' already exists", name));
             return;
         }
 

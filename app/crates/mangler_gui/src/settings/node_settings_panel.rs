@@ -1342,7 +1342,11 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 // Truncate: a connected path can be long, and the clipped
                 // value column needs the label to ellipsize rather than
                 // force it open.
-                ui.add(Label::new(path.into_os_string().into_string().unwrap()).truncate());
+                // `display()`, not `into_string().unwrap()`: a path is not
+                // required to be UTF-8 on macOS or Linux, and panicking here
+                // would take the whole GUI down just for selecting the node.
+                // Same lossy rendering `output_value` uses.
+                ui.add(Label::new(path.display().to_string()).truncate());
             } else {
                 // Right-to-left inside a `col_w`-wide region: pin the folder
                 // button to the column's right edge, then let the (disabled)
@@ -1359,9 +1363,10 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         let field_w = (ui.available_width() - gap).max(40.0);
                         ui.add_enabled_ui(false, |ui| {
                             ui.add(
-                                TextEdit::singleline(
-                                    &mut path.clone().into_os_string().into_string().unwrap_or_default(),
-                                )
+                                // Lossy, like the connected branch above: a
+                                // non-UTF-8 path would otherwise show as an
+                                // empty field, which reads as "no file chosen".
+                                TextEdit::singleline(&mut path.display().to_string())
                                 .desired_width(field_w),
                             );
                         });

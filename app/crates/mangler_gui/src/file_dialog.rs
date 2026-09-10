@@ -17,7 +17,7 @@
 use std::path::{Path, PathBuf};
 
 use eframe::egui;
-use egui_file_dialog::{DialogState, FileDialog, FileFilter, Filter};
+use egui_file_dialog::{DialogState, FileDialog, FileFilter, Filter, OpeningMode};
 use crate::icons;
 use crate::themes::theme::{Theme, ThemeValues};
 use mangler_core::input::FileDialogType;
@@ -115,13 +115,33 @@ fn graph_filter() -> FileFilter {
 /// `open` resets only the dialog's *state* — so a filter or a pre-filled file
 /// name left behind by the previous caller would silently leak into the next
 /// one.
-fn configure(config: &mut egui_file_dialog::FileDialogConfig, request: &FileDialogRequest) {
+fn configure(
+    config: &mut egui_file_dialog::FileDialogConfig,
+    request: &FileDialogRequest,
+    neutral_dir: &Path,
+) {
     config.file_filters.clear();
     config.default_file_filter = None;
     config.save_extensions.clear();
     config.default_save_extension = None;
     config.default_file_name = String::new();
     config.title = None;
+    // `initial_directory` is the one config field a request sets conditionally,
+    // so it needs resetting too — and with it the mode that decides whether the
+    // dialog even reads it.
+    //
+    // The crate's default mode is `LastPickedDir`, under which
+    // `initial_directory` is consulted ONLY while nothing has been picked yet.
+    // We hold one `FileDialog` for the life of the app, so after the user's
+    // very first pick that mode makes every later `initial_directory` dead —
+    // which silently disabled both of the seeds this app deliberately sets (a
+    // first save starting in the default library, a `Value::Path` input
+    // starting in the graph's own folder). A request that names a directory
+    // therefore switches to `AlwaysInitialDir`; one that doesn't falls back to
+    // `LastPickedDir` ("carry on where I left off") with the directory reset to
+    // the crate's own default, so a previous caller's folder can't leak in.
+    config.opening_mode = OpeningMode::LastPickedDir;
+    config.initial_directory = neutral_dir.to_path_buf();
 
     match request {
         FileDialogRequest::SaveGraph {
@@ -138,6 +158,7 @@ fn configure(config: &mut egui_file_dialog::FileDialogConfig, request: &FileDial
             // extension on the way out instead.
             if let Some(dir) = default_dir {
                 config.initial_directory = dir.clone();
+                config.opening_mode = OpeningMode::AlwaysInitialDir;
             }
         }
         FileDialogRequest::OpenGraph => {
@@ -176,6 +197,7 @@ fn configure(config: &mut egui_file_dialog::FileDialogConfig, request: &FileDial
             // folder the graph itself lives in.
             if let Some(dir) = set_directory.as_ref().or(fallback_dir.as_ref()) {
                 config.initial_directory = dir.clone();
+                config.opening_mode = OpeningMode::AlwaysInitialDir;
             }
         }
     }
@@ -307,6 +329,11 @@ fn dialog_style(base: &egui::Style, colors: &ThemeValues) -> egui::Style {
 /// The app's single file dialog.
 pub struct AppFileDialog {
     dialog: FileDialog,
+    /// The directory the crate picked at construction (the process's working
+    /// directory). Used as the neutral reset value for `initial_directory` in
+    /// [`configure`], so a request that seeds no directory of its own does not
+    /// inherit the previous caller's.
+    neutral_dir: PathBuf,
 }
 
 impl AppFileDialog {
@@ -319,8 +346,9 @@ impl AppFileDialog {
 
         dress_icons(dialog.config_mut());
         dress_labels(dialog.config_mut());
+        let neutral_dir = dialog.config_mut().initial_directory.clone();
 
-        Self { dialog }
+        Self { dialog, neutral_dir }
     }
 
     /// Whether a dialog is currently on screen.
@@ -337,7 +365,8 @@ impl AppFileDialog {
             return;
         }
 
-        configure(self.dialog.config_mut(), &request);
+        let neutral_dir = self.neutral_dir.clone();
+        configure(self.dialog.config_mut(), &request, &neutral_dir);
 
         match &request {
             FileDialogRequest::SaveGraph { .. } => self.dialog.save_file(),
