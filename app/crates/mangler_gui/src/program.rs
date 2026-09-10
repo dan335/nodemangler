@@ -603,23 +603,26 @@ impl Program {
     /// local copy so the field shows it immediately. Same node-may-be-gone
     /// caveat as [`Self::set_subgraph_path`].
     pub fn set_path_input(&mut self, node_id: &str, input_index: usize, path: PathBuf) {
-        let Some(node) = self.graph_editor.graph_nodes.get_mut(node_id) else {
-            return;
-        };
-        let Some(input) = node.inputs.get_mut(input_index) else {
-            return;
-        };
-
-        let value = Value::Path(path);
-        input.value = value.clone();
-
-        if let Err(err) = self.tx_change_node.try_send(ChangeNodeMessage::SetInput {
-            node_id: node_id.to_owned(),
-            input_index,
-            value,
-        }) {
-            println!("Error sending SetInput: {:?}", err);
+        {
+            let Some(input) = self
+                .graph_editor
+                .graph_nodes
+                .get_mut(node_id)
+                .and_then(|node| node.inputs.get_mut(input_index))
+            else {
+                return;
+            };
+            input.value = Value::Path(path);
         }
+
+        // The local value is authoritative and now needs pushing — the same
+        // contract the overlay editors commit through.
+        Self::commit_node_inputs(
+            &self.graph_editor.graph_nodes,
+            &self.tx_change_node,
+            node_id,
+            &[input_index],
+        );
     }
 
     /// Once-per-frame logic that must run before any panel rendering: pointer

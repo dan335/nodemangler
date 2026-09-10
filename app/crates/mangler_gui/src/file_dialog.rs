@@ -8,11 +8,11 @@
 //!
 //! The cost is that a dialog is no longer a function that returns a path. It
 //! is a per-frame state machine, so a click can only *start* one. Panels
-//! therefore raise a [`FileDialogRequest`], `App` opens the dialog and stashes
-//! a [`FileDialogIntent`] describing what the eventual path is for, and a
-//! later frame's [`AppFileDialog::update`] hands the two back together. This
-//! is the same deferred shape as the Libraries panel's `LibraryDialog` /
-//! `apply_dialog` pair.
+//! therefore raise a [`FileDialogRequest`]; `App` stamps the tab that raised it
+//! on as a [`PendingPick`] and parks that in the dialog, and a later frame's
+//! [`AppFileDialog::update`] hands it back alongside the path. This is the same
+//! deferred shape as the Libraries panel's `LibraryDialog` / `apply_dialog`
+//! pair.
 
 use std::path::{Path, PathBuf};
 
@@ -27,8 +27,12 @@ use mangler_core::naming;
 /// keyed by name, so reusing the string replaces rather than appends.
 const GRAPH_FILTER_NAME: &str = "NodeMangler graph";
 
-/// What a panel asks for. Panels don't know which `Program` they belong to,
-/// so `App` stamps the program id on when it converts this into an intent.
+/// What a panel asks for — and, once `App` has stamped a program id onto it,
+/// what the eventual pick is *for*.
+///
+/// The same value serves both ends: the config fields are read at open time by
+/// [`configure`], and the routing fields when the pick lands. It is stored in
+/// the dialog as user data in between, so no separate "intent" type is needed.
 #[derive(Debug, Clone)]
 pub enum FileDialogRequest {
     /// Choose where to write a graph — first save, or "save a copy as".
@@ -57,54 +61,15 @@ pub enum FileDialogRequest {
     OpenGraph,
 }
 
-/// What a picked path is *for*. Stored in the dialog as user data while it is
-/// open, and read back when the pick lands — possibly many frames later, by
-/// which point the panel that asked has long since returned.
+/// A request paired with the tab that raised it, parked in the dialog until
+/// the user picks something.
+///
+/// `program_id` is `None` for the app-level requests (opening a graph, linking
+/// a library), which belong to no tab.
 #[derive(Debug, Clone)]
-pub enum FileDialogIntent {
-    SaveGraph {
-        program_id: String,
-    },
-    SubgraphPath {
-        program_id: String,
-        node_id: String,
-    },
-    InputPath {
-        program_id: String,
-        node_id: String,
-        input_index: usize,
-    },
-    AddLibrary,
-    OpenGraph,
-}
-
-impl FileDialogRequest {
-    /// Pairs this request with the program that raised it. `AddLibrary` and
-    /// `OpenGraph` are app-level and ignore the id.
-    fn into_intent(self, program_id: Option<String>) -> FileDialogIntent {
-        // A missing id can only mean a program-scoped request outlived its
-        // tab, which `App` already guards; an empty id simply matches no
-        // program at dispatch time and is dropped there.
-        let id = program_id.unwrap_or_default();
-        match self {
-            Self::SaveGraph { .. } => FileDialogIntent::SaveGraph { program_id: id },
-            Self::SubgraphPath { node_id } => FileDialogIntent::SubgraphPath {
-                program_id: id,
-                node_id,
-            },
-            Self::InputPath {
-                node_id,
-                input_index,
-                ..
-            } => FileDialogIntent::InputPath {
-                program_id: id,
-                node_id,
-                input_index,
-            },
-            Self::AddLibrary => FileDialogIntent::AddLibrary,
-            Self::OpenGraph => FileDialogIntent::OpenGraph,
-        }
-    }
+pub struct PendingPick {
+    pub request: FileDialogRequest,
+    pub program_id: Option<String>,
 }
 
 /// Whether `path` carries one of `extensions`, compared case-insensitively.
@@ -112,13 +77,12 @@ impl FileDialogRequest {
 /// This is the whole substance of our file filters. It lives outside the
 /// closure below because `Filter`'s predicate is not callable from outside the
 /// dialog crate, so a test can only reach the rule in this form.
-pub fn extension_matches(path: &Path, extensions: &[String]) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|found| {
-            let found = found.to_lowercase();
-            extensions.iter().any(|want| want.to_lowercase() == found)
-        })
+fn extension_matches(path: &Path, extensions: &[String]) -> bool {
+    path.extension().and_then(|e| e.to_str()).is_some_and(|found| {
+        extensions
+            .iter()
+            .any(|want| want.eq_ignore_ascii_case(found))
+    })
 }
 
 /// A filter matching the given extensions, case-insensitively.
@@ -126,7 +90,7 @@ pub fn extension_matches(path: &Path, extensions: &[String]) -> bool {
 /// Extensions arrive as owned `String`s from `InputSettings::Path` at runtime,
 /// so this closes over them rather than using the crate's `&'static str`
 /// convenience builder.
-pub fn filter_from_extensions(name: &str, extensions: &[String]) -> FileFilter {
+fn filter_from_extensions(name: &str, extensions: &[String]) -> FileFilter {
     let extensions = extensions.to_vec();
     FileFilter {
         id: egui::Id::new(name),
@@ -140,7 +104,7 @@ pub fn filter_from_extensions(name: &str, extensions: &[String]) -> FileFilter {
 /// `"json"` alone is correct and covers `x.mangler.json`: filters match
 /// `Path::extension()`, which is the final dot-component only, so a
 /// `"mangler.json"` token would never match anything.
-pub fn graph_filter() -> FileFilter {
+fn graph_filter() -> FileFilter {
     filter_from_extensions(GRAPH_FILTER_NAME, &["json".to_owned()])
 }
 
@@ -151,7 +115,7 @@ pub fn graph_filter() -> FileFilter {
 /// `open` resets only the dialog's *state* — so a filter or a pre-filled file
 /// name left behind by the previous caller would silently leak into the next
 /// one.
-pub fn configure(config: &mut egui_file_dialog::FileDialogConfig, request: &FileDialogRequest) {
+fn configure(config: &mut egui_file_dialog::FileDialogConfig, request: &FileDialogRequest) {
     config.file_filters.clear();
     config.default_file_filter = None;
     config.save_extensions.clear();
@@ -345,12 +309,6 @@ pub struct AppFileDialog {
     dialog: FileDialog,
 }
 
-impl Default for AppFileDialog {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl AppFileDialog {
     pub fn new() -> Self {
         let mut dialog = FileDialog::new()
@@ -396,7 +354,10 @@ impl AppFileDialog {
             },
         }
 
-        self.dialog.set_user_data(request.into_intent(program_id));
+        self.dialog.set_user_data(PendingPick {
+            request,
+            program_id,
+        });
     }
 
     /// Draws the dialog and returns a pick once the user makes one.
@@ -404,20 +365,33 @@ impl AppFileDialog {
     /// Call this once per frame with the main viewport's context, after
     /// everything else has drawn — the caller dispatches the result into
     /// `programs` / `libraries`, which are still borrowed during rendering.
-    pub fn update(&mut self, ctx: &egui::Context, theme: &Theme) -> Option<(FileDialogIntent, PathBuf)> {
-        // Swap in the dialog's style for the duration of its draw, then put
-        // the app's back. The dialog renders immediately inside this call, and
-        // it is the last thing drawn each frame, so nothing else sees this.
-        let app_style = ctx.global_style();
-        ctx.set_global_style(dialog_style(&app_style, &theme.get()));
-        self.dialog.update(ctx);
-        ctx.set_global_style(app_style);
+    pub fn update(
+        &mut self,
+        ctx: &egui::Context,
+        theme: &Theme,
+    ) -> Option<(PendingPick, PathBuf)> {
+        // Only dress and draw when something is actually on screen. The inner
+        // `update` already early-returns when the dialog is closed, and this
+        // runs every frame for the life of the app, so without the guard the
+        // whole style swap — a `ThemeValues` rebuild, a `Style` clone and two
+        // context write locks — would wrap a no-op 60 times a second.
+        if self.is_open() {
+            // Swap in the dialog's style for the duration of its draw, then
+            // put the app's back. The dialog renders immediately inside this
+            // call, and it is the last thing drawn each frame, so nothing else
+            // ever sees it.
+            let app_style = ctx.global_style();
+            ctx.set_global_style(dialog_style(&app_style, &theme.get()));
+            self.dialog.update(ctx);
+            ctx.set_global_style(app_style);
+        }
 
-        // Read the intent before taking the path: `take_picked` needs `&mut`
-        // and would end the borrow `user_data` holds.
-        let intent = self.dialog.user_data::<FileDialogIntent>().cloned()?;
+        // Take the path first: the dialog never clears its user data, so
+        // reading the intent up front would clone it on every frame from the
+        // first open onwards, rather than on the one frame a pick lands.
         let path = self.dialog.take_picked()?;
-        Some((intent, path))
+        let pending = self.dialog.user_data::<PendingPick>().cloned()?;
+        Some((pending, path))
     }
 }
 

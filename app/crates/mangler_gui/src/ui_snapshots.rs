@@ -102,11 +102,15 @@ fn write_contact_sheet(name: &str, shots: &[image::RgbaImage]) {
     for (i, shot) in shots.iter().enumerate() {
         let ox = (i as u32 % cols) * (cell_w + GAP);
         let oy = (i as u32 / cols) * (cell_h + GAP);
-        for y in 0..cell_h.min(shot.height()) {
-            for x in 0..cell_w.min(shot.width()) {
-                sheet.put_pixel(ox + x, oy + y, *shot.get_pixel(x, y));
-            }
-        }
+        let cell = image::imageops::crop_imm(
+            shot,
+            0,
+            0,
+            cell_w.min(shot.width()),
+            cell_h.min(shot.height()),
+        )
+        .to_image();
+        image::imageops::replace(&mut sheet, &cell, i64::from(ox), i64::from(oy));
     }
 
     let path = output_dir().join(format!("sheet_{name}.png"));
@@ -114,16 +118,6 @@ fn write_contact_sheet(name: &str, shots: &[image::RgbaImage]) {
         .save(&path)
         .unwrap_or_else(|e| panic!("failed writing {}: {e}", path.display()));
     println!("wrote {}", path.display());
-}
-
-/// A short, filesystem-safe name for a theme.
-fn theme_slug(theme: &Theme) -> &'static str {
-    match theme {
-        Theme::Dark => "dark",
-        Theme::DarkGreen => "dark_green",
-        Theme::Light => "light",
-        Theme::LightBlue => "light_blue",
-    }
 }
 
 /// Renders `request` in **every** theme. Chrome that derives a color badly
@@ -134,7 +128,7 @@ fn shoot_all_themes(name: &str, request: &FileDialogRequest) {
         .into_iter()
         .filter_map(|theme| {
             shoot_dialog(
-                &format!("{name}_{}", theme_slug(&theme)),
+                &format!("{name}_{}", theme.config_name()),
                 theme,
                 request.clone(),
             )

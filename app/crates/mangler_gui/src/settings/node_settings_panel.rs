@@ -265,9 +265,9 @@ pub fn show(
 ) -> NodeSettingsResponse {
     let mut node_settings_response = NodeSettingsResponse::new();
     // Raised by the subgraph browse button / a Path input's browse button
-    // below; bubbled out on the response because `App` owns the dialog.
-    let mut subgraph_pick_requested = false;
-    let mut path_pick_requested: Option<FileDialogRequest> = None;
+    // below; bubbled out on the response because `App` owns the dialog. Only
+    // one dialog can be open at a time, so one slot is enough.
+    let mut pick_requested: Option<FileDialogRequest> = None;
 
     // Title row: "{name} settings" as a small semibold label, plus a
     // borderless close control right-aligned. Replaces the old 22px
@@ -370,7 +370,9 @@ pub fn show(
                 // `App` owns the dialog; the pick comes back through
                 // `Program::set_subgraph_path`, which does what this used to
                 // do inline.
-                subgraph_pick_requested = true;
+                pick_requested = Some(FileDialogRequest::SubgraphPath {
+                    node_id: node.id.clone(),
+                });
             }
         });
     }
@@ -592,7 +594,7 @@ pub fn show(
                         ui.set_max_width((value_col_right - ui.max_rect().left()).max(60.0));
                         ui.horizontal_centered(|ui| {
                             if let Some(request) = input_value(ui, input.value.clone(), input, input_index, &node.id, &tx_change_node, sibling_image_format, theme, default_dir) {
-                                path_pick_requested = Some(request);
+                                pick_requested = Some(request);
                             }
 
                             // Show error indicator if the input has a validation error.
@@ -988,16 +990,7 @@ pub fn show(
             });
     });
 
-    // A subgraph pick needs the node's own id; a Path pick already carries
-    // its node/input indices. Only one dialog can be open at a time anyway,
-    // so a request from either button is enough.
-    if subgraph_pick_requested {
-        node_settings_response.file_dialog_request = Some(FileDialogRequest::SubgraphPath {
-            node_id: node.id.clone(),
-        });
-    } else if let Some(request) = path_pick_requested {
-        node_settings_response.file_dialog_request = Some(request);
-    }
+    node_settings_response.file_dialog_request = pick_requested;
 
 
     node_settings_response

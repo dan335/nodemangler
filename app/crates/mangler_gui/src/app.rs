@@ -1,7 +1,7 @@
 use crate::{
     app_menu::app_menu::AppMenu,
     config::AppConfig,
-    file_dialog::{AppFileDialog, FileDialogIntent, FileDialogRequest},
+    file_dialog::{AppFileDialog, FileDialogRequest, PendingPick},
     libraries::libraries_state::LibrariesState,
     panels::{
         panel_kind::PanelKind,
@@ -172,8 +172,6 @@ impl eframe::App for App {
             // (main window + secondary windows), applied after rendering so the
             // borrow on `program` has ended.
             let mut panel_actions: Vec<PanelAction> = Vec::new();
-            // Raised inside the `program` borrow below, opened after it ends.
-            let mut pending_file_dialog: Option<(FileDialogRequest, String)> = None;
 
             if let Some(current_program) = &self.current_program {
                 let has_preview_2d_panel = self.has_preview_2d_panel();
@@ -227,14 +225,13 @@ impl eframe::App for App {
                     // A browse button in this program's settings panels. The
                     // program id is stamped on here so the pick can be routed
                     // back to this tab whenever it eventually lands.
-                    pending_file_dialog = program
-                        .take_pending_file_dialog()
-                        .map(|request| (request, current_program.clone()));
+                    // `self.file_dialog` is a field disjoint from
+                    // `self.programs`, so this borrows cleanly alongside the
+                    // live `program` borrow — same as `self.libraries` above.
+                    if let Some(request) = program.take_pending_file_dialog() {
+                        self.file_dialog.open(request, Some(current_program.clone()));
+                    }
                 }
-            }
-
-            if let Some((request, program_id)) = pending_file_dialog {
-                self.file_dialog.open(request, Some(program_id));
             }
 
             // With no graphs open, the panel tree has nothing to render (all
@@ -319,8 +316,8 @@ impl eframe::App for App {
             // The file dialog draws last and dispatches last: the pick it
             // returns mutates `programs` / `libraries`, which are still
             // borrowed while the panels above are rendering.
-            if let Some((intent, path)) = self.file_dialog.update(&ctx, &self.theme) {
-                self.apply_file_pick(intent, path);
+            if let Some((pending, path)) = self.file_dialog.update(&ctx, &self.theme) {
+                self.apply_file_pick(pending, path);
             }
         });
     }
@@ -368,46 +365,51 @@ impl App {
     /// as far as the rest of the app is concerned, so the tab that opened it
     /// can be closed (or the whole app quit into a different state) while the
     /// user is still browsing.
-    fn apply_file_pick(&mut self, intent: FileDialogIntent, path: PathBuf) {
-        match intent {
-            FileDialogIntent::OpenGraph => self.open_or_focus(path),
-            FileDialogIntent::AddLibrary => self.libraries.add_library(path),
-            FileDialogIntent::SaveGraph { program_id } => {
-                let path = crate::file_dialog::force_graph_extension(path);
-                let Some(program) = self.programs.get_mut(&program_id) else {
-                    return;
-                };
-                program.set_save_location(path);
+    fn apply_file_pick(&mut self, pending: PendingPick, path: PathBuf) {
+        let PendingPick {
+            request,
+            program_id,
+        } = pending;
+        // Every program-scoped arm resolves the tab here, and tolerates it
+        // being gone: the dialog does not block the rest of the app, so the
+        // tab that opened it can be closed while the user is still browsing.
+        let program = program_id
+            .as_ref()
+            .and_then(|id| self.programs.get_mut(id));
+
+        match request {
+            FileDialogRequest::OpenGraph => self.open_or_focus(path),
+            FileDialogRequest::AddLibrary => self.libraries.add_library(path),
+            FileDialogRequest::SaveGraph { .. } => {
+                let Some(program) = program else { return };
+                program.set_save_location(crate::file_dialog::force_graph_extension(path));
 
                 // A save chosen from the close prompt resumes that flow: the
                 // tab closes once the engine acks the write. Matched on the
                 // tab id, not just the state, so an unrelated save can never
                 // resume someone else's close.
                 let closing_this_tab = matches!(
-                    &self.pending_close,
-                    Some(PendingClose::AwaitingPathChoice { program_id: p }) if *p == program_id
+                    (&self.pending_close, &program_id),
+                    (Some(PendingClose::AwaitingPathChoice { program_id: p }), Some(id)) if p == id
                 );
-                if closing_this_tab {
+                if let (true, Some(id)) = (closing_this_tab, program_id) {
                     self.pending_close = Some(PendingClose::AwaitingSave {
-                        program_id,
+                        program_id: id,
                         since: std::time::Instant::now(),
                     });
                 }
             }
-            FileDialogIntent::SubgraphPath {
-                program_id,
-                node_id,
-            } => {
-                if let Some(program) = self.programs.get_mut(&program_id) {
+            FileDialogRequest::SubgraphPath { node_id } => {
+                if let Some(program) = program {
                     program.set_subgraph_path(&node_id, path);
                 }
             }
-            FileDialogIntent::InputPath {
-                program_id,
+            FileDialogRequest::InputPath {
                 node_id,
                 input_index,
+                ..
             } => {
-                if let Some(program) = self.programs.get_mut(&program_id) {
+                if let Some(program) = program {
                     program.set_path_input(&node_id, input_index, path);
                 }
             }
