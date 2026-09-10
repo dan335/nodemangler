@@ -88,7 +88,10 @@ impl OpImageTransformResizeExact {
         // straight RGBA, which lets fully transparent pixels bleed their hidden
         // colour into semi-transparent edges (white fringe around dark glyphs
         // on a transparent background).
-        let dyn_img = data.premultiply_alpha().to_dynamic();
+        // Skip the premultiply round-trip entirely when there is no alpha to
+        // protect — premultiply_alpha() would otherwise clone the whole image
+        // for nothing.
+        let dyn_img = if data.has_alpha() { data.premultiply_alpha().to_dynamic() } else { data.to_dynamic() };
         let resized = dyn_img.resize_exact(width as u32, height as u32, filter_type);
         // Convert back to FloatImage and back to straight alpha
         let mut output = FloatImage::from_dynamic(&resized);

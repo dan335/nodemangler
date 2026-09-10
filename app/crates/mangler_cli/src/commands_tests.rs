@@ -48,13 +48,74 @@ fn cmd_new_appends_mangle_json_when_no_json_extension() {
     assert!(graph.nodes.is_empty());
 }
 
+/// A plain `.json` path is rewritten to the canonical `.mangler.json`
+/// extension rather than kept as-is — the GUI's `force_graph_extension`
+/// treats a graph save as never plain `.json` (a bare `.json` token is meant
+/// to match `x.mangler.json` too, not to name a distinct file), so `mangle
+/// new` must not create one.
 #[test]
-fn cmd_new_keeps_json_extension_unchanged() {
-    let path = std::env::temp_dir().join(format!("mangle_test_keepext_{}.json", std::process::id()));
+fn cmd_new_rewrites_plain_json_extension_to_mangler_json() {
+    let base = std::env::temp_dir().join(format!("mangle_test_keepext_{}", std::process::id()));
+    let path = std::path::PathBuf::from(format!("{}.json", base.display()));
+    let expected = std::path::PathBuf::from(format!("{}.mangler.json", base.display()));
     let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&expected);
     cmd_new(path.clone(), false).unwrap();
-    assert!(path.exists());
-    let _ = std::fs::remove_file(&path);
+    assert!(!path.exists(), "a plain .json file should not have been created");
+    assert!(expected.exists(), "expected {} to exist", expected.display());
+    let _ = std::fs::remove_file(&expected);
+}
+
+/// `foo`, `foo.json` and `foo.mangler.json` all name the same graph and all
+/// land on the same `foo.mangler.json` file, routed through
+/// `mangler_core::naming` (`graph_display_name` + `graph_file_name`) instead
+/// of a CLI-local extension check.
+#[test]
+fn cmd_new_treats_foo_foo_json_and_foo_mangler_json_the_same() {
+    let dir = std::env::temp_dir();
+    for (label, suffix) in [("bare", ""), ("plain_json", ".json"), ("mangler_json", ".mangler.json")] {
+        let stem = format!("mangle_test_variant_{}_{}", label, std::process::id());
+        let input = dir.join(format!("{stem}{suffix}"));
+        let expected = dir.join(format!("{stem}.mangler.json"));
+        let _ = std::fs::remove_file(&expected);
+        cmd_new(input, false).unwrap();
+        assert!(expected.exists(), "variant '{label}' should produce {}", expected.display());
+        let graph = load_graph(&expected).unwrap();
+        let _ = std::fs::remove_file(&expected);
+        assert!(graph.nodes.is_empty());
+        assert_eq!(graph.name, stem, "display name should be the bare stem for variant '{label}'");
+    }
+}
+
+/// A name with filesystem-illegal characters is sanitized via
+/// `naming::sanitize_name` (through `graph_file_name`) rather than being
+/// passed straight into the file name.
+#[test]
+fn cmd_new_sanitizes_illegal_characters_in_name() {
+    let dir = std::env::temp_dir();
+    let dirty = format!("mangle_test_dirty_name_{}?:*", std::process::id());
+    let path = dir.join(&dirty);
+    let expected = dir.join(format!(
+        "{}.mangler.json",
+        mangler_core::naming::sanitize_name(&dirty)
+    ));
+    let _ = std::fs::remove_file(&expected);
+    cmd_new(path, false).unwrap();
+    assert!(expected.exists(), "expected sanitized path {} to exist", expected.display());
+    let _ = std::fs::remove_file(&expected);
+}
+
+/// The graph's own directory component is preserved, not just its file name.
+#[test]
+fn cmd_new_preserves_directory_component() {
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!("mangle_test_dirpreserve_{}", std::process::id()));
+    let expected = std::path::PathBuf::from(format!("{}.mangler.json", path.display()));
+    let _ = std::fs::remove_file(&expected);
+    cmd_new(path, false).unwrap();
+    assert!(expected.exists());
+    assert_eq!(expected.parent(), Some(dir.as_path()));
+    let _ = std::fs::remove_file(&expected);
 }
 
 #[test]
@@ -641,6 +702,58 @@ async fn cmd_run_reports_err_when_node_errors() {
     assert!(result.unwrap_err().contains("reported errors"));
 }
 
+/// A graph saved by a newer NodeMangler must not be downgraded by a plain
+/// `mangle run` — running is not an edit (see the engine's `needs_to_save`,
+/// which is only ever set by a discrete `ChangeGraphMessage`/
+/// `ChangeNodeMessage`, never by a tick's `graph.run()`), so restamping the
+/// file's `version` down to this build's `APP_VERSION` purely from execution
+/// would violate the documented "opening alone never downgrades the file"
+/// rule. This is the regression test for `save_graph` bypassing
+/// `Graph::save_to_file` (and its former unconditional resave in `cmd_run`).
+#[tokio::test]
+async fn cmd_run_does_not_downgrade_a_newer_version_file() {
+    let path = crate::helpers::temp_graph_path("run_no_downgrade");
+    let _ = std::fs::remove_file(&path);
+    std::fs::write(
+        &path,
+        r#"{"version":"99.0.0","id":"newer-test-id","name":"newer","nodes":{}}"#,
+    ).unwrap();
+
+    let result = cmd_run(path.clone(), false).await;
+    let raw = std::fs::read_to_string(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+
+    assert!(result.is_ok());
+    assert!(
+        raw.contains(r#""version":"99.0.0""#),
+        "cmd_run must not restamp a newer-version file's version; got: {raw}"
+    );
+}
+
+/// By contrast, an explicit mutation (add-node) on the same newer-version
+/// file *does* restamp it — mirroring the engine, where any genuine edit
+/// clears the "newer file" auto-save hold and the next save proceeds
+/// normally.
+#[tokio::test]
+async fn cmd_add_node_does_downgrade_a_newer_version_file_on_explicit_edit() {
+    let path = crate::helpers::temp_graph_path("addnode_downgrades");
+    let _ = std::fs::remove_file(&path);
+    std::fs::write(
+        &path,
+        r#"{"version":"99.0.0","id":"newer-test-id-2","name":"newer","nodes":{}}"#,
+    ).unwrap();
+
+    let result = cmd_add_node(path.clone(), "numbers/arithmetic/add".into(), None, None, false).await;
+    let raw = std::fs::read_to_string(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+
+    assert!(result.is_ok());
+    assert!(
+        raw.contains(&format!(r#""version":"{}""#, mangler_core::APP_VERSION)),
+        "an explicit edit should restamp the file with this build's version; got: {raw}"
+    );
+}
+
 // ── cmd_show_output advanced paths ───────────────────────────────────────
 
 /// show-output with no output index shows all outputs.
@@ -865,7 +978,7 @@ async fn custom_name_persists_through_save_reload() {
 
     // Set a custom name directly on the node and save.
     graph.nodes.get_mut(&id).unwrap().custom_name = Some("mountains image".to_string());
-    save_graph(&graph, &path).unwrap();
+    save_graph(&mut graph, &path).unwrap();
 
     // Reload and verify.
     let reloaded = load_graph(&path).unwrap();
@@ -885,7 +998,7 @@ async fn is_enabled_persists_through_save_reload() {
 
     // Disable the node and save.
     graph.nodes.get_mut(&id).unwrap().is_enabled = false;
-    save_graph(&graph, &path).unwrap();
+    save_graph(&mut graph, &path).unwrap();
 
     // Reload and verify.
     let reloaded = load_graph(&path).unwrap();
@@ -899,7 +1012,7 @@ async fn old_save_without_custom_name_loads_as_none() {
     let path = create_temp_graph("old_compat");
     let mut graph = load_graph(&path).unwrap();
     do_add_node(&mut graph,"numbers/arithmetic/add", Some("old".into()), None).await.unwrap();
-    save_graph(&graph, &path).unwrap();
+    save_graph(&mut graph, &path).unwrap();
 
     // Remove the custom_name field from the JSON to simulate an old save file.
     let json_str = std::fs::read_to_string(&path).unwrap();
@@ -934,7 +1047,7 @@ async fn cmd_set_name_sets_custom_name() {
     let path = create_temp_graph("set_name_basic");
     let mut graph = load_graph(&path).unwrap();
     do_add_node(&mut graph, "numbers/arithmetic/add", Some("n1".into()), None).await.unwrap();
-    save_graph(&graph, &path).unwrap();
+    save_graph(&mut graph, &path).unwrap();
 
     cmd_set_name(path.clone(), "n1".to_string(), "My Node".to_string(), false).unwrap();
     let reloaded = load_graph(&path).unwrap();
@@ -948,7 +1061,7 @@ async fn cmd_set_name_empty_clears_name() {
     let path = create_temp_graph("set_name_clear");
     let mut graph = load_graph(&path).unwrap();
     do_add_node(&mut graph, "numbers/arithmetic/add", Some("n1".into()), Some("Old Name".into())).await.unwrap();
-    save_graph(&graph, &path).unwrap();
+    save_graph(&mut graph, &path).unwrap();
 
     cmd_set_name(path.clone(), "n1".to_string(), "".to_string(), false).unwrap();
     let reloaded = load_graph(&path).unwrap();

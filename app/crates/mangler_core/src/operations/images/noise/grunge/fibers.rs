@@ -81,13 +81,7 @@ impl OpImageNoiseFibers {
     /// Hash function producing a pseudo-random f64 in [0, 1) from cell coords, seed, and channel.
     #[inline(always)]
     fn hash(ix: i32, iy: i32, seed: u32, channel: u32) -> f64 {
-        let mut h = (ix as u32).wrapping_mul(1597334677)
-            ^ (iy as u32).wrapping_mul(2943785939)
-            ^ seed.wrapping_mul(1013904223)
-            ^ channel.wrapping_mul(668265263);
-        h = h.wrapping_mul(h ^ (h >> 16));
-        h = h.wrapping_mul(h ^ (h >> 16));
-        (h & 0x00FFFFFF) as f64 / 0x01000000 as f64
+        super::super::mix_hash(ix, iy, 0, seed, channel)
     }
 
     /// Evaluates one strand at a displacement from its center, in cell units.

@@ -34,7 +34,7 @@ pub const LIBRARY_THUMB_PREFETCH_VIEWPORTS: f32 = 1.5;
 /// Persistent worker threads (I/O may block a worker for seconds on shares).
 const LIBRARY_THUMB_WORKERS: usize = 4;
 /// Hard cap on cached texture entries. Ready textures survive scroll-off;
-/// only this cap (and [`LibraryThumbCache::invalidate_all`]) drops them.
+/// only this cap drops them.
 const LIBRARY_THUMB_LRU_CAP: usize = 512;
 /// Frames without a touch before an abandoned **Loading**/**Failed** slot is
 /// dropped. Ready textures are **not** age-swept — scrolling away must not
@@ -131,7 +131,7 @@ impl LibraryThumbCache {
             self.queued.remove(&result.path);
 
             // Only apply if still expected (Loading). Late results after
-            // invalidate_all, LRU eviction, or sweep are dropped.
+            // LRU eviction or sweep are dropped.
             let still_loading = matches!(
                 self.entries.get(&result.path),
                 Some(ThumbSlot::Loading { .. })
@@ -218,26 +218,11 @@ impl LibraryThumbCache {
         }
     }
 
-    /// Drops every in-memory texture and pending job. Not used on routine
-    /// rescans (disk keys include mtime/size); kept for a future "clear
-    /// thumbnail cache" action or tests.
-    #[allow(dead_code)]
-    pub fn invalidate_all(&mut self) {
-        self.entries.clear();
-        self.lru.clear();
-        self.queued.clear();
-        self.jobs.lock().unwrap().clear();
-        // Drain any results already in the channel so they don't re-populate
-        // entries for paths we just cleared (workers may still finish late;
-        // poll only applies when slot is Loading).
-        while self.results_rx.try_recv().is_ok() {}
-    }
-
     fn sweep_stale(&mut self) {
         // Only purge abandoned Loading/Failed slots. Ready textures stay until
-        // LRU eviction or invalidate_all — otherwise scrolling off a row for a
-        // couple of seconds drops the GPU upload and forces a full re-decode
-        // when the user scrolls back up.
+        // LRU eviction — otherwise scrolling off a row for a couple of
+        // seconds drops the GPU upload and forces a full re-decode when the
+        // user scrolls back up.
         let frame = self.frame;
         let stale: Vec<PathBuf> = self
             .entries

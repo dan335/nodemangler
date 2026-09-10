@@ -16,7 +16,7 @@ use crate::format::{
 };
 use crate::helpers::{
     load_graph, node_not_found_error, parse_slot, reject_existing_id, resolve_op, save_graph,
-    value_type_enum_name, value_type_name, enum_variants,
+    save_graph_after_run, value_type_enum_name, value_type_name, enum_variants,
 };
 use crate::value_parse::parse_typed_value;
 
@@ -122,14 +122,25 @@ pub(crate) fn do_set_input(graph: &mut Graph, node: &str, index: usize, value: &
 
 /// `mangle new <path>` — create an empty graph file.
 ///
-/// If the path does not end in `.json`, `.mangler.json` is appended automatically.
+/// The file name is built through `mangler_core::naming`, the same module the
+/// GUI's library scanner/panel/save-dialog use, rather than a CLI-local
+/// extension check: `path`'s file name (any directory component is kept
+/// as-is) is peeled down to a bare display name via `graph_display_name`
+/// (strips a trailing `.mangler.json` or plain `.json`, so `foo`, `foo.json`
+/// and `foo.mangler.json` all name the same graph), then `graph_file_name`
+/// sanitizes that name and reappends the canonical `.mangler.json` extension
+/// — matching `force_graph_extension`'s rule that a graph save is never
+/// plain `.json`.
 pub(crate) fn cmd_new(path: PathBuf, json_output: bool) -> Result<(), String> {
-    let path = if path.extension().map_or(false, |ext| ext == "json") {
-        path
-    } else {
-        let mut name = path.as_os_str().to_os_string();
-        name.push(".mangler.json");
-        PathBuf::from(name)
+    let file_name = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("new graph");
+    let display_name = mangler_core::naming::graph_display_name(file_name);
+    let file_name = mangler_core::naming::graph_file_name(&display_name);
+    let path = match path.parent() {
+        Some(dir) => dir.join(&file_name),
+        None => PathBuf::from(&file_name),
     };
     if path.exists() {
         return Err(format!("{} already exists", path.display()));
@@ -137,11 +148,7 @@ pub(crate) fn cmd_new(path: PathBuf, json_output: bool) -> Result<(), String> {
     let save_data = GraphSaveData {
         version: mangler_core::APP_VERSION.to_string(),
         id: get_id(),
-        name: path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("new graph")
-            .to_string(),
+        name: mangler_core::naming::graph_display_name_from_path(&path),
         nodes: HashMap::new(),
     };
     let file_json = serde_json::to_string_pretty(&save_data).map_err(|e| e.to_string())?;
@@ -225,7 +232,7 @@ pub(crate) fn cmd_show_op(op_type: String, json_output: bool) -> Result<(), Stri
 pub(crate) async fn cmd_add_node(path: PathBuf, op_type: String, id: Option<String>, custom_name: Option<String>, json_output: bool) -> Result<(), String> {
     let mut graph = load_graph(&path)?;
     let node_id = do_add_node(&mut graph, &op_type, id, custom_name).await?;
-    save_graph(&graph, &path)?;
+    save_graph(&mut graph, &path)?;
     if json_output {
         println!("{}", serde_json::json!({"node_id": node_id}));
     } else {
@@ -238,7 +245,7 @@ pub(crate) async fn cmd_add_node(path: PathBuf, op_type: String, id: Option<Stri
 pub(crate) async fn cmd_remove_node(path: PathBuf, id: String, json_output: bool) -> Result<(), String> {
     let mut graph = load_graph(&path)?;
     let removed = do_remove_node(&mut graph, &id).await?;
-    save_graph(&graph, &path)?;
+    save_graph(&mut graph, &path)?;
     if json_output {
         println!("{}", serde_json::json!({"removed": removed}));
     } else {
@@ -251,7 +258,7 @@ pub(crate) async fn cmd_remove_node(path: PathBuf, id: String, json_output: bool
 pub(crate) async fn cmd_connect(path: PathBuf, from: String, to: String, json_output: bool) -> Result<(), String> {
     let mut graph = load_graph(&path)?;
     let msg = do_connect(&mut graph, &from, &to).await?;
-    save_graph(&graph, &path)?;
+    save_graph(&mut graph, &path)?;
     if json_output {
         println!("{}", serde_json::json!({"from": from, "to": to}));
     } else {
@@ -265,7 +272,7 @@ pub(crate) async fn cmd_connect(path: PathBuf, from: String, to: String, json_ou
 pub(crate) async fn cmd_disconnect(path: PathBuf, node: String, input: usize, json_output: bool) -> Result<(), String> {
     let mut graph = load_graph(&path)?;
     let msg = do_disconnect(&mut graph, &node, input).await?;
-    save_graph(&graph, &path)?;
+    save_graph(&mut graph, &path)?;
     if json_output {
         println!("{}", serde_json::json!({"node": node, "input": input}));
     } else {
@@ -296,7 +303,7 @@ pub(crate) fn cmd_set_input(path: PathBuf, node: String, inputs: Vec<usize>, val
         results.push((*idx, val.clone()));
     }
 
-    save_graph(&graph, &path)?;
+    save_graph(&mut graph, &path)?;
 
     if json_output {
         let entries: Vec<serde_json::Value> = results.iter().map(|(idx, val)| {
@@ -326,7 +333,7 @@ pub(crate) fn cmd_set_name(path: PathBuf, node: String, name: String, json_outpu
     let n = graph.nodes.get_mut(&node).unwrap();
     let custom_name = if name.is_empty() { None } else { Some(name.clone()) };
     n.custom_name = custom_name.clone();
-    save_graph(&graph, &path)?;
+    save_graph(&mut graph, &path)?;
     if json_output {
         println!("{}", serde_json::json!({"node": node, "name": custom_name}));
     } else {
@@ -370,7 +377,7 @@ pub(crate) async fn cmd_add_subgraph(
         graph.set_subgraph_path(node_id.clone(), file.clone());
     }
 
-    save_graph(&graph, &path)?;
+    save_graph(&mut graph, &path)?;
 
     if json_output {
         let subgraph_file_str = subgraph_file.as_ref().map(|p| p.display().to_string());
@@ -417,7 +424,7 @@ pub(crate) fn cmd_set_subgraph_path(
     }
 
     graph.set_subgraph_path(node.clone(), subgraph_file.clone());
-    save_graph(&graph, &path)?;
+    save_graph(&mut graph, &path)?;
 
     if json_output {
         println!("{}", serde_json::json!({
@@ -449,7 +456,7 @@ pub(crate) fn cmd_expose_input(
         format!("input index {input} out of bounds on node '{node}' ({input_len} inputs)")
     })?;
     input_slot.is_exposed = expose;
-    save_graph(&graph, &path)?;
+    save_graph(&mut graph, &path)?;
 
     if json_output {
         println!("{}", serde_json::json!({
@@ -481,7 +488,7 @@ pub(crate) fn cmd_expose_output(
         format!("output index {output} out of bounds on node '{node}' ({output_len} outputs)")
     })?;
     output_slot.is_exposed = expose;
-    save_graph(&graph, &path)?;
+    save_graph(&mut graph, &path)?;
 
     if json_output {
         println!("{}", serde_json::json!({
@@ -504,7 +511,7 @@ pub(crate) fn cmd_set_enabled(path: PathBuf, node: String, enabled: bool, json_o
     n.is_enabled = enabled;
     n.is_dirty = true;
     n.cached_input_hash = None;
-    save_graph(&graph, &path)?;
+    save_graph(&mut graph, &path)?;
     if json_output {
         println!("{}", serde_json::json!({"node": node, "enabled": enabled}));
     } else {
@@ -521,7 +528,7 @@ pub(crate) async fn cmd_run(path: PathBuf, json_output: bool) -> Result<(), Stri
     // to write regardless of its (default-off) auto-save toggle.
     graph.force_save_outputs = true;
     graph.run().await;
-    save_graph(&graph, &path)?;
+    save_graph_after_run(&mut graph, &path)?;
 
     // Count errored nodes so the process can exit non-zero below — printed
     // output already carries the per-node error detail via format_run_*.
@@ -565,7 +572,7 @@ pub(crate) async fn cmd_show_output(
     // so a headless render emits its files (see cmd_run).
     graph.force_save_outputs = true;
     graph.run().await;
-    save_graph(&graph, &path)?;
+    save_graph_after_run(&mut graph, &path)?;
 
     let node_data = &graph.nodes[&node];
 

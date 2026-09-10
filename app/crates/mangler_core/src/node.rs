@@ -328,6 +328,11 @@ impl Node {
                 // clear node error
                 if self.is_error {
                     self.is_error = false;
+                    // Clear the text with the flag. The two describe one piece
+                    // of state, so leaving the last failure's message behind a
+                    // false flag just waits for a reader that checks only one
+                    // of them.
+                    self.error_message = None;
 
                     if let Some(tx) = &tx_node_changed {
                         let message = NodeChangedMessage::Error {

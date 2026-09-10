@@ -336,11 +336,7 @@ fn is_type_compatible(result: &SearchResult, conn: &TempConnection) -> bool {
             let inputs = result.operation.create_inputs();
             inputs.iter().any(|input| {
                 input.accepts_any_type
-                    || input
-                        .value
-                        .value_type()
-                        .valid_conversions()
-                        .contains(&conn.from_value_type)
+                    || conn.from_value_type.can_feed(&input.value.value_type())
             })
         }
         // Dragged from an input: look for operations with compatible outputs
@@ -349,11 +345,10 @@ fn is_type_compatible(result: &SearchResult, conn: &TempConnection) -> bool {
                 // If the input accepts any type, all operations are compatible
                 return true;
             }
-            let valid_from = conn.from_value_type.valid_conversions_from();
             let outputs = result.operation.create_outputs();
             outputs
                 .iter()
-                .any(|output| valid_from.contains(&output.value.value_type()))
+                .any(|output| output.value.value_type().can_feed(&conn.from_value_type))
         }
     }
 }
@@ -375,11 +370,7 @@ fn type_relevance_score(result: &SearchResult, conn: &TempConnection) -> u8 {
                     return 0; // Exact match, can't do better
                 }
                 if !input.accepts_any_type
-                    && input
-                        .value
-                        .value_type()
-                        .valid_conversions()
-                        .contains(&conn.from_value_type)
+                    && conn.from_value_type.can_feed(&input.value.value_type())
                 {
                     best = best.min(1);
                 }
@@ -394,11 +385,7 @@ fn type_relevance_score(result: &SearchResult, conn: &TempConnection) -> u8 {
                 if output.value.value_type() == conn.from_value_type {
                     return 0;
                 }
-                if conn
-                    .from_value_type
-                    .valid_conversions_from()
-                    .contains(&output.value.value_type())
-                {
+                if output.value.value_type().can_feed(&conn.from_value_type) {
                     best = best.min(1);
                 }
             }

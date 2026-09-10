@@ -103,7 +103,7 @@ impl OpImageAdjustmentBlackWhite {
             return Ok(OperationResponse {
                 time: Instant::now().duration_since(start_time),
                 responses: vec![
-                    OutputResponse { value: Value::Image { data: Arc::new((*data).clone()), change_id: get_id() } },
+                    OutputResponse { value: Value::Image { data, change_id: get_id() } },
                 ],
             });
         }

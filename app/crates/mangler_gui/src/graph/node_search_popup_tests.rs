@@ -82,12 +82,7 @@ fn test_type_filter_from_output() {
     for result in &popup.filtered_results {
         let inputs = result.operation.create_inputs();
         let has_compatible_input = inputs.iter().any(|input| {
-            input.accepts_any_type
-                || input
-                    .value
-                    .value_type()
-                    .valid_conversions()
-                    .contains(&ValueType::Image)
+            input.accepts_any_type || ValueType::Image.can_feed(&input.value.value_type())
         });
         assert!(
             has_compatible_input,
@@ -117,12 +112,11 @@ fn test_type_filter_from_input() {
         "should find operations that output Image-compatible types"
     );
 
-    let valid_from = ValueType::Image.valid_conversions_from();
     for result in &popup.filtered_results {
         let outputs = result.operation.create_outputs();
-        let has_compatible_output = outputs.iter().any(|output| {
-            valid_from.contains(&output.value.value_type())
-        });
+        let has_compatible_output = outputs
+            .iter()
+            .any(|output| output.value.value_type().can_feed(&ValueType::Image));
         assert!(
             has_compatible_output,
             "operation '{}' should have at least one output compatible with Image input",
@@ -165,5 +159,87 @@ fn test_search_filter_no_match() {
     assert!(
         popup.filtered_results.is_empty(),
         "gibberish search should return no results"
+    );
+}
+
+// ── connection direction ─────────────────────────────────────────────────
+
+/// Builds a `TempConnection` for a drag starting at the given end.
+fn drag_from(kind: super::ConnectionType, value_type: ValueType) -> super::TempConnection {
+    super::TempConnection {
+        from_position: Pos2::ZERO,
+        from_node_id: "test".to_string(),
+        from_connection_index: 0,
+        from_connection_type: kind,
+        from_value_type: value_type,
+        from_accepts_any_type: false,
+    }
+}
+
+/// Compatibility filtering agrees with the engine's own connection rule.
+///
+/// The rule is directional, and this filter had it backwards for output-drags:
+/// it asked whether the *candidate input's* type converts to the dragged
+/// output's type, which is the inverse of what `Graph::add_connection` checks.
+/// The consequence went both ways -- legal targets hidden, illegal ones offered
+/// and then silently dropped on release.
+#[test]
+fn type_filter_agrees_with_the_engine_rule() {
+    let results = flatten_operations(&operation_list(), "");
+
+    for kind in [super::ConnectionType::Output, super::ConnectionType::Input] {
+        for value_type in [ValueType::Decimal, ValueType::Text, ValueType::Image, ValueType::Color] {
+            let conn = drag_from(kind.clone(), value_type.clone());
+            for result in &results {
+                let offered = is_type_compatible(result, &conn);
+
+                // What the engine would actually accept for this drag.
+                let accepted = match &kind {
+                    // Dragged from an output: it must feed one of the op's inputs.
+                    super::ConnectionType::Output => {
+                        result.operation.create_inputs().iter().any(|input| {
+                            input.accepts_any_type
+                                || value_type.can_feed(&input.value.value_type())
+                        })
+                    }
+                    // Dragged from an input: one of the op's outputs must feed it.
+                    super::ConnectionType::Input => {
+                        result.operation.create_outputs().iter().any(|output| {
+                            output.value.value_type().can_feed(&value_type)
+                        })
+                    }
+                };
+
+                assert_eq!(
+                    offered, accepted,
+                    "'{}' offered={offered} but engine accepts={accepted} for a \
+                     {kind:?} drag carrying {value_type:?}",
+                    result.name
+                );
+            }
+        }
+    }
+}
+
+/// The specific asymmetric pair the inverted check got wrong.
+///
+/// `Decimal` feeds `Text`, but `Text` does not feed `Decimal`, so dragging from
+/// a text *input* must offer number-producing operations, while dragging from a
+/// text *output* must not offer number-consuming ones.
+#[test]
+fn text_input_drag_offers_number_sources() {
+    let results = flatten_operations(&operation_list(), "");
+    let decimal_source = results
+        .iter()
+        .find(|r| r.name == "decimal")
+        .expect("the 'decimal' input node should exist");
+
+    assert!(
+        is_type_compatible(decimal_source, &drag_from(super::ConnectionType::Input, ValueType::Text)),
+        "a decimal output can feed a text input, so it must be offered"
+    );
+    assert!(
+        !is_type_compatible(decimal_source, &drag_from(super::ConnectionType::Output, ValueType::Text)),
+        "a text output cannot feed a decimal input, so it must not be offered"
     );
 }

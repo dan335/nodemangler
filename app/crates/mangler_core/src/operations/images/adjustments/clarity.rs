@@ -130,6 +130,17 @@ impl OpImageAdjustmentClarity {
 
         let amount = amount as f32;
 
+        if amount == 0.0 {
+            // Zero strength: the unsharp-mask contribution is exactly zero at
+            // every pixel, so the output is bit-identical to the input.
+            return Ok(OperationResponse {
+                time: Instant::now().duration_since(start_time),
+                responses: vec![
+                    OutputResponse { value: Value::Image { data, change_id: get_id() } },
+                ],
+            });
+        }
+
         let mut result = (*data).clone();
         let (w, h) = result.dimensions();
         let ch = result.channels() as usize;

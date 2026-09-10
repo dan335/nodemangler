@@ -15,12 +15,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
-
-/// Hermite interpolation between two edges, producing a smooth transition.
-fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
-    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
-}
+use crate::operations::images::adjustments::common::smoothstep_f64;
 
 /// Operation that generates a line segment as a grayscale SDF image.
 ///
@@ -137,7 +132,7 @@ impl OpImageShapeLine {
                 };
 
                 // smoothstep for anti-aliased edge, result in [0.0, 1.0]
-                let alpha = 1.0 - smoothstep(-pixel_size, pixel_size, dist);
+                let alpha = 1.0 - smoothstep_f64(-pixel_size, pixel_size, dist);
                 alpha as f32
             })
         }).collect();

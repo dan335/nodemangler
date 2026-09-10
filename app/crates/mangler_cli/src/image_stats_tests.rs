@@ -310,3 +310,37 @@ fn full_stats_all_different_colors() {
     let full = compute_full_image_stats(&img);
     assert_eq!(full.unique_colors, 4, "4 different pixels should give 4 unique colors");
 }
+
+// ── raw-linear fidelity ──────────────────────────────────────────────────
+
+/// Stats on a 1-channel image report the stored floats, not a `[0, 1]` u16 requantization.
+///
+/// Height fields, masks and distance fields are all 1-channel raw linear and
+/// routinely exceed 1.0, so reporting them through `to_dynamic()` (which clamps
+/// and quantizes 1- and 2-channel data) made `--stats` disagree with the
+/// `numbers/image` measurement nodes on the very images this app produces most.
+#[test]
+fn stats_preserve_out_of_range_single_channel_values() {
+    let mut img = FloatImage::new(2, 1, 1);
+    img.get_pixel_mut(0, 0)[0] = -0.25;
+    img.get_pixel_mut(1, 0)[0] = 4.0;
+
+    let stats = compute_image_stats(&img);
+    let (_, r) = &stats[0];
+    assert_eq!(r.min, -0.25, "negative height values must survive");
+    assert_eq!(r.max, 4.0, "values above 1.0 must not be clamped");
+    assert!((r.mean - 1.875).abs() < 1e-6, "mean should be of the real values");
+
+    // 1ch expands to R=G=B, A=1.
+    let (_, a) = &stats[3];
+    assert_eq!(a.min, 1.0);
+    assert_eq!(a.max, 1.0);
+}
+
+/// Sampling a pixel reads the stored float rather than a quantized copy.
+#[test]
+fn sample_pixel_preserves_out_of_range_values() {
+    let mut img = FloatImage::new(1, 1, 1);
+    img.get_pixel_mut(0, 0)[0] = 2.5;
+    assert_eq!(sample_pixel(&img, 0, 0), [2.5, 2.5, 2.5, 1.0]);
+}

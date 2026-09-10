@@ -1160,9 +1160,7 @@ impl Program {
         // - Immediately if we received engine messages this frame
         // - Immediately if a status message animation is active
         // - Otherwise poll at 10fps for new engine messages
-        if received_messages {
-            ctx.request_repaint();
-        } else if self.status_message.is_some() {
+        if received_messages || self.status_message.is_some() {
             ctx.request_repaint();
         } else {
             ctx.request_repaint_after(Duration::from_millis(100));
@@ -1795,7 +1793,6 @@ impl Program {
                 let resp = spatial_overlay::show(
                     ui,
                     leaf_id,
-                    view_rect,
                     image_rect,
                     &spatial_overlay::GizmoContext {
                         specs,
@@ -2723,11 +2720,7 @@ impl Program {
                 if let Some(input_index) = inputs.iter().position(|input| {
                     !input.hide_in_graph
                         && (input.accepts_any_type
-                            || input
-                                .value
-                                .value_type()
-                                .valid_conversions()
-                                .contains(&conn.from_value_type))
+                            || conn.from_value_type.can_feed(&input.value.value_type()))
                 }) {
                     self.add_connection(
                         new_node_id.to_string(),
@@ -2739,11 +2732,10 @@ impl Program {
             }
             // Dragged from an input: connect the new node's first compatible output to the input
             ConnectionType::Input => {
-                let valid_from = conn.from_value_type.valid_conversions_from();
                 let outputs = operation.create_outputs();
                 if let Some(output_index) = outputs
                     .iter()
-                    .position(|output| valid_from.contains(&output.value.value_type()))
+                    .position(|output| output.value.value_type().can_feed(&conn.from_value_type))
                 {
                     self.add_connection(
                         conn.from_node_id.clone(),

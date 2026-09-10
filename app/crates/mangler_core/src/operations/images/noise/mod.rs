@@ -118,18 +118,34 @@ pub fn build_perm_tables(seed: u32, count: usize) -> Vec<PermutationTable> {
     (0..count).map(|i| PermutationTable::new(seed + i as u32)).collect()
 }
 
+/// The integer mixer behind every hand-seeded generator in this module.
+///
+/// Each argument enters through its own odd multiplier and is folded in by XOR,
+/// so passing 0 for a term is exactly the same as not having that term at all --
+/// which is what lets the two-, three- and four-argument callers below share one
+/// implementation without changing a single output pixel. Two rounds of
+/// `h * (h ^ h>>16)` then avalanche the bits before the low 24 are taken as a
+/// fraction, which is plenty for stochastic placement and much cheaper than a
+/// real hash.
+#[inline(always)]
+pub(crate) fn mix_hash(ix: i32, iy: i32, impulse: u32, seed: u32, channel: u32) -> f64 {
+    let mut h = (ix as u32).wrapping_mul(1597334677)
+        ^ (iy as u32).wrapping_mul(2943785939)
+        ^ impulse.wrapping_mul(2654435761)
+        ^ seed.wrapping_mul(1013904223)
+        ^ channel.wrapping_mul(668265263);
+    h = h.wrapping_mul(h ^ (h >> 16));
+    h = h.wrapping_mul(h ^ (h >> 16));
+    (h & 0x00FFFFFF) as f64 / 0x01000000 as f64
+}
+
 /// Hash two coordinates and a seed into a pseudo-random value in [0, 1].
 ///
-/// Uses wrapping multiply and XOR-shift mixing for a fast, uniform
-/// distribution. Shared by the white-noise and blue-noise generators.
+/// The `f32` two-coordinate form of [`mix_hash`], used by the white-noise and
+/// blue-noise generators.
 #[inline(always)]
 pub(crate) fn pixel_hash(x: u32, y: u32, seed: u32) -> f32 {
-    let mut h = x.wrapping_mul(1597334677)
-        ^ y.wrapping_mul(2943785939)
-        ^ seed.wrapping_mul(1013904223);
-    h = h.wrapping_mul(h ^ (h >> 16));
-    h = h.wrapping_mul(h ^ (h >> 16));
-    (h & 0x00FFFFFF) as f32 / 0x01000000 as f32
+    mix_hash(x as i32, y as i32, 0, seed, 0) as f32
 }
 
 /// Shared Voronoi/Worley cell helpers (not a node).

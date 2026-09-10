@@ -19,6 +19,7 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::operations::images::adjustments::common::smoothstep;
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use rayon::prelude::*;
@@ -171,15 +172,6 @@ impl OpImageAdjustmentOutline {
             ],
         })
     }
-}
-
-/// Smooth Hermite interpolation between 0 and 1 as `x` crosses `[e0, e1]`.
-fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
-    if e0 == e1 {
-        return if x < e0 { 0.0 } else { 1.0 };
-    }
-    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
 }
 
 /// Exact squared Euclidean distance transform (Felzenszwalb–Huttenlocher, 2012).

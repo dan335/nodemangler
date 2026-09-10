@@ -36,10 +36,7 @@ impl AppMenu {
             current_theme.get().menu_bar,
         ));
 
-        let bar_response =
-            self.show_menu(ui, programs, current_program, app_menu_rect, current_theme);
-
-        bar_response
+        self.show_menu(ui, programs, current_program, app_menu_rect, current_theme)
     }
 
     pub fn show_menu(

@@ -81,12 +81,7 @@ impl OpImageNoiseFaultTerrain {
     /// Hash function producing a pseudo-random f64 in [0, 1) from an iteration index, seed, and channel.
     #[inline(always)]
     fn hash(i: u32, seed: u32, channel: u32) -> f64 {
-        let mut h = i.wrapping_mul(1597334677)
-            ^ seed.wrapping_mul(1013904223)
-            ^ channel.wrapping_mul(668265263);
-        h = h.wrapping_mul(h ^ (h >> 16));
-        h = h.wrapping_mul(h ^ (h >> 16));
-        (h & 0x00FFFFFF) as f64 / 0x01000000 as f64
+        super::super::mix_hash(i as i32, 0, 0, seed, channel)
     }
 
     /// Generates a fault terrain heightmap image from the given inputs.

@@ -1,4 +1,4 @@
-use super::{operation_list, default_image, OperationListItem};
+use super::{default_image, operation_list, Operation, OperationListItem};
 
 #[test]
 fn test_operation_list_not_empty() {
@@ -35,11 +35,15 @@ fn test_all_operations_have_valid_settings() {
     check_items(&operation_list());
 }
 
-/// Every node must be reachable from the add-node menu / search — both are
-/// driven by `operation_list()` in the GUI (`menu_panel.rs`,
+/// Every registered operation must be reachable from the add-node menu / search
+/// -- both are driven by `operation_list()` in the GUI (`menu_panel.rs`,
 /// `node_search_popup.rs`). A node registered in the `operations!` macro but
-/// left out of `operation_list()` compiles and unit-tests fine yet can never
-/// be placed in a graph. This pins the recently added nodes to the menu.
+/// left out of `operation_list()` compiles and unit-tests fine, passes both
+/// README gates (they read `operation_list()` too), and yet can never be placed
+/// in a graph.
+///
+/// This checks the whole registry rather than a frozen list of names, so a new
+/// operation is covered the moment it is registered.
 #[test]
 fn test_added_nodes_are_reachable_in_menu() {
     fn collect_names(items: &[OperationListItem], out: &mut std::collections::HashSet<String>) {
@@ -59,22 +63,17 @@ fn test_added_nodes_are_reachable_in_menu() {
     let mut names = std::collections::HashSet::new();
     collect_names(&operation_list(), &mut names);
 
-    let expected = [
-        // adjustments
-        "saturation", "threshold", "vignette", "white balance", "color balance", "selective color",
-        // transform
-        "polar coordinates", "swirl", "spherize", "perspective",
-        // filter
-        "convolution", "morphological gradient", "top hat", "black hat",
-        // noise
-        "wave", "blue noise", "curl noise",
-    ];
-    for name in expected {
-        assert!(
-            names.contains(name),
-            "operation '{name}' is missing from the node menu (operation_list)"
-        );
-    }
+    let missing: Vec<String> = Operation::all_variants()
+        .into_iter()
+        .map(|op| op.settings().name)
+        .filter(|name| !names.contains(name))
+        .collect();
+
+    assert!(
+        missing.is_empty(),
+        "these operations are registered but missing from the node menu \
+         (operation_list), so they can never be placed in a graph: {missing:?}"
+    );
 }
 
 /// Collapses runs of non-alphanumeric characters to a single space and

@@ -141,12 +141,29 @@ impl Theme {
         }
     }
 
+    /// Returns the (memoized) color/style values for this theme.
+    ///
+    /// Building a `ThemeValues` involves dozens of `Hsva` gamma conversions
+    /// (and, for `DarkGreen`, a further round of `desaturate()` HSV
+    /// round-trips on top of `Dark`'s values), so each variant is computed
+    /// once and cached — this is called from inside per-row/per-node
+    /// render loops and must stay cheap. `ThemeValues` holds only `Copy`
+    /// leaf types, so the `clone()` out of the cache is a plain memcpy.
     pub fn get(&self) -> ThemeValues {
+        static THEME_LIGHT: std::sync::LazyLock<ThemeValues> =
+            std::sync::LazyLock::new(super::theme_light::theme_light);
+        static THEME_DARK_GREEN: std::sync::LazyLock<ThemeValues> =
+            std::sync::LazyLock::new(super::theme_dark_green::theme_dark_green);
+        static THEME_DARK: std::sync::LazyLock<ThemeValues> =
+            std::sync::LazyLock::new(super::theme_dark::theme_dark);
+        static THEME_LIGHT_BLUE: std::sync::LazyLock<ThemeValues> =
+            std::sync::LazyLock::new(super::theme_light_blue::theme_light_blue);
+
         match self {
-            Theme::Light => super::theme_light::theme_light(),
-            Theme::DarkGreen => super::theme_dark_green::theme_dark_green(),
-            Theme::Dark => super::theme_dark::theme_dark(),
-            Theme::LightBlue => super::theme_light_blue::theme_light_blue(),
+            Theme::Light => THEME_LIGHT.clone(),
+            Theme::DarkGreen => THEME_DARK_GREEN.clone(),
+            Theme::Dark => THEME_DARK.clone(),
+            Theme::LightBlue => THEME_LIGHT_BLUE.clone(),
         }
     }
 }

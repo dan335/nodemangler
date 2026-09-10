@@ -291,13 +291,6 @@ impl FloatImage {
         &mut self.data
     }
 
-    /// Consume the image and return its raw pixel buffer. Used by callers
-    /// that want to reclaim the `Vec<f32>` allocation.
-    #[inline]
-    pub fn into_data(self) -> Vec<f32> {
-        self.data
-    }
-
     /// Returns the pixel at (x, y) as a slice of `channels` f32 values.
     ///
     /// # Panics
@@ -448,6 +441,11 @@ impl FloatImage {
         // zero-fill for empty images).
         if self.width == 0 || self.height == 0 {
             return Self::new(new_w, new_h, self.channels);
+        }
+        // Same-size resize is the identity (bilinear would sample every pixel
+        // at fx = fy = 0, i.e. itself) — skip the resampling work entirely.
+        if new_w == self.width && new_h == self.height {
+            return self.clone();
         }
 
         if Self::should_area_downsample(self.width, self.height, new_w, new_h) {

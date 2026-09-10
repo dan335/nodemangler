@@ -397,11 +397,13 @@ impl GraphEditor {
                         // Dragging from an input → looking for a compatible output.
                         ConnectionType::Input => {
                             for (output_index, output) in other_graph_node.outputs.iter().enumerate() {
+                                // The candidate output is the source, the input
+                                // we dragged from is the destination.
                                 let compatible = temp_connection.from_accepts_any_type
-                                    || temp_connection
-                                        .from_value_type
-                                        .valid_conversions()
-                                        .contains(&output.value.value_type());
+                                    || output
+                                        .value
+                                        .value_type()
+                                        .can_feed(&temp_connection.from_value_type);
                                 if !compatible {
                                     continue;
                                 }
@@ -433,8 +435,7 @@ impl GraphEditor {
                                 let compatible = input.accepts_any_type
                                     || temp_connection
                                         .from_value_type
-                                        .valid_conversions()
-                                        .contains(&input.value.value_type());
+                                        .can_feed(&input.value.value_type());
                                 if !compatible {
                                     continue;
                                 }

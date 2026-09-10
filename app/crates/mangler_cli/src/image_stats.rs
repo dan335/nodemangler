@@ -14,49 +14,74 @@ pub(crate) struct ChannelStats {
     pub stddev: f32,
 }
 
-/// Compute per-channel (R, G, B, A) statistics for an image.
+/// Expands one `FloatImage` pixel to RGBA floats, matching `FloatImage::to_rgba8`'s
+/// channel rules (1ch: R=G=B=v, A=1; 2ch: R=G=B=gray, A=alpha; 3ch: A=1).
 ///
-/// Converts the FloatImage to RGBA f32 for uniform 4-channel analysis.
+/// Reads the stored `f32` values as they are. Routing this through
+/// `to_dynamic()` instead would clamp 1- and 2-channel images to `[0, 1]` and
+/// quantize them to `u16` — and every mask, height field, distance field and
+/// noise output in this app is 1-channel raw linear, so the reported figures
+/// would silently disagree with what the `numbers/image` measurement nodes say
+/// about the same image.
+#[inline]
+fn rgba_at(px: &[f32]) -> [f32; 4] {
+    match px.len() {
+        1 => [px[0], px[0], px[0], 1.0],
+        2 => [px[0], px[0], px[0], px[1]],
+        3 => [px[0], px[1], px[2], 1.0],
+        _ => [px[0], px[1], px[2], px[3]],
+    }
+}
+
+/// Compute per-channel (R, G, B, A) statistics for an image.
 pub(crate) fn compute_image_stats(img: &FloatImage) -> Vec<(&'static str, ChannelStats)> {
-    let dynamic = img.to_dynamic();
-    let rgba = dynamic.to_rgba32f();
-    let pixels: Vec<&[f32]> = rgba.as_raw().chunks(4).collect();
-    let n = pixels.len() as f64;
-    if n == 0.0 {
-        return vec![
-            ("r", ChannelStats { min: 0.0, max: 0.0, mean: 0.0, stddev: 0.0 }),
-            ("g", ChannelStats { min: 0.0, max: 0.0, mean: 0.0, stddev: 0.0 }),
-            ("b", ChannelStats { min: 0.0, max: 0.0, mean: 0.0, stddev: 0.0 }),
-            ("a", ChannelStats { min: 0.0, max: 0.0, mean: 0.0, stddev: 0.0 }),
-        ];
+    const NAMES: [&str; 4] = ["r", "g", "b", "a"];
+    let n = (img.width() as usize) * (img.height() as usize);
+    if n == 0 {
+        return NAMES
+            .iter()
+            .map(|name| (*name, ChannelStats { min: 0.0, max: 0.0, mean: 0.0, stddev: 0.0 }))
+            .collect();
     }
 
-    let mut result = Vec::with_capacity(4);
-    for (ch, name) in ["r", "g", "b", "a"].iter().enumerate() {
-        let mut min = f32::MAX;
-        let mut max = f32::MIN;
-        let mut sum = 0.0_f64;
-        for px in &pixels {
-            let v = px[ch];
-            if v < min { min = v; }
-            if v > max { max = v; }
-            sum += v as f64;
+    // One pass for the extremes and the sums, a second for the variance --
+    // cheaper than the four passes over a materialized RGBA copy this replaced.
+    let mut min = [f32::MAX; 4];
+    let mut max = [f32::MIN; 4];
+    let mut sum = [0.0_f64; 4];
+    for px in img.pixels() {
+        let rgba = rgba_at(px);
+        for ch in 0..4 {
+            let v = rgba[ch];
+            if v < min[ch] { min[ch] = v; }
+            if v > max[ch] { max[ch] = v; }
+            sum[ch] += v as f64;
         }
-        let mean = sum / n;
-        let mut var_sum = 0.0_f64;
-        for px in &pixels {
-            let diff = px[ch] as f64 - mean;
-            var_sum += diff * diff;
-        }
-        let stddev = (var_sum / n).sqrt();
-        result.push((*name, ChannelStats {
-            min,
-            max,
-            mean: mean as f32,
-            stddev: stddev as f32,
-        }));
     }
-    result
+
+    let mean = [sum[0] / n as f64, sum[1] / n as f64, sum[2] / n as f64, sum[3] / n as f64];
+    let mut var_sum = [0.0_f64; 4];
+    for px in img.pixels() {
+        let rgba = rgba_at(px);
+        for ch in 0..4 {
+            let diff = rgba[ch] as f64 - mean[ch];
+            var_sum[ch] += diff * diff;
+        }
+    }
+
+    (0..4)
+        .map(|ch| {
+            (
+                NAMES[ch],
+                ChannelStats {
+                    min: min[ch],
+                    max: max[ch],
+                    mean: mean[ch] as f32,
+                    stddev: (var_sum[ch] / n as f64).sqrt() as f32,
+                },
+            )
+        })
+        .collect()
 }
 
 /// Combined stats result returned by `compute_full_image_stats`.
@@ -129,10 +154,7 @@ pub(crate) fn resolve_sample_coord(s: &str, w: u32, h: u32) -> Result<(u32, u32)
 
 /// Sample a pixel from an image at (x, y), returning RGBA floats.
 pub(crate) fn sample_pixel(img: &FloatImage, x: u32, y: u32) -> [f32; 4] {
-    let dynamic = img.to_dynamic();
-    let rgba = dynamic.to_rgba32f();
-    let px = rgba.get_pixel(x, y);
-    [px.0[0], px.0[1], px.0[2], px.0[3]]
+    rgba_at(img.get_pixel(x, y))
 }
 
 #[cfg(test)]

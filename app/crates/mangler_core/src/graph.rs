@@ -131,6 +131,17 @@ pub struct Graph {
     /// `force_save_outputs`, a property of *this* execution, not of the saved
     /// graph.
     pub batch_item_stem: Option<String>,
+    /// Directory used to resolve output nodes' relative `folder` inputs when
+    /// `save_path` is absent.
+    ///
+    /// Normally the two are the same thing and this stays `None` — the base is
+    /// just `save_path`'s parent. It exists for [`Graph::detached`], which
+    /// deliberately clears `save_path` so a snapshot can never overwrite the
+    /// live graph's JSON. That made `save_path` serve two jobs at once, so the
+    /// safety measure also silently removed the base every relative output
+    /// folder resolves against, and a detached force-save render failed with
+    /// "No folder set" instead of writing its files. Not persisted.
+    pub graph_dir: Option<PathBuf>,
 }
 
 impl Graph {
@@ -161,6 +172,8 @@ impl Graph {
             last_synced_hash: None,
             force_save_outputs: false,
             batch_item_stem: None,
+            // Resolution base is `save_path`'s parent; see `output_base_dir`.
+            graph_dir: None,
         })
     }
 
@@ -233,6 +246,8 @@ impl Graph {
                         last_synced_hash: Some(load_hash),
                         force_save_outputs: false,
                         batch_item_stem: None,
+                        // Resolution base is `save_path`'s parent; see `output_base_dir`.
+                        graph_dir: None,
                     };
 
                     // Surface load anomalies to the UI *before* the
@@ -1172,6 +1187,10 @@ impl Graph {
             // nothing for disk_conflicts to compare against.
             last_synced_mtime: None,
             last_synced_hash: None,
+            // ...but output nodes still resolve their relative folders against
+            // the real graph's directory, which clearing save_path would
+            // otherwise take away.
+            graph_dir: self.output_base_dir(),
             // A detached render should still emit its files.
             force_save_outputs: self.force_save_outputs,
             // Carry the in-progress batch item stem (if any) so a detached
@@ -1185,6 +1204,19 @@ impl Graph {
         // runs produce the same result as the live graph.
         snapshot.rehydrate_subgraphs();
         snapshot
+    }
+
+    /// The directory that output nodes' relative `folder` inputs resolve against.
+    ///
+    /// `save_path`'s parent normally, falling back to an explicit
+    /// [`Graph::graph_dir`] for a graph that has a real location but no file it
+    /// may write to (see [`Graph::detached`]).
+    pub fn output_base_dir(&self) -> Option<PathBuf> {
+        self.save_path
+            .as_ref()
+            .and_then(|p| p.parent())
+            .map(|d| d.to_path_buf())
+            .or_else(|| self.graph_dir.clone())
     }
 
     // returns a list of node_ids that ran
@@ -1202,11 +1234,7 @@ impl Graph {
         // iteration. Computed once here from the graph's save location so
         // per-node cloning is cheap.
         let run_ctx = crate::run_context::RunContext {
-            graph_dir: self
-                .save_path
-                .as_ref()
-                .and_then(|p| p.parent())
-                .map(|d| d.to_path_buf()),
+            graph_dir: self.output_base_dir(),
             graph_name: self.name.clone(),
             force_save: self.force_save_outputs,
             batch_item_stem: self.batch_item_stem.clone(),

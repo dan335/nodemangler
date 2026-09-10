@@ -100,18 +100,16 @@ pub struct GizmoContext<'a> {
 
 /// Draw every gizmo the node declares and return any change made this frame.
 ///
-/// `view_rect` is the whole panel; `image_rect` is the `[0,1]²` mapping target
-/// (the displayed image, or a fallback canvas).
+/// `image_rect` is the `[0,1]²` mapping target (the displayed image, or a
+/// fallback canvas).
 pub fn show(
     ui: &mut egui::Ui,
     leaf_id: LeafId,
-    view_rect: Rect,
     image_rect: Rect,
     ctx: &GizmoContext<'_>,
     theme: &Theme,
 ) -> SpatialOverlayResponse {
     let mut out = SpatialOverlayResponse::default();
-    let _ = view_rect;
 
     // A degenerate or non-finite mapping rect would put every handle on top of
     // every other one; draw nothing rather than something un-grabbable.
@@ -1582,29 +1580,11 @@ fn draw_rect(
     }
 }
 
-/// Resolve an origin/size box to pixels exactly as `crop`'s `run()` does.
+/// Fit an origin-size fraction quad to the pixel crop `run()` will produce.
 ///
 /// Delegates to [`mangler_core::operations::images::transform::crop::resolve_crop`]
-/// so the overlay and the operation cannot drift. `ratio` is the optional
-/// integer W:H lock (both 0 = free).
-pub fn crop_pixels(values: [f32; 4], dims: (u32, u32)) -> (i64, i64, i64, i64) {
-    crop_pixels_aspect(values, 0, 0, dims)
-}
-
-/// Same as [`crop_pixels`] with an explicit aspect-lock pair.
-pub fn crop_pixels_aspect(
-    values: [f32; 4],
-    ratio_w: i32,
-    ratio_h: i32,
-    dims: (u32, u32),
-) -> (i64, i64, i64, i64) {
-    let p = mangler_core::operations::images::transform::crop::resolve_crop(
-        values[0], values[1], values[2], values[3], ratio_w, ratio_h, dims.0, dims.1,
-    );
-    (p.x, p.y, p.w, p.h)
-}
-
-/// Fit an origin-size fraction quad to the pixel crop `run()` will produce.
+/// so the overlay and the operation cannot drift. `ratio_w`/`ratio_h` is the
+/// optional integer W:H lock (both 0 = free).
 fn fit_values(values: [f32; 4], ratio_w: i32, ratio_h: i32, dims: (u32, u32)) -> [f32; 4] {
     mangler_core::operations::images::transform::crop::resolve_crop(
         values[0], values[1], values[2], values[3], ratio_w, ratio_h, dims.0, dims.1,
@@ -1660,14 +1640,9 @@ pub fn handle_moves(h: RectHandle) -> [bool; 4] {
 /// corner changes `width` while only the near one changes `x`; moving the whole
 /// body shifts both corners equally and so leaves the size untouched.
 ///
-/// When `aspect_locked`, every resize handle rewrites all four values: the
+/// When `locked`, every resize handle rewrites all four values: the
 /// orthogonal side is derived from the ratio (and an edge recenters on the
 /// free axis). Body still only translates.
-pub fn spec_inputs_touched(h: RectHandle, extent: RectExtent) -> [bool; 4] {
-    spec_inputs_touched_aspect(h, extent, false)
-}
-
-/// [`spec_inputs_touched`] with the aspect-lock rule applied when `locked`.
 pub fn spec_inputs_touched_aspect(h: RectHandle, extent: RectExtent, locked: bool) -> [bool; 4] {
     if locked && h != RectHandle::Body {
         return [true, true, true, true];

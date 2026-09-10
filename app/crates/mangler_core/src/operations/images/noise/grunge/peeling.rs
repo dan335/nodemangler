@@ -28,6 +28,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 use noise::permutationtable::PermutationTable;
+use crate::operations::images::adjustments::common::smoothstep_f64;
 
 use crate::operations::images::noise::voronoi_common::{cell_hash, grid_size_from_frequency, wrap_cell};
 use crate::operations::images::noise::{build_perm_tables, periodic_perlin_2d};
@@ -39,13 +40,6 @@ const EDGE_WIDTH: f64 = 0.03;
 /// Integer period (lattice cells across the tile) of the low-frequency
 /// coverage field that lays out intact continents vs. bare patches.
 const COVERAGE_PERIOD: isize = 3;
-
-/// Smoothstep interpolation between two edges.
-#[inline(always)]
-fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
-    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
-}
 
 /// Periodic fBm: sums one octave of periodic Perlin noise per supplied
 /// permutation table, with integer periods doubling per octave so the sum
@@ -289,18 +283,18 @@ impl OpImageNoisePeeling {
                 let b_pixel = 0.5 + 1.0 * periodic_fbm(u, v, COVERAGE_PERIOD, coverage_ref);
                 let pixel_margin = b_pixel - threshold + 0.09;
                 let ragged = periodic_fbm(u, v, ragged_period, ragged_ref);
-                let edge_fail = 1.0 - smoothstep(0.0, 0.22, margin.min(pixel_margin));
+                let edge_fail = 1.0 - smoothstep_f64(0.0, 0.22, margin.min(pixel_margin));
                 let eat = -0.08 + 0.30 * edge_fail
                     + roughness * (0.10 + 0.14 * edge_fail) * ragged;
 
                 let d_eff = d_border - eat;
-                let mask = smoothstep(0.0, EDGE_WIDTH, d_eff);
+                let mask = smoothstep_f64(0.0, EDGE_WIDTH, d_eff);
 
                 // Curl: bright rim just inside the flake edge (the lifted lip
                 // catching light) over a slightly darker flake body. Gated by
                 // edge_fail so lips only lift where the paint is failing —
                 // deep-interior paint stays solid flat white.
-                let rim = 1.0 - smoothstep(EDGE_WIDTH, 0.12, d_eff);
+                let rim = 1.0 - smoothstep_f64(EDGE_WIDTH, 0.12, d_eff);
                 let lip = curl * (0.15 + 0.85 * edge_fail);
                 (mask * (1.0 - 0.3 * lip * (1.0 - rim))).clamp(0.0, 1.0)
             })

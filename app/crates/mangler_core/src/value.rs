@@ -240,6 +240,24 @@ impl Value {
     /// Numeric types convert freely between each other. Scalars can convert to
     /// colors (grayscale) and 1x1 images. String parsing is attempted for
     /// string-to-numeric conversions. Returns a [`ConversionError`] if the
+
+    /// The error a failed conversion reports, naming both real types.
+    ///
+    /// Every arm below used to hand-type this string, and they drifted: a
+    /// `FilterType` failure claimed "filter type to bool", `ColorFormat` said
+    /// "image type to bool", and `Path` reported "integer to image format" --
+    /// none of which mention the types actually involved. Deriving it from
+    /// `value_name` makes a wrong message impossible.
+    fn conversion_error(&self, target: &ValueType) -> ConversionError {
+        ConversionError {
+            message: format!(
+                "Unable to convert {} to {}.",
+                self.value_type().value_name(),
+                target.value_name()
+            ),
+        }
+    }
+
     /// conversion is not supported or fails at runtime.
     pub fn try_convert_to(&self, other: ValueType) -> Result<Value, ConversionError> {
         match self {
@@ -274,9 +292,7 @@ impl Value {
                         change_id: get_id(),
                     })
                 }
-                _ => Err(ConversionError {
-                    message: "Unable to convert bool to filter type.".to_string(),
-                }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::Integer(a) => match other {
                 ValueType::Bool => Ok(Value::Bool(*a != 0)),
@@ -294,9 +310,7 @@ impl Value {
                         change_id: get_id(),
                     })
                 }
-                _ => Err(ConversionError {
-                    message: "Unable to convert integer to this type.".to_string(),
-                }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::Decimal(a) => match other {
                 ValueType::Bool => Ok(Value::Bool(*a != 0.0)),
@@ -314,9 +328,7 @@ impl Value {
                         change_id: get_id(),
                     })
                 }
-                _ => Err(ConversionError {
-                    message: "Unable to convert decimal to this type.".to_string(),
-                }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::Color(a) => match other {
                 ValueType::Bool => Ok(Value::Bool(a.r != 0.0 || a.g != 0.0 || a.b != 0.0)),
@@ -337,104 +349,82 @@ impl Value {
                         change_id: get_id(),
                     })
                 }
-                _ => Err(ConversionError {
-                    message: "Unable to convert color to this type.".to_string(),
-                }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::FilterType(a) => match other {
                 ValueType::FilterType => Ok(Value::FilterType(*a)),
-                _ => Err(ConversionError {
-                    message: "Unable to convert filter type to bool.".to_string(),
-                }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::ColorFormat(a) => match other {
                 ValueType::ColorFormat => Ok(Value::ColorFormat(*a)),
-                _ => Err(ConversionError {
-                    message: "Unable to convert image type to bool.".to_string(),
-                }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::Trigger => match other {
                 ValueType::Trigger => Ok(Value::Trigger),
-                _ => Err(ConversionError {
-                    message: "Unable to convert trigger to this type.".to_string(),
-                }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::Image { data, change_id } => match other {
                 ValueType::Image => Ok(Value::Image {
                     data: data.clone(),
                     change_id: change_id.clone(),
                 }),
-                _ => Err(ConversionError {
-                    message: "Unable to convert image to this type.".to_string(),
-                }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::Path(path) => match other {
                 ValueType::Text => {
                     if let Ok(path_string) = path.clone().into_os_string().into_string() {
                         Ok(Value::Text(path_string))
                     } else {
-                        Err(ConversionError {
-                            message: "Unable to convert integer to image format.".to_string(),
-                        })
+                        Err(self.conversion_error(&other))
                     }
                 }
                 ValueType::Path => Ok(Value::Path(path.clone())),
-                _ => Err(ConversionError {
-                    message: "Unable to convert integer to image format.".to_string(),
-                }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::ImageType(image_format) => match other {
                 ValueType::ImageType => Ok(Value::ImageType(*image_format)),
-                _ => Err(ConversionError {
-                    message: "Unable to convert.".to_string(),
-                }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::NoiseWorleyDistanceFunction(a) => match other {
                 ValueType::NoiseWorleyDistanceFunction => {
                     Ok(Value::NoiseWorleyDistanceFunction(*a))
                 }
-                _ => Err(ConversionError {
-                    message: "Unable to convert.".to_string(),
-                }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::ColorSpace(a) => match other {
                 ValueType::ColorSpace => Ok(Value::ColorSpace(*a)),
-                _ => Err(ConversionError {
-                    message: "Unable to convert.".to_string(),
-                }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::BlendMode(a) => match other {
                 ValueType::BlendMode => Ok(Value::BlendMode(a.clone())),
-                _ => Err(ConversionError {
-                    message: "Unable to convert.".to_string(),
-                }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::EdgeMode(a) => match other {
                 ValueType::EdgeMode => Ok(Value::EdgeMode(*a)),
-                _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::TextHAlign(a) => match other {
                 ValueType::TextHAlign => Ok(Value::TextHAlign(*a)),
-                _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::TextVAlign(a) => match other {
                 ValueType::TextVAlign => Ok(Value::TextVAlign(*a)),
-                _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::ExportPreset(a) => match other {
                 ValueType::ExportPreset => Ok(Value::ExportPreset(*a)),
-                _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::ToneMapOperator(a) => match other {
                 ValueType::ToneMapOperator => Ok(Value::ToneMapOperator(*a)),
-                _ => Err(ConversionError { message: "Unable to convert.".to_string() }),
+                _ => Err(self.conversion_error(&other)),
             },
             // Identity only — rasterizing a curve to an image needs parameters
             // (size, stroke, fill), so it's an explicit node, not an implicit
             // conversion.
             Value::Curve(a) => match other {
                 ValueType::Curve => Ok(Value::Curve(a.clone())),
-                _ => Err(ConversionError { message: "Unable to convert curve to this type.".to_string() }),
+                _ => Err(self.conversion_error(&other)),
             },
             Value::Text(a) => match other {
                 ValueType::Text => Ok(Value::Text(a.clone())),
@@ -443,21 +433,21 @@ impl Value {
                     let result: Result<bool, _> = a.parse();
                     match result {
                         Ok(r) => Ok(Value::Bool(r)),
-                        Err(_) => Err(ConversionError { message: "Error converting text to bool.".to_string() }),
+                        Err(_) => Err(self.conversion_error(&other)),
                     }
                 }
                 ValueType::Integer => {
                     let result: Result<i32, _> = a.parse();
                     match result {
                         Ok(r) => Ok(Value::Integer(r)),
-                        Err(_) => Err(ConversionError { message: "Error converting text to integer.".to_string() }),
+                        Err(_) => Err(self.conversion_error(&other)),
                     }
                 }
                 ValueType::Decimal => {
                     let result: Result<f32, _> = a.parse();
                     match result {
                         Ok(r) => Ok(Value::Decimal(r)),
-                        Err(_) => Err(ConversionError { message: "Error converting text to decimal.".to_string() }),
+                        Err(_) => Err(self.conversion_error(&other)),
                     }
                 }
                 ValueType::NoiseWorleyDistanceFunction => {
@@ -470,7 +460,7 @@ impl Value {
                         _ => Err(ConversionError { message: format!("Unknown distance function '{}'. Expected: chebyshev, euclidean, euclidean_squared, manhattan, quadratic.", a) }),
                     }
                 }
-                _ => Err(ConversionError { message: "Unable to convert text to this type.".to_string() }),
+                _ => Err(self.conversion_error(&other)),
             },
         }
     }
@@ -534,23 +524,38 @@ pub enum ValueType {
 const RAW_EXTENSION_BLOCKLIST: &[&str] = &["raw", "crm"];
 
 impl ValueType {
-    /// Return the standard set of value types available for general use.
-    pub fn types() -> [ValueType; 11] {
-        let types: [ValueType; 11] = [
-            ValueType::Bool,
-            ValueType::Integer,
-            ValueType::Decimal,
-            ValueType::Text,
-            ValueType::Color,
-            ValueType::FilterType,
-            ValueType::ColorFormat,
-            ValueType::Trigger,
-            ValueType::Image,
-            ValueType::Path,
-            ValueType::Curve,
-        ];
+    /// Every value type, in declaration order.
+    ///
+    /// This must list all of them: [`valid_conversions_from`](ValueType::valid_conversions_from)
+    /// searches it to answer "what can feed this socket", so a type missing here
+    /// reports that *nothing* can connect to it -- including itself. The
+    /// `all_lists_every_value_type` test makes a forgotten entry a build failure.
+    pub const ALL: [ValueType; 20] = [
+        ValueType::Bool,
+        ValueType::Integer,
+        ValueType::Decimal,
+        ValueType::Text,
+        ValueType::Color,
+        ValueType::FilterType,
+        ValueType::ColorFormat,
+        ValueType::ImageType,
+        ValueType::Trigger,
+        ValueType::Image,
+        ValueType::Path,
+        ValueType::NoiseWorleyDistanceFunction,
+        ValueType::ColorSpace,
+        ValueType::BlendMode,
+        ValueType::EdgeMode,
+        ValueType::TextHAlign,
+        ValueType::TextVAlign,
+        ValueType::ExportPreset,
+        ValueType::Curve,
+        ValueType::ToneMapOperator,
+    ];
 
-        types
+    /// Return the standard set of value types available for general use.
+    pub fn types() -> [ValueType; 20] {
+        ValueType::ALL
     }
 
     /// Return a default `Value` for this type, used when adapting pass-through inputs.
@@ -732,6 +737,24 @@ impl ValueType {
             ValueType::Curve => vec![ValueType::Curve, ValueType::Trigger],
             ValueType::ToneMapOperator => vec![ValueType::ToneMapOperator, ValueType::Trigger],
         }
+    }
+
+    /// Whether an output of this type can feed an input of `input_type`.
+    ///
+    /// This is the one directional rule the whole app connects by, and it is
+    /// **not symmetric**: a `Decimal` output feeds a `Text` input, but a `Text`
+    /// output does not feed a `Decimal` input. Reading the relation backwards
+    /// therefore both refuses legal connections and offers illegal ones -- the
+    /// GUI hand-rolled it at eight drag/drop sites and had four of them
+    /// inverted, in two different directions, before this existed. Call this
+    /// rather than reaching for `valid_conversions` directly; the argument
+    /// names say which end is which.
+    ///
+    /// Note this is the type rule only. `Input::accepts_any_type` bypasses it,
+    /// and cycle rejection lives in `Graph::add_connection`; the full check for
+    /// a concrete pair is [`crate::Output::is_valid_connection`].
+    pub fn can_feed(&self, input_type: &ValueType) -> bool {
+        self.valid_conversions().contains(input_type)
     }
 
     /// Return the list of types that can be converted **into** this type.

@@ -168,16 +168,13 @@ fn show_header(
     });
 }
 
-/// The two add-library entries shared by the "+" menu and the empty-space
-/// right-click menu. Both open the folder picker; its built-in "new folder"
-/// button covers the create-new case, so they differ only in intent.
+/// The add-library entry shared by the "+" menu and the empty-space
+/// right-click menu: opens a folder picker and links the chosen folder as a
+/// library (its built-in "new folder" button covers creating one from
+/// scratch too).
 fn add_library_menu_items(ui: &mut egui::Ui, colors: &ThemeValues, commands: &mut PanelCommands) {
     strengthen_menu_hover(ui, colors);
-    if ui.button("create new library…").clicked() {
-        commands.actions.push(LibraryAction::RequestAddLibrary);
-        ui.close();
-    }
-    if ui.button("add existing library…").clicked() {
+    if ui.button("add library…").clicked() {
         commands.actions.push(LibraryAction::RequestAddLibrary);
         ui.close();
     }
@@ -534,7 +531,9 @@ fn show_image_list_row(
     let response = ui
         .selectable_label(is_previewed, label)
         .interact(egui::Sense::click_and_drag())
-        .on_hover_text(image_hover_text(image));
+        .on_hover_ui(|ui| {
+            ui.label(image_hover_text(image));
+        });
 
     wire_image_interactions(&response, image, read_only, colors, commands);
 }
@@ -623,13 +622,15 @@ fn show_image_thumb_cell(
         },
     );
 
-    let response = response.on_hover_text(image_hover_text(image));
+    let response = response.on_hover_ui(|ui| {
+        ui.label(image_hover_text(image));
+    });
     wire_image_interactions(&response, image, read_only, colors, commands);
 }
 
 /// Tooltip body for an image entry: full name, path, size, and modified time.
-/// Metadata is read only when the tooltip is built (hover), so it does not
-/// tax the scanner poll.
+/// `on_hover_ui` only invokes this closure while the tooltip is actually
+/// showing, so the `fs::metadata` read happens on hover, not every frame.
 fn image_hover_text(image: &ImageEntry) -> String {
     let mut lines = Vec::with_capacity(4);
     lines.push(image.name.clone());

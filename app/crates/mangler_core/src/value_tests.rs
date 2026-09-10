@@ -1565,3 +1565,145 @@ fn test_curve_thumbnail_is_image() {
         other => panic!("Expected Image thumbnail, got {:?}", other),
     }
 }
+
+// ── ValueType::ALL completeness ──────────────────────────────────────────
+
+/// `ValueType::ALL` lists every variant of the enum.
+///
+/// The stakes are quiet but real: `valid_conversions_from` scans `ALL` to
+/// decide what the socket-conversion UI may offer, so a type left out reports
+/// that nothing at all can feed it -- not even its own type. Nine of the twenty
+/// were missing before this test existed.
+#[test]
+fn all_lists_every_value_type() {
+    // Exhaustive by construction: adding a variant to `ValueType` without
+    // adding an arm here stops the crate compiling, and adding the arm but
+    // forgetting `ALL` fails the assertion below.
+    fn ordinal(t: &ValueType) -> usize {
+        match t {
+            ValueType::Bool => 0,
+            ValueType::Integer => 1,
+            ValueType::Decimal => 2,
+            ValueType::Text => 3,
+            ValueType::Color => 4,
+            ValueType::FilterType => 5,
+            ValueType::ColorFormat => 6,
+            ValueType::ImageType => 7,
+            ValueType::Trigger => 8,
+            ValueType::Image => 9,
+            ValueType::Path => 10,
+            ValueType::NoiseWorleyDistanceFunction => 11,
+            ValueType::ColorSpace => 12,
+            ValueType::BlendMode => 13,
+            ValueType::EdgeMode => 14,
+            ValueType::TextHAlign => 15,
+            ValueType::TextVAlign => 16,
+            ValueType::ExportPreset => 17,
+            ValueType::Curve => 18,
+            ValueType::ToneMapOperator => 19,
+        }
+    }
+
+    let seen: std::collections::HashSet<usize> = ValueType::ALL.iter().map(ordinal).collect();
+    assert_eq!(
+        seen.len(),
+        ValueType::ALL.len(),
+        "ValueType::ALL lists a variant twice"
+    );
+    for expected in 0..20 {
+        assert!(
+            seen.contains(&expected),
+            "ValueType::ALL is missing the variant with ordinal {expected}"
+        );
+    }
+}
+
+/// Every value type can at least be fed by its own type.
+///
+/// An empty `valid_conversions_from` is what a missing `ALL` entry looks like
+/// from the UI: the node-search popup offers no source for the socket.
+#[test]
+fn every_value_type_can_be_fed_by_itself() {
+    for t in ValueType::ALL {
+        assert!(
+            t.valid_conversions_from().contains(&t),
+            "{t:?} reports that nothing can connect to it"
+        );
+    }
+}
+
+// ── connection direction ─────────────────────────────────────────────────
+
+/// `can_feed` is directional, and the asymmetry is load-bearing.
+///
+/// Every connection in the app is decided by this relation, so reading it
+/// backwards silently refuses legal wiring and offers illegal wiring. These
+/// two pairs are the concrete cases that were wrong in the GUI.
+#[test]
+fn can_feed_is_not_symmetric() {
+    // A number feeds a text input (it stringifies); text does not feed a number.
+    assert!(ValueType::Decimal.can_feed(&ValueType::Text));
+    assert!(!ValueType::Text.can_feed(&ValueType::Decimal));
+
+    // Anything feeds a trigger; a trigger feeds nothing but a trigger.
+    assert!(ValueType::Image.can_feed(&ValueType::Trigger));
+    assert!(!ValueType::Trigger.can_feed(&ValueType::Image));
+    assert!(ValueType::Trigger.can_feed(&ValueType::Trigger));
+}
+
+/// Every type can feed its own kind, or nothing could ever be wired up.
+#[test]
+fn can_feed_is_reflexive() {
+    for t in ValueType::ALL {
+        assert!(t.can_feed(&t), "{t:?} cannot feed its own type");
+    }
+}
+
+/// `Output::is_valid_connection` and `can_feed` are the same rule.
+///
+/// The engine enforces connections through the former; the GUI offers them
+/// through the latter. If they ever disagree, the editor shows drop targets
+/// that `Graph::add_connection` then rejects.
+#[test]
+fn is_valid_connection_matches_can_feed() {
+    use crate::{Input, Output};
+
+    for from in ValueType::ALL {
+        for to in ValueType::ALL {
+            let output = Output::new("o".to_string(), from.default_value(), None);
+            let input = Input::new("i".to_string(), to.default_value(), None, None);
+            assert_eq!(
+                output.is_valid_connection(&input),
+                from.can_feed(&to),
+                "{from:?} -> {to:?} disagrees between the engine check and can_feed"
+            );
+        }
+    }
+}
+
+/// A failed conversion names the types actually involved.
+///
+/// These messages were hand-typed per arm and had drifted: the `FilterType`
+/// arm claimed "filter type to bool", `ColorFormat` said "image type to bool",
+/// and `Path` reported "integer to image format" — regardless of what the
+/// caller had actually asked for.
+#[test]
+fn conversion_errors_name_the_real_types() {
+    let cases = [
+        (Value::FilterType(crate::value::FilterType::Nearest), ValueType::Image, "filter type", "image"),
+        (Value::Path(std::path::PathBuf::from("/x")), ValueType::Integer, "path", "integer"),
+        (Value::Image { data: crate::operations::default_image(), change_id: crate::get_id() },
+         ValueType::Color, "image", "color"),
+    ];
+
+    for (value, target, from_name, to_name) in cases {
+        let err = value
+            .try_convert_to(target.clone())
+            .expect_err("this conversion should not be supported");
+        assert_eq!(
+            err.message,
+            format!("Unable to convert {from_name} to {to_name}."),
+            "message did not name both real types"
+        );
+    }
+}

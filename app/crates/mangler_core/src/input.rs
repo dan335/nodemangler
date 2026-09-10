@@ -22,9 +22,13 @@ pub struct Input {
     pub name: String,
     /// Human-readable description of what this input controls, shown as a
     /// tooltip when the user hovers over the input's name in the node settings
-    /// panel. Empty string means "no tooltip". `#[serde(default)]` so older
-    /// saved graphs (which lack the field) deserialize with an empty description.
-    #[serde(default)]
+    /// panel. Empty string means "no tooltip".
+    ///
+    /// Not serialized -- schema, not user state. `Graph::load` rebuilds it from
+    /// `create_inputs()` for operation nodes and from the child graph for
+    /// subgraph nodes, so a saved copy is never read back; it only made every
+    /// graph file bigger to write, hash and re-hash on the auto-save timer.
+    #[serde(skip)]
     pub description: String,
     /// The current value held by this input.
     /// Images are replaced with a 1x1 placeholder during serialization to avoid
@@ -56,6 +60,11 @@ pub struct Input {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub embedded_image: Option<String>,
     /// Optional UI widget configuration (drag value, slider, file picker, etc.).
+    ///
+    /// Not serialized, for the same reason as `description`: it is rebuilt from
+    /// `create_inputs()` on load, and subgraph inputs are constructed with
+    /// `None` regardless of what the file said.
+    #[serde(skip)]
     pub settings: Option<InputSettings>,
     /// If connected, the (node_id, output_index) of the upstream source.
     pub connection: Option<(String, usize)>,

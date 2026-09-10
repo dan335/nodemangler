@@ -1486,6 +1486,57 @@ async fn test_detached_snapshot_executes_subgraph() {
     let _ = fs::remove_file(&tmp_path);
 }
 
+/// A detached force-save render still writes its output files.
+///
+/// `detached()` clears `save_path` so a snapshot can never overwrite the live
+/// graph's JSON -- but the same field was also the base every relative output
+/// `folder` resolves against, so clearing it made a detached render fail with
+/// "No folder set and the graph has no save location yet" instead of writing.
+/// One field, two jobs; the safety measure silently disabled the feature.
+#[tokio::test]
+async fn test_detached_force_save_render_still_writes_output_files() {
+    use std::fs;
+
+    let dir = std::env::temp_dir().join(format!("mangler_detached_out_{}", get_id()));
+    fs::create_dir_all(&dir).unwrap();
+    let graph_path = dir.join("render.mangler.json");
+
+    let mut graph = create_test_graph();
+    graph.set_save_path(graph_path.clone());
+
+    // A solid colour straight into a file output, with the folder left empty
+    // so it resolves against the graph's own directory.
+    let color_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpImageInputColor),
+                  glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+    let out_id = graph
+        .add_node(get_id(), AddNodeType::Operation(Operation::OpImageOutputFile),
+                  glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+    graph.add_connection(out_id.clone(), 0, color_id.clone(), 0).await;
+    graph.set_input(out_id.clone(), 1, Value::Path(std::path::PathBuf::new()));
+    graph.set_input(out_id.clone(), 2, Value::Text("detached_render".to_string()));
+
+    // Render from a detached snapshot, exactly as a headless render would.
+    graph.force_save_outputs = true;
+    let mut snapshot = graph.detached();
+    snapshot.run().await;
+
+    let written = dir.join("detached_render.jpg");
+    assert!(
+        written.exists(),
+        "detached force-save render wrote nothing to {}; dir contains {:?}",
+        written.display(),
+        fs::read_dir(&dir).unwrap().filter_map(|e| e.ok().map(|e| e.file_name())).collect::<Vec<_>>()
+    );
+
+    // And the snapshot still must not be able to overwrite the graph file.
+    assert!(snapshot.save_path.is_none(), "a detached snapshot must keep no save path");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 // Graph::load restores Input.default_value, Output.value, and Output.default_value
 // from each Operation node's create_inputs()/create_outputs(), since those fields
 // are #[serde(skip)] and otherwise come back as Value::Bool(false).
@@ -1628,6 +1679,100 @@ async fn test_load_graph_with_saved_subgraph_node_auto_reloads() {
     match &final_node.outputs[0].value {
         Value::Decimal(v) => assert!((*v - 7.0).abs() < 1e-6, "got {}", v),
         other => panic!("expected Decimal, got {:?}", other),
+    }
+
+    let _ = fs::remove_file(&child_path);
+    let _ = fs::remove_file(&parent_path);
+}
+
+/// A value the user typed into a subgraph node's exposed input survives a
+/// save/load cycle.
+///
+/// `set_subgraph_path` clears the node's inputs and rebuilds them from the
+/// child graph, keeping the user's values only by matching on `Input.name` --
+/// which is why `name` stays serialized while `description` and `settings`
+/// (both rebuilt from schema) do not. Drop `name` from the file and this comes
+/// back as the child's default instead of the user's number, silently.
+#[tokio::test]
+async fn test_subgraph_exposed_input_value_survives_save_and_load() {
+    use std::fs;
+    use crate::{GraphSaveData, node_type::NodeType};
+
+    let (child_tx_nc, _child_rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
+    let (child_tx_gc, _child_rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut child = Graph::new(get_id(), child_tx_nc, child_tx_gc, true).unwrap();
+    let child_node_id = child
+        .add_node(
+            get_id(),
+            AddNodeType::Operation(Operation::OpNumberInputDecimal),
+            glam::Vec2::ZERO, true, None,
+        Vec::new())
+        .await;
+    {
+        let n = child.nodes.get_mut(&child_node_id).unwrap();
+        n.inputs[0].is_exposed = true;
+        n.outputs[0].is_exposed = true;
+    }
+    let child_path = std::env::temp_dir()
+        .join(format!("mangler_exposed_child_{}.mangler.json", get_id()));
+    fs::write(
+        &child_path,
+        serde_json::to_string(&GraphSaveData {
+            version: crate::APP_VERSION.to_string(),
+            id: child.id.clone(),
+            name: child.name.clone(),
+            nodes: child.nodes.clone(),
+        })
+        .unwrap(),
+    )
+    .unwrap();
+
+    // Parent references the child, and the user drives the exposed input.
+    let mut parent = create_test_graph();
+    let subgraph_node_id = parent
+        .add_node(get_id(), AddNodeType::Subgraph, glam::Vec2::ZERO, true, None, Vec::new())
+        .await;
+    parent.set_subgraph_path(subgraph_node_id.clone(), child_path.clone());
+    parent.set_input(subgraph_node_id.clone(), 0, Value::Decimal(13.5));
+
+    let parent_path = std::env::temp_dir()
+        .join(format!("mangler_exposed_parent_{}.mangler.json", get_id()));
+    fs::write(
+        &parent_path,
+        serde_json::to_string(&GraphSaveData {
+            version: crate::APP_VERSION.to_string(),
+            id: parent.id.clone(),
+            name: parent.name.clone(),
+            nodes: parent.nodes.clone(),
+        })
+        .unwrap(),
+    )
+    .unwrap();
+
+    let (tx_nc, _rx_nc) = mpsc::channel::<NodeChangedMessage>(32);
+    let (tx_gc, _rx_gc) = mpsc::channel::<GraphChangedMessage>(32);
+    let mut loaded = Graph::load(parent_path.clone(), Some(tx_nc), Some(tx_gc), false)
+        .expect("failed to load parent graph");
+
+    let node = loaded.nodes.get(&subgraph_node_id).expect("subgraph node round-trips");
+    assert!(
+        matches!(node.node_type, NodeType::Subgraph { graph: Some(_), .. }),
+        "child graph should be rehydrated"
+    );
+    assert_eq!(node.inputs.len(), 1, "exposed input should be rebuilt");
+    match &node.inputs[0].value {
+        Value::Decimal(v) => assert!(
+            (*v - 13.5).abs() < 1e-9,
+            "user's exposed-input value was lost on reload: got {v}"
+        ),
+        other => panic!("expected Decimal, got {other:?}"),
+    }
+
+    // And it still drives the child.
+    loaded.run().await;
+    match &loaded.nodes.get(&subgraph_node_id).unwrap().outputs[0].value {
+        Value::Decimal(v) => assert!((*v - 13.5).abs() < 1e-6, "got {v}"),
+        other => panic!("expected Decimal, got {other:?}"),
     }
 
     let _ = fs::remove_file(&child_path);

@@ -63,6 +63,16 @@ impl OpImageAdjustmentBrighten {
         let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
         let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
 
+        if amount == 0.0 {
+            // No-op offset: pass the input through untouched.
+            return Ok(OperationResponse {
+                time: Instant::now().duration_since(start_time),
+                responses: vec![
+                    OutputResponse { value: Value::Image { data, change_id: get_id() } },
+                ],
+            });
+        }
+
         // run node — clone the FloatImage and add brightness offset to each non-alpha channel
         let mut result = (*data).clone();
         let ch = result.channels() as usize;

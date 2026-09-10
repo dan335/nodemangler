@@ -97,6 +97,9 @@ impl OpImageAdjustmentExposure {
         let offset = offset as f32;                      // additive shadow lift
         // Guard gamma so we never divide by zero; the slider clamps to >= 0.1 anyway.
         let inv_gamma = 1.0 / (gamma as f32).max(1e-6);   // exponent for the gamma stage
+        // At gamma == 1 (inv_gamma == 1), `v.powf(1.0)` is the identity — skip the
+        // powf call, but keep the negative-base clamp it would otherwise apply.
+        let gamma_is_identity = (inv_gamma - 1.0).abs() < 1e-6;
 
         // run node — clone the FloatImage and apply the exposure transform per non-alpha channel
         let mut result = (*data).clone();
@@ -111,7 +114,11 @@ impl OpImageAdjustmentExposure {
                 // 2. offset (additive)
                 v += offset;
                 // 3. gamma correction — guard the base against negatives before powf
-                *val = v.max(0.0).powf(inv_gamma);
+                *val = if gamma_is_identity {
+                    v.max(0.0)
+                } else {
+                    v.max(0.0).powf(inv_gamma)
+                };
             }
         }
 

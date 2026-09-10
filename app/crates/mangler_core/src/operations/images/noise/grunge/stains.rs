@@ -12,6 +12,7 @@
 //! together. Always tiles seamlessly by wrapping kernel positions at grid boundaries.
 
 use rayon::prelude::*;
+use crate::operations::images::adjustments::common::smoothstep_f64;
 use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -86,21 +87,7 @@ impl OpImageNoiseStains {
     /// Hash function producing a pseudo-random f64 in [0, 1) from cell coords, impulse index, seed, and channel.
     #[inline(always)]
     fn hash(ix: i32, iy: i32, impulse: u32, seed: u32, channel: u32) -> f64 {
-        let mut h = (ix as u32).wrapping_mul(1597334677)
-            ^ (iy as u32).wrapping_mul(2943785939)
-            ^ impulse.wrapping_mul(2654435761)
-            ^ seed.wrapping_mul(1013904223)
-            ^ channel.wrapping_mul(668265263);
-        h = h.wrapping_mul(h ^ (h >> 16));
-        h = h.wrapping_mul(h ^ (h >> 16));
-        (h & 0x00FFFFFF) as f64 / 0x01000000 as f64
-    }
-
-    /// Hermite smoothstep between two edges, clamped to [0, 1].
-    #[inline(always)]
-    fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
-        let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
-        t * t * (3.0 - 2.0 * t)
+        super::super::mix_hash(ix, iy, impulse, seed, channel)
     }
 
     /// Evaluates a single stain kernel at a displacement from the kernel center.
@@ -142,8 +129,8 @@ impl OpImageNoiseStains {
 
         // Rim band of width ~0.15 just inside the edge: smoothstep up toward the
         // edge, then a fade back to zero over the outermost few percent.
-        let rim = Self::smoothstep(0.80, 0.92, normalized_dist);
-        let edge_fade = 1.0 - Self::smoothstep(0.96, 1.0, normalized_dist);
+        let rim = smoothstep_f64(0.80, 0.92, normalized_dist);
+        let edge_fade = 1.0 - smoothstep_f64(0.96, 1.0, normalized_dist);
         (interior + rim_strength * rim) * edge_fade
     }
 

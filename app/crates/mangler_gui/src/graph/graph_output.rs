@@ -40,9 +40,10 @@ pub fn draw_graph_output(
             }
         } else {
             if temp.from_connection_type == ConnectionType::Output
-                || (!temp.from_accepts_any_type && !temp.from_value_type
-                    .valid_conversions()
-                    .contains(&output.value.value_type()))
+                // This output is the source; the input being dragged from is
+                // the destination.
+                || (!temp.from_accepts_any_type
+                    && !output.value.value_type().can_feed(&temp.from_value_type))
             {
                 response.is_disabled = true;
             }

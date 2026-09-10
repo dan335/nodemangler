@@ -12,6 +12,7 @@
 //! horizontally and the vertical position wraps with `rem_euclid`.
 
 use rayon::prelude::*;
+use crate::operations::images::adjustments::common::smoothstep_f64;
 use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
@@ -96,20 +97,7 @@ impl OpImageNoiseLeaks {
     /// Hash function producing a pseudo-random f64 in [0, 1) from column index, streak slot, seed, and channel.
     #[inline(always)]
     fn hash(col: i32, slot: u32, seed: u32, channel: u32) -> f64 {
-        let mut h = (col as u32).wrapping_mul(1597334677)
-            ^ slot.wrapping_mul(2943785939)
-            ^ seed.wrapping_mul(1013904223)
-            ^ channel.wrapping_mul(668265263);
-        h = h.wrapping_mul(h ^ (h >> 16));
-        h = h.wrapping_mul(h ^ (h >> 16));
-        (h & 0x00FFFFFF) as f64 / 0x01000000 as f64
-    }
-
-    /// Standard smoothstep: 0 at `edge0`, 1 at `edge1`, smooth in between.
-    #[inline(always)]
-    fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
-        let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
-        t * t * (3.0 - 2.0 * t)
+        super::super::mix_hash(col, slot as i32, 0, seed, channel)
     }
 
     /// Generates a leaks noise image from the given inputs.
@@ -257,7 +245,7 @@ impl OpImageNoiseLeaks {
                         }
 
                         // Smoothstepped edge: opaque core, soft antialiased border
-                        let profile = 1.0 - Self::smoothstep(0.5, 1.0, n);
+                        let profile = 1.0 - smoothstep_f64(0.5, 1.0, n);
 
                         // Gravity fade: strong at the top, tapering to 0 at the
                         // tip, with the fade rate randomized per streak

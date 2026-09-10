@@ -14,6 +14,17 @@ pub(crate) fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
+/// f64 counterpart of [`smoothstep`], for ops that work in f64 UV/SDF space.
+/// Degenerates to a hard step when the edges coincide (avoids a divide-by-zero).
+#[inline]
+pub(crate) fn smoothstep_f64(e0: f64, e1: f64, x: f64) -> f64 {
+    if (e1 - e0).abs() < 1e-9 {
+        return if x < e0 { 0.0 } else { 1.0 };
+    }
+    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
 /// Converts an RGB colour (each in 0..1) to HSL (hue in 0..360, s/l in 0..1).
 pub(crate) fn rgb_to_hsl(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let max = r.max(g).max(b);

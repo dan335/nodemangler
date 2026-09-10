@@ -23,6 +23,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use noise::permutationtable::PermutationTable;
 use crate::operations::images::noise::{periodic_perlin_2d, build_perm_tables};
+use crate::operations::images::adjustments::common::smoothstep_f64;
 
 /// Amplitude falloff per octave of the distortion fBm.
 const PERSISTENCE: f64 = 0.5;
@@ -64,14 +65,6 @@ fn periodic_fbm(u: f64, v: f64, octaves: usize, frequency: f64, hashers: &[Permu
     }
 
     result * scale_factor
-}
-
-/// Smoothstep interpolation: 0 below `edge0`, 1 above `edge1`, with a smooth
-/// Hermite ramp in between.
-#[inline(always)]
-fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
-    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
 }
 
 /// Operation that generates a warped rings noise image.
@@ -189,8 +182,8 @@ impl OpImageNoiseWarpedRings {
                 // across the ring, then a thin dark line just before the
                 // ring boundary
                 let p = phase.rem_euclid(1.0);
-                let ramp = 0.15 * smoothstep(0.0, 0.6, p);
-                let line = 0.55 * smoothstep(0.55, 0.8, p) * (1.0 - smoothstep(0.88, 1.0, p));
+                let ramp = 0.15 * smoothstep_f64(0.0, 0.6, p);
+                let line = 0.55 * smoothstep_f64(0.55, 0.8, p) * (1.0 - smoothstep_f64(0.88, 1.0, p));
                 let mut val = 1.0 - ramp - line;
 
                 // Contrast around mid-gray, then clamp

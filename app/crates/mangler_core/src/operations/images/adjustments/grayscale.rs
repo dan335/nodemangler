@@ -62,30 +62,34 @@ impl OpImageAdjustmentGrayscale {
 
         // run node — convert to 1-channel grayscale
         let ch = data.channels() as usize;
-        let result = if ch == 1 {
-            // Already grayscale, return as-is
-            (*data).clone()
-        } else {
-            // Compute luminance for each pixel: lum = 0.299*r + 0.587*g + 0.114*b
-            let (w, h) = data.dimensions();
-            let mut out = FloatImage::new(w, h, 1);
-            for y in 0..h {
-                for x in 0..w {
-                    let px = data.get_pixel(x, y);
-                    let r = px[0];
-                    let g = if ch >= 2 { px[1] } else { r };
-                    let b = if ch >= 3 { px[2] } else { r };
-                    let lum = 0.299 * r + 0.587 * g + 0.114 * b;
-                    out.put_pixel(x, y, &[lum]);
-                }
-            }
-            out
-        };
+        if ch == 1 {
+            // Already grayscale: pass the input through untouched.
+            return Ok(OperationResponse {
+                time: Instant::now().duration_since(start_time),
+                responses: vec![
+                    OutputResponse { value: Value::Image { data, change_id: get_id() } },
+                ],
+            });
+        }
 
-        Ok(OperationResponse { 
+        // Compute luminance for each pixel: lum = 0.299*r + 0.587*g + 0.114*b
+        let (w, h) = data.dimensions();
+        let mut out = FloatImage::new(w, h, 1);
+        for y in 0..h {
+            for x in 0..w {
+                let px = data.get_pixel(x, y);
+                let r = px[0];
+                let g = if ch >= 2 { px[1] } else { r };
+                let b = if ch >= 3 { px[2] } else { r };
+                let lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                out.put_pixel(x, y, &[lum]);
+            }
+        }
+
+        Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),
             responses: vec![
-                OutputResponse {value: Value::Image { data:Arc::new(result), change_id:get_id() }},
+                OutputResponse {value: Value::Image { data:Arc::new(out), change_id:get_id() }},
             ],
         })
     }

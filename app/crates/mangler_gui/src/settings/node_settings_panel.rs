@@ -1219,23 +1219,31 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 // needs the label to ellipsize rather than force it open.
                 ui.add(Label::new(a).truncate());
             } else if let Some(InputSettings::Dropdown { options }) = &input.settings {
-                // Dropdown selector for predefined text options.
-                let options = options.clone();
+                // Dropdown selector for predefined text options. Borrow
+                // `options` (can be ~230 entries for the installed-font
+                // list) for the combo's lifetime instead of cloning it every
+                // frame; the picked value is stashed and applied via
+                // `change_value` only after the borrow of `input.settings`
+                // has ended.
                 let mut selected = a.clone();
+                let mut picked: Option<String> = None;
                 egui::ComboBox::from_id_salt(format!("text_dropdown_{}", input_index))
                     .selected_text(&selected)
                     .show_ui(ui, |ui| {
                         ui.with_layout(
                             egui::Layout::top_down(egui::Align::Min).with_cross_justify(true),
                             |ui| {
-                                for option in &options {
+                                for option in options {
                                     if ui.selectable_value(&mut selected, option.clone(), option).changed() {
-                                        change_value(tx_change_node, node_id, input_index, input, Value::Text(selected.clone()));
+                                        picked = Some(selected.clone());
                                     }
                                 }
                             },
                         );
                     });
+                if let Some(picked) = picked {
+                    change_value(tx_change_node, node_id, input_index, input, Value::Text(picked));
+                }
             } else if let Some(InputSettings::MultiLineText) = &input.settings {
                 // Multi-line text area.
                 let mut x = a;

@@ -74,6 +74,14 @@ impl OpImageAdjustmentVignette {
         let Value::Curve(falloff_curve) = falloff_converted.unwrap() else { unreachable!() };
         let lut = optional_lut(&falloff_curve);
 
+        if amount == 0.0 {
+            // Zero strength: every pixel is multiplied by 1.0, i.e. untouched.
+            return Ok(OperationResponse {
+                time: Instant::now().duration_since(start_time),
+                responses: vec![OutputResponse { value: Value::Image { data, change_id: get_id() } }],
+            });
+        }
+
         let (w, h) = data.dimensions();
         let ch = data.channels();
         let color_ch = (if ch == 2 || ch == 4 { ch - 1 } else { ch }) as usize;

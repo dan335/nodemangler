@@ -19,6 +19,7 @@ use crate::value::{ToneMapOperator, ValueType};
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::images::adjustments::common::smoothstep;
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -388,11 +389,6 @@ fn gt_uchimura(x: f32, contrast: f32) -> f32 {
     let lin = m + a * (x - m);
 
     t * w0 + lin * w1 + s * w2
-}
-
-fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
-    let t = ((x - edge0) / (edge1 - edge0).max(1e-6)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
 }
 
 /// Heuristic log-domain sigmoid.

@@ -38,9 +38,8 @@ pub fn draw_graph_input(
             }
         } else {
             if temp.from_connection_type == ConnectionType::Input
-                || (!input.accepts_any_type && !temp.from_value_type
-                    .valid_conversions()
-                    .contains(&input.value.value_type()))
+                || (!input.accepts_any_type
+                    && !temp.from_value_type.can_feed(&input.value.value_type()))
             {
                 response.is_disabled = true;
             }

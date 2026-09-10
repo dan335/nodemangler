@@ -26,6 +26,7 @@ use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::operations::images::filter::smoothing::guided::box_blur_2d;
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -260,58 +261,6 @@ impl OpImageAdjustmentToon {
             ],
         })
     }
-}
-
-/// Separable 2D box blur with edge clamping. O(1) per pixel via 1D prefix sums.
-///
-/// Same algorithm as the helper in `guided.rs` — copied here rather than shared
-/// because it's a small primitive and an early dependency split would add
-/// surface area. If a third filter wants it, extract to `filter/box_blur.rs`.
-fn box_blur_2d(input: &[f32], width: usize, height: usize, radius: usize) -> Vec<f32> {
-    if width == 0 || height == 0 {
-        return Vec::new();
-    }
-
-    // horizontal pass: prefix-sum each row, then read out box mean at every x.
-    // Rows are independent, so this is rayon-parallel over rows.
-    let mut h_pass = vec![0.0f32; input.len()];
-    h_pass.par_chunks_mut(width).enumerate().for_each(|(y, out_row)| {
-        let row_start = y * width;
-        let mut prefix = vec![0.0f64; width + 1];
-        for x in 0..width {
-            prefix[x + 1] = prefix[x] + input[row_start + x] as f64;
-        }
-        for x in 0..width {
-            let lo = x.saturating_sub(radius);
-            let hi = (x + radius + 1).min(width);
-            let cnt = (hi - lo) as f64;
-            out_row[x] = ((prefix[hi] - prefix[lo]) / cnt) as f32;
-        }
-    });
-
-    // vertical pass: same idea over columns, computed in parallel into a
-    // column-major buffer then gathered back to row-major.
-    let columns: Vec<f32> = (0..width).into_par_iter().flat_map_iter(|x| {
-        let mut col_prefix = vec![0.0f64; height + 1];
-        for y in 0..height {
-            col_prefix[y + 1] = col_prefix[y] + h_pass[y * width + x] as f64;
-        }
-        (0..height).map(move |y| {
-            let lo = y.saturating_sub(radius);
-            let hi = (y + radius + 1).min(height);
-            let cnt = (hi - lo) as f64;
-            ((col_prefix[hi] - col_prefix[lo]) / cnt) as f32
-        })
-    }).collect();
-
-    let mut out = vec![0.0f32; input.len()];
-    out.par_chunks_mut(width).enumerate().for_each(|(y, out_row)| {
-        for x in 0..width {
-            out_row[x] = columns[x * height + y];
-        }
-    });
-
-    out
 }
 
 #[cfg(test)]

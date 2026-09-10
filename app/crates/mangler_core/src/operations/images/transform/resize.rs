@@ -110,7 +110,10 @@ impl OpImageTransformResize {
         // straight RGBA, which lets fully transparent pixels bleed their hidden
         // colour into semi-transparent edges (white fringe around dark glyphs
         // on a transparent background).
-        let dyn_img = data.premultiply_alpha().to_dynamic();
+        // Skip the premultiply round-trip entirely when there is no alpha to
+        // protect — premultiply_alpha() would otherwise clone the whole image
+        // for nothing.
+        let dyn_img = if data.has_alpha() { data.premultiply_alpha().to_dynamic() } else { data.to_dynamic() };
         // resize() preserves aspect ratio, so output may be smaller than requested
         let resized = dyn_img.resize(bound_width, bound_height, filter_type);
         // Convert back to FloatImage and back to straight alpha

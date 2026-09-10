@@ -134,7 +134,8 @@ pub(crate) fn load_graph(path: &PathBuf) -> Result<Graph, String> {
         if report.is_newer_than_app {
             eprintln!(
                 "warning: {} was saved with NodeMangler {} (this is {}); \
-                 any save will restamp it with this version",
+                 a mutating command (add-node, connect, set-input, ...) will \
+                 restamp it with this version",
                 path.display(),
                 report.file_version,
                 mangler_core::APP_VERSION,
@@ -154,11 +155,58 @@ pub(crate) fn load_graph(path: &PathBuf) -> Result<Graph, String> {
     Ok(graph)
 }
 
-/// Serialize a graph and write it to a JSON file.
-pub(crate) fn save_graph(graph: &Graph, path: &PathBuf) -> Result<(), String> {
-    let save_data = graph.to_save_data();
-    let json = serde_json::to_string_pretty(&save_data).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| e.to_string())
+/// Save a graph back to its file.
+///
+/// Delegates to `Graph::save_to_file` rather than hand-rolling a second
+/// serializer: `save_to_file` writes through the borrowing `GraphSaveRef`
+/// mirror (kept in sync with `GraphSaveData` field-for-field — see the
+/// CLAUDE.md note on that struct), avoids `to_save_data()`'s full clone of
+/// every node, and owns the subgraph no-op plus refreshing
+/// `last_synced_mtime`/`last_synced_hash`.
+///
+/// Note this does **not** implement the "newer-version hold": that policy
+/// (never silently downgrading a file's `version` stamp on an unattended
+/// save) lives only in the engine's per-tick loop (`hold_saves` in
+/// `app.rs`), not inside `save_to_file` itself, which always stamps
+/// `APP_VERSION` unconditionally. Callers that represent a genuine, explicit
+/// edit (add-node, connect, set-input, ...) should call this directly, the
+/// same as an edit clears the engine's hold. A caller that does *not*
+/// represent an edit (running a graph) should use
+/// [`save_graph_after_run`] instead.
+///
+/// `graph` must have been loaded via [`load_graph`] (or otherwise have
+/// `save_path` set to `path`) — a graph with no `save_path` set is a no-op
+/// here exactly as it is in the engine.
+pub(crate) fn save_graph(graph: &mut Graph, path: &PathBuf) -> Result<(), String> {
+    debug_assert_eq!(
+        graph.save_path.as_ref(),
+        Some(path),
+        "save_graph called with a path that doesn't match the graph's own save_path"
+    );
+    graph.save_to_file()
+}
+
+/// Save a graph after a headless `run`/`show-output` execution.
+///
+/// Unlike a mutation command, running a graph is not an edit: the engine's
+/// `needs_to_save` flag (see `app.rs`) is set only by discrete
+/// `ChangeGraphMessage`/`ChangeNodeMessage` edits, never merely by a tick's
+/// `graph.run()` — so the engine never auto-saves purely from executing.
+/// `cmd_run`/`cmd_show_output` still resave here (to persist things `run`
+/// itself mutates, e.g. a save-gate button's one-shot pulse being consumed),
+/// but must not do so when the file was saved by a *newer* NodeMangler:
+/// `save_to_file` has no version guard of its own (see [`save_graph`]), so
+/// an unconditional resave would restamp the file down to this build's
+/// `APP_VERSION` from mere execution — violating the documented rule that
+/// opening (and, by the same reasoning, running) a graph alone never
+/// downgrades it. Skips the write entirely in that case, mirroring the
+/// engine's `hold_saves`, which suppresses saving outright rather than
+/// saving-but-not-restamping.
+pub(crate) fn save_graph_after_run(graph: &mut Graph, path: &PathBuf) -> Result<(), String> {
+    if graph.load_report.as_ref().is_some_and(|r| r.is_newer_than_app) {
+        return Ok(());
+    }
+    save_graph(graph, path)
 }
 
 // ── Operation registry helpers ────────────────────────────────────────────────

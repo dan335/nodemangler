@@ -13,13 +13,7 @@ use serde::{Deserialize, Serialize};
 /// `cell_hash(x, y, seed, 1)` give uncorrelated results.
 #[inline(always)]
 pub fn cell_hash(ix: i32, iy: i32, seed: u32, channel: u32) -> f64 {
-    let mut h = (ix as u32).wrapping_mul(1597334677)
-        ^ (iy as u32).wrapping_mul(2943785939)
-        ^ seed.wrapping_mul(1013904223)
-        ^ channel.wrapping_mul(2654435761);
-    h = h.wrapping_mul(h ^ (h >> 16));
-    h = h.wrapping_mul(h ^ (h >> 16));
-    (h & 0x00FFFFFF) as f64 / 0x01000000 as f64
+    super::mix_hash(ix, iy, channel, seed, 0)
 }
 
 /// Computes the grid size from a frequency value, rounding to the nearest integer.

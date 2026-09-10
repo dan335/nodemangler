@@ -24,6 +24,7 @@ use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
+use crate::operations::images::adjustments::common::smoothstep_f64;
 
 /// Hard cap on the total number of generated segments, so extreme branch
 /// settings cannot explode the pre-pass or the per-pixel loop.
@@ -64,13 +65,6 @@ impl SeqRng {
         h = h.wrapping_mul(h ^ (h >> 16));
         (h & 0x00FFFFFF) as f64 / 0x01000000 as f64
     }
-}
-
-/// Smoothstep interpolation between two edges.
-#[inline(always)]
-fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
-    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
 }
 
 /// Distance from a point to a line segment, in UV units.
@@ -319,7 +313,7 @@ impl OpImageNoiseLightning {
                     }
 
                     // Hard bright core inside the segment width.
-                    let core = seg.intensity * (1.0 - smoothstep(hw * 0.5, hw, dist));
+                    let core = seg.intensity * (1.0 - smoothstep_f64(hw * 0.5, hw, dist));
                     // Soft exponential halo around it.
                     let halo = glow * seg.intensity * (-dist / glow_radius).exp();
 

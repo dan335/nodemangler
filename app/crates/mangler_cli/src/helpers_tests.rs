@@ -362,8 +362,8 @@ fn load_graph_freshly_created_graph_is_empty() {
 #[test]
 fn save_load_round_trip_preserves_name_and_id() {
     let path = create_temp_graph("roundtrip");
-    let g1 = load_graph(&path).unwrap();
-    save_graph(&g1, &path).unwrap();
+    let mut g1 = load_graph(&path).unwrap();
+    save_graph(&mut g1, &path).unwrap();
     let g2 = load_graph(&path).unwrap();
     let _ = std::fs::remove_file(&path);
     assert_eq!(g1.name, g2.name);
@@ -532,7 +532,7 @@ async fn save_graph_load_graph_round_trip_with_nodes() {
     let mut graph = load_graph(&path).unwrap();
     // Add a node to the graph.
     crate::commands::do_add_node(&mut graph, "numbers/arithmetic/add", Some("rt-node".to_string()), None).await.unwrap();
-    save_graph(&graph, &path).unwrap();
+    save_graph(&mut graph, &path).unwrap();
     // Reload and verify.
     let reloaded = load_graph(&path).unwrap();
     let _ = std::fs::remove_file(&path);

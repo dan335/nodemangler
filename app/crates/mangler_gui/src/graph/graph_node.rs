@@ -241,19 +241,25 @@ impl GraphNode {
 
         // ------------
         // inputs
+        // `visible_row` is a running count of non-hidden inputs seen so far —
+        // used directly instead of re-deriving it from `index` on every one
+        // of the three position/rect calls below (see `*_for_row`).
+        let mut visible_row: usize = 0;
         for (index, input) in self.inputs.iter().enumerate() {
             puffin::profile_scope!("graph node.inputs.iter()");
             // Hidden inputs get no dot/row; they are edited in the settings panel.
             if input.hide_in_graph {
                 continue;
             }
+            let row = visible_row;
+            visible_row += 1;
             // draw input
             let input_output_response = draw_graph_input(
                 &self.id,
                 input,
-                self.get_input_position(index, node_rect, graph_zoom),
-                self.get_input_rect(index, node_rect, graph_zoom),
-                self.get_input_release_rect(index, node_rect, graph_zoom),
+                self.input_position_for_row(row, node_rect, graph_zoom),
+                self.input_rect_for_row(row, node_rect, graph_zoom),
+                self.input_release_rect_for_row(row, node_rect, graph_zoom),
                 index,
                 node_rect,
                 ui,
@@ -365,13 +371,24 @@ impl GraphNode {
         self.last_drag_position = None;
     }
 
+    /// Row (0-based, counting only non-hidden inputs) that `index` occupies
+    /// in the graph editor. O(index) — a caller iterating every input in
+    /// order should track this with a running counter instead (see the
+    /// input-drawing loop in `show`).
+    fn visible_input_row(&self, index: usize) -> usize {
+        self.inputs[..index.min(self.inputs.len())]
+            .iter()
+            .filter(|input| !input.hide_in_graph)
+            .count()
+    }
+
     pub fn get_input_position(&self, index: usize, node_rect: Rect, graph_zoom: f32) -> Pos2 {
         // Hidden inputs don't occupy a row: dots are laid out over visible
         // inputs only, so a node with many hidden config inputs stays compact.
-        let row = self.inputs[..index.min(self.inputs.len())]
-            .iter()
-            .filter(|input| !input.hide_in_graph)
-            .count();
+        self.input_position_for_row(self.visible_input_row(index), node_rect, graph_zoom)
+    }
+
+    fn input_position_for_row(&self, row: usize, node_rect: Rect, graph_zoom: f32) -> Pos2 {
         Pos2::new(
             node_rect.left() - graph_to_view_space(graph_zoom, 14.0),
             node_rect.top()
@@ -389,10 +406,9 @@ impl GraphNode {
         )
     }
 
-    pub fn get_input_rect(&self, index: usize, node_rect: Rect, graph_zoom: f32) -> Rect {
-        puffin::profile_scope!("graph node.get_input_rect()");
+    fn input_rect_for_row(&self, row: usize, node_rect: Rect, graph_zoom: f32) -> Rect {
         Rect::from_center_size(
-            self.get_input_position(index, node_rect, graph_zoom),
+            self.input_position_for_row(row, node_rect, graph_zoom),
             Vec2::new(12.0, 12.0),
         )
     }
@@ -412,7 +428,11 @@ impl GraphNode {
     /// the row spacing on each side so adjacent inputs tile with no gaps or
     /// overlap, and it is zoom-scaled so the zone tracks the on-screen layout.
     pub fn get_input_release_rect(&self, index: usize, node_rect: Rect, graph_zoom: f32) -> Rect {
-        let pos = self.get_input_position(index, node_rect, graph_zoom);
+        self.input_release_rect_for_row(self.visible_input_row(index), node_rect, graph_zoom)
+    }
+
+    fn input_release_rect_for_row(&self, row: usize, node_rect: Rect, graph_zoom: f32) -> Rect {
+        let pos = self.input_position_for_row(row, node_rect, graph_zoom);
         let half_row = graph_to_view_space(graph_zoom, 10.0);
         // How far left of the dot the zone reaches, and how far it extends back
         // toward the node (the dot sits 14px left of the node edge, so 14 here
