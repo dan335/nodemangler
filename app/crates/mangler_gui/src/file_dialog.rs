@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use eframe::egui;
 use egui_file_dialog::{DialogState, FileDialog, FileFilter, Filter};
 use crate::icons;
+use crate::themes::theme::{Theme, ThemeValues};
 use mangler_core::input::FileDialogType;
 use mangler_core::naming;
 
@@ -312,6 +313,33 @@ fn dress_labels(config: &mut egui_file_dialog::FileDialogConfig) {
     labels.err_file_exists = "a file with that name already exists".to_owned();
 }
 
+/// Builds the style the dialog is drawn with: the app's own, plus the
+/// structural lines it needs and the rest of the app does not.
+///
+/// NodeMangler's panels separate themselves by hand — `section_rule` paints an
+/// explicit hairline — so the theme zeroes egui's built-in dividers
+/// (`window_stroke: Stroke::NONE`, a zero-width
+/// `widgets.noninteractive.bg_stroke`). The file dialog has no such hand-drawn
+/// chrome: it is four stacked `egui::Panel`s that rely entirely on those two
+/// values to show their edges, so under our theme it renders as one flat slab
+/// with the sidebar, file list, toolbar and button row all bleeding together.
+///
+/// Restoring them globally would draw lines all over the app, so the override
+/// is scoped to the dialog (see [`AppFileDialog::update`]). Colors still come
+/// from the theme: the divider is the same token the settings panel rules use.
+fn dialog_style(base: &egui::Style, colors: &ThemeValues) -> egui::Style {
+    let mut style = base.clone();
+    let divider = egui::Stroke::new(1.0, colors.settings_section_rule);
+
+    // Panel edges: the line between the sidebar and the file list, and above
+    // the button row.
+    style.visuals.widgets.noninteractive.bg_stroke = divider;
+    // The dialog floats over the graph editor, so it needs an outline of its
+    // own to read as a separate surface.
+    style.visuals.window_stroke = divider;
+    style
+}
+
 /// The app's single file dialog.
 pub struct AppFileDialog {
     dialog: FileDialog,
@@ -376,8 +404,14 @@ impl AppFileDialog {
     /// Call this once per frame with the main viewport's context, after
     /// everything else has drawn — the caller dispatches the result into
     /// `programs` / `libraries`, which are still borrowed during rendering.
-    pub fn update(&mut self, ctx: &egui::Context) -> Option<(FileDialogIntent, PathBuf)> {
+    pub fn update(&mut self, ctx: &egui::Context, theme: &Theme) -> Option<(FileDialogIntent, PathBuf)> {
+        // Swap in the dialog's style for the duration of its draw, then put
+        // the app's back. The dialog renders immediately inside this call, and
+        // it is the last thing drawn each frame, so nothing else sees this.
+        let app_style = ctx.global_style();
+        ctx.set_global_style(dialog_style(&app_style, &theme.get()));
         self.dialog.update(ctx);
+        ctx.set_global_style(app_style);
 
         // Read the intent before taking the path: `take_picked` needs `&mut`
         // and would end the borrow `user_data` holds.

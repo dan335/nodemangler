@@ -37,8 +37,9 @@ fn dress_context(ctx: &egui::Context, theme: Theme) {
     set_theme(ctx, theme);
 }
 
-/// Renders `request`'s dialog in `theme` and writes it to `target/ui-snapshots`.
-fn shoot_dialog(name: &str, theme: Theme, request: FileDialogRequest) {
+/// Renders `request`'s dialog in `theme`, writes it to `target/ui-snapshots`,
+/// and hands the pixels back so a contact sheet can be assembled.
+fn shoot_dialog(name: &str, theme: Theme, request: FileDialogRequest) -> Option<image::RgbaImage> {
     let mut dialog = AppFileDialog::new();
     dialog.open(request, Some("snapshot".to_owned()));
 
@@ -53,7 +54,7 @@ fn shoot_dialog(name: &str, theme: Theme, request: FileDialogRequest) {
                 }
                 // The dialog paints its own window on the context; the panel
                 // this closure runs in is just the backdrop.
-                dialog.update(ui.ctx());
+                dialog.update(ui.ctx(), &theme);
             },
             dialog,
         );
@@ -68,31 +69,93 @@ fn shoot_dialog(name: &str, theme: Theme, request: FileDialogRequest) {
                 .save(&path)
                 .unwrap_or_else(|e| panic!("failed writing {}: {e}", path.display()));
             println!("wrote {}", path.display());
+            Some(image)
         }
         Err(err) => {
             // No GPU adapter (CI, a headless box) — say so rather than fail.
             println!("skipped {name}: could not render ({err})");
+            None
         }
     }
 }
 
-#[test]
-#[ignore = "renders with a GPU; run explicitly to look at the UI"]
-fn shoot_open_graph_dialog() {
-    shoot_dialog(
-        "open_graph_dark_green",
-        Theme::DarkGreen,
-        FileDialogRequest::OpenGraph,
+/// Tiles the per-theme renders into one image, so all four can be compared in
+/// a single look instead of four. Cropped to the dialog itself — the harness
+/// canvas is mostly empty backdrop.
+fn write_contact_sheet(name: &str, shots: &[image::RgbaImage]) {
+    const CROP_W: u32 = 920;
+    const CROP_H: u32 = 600;
+    const GAP: u32 = 8;
+
+    let Some(first) = shots.first() else { return };
+    let cell_w = CROP_W.min(first.width());
+    let cell_h = CROP_H.min(first.height());
+
+    let cols = 2u32;
+    let rows = shots.len().div_ceil(cols as usize) as u32;
+    let mut sheet = image::RgbaImage::from_pixel(
+        cols * cell_w + (cols - 1) * GAP,
+        rows * cell_h + (rows - 1) * GAP,
+        image::Rgba([24, 24, 24, 255]),
     );
+
+    for (i, shot) in shots.iter().enumerate() {
+        let ox = (i as u32 % cols) * (cell_w + GAP);
+        let oy = (i as u32 / cols) * (cell_h + GAP);
+        for y in 0..cell_h.min(shot.height()) {
+            for x in 0..cell_w.min(shot.width()) {
+                sheet.put_pixel(ox + x, oy + y, *shot.get_pixel(x, y));
+            }
+        }
+    }
+
+    let path = output_dir().join(format!("sheet_{name}.png"));
+    sheet
+        .save(&path)
+        .unwrap_or_else(|e| panic!("failed writing {}: {e}", path.display()));
+    println!("wrote {}", path.display());
+}
+
+/// A short, filesystem-safe name for a theme.
+fn theme_slug(theme: &Theme) -> &'static str {
+    match theme {
+        Theme::Dark => "dark",
+        Theme::DarkGreen => "dark_green",
+        Theme::Light => "light",
+        Theme::LightBlue => "light_blue",
+    }
+}
+
+/// Renders `request` in **every** theme. Chrome that derives a color badly
+/// usually looks fine in the one theme it was tuned against and wrong in the
+/// other three, so these always go through the whole set.
+fn shoot_all_themes(name: &str, request: &FileDialogRequest) {
+    let shots: Vec<image::RgbaImage> = Theme::list()
+        .into_iter()
+        .filter_map(|theme| {
+            shoot_dialog(
+                &format!("{name}_{}", theme_slug(&theme)),
+                theme,
+                request.clone(),
+            )
+        })
+        .collect();
+
+    write_contact_sheet(name, &shots);
 }
 
 #[test]
 #[ignore = "renders with a GPU; run explicitly to look at the UI"]
-fn shoot_save_graph_dialog() {
-    shoot_dialog(
-        "save_graph_dark_green",
-        Theme::DarkGreen,
-        FileDialogRequest::SaveGraph {
+fn shoot_open_graph_dialog_all_themes() {
+    shoot_all_themes("open_graph", &FileDialogRequest::OpenGraph);
+}
+
+#[test]
+#[ignore = "renders with a GPU; run explicitly to look at the UI"]
+fn shoot_save_graph_dialog_all_themes() {
+    shoot_all_themes(
+        "save_graph",
+        &FileDialogRequest::SaveGraph {
             default_dir: Some(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))),
             default_stem: "my graph".to_owned(),
         },
@@ -101,6 +164,6 @@ fn shoot_save_graph_dialog() {
 
 #[test]
 #[ignore = "renders with a GPU; run explicitly to look at the UI"]
-fn shoot_open_graph_dialog_light() {
-    shoot_dialog("open_graph_light", Theme::Light, FileDialogRequest::OpenGraph);
+fn shoot_pick_folder_dialog_all_themes() {
+    shoot_all_themes("pick_folder", &FileDialogRequest::AddLibrary);
 }

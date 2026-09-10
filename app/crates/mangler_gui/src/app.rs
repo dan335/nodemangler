@@ -319,7 +319,7 @@ impl eframe::App for App {
             // The file dialog draws last and dispatches last: the pick it
             // returns mutates `programs` / `libraries`, which are still
             // borrowed while the panels above are rendering.
-            if let Some((intent, path)) = self.file_dialog.update(&ctx) {
+            if let Some((intent, path)) = self.file_dialog.update(&ctx, &self.theme) {
                 self.apply_file_pick(intent, path);
             }
         });
