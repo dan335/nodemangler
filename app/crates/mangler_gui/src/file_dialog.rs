@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 
 use eframe::egui;
 use egui_file_dialog::{DialogState, FileDialog, FileFilter, Filter};
+use crate::icons;
 use mangler_core::input::FileDialogType;
 use mangler_core::naming;
 
@@ -233,6 +234,84 @@ pub fn force_graph_extension(path: PathBuf) -> PathBuf {
     }
 }
 
+/// Swaps the dialog's stock emoji icons for the Phosphor glyphs the rest of
+/// the UI uses.
+///
+/// The defaults ("🗀", "⏴", "🔍", …) resolve through egui's emoji fallback
+/// rather than our icon font, so they land at a different weight and baseline
+/// from every other icon in the app and make the dialog read as a foreign
+/// window. These are the same constants the panel chrome uses.
+fn dress_icons(config: &mut egui_file_dialog::FileDialogConfig) {
+    config.err_icon = icons::WARNING.to_owned();
+    config.warn_icon = icons::WARNING.to_owned();
+    config.default_file_icon = icons::FILE_TEXT.to_owned();
+    config.default_folder_icon = icons::FOLDER.to_owned();
+    config.pinned_icon = icons::PUSH_PIN.to_owned();
+    config.device_icon = icons::HARD_DRIVE.to_owned();
+    config.removable_device_icon = icons::FLOPPY_DISK.to_owned();
+    config.parent_directory_icon = icons::CARET_UP.to_owned();
+    config.back_icon = icons::ARROW_LEFT.to_owned();
+    config.forward_icon = icons::ARROW_RIGHT.to_owned();
+    config.new_folder_icon = icons::FOLDER_PLUS.to_owned();
+    config.menu_icon = icons::DOTS_THREE_VERTICAL.to_owned();
+    config.search_icon = icons::MAGNIFYING_GLASS.to_owned();
+    config.path_edit_icon = icons::PENCIL_SIMPLE.to_owned();
+}
+
+/// Rewrites the dialog's stock labels to the app's own conventions.
+///
+/// Two things to fix. The defaults are Title Case ("Places", "Selected file:")
+/// while every label in NodeMangler is lowercase, and several of them embed
+/// emoji ("🗀  Open", "🚫 Cancel", "🏠  Home") that resolve through egui's
+/// emoji fallback rather than our icon font — the same mismatch `dress_icons`
+/// fixes for the chrome. The sidebar entries keep an icon, but a Phosphor one;
+/// the buttons drop theirs, because the app's buttons are text-only.
+fn dress_labels(config: &mut egui_file_dialog::FileDialogConfig) {
+    let labels = &mut config.labels;
+
+    labels.cancel = "cancel".to_owned();
+    labels.overwrite = "overwrite".to_owned();
+
+    labels.reload = "reload".to_owned();
+    labels.working_directory = "go to working directory".to_owned();
+    labels.select_all = "select all".to_owned();
+    labels.show_hidden = "show hidden".to_owned();
+    labels.show_system_files = "show system files".to_owned();
+
+    labels.heading_pinned = "pinned".to_owned();
+    labels.heading_places = "places".to_owned();
+    labels.heading_devices = "devices".to_owned();
+    labels.heading_removable_devices = "removable devices".to_owned();
+
+    labels.home_dir = format!("{}  home", icons::HOUSE);
+    labels.desktop_dir = format!("{}  desktop", icons::DESKTOP);
+    labels.documents_dir = format!("{}  documents", icons::FILE_TEXT);
+    labels.downloads_dir = format!("{}  downloads", icons::DOWNLOAD_SIMPLE);
+    labels.audio_dir = format!("{}  audio", icons::MUSIC_NOTE);
+    labels.pictures_dir = format!("{}  pictures", icons::IMAGE);
+    labels.videos_dir = format!("{}  videos", icons::FILM_STRIP);
+
+    labels.pin_folder = "pin".to_owned();
+    labels.unpin_folder = "unpin".to_owned();
+    labels.rename_pinned_folder = "rename".to_owned();
+
+    labels.selected_directory = "selected folder:".to_owned();
+    labels.selected_file = "selected file:".to_owned();
+    labels.selected_items = "selected items:".to_owned();
+    labels.file_name = "file name:".to_owned();
+    labels.file_filter_all_files = "all files".to_owned();
+    labels.save_extension_any = "any".to_owned();
+
+    labels.open_button = "open".to_owned();
+    labels.save_button = "save".to_owned();
+    labels.cancel_button = "cancel".to_owned();
+
+    labels.err_empty_folder_name = "the folder name cannot be empty".to_owned();
+    labels.err_empty_file_name = "the file name cannot be empty".to_owned();
+    labels.err_directory_exists = "a folder with that name already exists".to_owned();
+    labels.err_file_exists = "a file with that name already exists".to_owned();
+}
+
 /// The app's single file dialog.
 pub struct AppFileDialog {
     dialog: FileDialog,
@@ -246,12 +325,16 @@ impl Default for AppFileDialog {
 
 impl AppFileDialog {
     pub fn new() -> Self {
-        Self {
-            dialog: FileDialog::new()
-                .id("mangler_file_dialog")
-                .as_modal(true)
-                .default_size(egui::vec2(720.0, 480.0)),
-        }
+        let mut dialog = FileDialog::new()
+            .id("mangler_file_dialog")
+            .as_modal(true)
+            .default_size(egui::vec2(880.0, 560.0))
+            .min_size(egui::vec2(640.0, 400.0));
+
+        dress_icons(dialog.config_mut());
+        dress_labels(dialog.config_mut());
+
+        Self { dialog }
     }
 
     /// Whether a dialog is currently on screen.

@@ -933,7 +933,7 @@ impl App {
     }
 }
 
-fn setup_fonts(ctx: &egui::Context) {
+pub(crate) fn setup_fonts(ctx: &egui::Context) {
     // Start with the default fonts (we will be adding to them rather than replacing them).
     let mut fonts = egui::FontDefinitions::default();
 

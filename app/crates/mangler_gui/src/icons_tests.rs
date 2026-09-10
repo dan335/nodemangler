@@ -28,6 +28,22 @@ fn every_icon_constant_resolves_to_a_glyph() {
         ("SQUARES_FOUR", SQUARES_FOUR),
         ("WARNING", WARNING),
         ("X", X),
+        ("ARROW_LEFT", ARROW_LEFT),
+        ("ARROW_RIGHT", ARROW_RIGHT),
+        ("CARET_UP", CARET_UP),
+        ("DOTS_THREE_VERTICAL", DOTS_THREE_VERTICAL),
+        ("FILE_TEXT", FILE_TEXT),
+        ("FLOPPY_DISK", FLOPPY_DISK),
+        ("FOLDER_PLUS", FOLDER_PLUS),
+        ("HARD_DRIVE", HARD_DRIVE),
+        ("MAGNIFYING_GLASS", MAGNIFYING_GLASS),
+        ("PENCIL_SIMPLE", PENCIL_SIMPLE),
+        ("PUSH_PIN", PUSH_PIN),
+        ("HOUSE", HOUSE),
+        ("DESKTOP", DESKTOP),
+        ("DOWNLOAD_SIMPLE", DOWNLOAD_SIMPLE),
+        ("MUSIC_NOTE", MUSIC_NOTE),
+        ("FILM_STRIP", FILM_STRIP),
     ];
 
     for (name, glyph) in icons {

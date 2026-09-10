@@ -36,6 +36,18 @@ rayon = "1"
 # Library-panel deletes go to the OS recycle bin (recoverable), never
 # straight to permanent removal.
 trash = "5"
+# Headless rendering of real widgets to PNG, so UI chrome can be *looked at*
+# without launching the app (see `ui_snapshots.rs`). Optional and off by
+# default: it pulls in wgpu, which is a long compile nobody should pay for on
+# an ordinary build or in CI. Dev-dependencies cannot be optional, hence a
+# regular dependency behind a feature.
+egui_kittest = { version = "0.36", features = ["wgpu", "snapshot"], optional = true }
+
+[features]
+# Enables the `ui_snapshots` tests, which render dialogs and panels to PNGs in
+# `target/ui-snapshots/` so they can be inspected without running the app:
+#   cargo test -p mangler_gui --features ui-snapshots -- --ignored --nocapture
+ui-snapshots = ["dep:egui_kittest"]
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.9", features = ["winuser", "windef"] }

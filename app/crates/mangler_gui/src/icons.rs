@@ -49,6 +49,25 @@ pub const SQUARES_FOUR: &str = "\u{E464}";
 pub const WARNING: &str = "\u{E4E0}";
 pub const X: &str = "\u{E4F6}";
 
+// Used to dress the file dialog, which ships emoji defaults that render as
+// mismatched glyphs against the rest of the UI.
+pub const ARROW_LEFT: &str = "\u{E058}";
+pub const ARROW_RIGHT: &str = "\u{E06C}";
+pub const CARET_UP: &str = "\u{E13C}";
+pub const DOTS_THREE_VERTICAL: &str = "\u{E208}";
+pub const FILE_TEXT: &str = "\u{E23A}";
+pub const FLOPPY_DISK: &str = "\u{E248}";
+pub const FOLDER_PLUS: &str = "\u{E258}";
+pub const HARD_DRIVE: &str = "\u{E29E}";
+pub const MAGNIFYING_GLASS: &str = "\u{E30C}";
+pub const PENCIL_SIMPLE: &str = "\u{E3B4}";
+pub const PUSH_PIN: &str = "\u{E3E2}";
+pub const HOUSE: &str = "\u{E2C2}";
+pub const DESKTOP: &str = "\u{E560}";
+pub const DOWNLOAD_SIMPLE: &str = "\u{E20C}";
+pub const MUSIC_NOTE: &str = "\u{E33C}";
+pub const FILM_STRIP: &str = "\u{E792}";
+
 #[cfg(test)]
 #[path = "icons_tests.rs"]
 mod tests;

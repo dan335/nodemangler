@@ -17,6 +17,8 @@ mod pan_zoom;
 mod program;
 mod settings;
 mod themes;
+#[cfg(all(test, feature = "ui-snapshots"))]
+mod ui_snapshots;
 mod view_window;
 use egui::Pos2;
 
