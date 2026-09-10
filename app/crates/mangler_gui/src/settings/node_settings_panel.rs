@@ -11,8 +11,10 @@ use mangler_core::{
     color::{color_spaces::ColorSpace, blend::BlendMode},
 };
 use egui_extras::{TableBuilder, Column};
+use std::path::PathBuf;
 use tokio::sync::mpsc::Sender;
 use crate::{
+    file_dialog::FileDialogRequest,
     graph::graph_node::GraphNode,
     settings::{histogram_widget, tone_curve_widget, section::{section_label, section_rule}},
     themes::theme::Theme,
@@ -262,6 +264,10 @@ pub fn show(
     watch: WatchPanelState,
 ) -> NodeSettingsResponse {
     let mut node_settings_response = NodeSettingsResponse::new();
+    // Raised by the subgraph browse button / a Path input's browse button
+    // below; bubbled out on the response because `App` owns the dialog.
+    let mut subgraph_pick_requested = false;
+    let mut path_pick_requested: Option<FileDialogRequest> = None;
 
     // Title row: "{name} settings" as a small semibold label, plus a
     // borderless close control right-aligned. Replaces the old 22px
@@ -361,18 +367,10 @@ pub fn show(
             };
             ui.label(label);
             if ui.button("🗀").clicked() {
-                let file_dialog = rfd::FileDialog::new()
-                    .add_filter("NodeMangler graph", &["json"]);
-                if let Some(picked) = file_dialog.pick_file() {
-                    node.subgraph_path = Some(picked.clone());
-                    let message = ChangeNodeMessage::SetSubgraphPath {
-                        node_id: node.id.clone(),
-                        path: picked,
-                    };
-                    if let Err(err) = tx_change_node.try_send(message) {
-                        println!("Error sending SetSubgraphPath: {:?}", err);
-                    }
-                }
+                // `App` owns the dialog; the pick comes back through
+                // `Program::set_subgraph_path`, which does what this used to
+                // do inline.
+                subgraph_pick_requested = true;
             }
         });
     }
@@ -593,7 +591,9 @@ pub fn show(
                         // because content no longer exceeds the column.
                         ui.set_max_width((value_col_right - ui.max_rect().left()).max(60.0));
                         ui.horizontal_centered(|ui| {
-                            input_value(ui, input.value.clone(), input, input_index, &node.id, &tx_change_node, sibling_image_format, theme, default_dir);
+                            if let Some(request) = input_value(ui, input.value.clone(), input, input_index, &node.id, &tx_change_node, sibling_image_format, theme, default_dir) {
+                                path_pick_requested = Some(request);
+                            }
 
                             // Show error indicator if the input has a validation error.
                             // Uses the theme's error color (same one the graph
@@ -988,6 +988,18 @@ pub fn show(
             });
     });
 
+    // A subgraph pick needs the node's own id; a Path pick already carries
+    // its node/input indices. Only one dialog can be open at a time anyway,
+    // so a request from either button is enough.
+    if subgraph_pick_requested {
+        node_settings_response.file_dialog_request = Some(FileDialogRequest::SubgraphPath {
+            node_id: node.id.clone(),
+        });
+    } else if let Some(request) = path_pick_requested {
+        node_settings_response.file_dialog_request = Some(request);
+    }
+
+
     node_settings_response
 }
 
@@ -1058,7 +1070,12 @@ fn output_value(ui: &mut egui::Ui, value: &Value, theme: &Theme) {
 
 /// Render an interactive input widget appropriate for the value type.
 /// Connected inputs show a read-only label; disconnected inputs show the full editor.
-fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: usize, node_id: &str, tx_change_node: &Sender<ChangeNodeMessage>, sibling_image_format: Option<image::ImageFormat>, theme: &Theme, default_dir: Option<&std::path::Path>) {
+/// Renders one input's editing widget. Returns a file dialog request when the
+/// user clicked a `Path` input's browse button — the dialog itself is owned by
+/// `App`, several layers up.
+#[must_use]
+fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: usize, node_id: &str, tx_change_node: &Sender<ChangeNodeMessage>, sibling_image_format: Option<image::ImageFormat>, theme: &Theme, default_dir: Option<&std::path::Path>) -> Option<FileDialogRequest> {
+    let mut path_pick_requested: Option<FileDialogRequest> = None;
     // Size value widgets to fill the value column (name | value | expose).
     //
     // We CANNOT derive the width from `available_width()`/`max_rect()`/
@@ -1356,31 +1373,20 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                                 set_title,
                                 file_dialog_type
                             }) = input.settings.clone() {
-
-                                let extensions: Vec<&str> = extension_filter.iter().map(|s| s.as_str()).collect();
-                                let title = set_title.unwrap_or("file".to_string());
-                                let mut file_dialog = rfd::FileDialog::new().add_filter(&title, &extensions);
-
-                                // Starting directory: an explicit per-node
-                                // `set_directory` wins; otherwise fall back to
-                                // the current graph's folder (if it has one).
-                                if let Some(dir) = set_directory.as_ref() {
-                                    file_dialog = file_dialog.set_directory(dir);
-                                } else if let Some(dir) = default_dir {
-                                    file_dialog = file_dialog.set_directory(dir);
-                                }
-                                // Pre-fill the file name if the input asks for one.
-                                if let Some(file_name) = set_file_name.as_ref() {
-                                    file_dialog = file_dialog.set_file_name(file_name);
-                                }
-
-                                if let Some(save_path) = match file_dialog_type {
-                                    mangler_core::input::FileDialogType::PickFile => file_dialog.pick_file(),
-                                    mangler_core::input::FileDialogType::PickFolder => file_dialog.pick_folder(),
-                                    mangler_core::input::FileDialogType::SaveFile => file_dialog.save_file(),
-                                } {
-                                    change_value(tx_change_node, node_id, input_index, input, Value::Path(save_path));
-                                }
+                                // `App` owns the dialog. The starting
+                                // directory rule (an explicit per-input
+                                // `set_directory` beats the graph's own
+                                // folder) lives in `file_dialog::configure`.
+                                path_pick_requested = Some(FileDialogRequest::InputPath {
+                                    node_id: node_id.to_owned(),
+                                    input_index,
+                                    extension_filter,
+                                    set_directory,
+                                    set_file_name,
+                                    set_title,
+                                    file_dialog_type,
+                                    fallback_dir: default_dir.map(PathBuf::from),
+                                });
                             }
                         }
                     },
@@ -1529,11 +1535,17 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
             }
         }
     }
+
+    path_pick_requested
 }
 
 
 pub struct NodeSettingsResponse {
     pub deselect_node: bool,
+    /// A file dialog the user asked for. `Program` bubbles this to `App`,
+    /// which owns the dialog; the pick returns via `FileDialogIntent` and is
+    /// applied by `Program::set_subgraph_path` / `set_path_input`.
+    pub file_dialog_request: Option<FileDialogRequest>,
     /// The "run batch" button was clicked this frame (only ever set for the
     /// from-folder node). The caller sends `ChangeGraphMessage::RunBatch`.
     pub run_batch: bool,
@@ -1552,6 +1564,7 @@ impl NodeSettingsResponse {
     pub fn new() -> Self {
         Self {
             deselect_node: false,
+            file_dialog_request: None,
             run_batch: false,
             cancel_batch: false,
             start_watch: false,

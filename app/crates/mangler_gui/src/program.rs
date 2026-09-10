@@ -16,6 +16,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 use crate::{
+    file_dialog::FileDialogRequest,
     graph::{
         graph_editor::{GraphCamera, GraphEditor, GraphEditorResponse, TempConnection},
         graph_node::ConnectionType,
@@ -201,6 +202,10 @@ pub struct Program {
     /// so the drop handler queues the paths here for `App` to drain after
     /// `update` (see `take_pending_open_graphs`).
     pending_open_graphs: Vec<PathBuf>,
+    /// A file dialog raised by one of this program's panels this frame,
+    /// awaiting collection by `App` (which owns the one dialog). Same
+    /// bubbling shape as `pending_open_graphs`.
+    pending_file_dialog: Option<FileDialogRequest>,
     /// A library image being previewed in the 2D panel (see
     /// [`LibraryImagePreview`]). When set, it takes precedence over
     /// `viewing_node_id_index` in the 2D preview.
@@ -344,6 +349,7 @@ impl Program {
                 fallback_name: "new graph".to_string(),
                 graph_name_buffer: String::new(),
                 pending_open_graphs: Vec::new(),
+                pending_file_dialog: None,
                 library_image_preview: None,
                 pending_library_preview: None,
                 library_preview_generation: 0,
@@ -565,6 +571,55 @@ impl Program {
     /// a tab (via `open_or_focus`), which the program itself can't do.
     pub fn take_pending_open_graphs(&mut self) -> Vec<PathBuf> {
         std::mem::take(&mut self.pending_open_graphs)
+    }
+
+    /// Hands `App` any file dialog this program's panels asked for.
+    pub fn take_pending_file_dialog(&mut self) -> Option<FileDialogRequest> {
+        self.pending_file_dialog.take()
+    }
+
+    /// Points a subgraph node at its child graph, after the user picked one.
+    ///
+    /// The node may be gone by now — the dialog does not block the editor, so
+    /// it can be deleted while the picker is open.
+    pub fn set_subgraph_path(&mut self, node_id: &str, path: PathBuf) {
+        let Some(node) = self.graph_editor.graph_nodes.get_mut(node_id) else {
+            return;
+        };
+        node.subgraph_path = Some(path.clone());
+
+        if let Err(err) = self
+            .tx_change_node
+            .try_send(ChangeNodeMessage::SetSubgraphPath {
+                node_id: node_id.to_owned(),
+                path,
+            })
+        {
+            println!("Error sending SetSubgraphPath: {:?}", err);
+        }
+    }
+
+    /// Writes a picked path into a node's `Value::Path` input, updating the
+    /// local copy so the field shows it immediately. Same node-may-be-gone
+    /// caveat as [`Self::set_subgraph_path`].
+    pub fn set_path_input(&mut self, node_id: &str, input_index: usize, path: PathBuf) {
+        let Some(node) = self.graph_editor.graph_nodes.get_mut(node_id) else {
+            return;
+        };
+        let Some(input) = node.inputs.get_mut(input_index) else {
+            return;
+        };
+
+        let value = Value::Path(path);
+        input.value = value.clone();
+
+        if let Err(err) = self.tx_change_node.try_send(ChangeNodeMessage::SetInput {
+            node_id: node_id.to_owned(),
+            input_index,
+            value,
+        }) {
+            println!("Error sending SetInput: {:?}", err);
+        }
     }
 
     /// Once-per-frame logic that must run before any panel rendering: pointer
@@ -1252,8 +1307,9 @@ impl Program {
                 if let Some(node) = self.graph_editor.graph_nodes.get_mut(editing_node_id) {
                     // Seed file-dialog directories with this graph's own
                     // folder, so a "save/open file" input starts next to the
-                    // graph rather than wherever rfd last landed. An input with
-                    // an explicit `set_directory` overrides this in the panel.
+                    // graph rather than wherever the dialog last landed. An
+                    // input with an explicit `set_directory` wins — that rule
+                    // lives in `file_dialog::configure`.
                     let graph_dir = self.app.save_path.as_deref().and_then(|p| p.parent());
                     let node_settings_response =
                         node_settings_panel::show(
@@ -1267,6 +1323,13 @@ impl Program {
                             watch,
                         );
                     show_graph_settings = false;
+
+                    // A browse button on the subgraph row or a Path input;
+                    // `App` owns the dialog and applies the pick through
+                    // `set_subgraph_path` / `set_path_input`.
+                    if let Some(request) = node_settings_response.file_dialog_request {
+                        self.pending_file_dialog = Some(request);
+                    }
 
                     // Start a batch run over this from-folder node's images.
                     // Handled before the deselect below, which nulls
@@ -1364,18 +1427,10 @@ impl Program {
                     }
                 }
 
-                // save path changed
-                if let Some(save_path) = graph_settings_response.new_save_path {
-                    self.app.save_path = Some(save_path.clone());
-
-                    let message = ChangeGraphMessage::SetSavePath(save_path);
-
-                    match self.tx_change_graph.try_send(message) {
-                        Ok(_) => {}
-                        Err(err) => {
-                            println!("Error sending graph_message: {:?}", err);
-                        }
-                    }
+                // The panel asked for a save location; `App` runs the
+                // dialog and calls `set_save_location` with the result.
+                if let Some(request) = graph_settings_response.file_dialog_request {
+                    self.pending_file_dialog = Some(request);
                 }
             }
             });

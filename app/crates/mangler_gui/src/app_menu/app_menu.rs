@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 use eframe::egui::{self, Layout};
 use epaint::{CornerRadius, Pos2, Rect};
@@ -75,20 +74,12 @@ impl AppMenu {
                             //ui.add_space(10.0);
 
                             if ui.button("load").clicked() {
-                                // rfd matches extensions against the final
-                                // dot-component only, so "json" alone covers
-                                // both "x.json" and "x.mangler.json" — a
-                                // "mangle.json" token would never match.
-                                if let Some(save_path) = rfd::FileDialog::new()
-                                    .add_filter("NodeMangler graph", &["json"])
-                                    .pick_file()
-                                {
-                                    // `App` opens this (or focuses an existing
-                                    // tab already editing it) via
-                                    // `open_or_focus` — same dedup path as the
-                                    // Libraries panel's open action.
-                                    bar_response.open_path = Some(save_path);
-                                }
+                                // The dialog only *starts* here; `App` owns it
+                                // and opens whatever the user picks (or focuses
+                                // an existing tab already editing it) via
+                                // `open_or_focus` — the same dedup path as the
+                                // Libraries panel's open action.
+                                bar_response.open_file_requested = true;
                             }
 
                             //ui.add_space(10.0);
@@ -271,9 +262,9 @@ pub struct BarResponse {
     /// `Program` (it owns the config needed to pick a default-library save
     /// location) and turns any `NewGraphError` into its error modal.
     pub new_graph_requested: bool,
-    /// The "load" button picked a file this frame. `App` opens it (or
-    /// focuses an existing tab already editing it) via `open_or_focus`.
-    pub open_path: Option<PathBuf>,
+    /// The "load" button was clicked this frame. `App` opens the file dialog;
+    /// the pick comes back later through `FileDialogIntent::OpenGraph`.
+    pub open_file_requested: bool,
     pub current_program: Option<String>,
     pub program_to_close: Option<String>,
     pub theme_changed_to: Option<Theme>,
@@ -284,7 +275,7 @@ impl BarResponse {
     pub fn new() -> Self {
         Self {
             new_graph_requested: false,
-            open_path: None,
+            open_file_requested: false,
             current_program: None,
             program_to_close: None,
             theme_changed_to: None,

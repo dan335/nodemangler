@@ -54,6 +54,12 @@ The bundled [Manrope](https://github.com/sharanda/manrope) font
 copyright 2019 The Manrope Project Authors and licensed under the
 [SIL Open Font License 1.1](app/crates/mangler_gui/assets/OFL.txt).
 
+The UI icons come from [Phosphor Icons](https://github.com/phosphor-icons/web),
+which is **MIT**. The font (`app/crates/mangler_gui/res/Phosphor.ttf`) and the
+codepoint constants in `mangler_gui/src/icons.rs` are vendored rather than
+pulled from the `egui-phosphor` crate, which pins a single egui minor version —
+see [res/LICENSE-Phosphor.txt](app/crates/mangler_gui/res/LICENSE-Phosphor.txt).
+
 ## Contributing
 
 Unless you state otherwise, a contribution intentionally submitted for

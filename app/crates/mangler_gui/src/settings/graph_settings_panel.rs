@@ -1,8 +1,8 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use eframe::egui::{self, Button, Label, RichText, TextEdit};
-use mangler_core::naming;
 
 use crate::{
+    file_dialog::FileDialogRequest,
     settings::section::{section_label, section_rule},
     themes::theme::Theme,
 };
@@ -83,11 +83,11 @@ pub fn show(
                 .on_hover_text("saves a copy to the new location; the old file is not deleted")
                 .clicked()
             {
-                if let Some(save_path) =
-                    choose_graph_save_path(path.parent(), display_name)
-                {
-                    graph_settings_response.new_save_path = Some(save_path);
-                }
+                graph_settings_response.file_dialog_request =
+                    Some(FileDialogRequest::SaveGraph {
+                        default_dir: path.parent().map(PathBuf::from),
+                        default_stem: display_name.to_owned(),
+                    });
             }
         }
         None => {
@@ -109,11 +109,11 @@ pub fn show(
                 let default_dir = config.ensure_default_library();
                 config.save();
 
-                if let Some(save_path) =
-                    choose_graph_save_path(default_dir.as_deref(), display_name)
-                {
-                    graph_settings_response.new_save_path = Some(save_path);
-                }
+                graph_settings_response.file_dialog_request =
+                    Some(FileDialogRequest::SaveGraph {
+                        default_dir,
+                        default_stem: display_name.to_owned(),
+                    });
             }
         }
     }
@@ -129,45 +129,10 @@ pub fn show(
     graph_settings_response
 }
 
-/// Opens the OS save dialog for a graph file, starting in `default_dir` (if
-/// any) with `default_stem` as the suggested file name, and returns the
-/// chosen path with the canonical `.mangler.json` extension forced onto it.
-/// Shared by the graph settings panel and the unsaved-close prompt.
-pub fn choose_graph_save_path(default_dir: Option<&Path>, default_stem: &str) -> Option<PathBuf> {
-    let starting_file_name = naming::graph_file_name(default_stem);
-
-    // rfd matches extensions against the final dot-component only,
-    // so "json" alone covers both "x.json" and "x.mangler.json" — a
-    // "mangle.json" filter token would never match anything.
-    let mut dialog = rfd::FileDialog::new()
-        .set_file_name(&starting_file_name)
-        .add_filter("NodeMangler graph", &["json"]);
-    if let Some(dir) = default_dir {
-        dialog = dialog.set_directory(dir);
-    }
-    dialog.save_file().map(force_graph_extension)
-}
-
-/// Forces the canonical `.mangler.json` extension onto whatever the OS save
-/// dialog returned, regardless of what the user typed as the file name —
-/// plain-.json saves must be impossible. A single trailing plain ".json" is
-/// stripped first, so that choice becomes "<name>.mangler.json" rather than
-/// "<name>.json.mangler.json".
-pub fn force_graph_extension(path: PathBuf) -> PathBuf {
-    let file_name = path
-        .file_name()
-        .and_then(|f| f.to_str())
-        .unwrap_or_default();
-    if file_name.ends_with(naming::GRAPH_EXTENSION) {
-        path
-    } else {
-        let stem = file_name.strip_suffix(".json").unwrap_or(file_name);
-        path.with_file_name(format!("{stem}{}", naming::GRAPH_EXTENSION))
-    }
-}
-
 pub struct GraphSettingsResponse {
-    pub new_save_path: Option<PathBuf>,
+    /// A file dialog the user asked for. `Program` bubbles this to `App`,
+    /// which owns the dialog; the pick returns via `FileDialogIntent`.
+    pub file_dialog_request: Option<FileDialogRequest>,
     pub new_name: Option<String>,
     pub auto_arrange: bool,
 }
@@ -175,13 +140,9 @@ pub struct GraphSettingsResponse {
 impl GraphSettingsResponse {
     pub fn new() -> Self {
         Self {
-            new_save_path: None,
+            file_dialog_request: None,
             new_name: None,
             auto_arrange: false,
         }
     }
 }
-
-#[cfg(test)]
-#[path = "graph_settings_panel_tests.rs"]
-mod tests;

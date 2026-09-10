@@ -59,6 +59,10 @@ pub enum LibraryAction {
     /// Open the graph at `path` as a program tab (or focus an existing tab
     /// already pointing at it).
     OpenGraph { path: PathBuf },
+    /// The user asked to link a new library folder. `App` owns the file
+    /// dialog, so the panel can only raise the request; the chosen folder
+    /// arrives back as `FileDialogIntent::AddLibrary`.
+    RequestAddLibrary,
     /// Create a brand-new graph: a blank program tab whose save path is set
     /// to `path` (full `…/name.mangler.json`), so the engine's auto-save
     /// writes the file.

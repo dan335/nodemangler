@@ -6,6 +6,7 @@ use themes::theme::Theme;
 mod app;
 mod app_menu;
 mod config;
+mod file_dialog;
 mod graph;
 mod icons;
 mod libraries;

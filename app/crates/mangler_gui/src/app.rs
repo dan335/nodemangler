@@ -1,6 +1,7 @@
 use crate::{
     app_menu::app_menu::AppMenu,
     config::AppConfig,
+    file_dialog::{AppFileDialog, FileDialogIntent, FileDialogRequest},
     libraries::libraries_state::LibrariesState,
     panels::{
         panel_kind::PanelKind,
@@ -55,6 +56,10 @@ pub struct App {
     /// re-issue `ViewportCommand::Close` and stop cancelling it. Cleared by
     /// a cancel in the prompt (the user changed their mind about quitting).
     quit_requested: bool,
+    /// The app's one file dialog. Drawn in the main window only (like every
+    /// other blocking UI here), after everything else, so its dispatch can
+    /// mutate `programs` / `libraries` free of rendering borrows.
+    file_dialog: AppFileDialog,
 }
 
 /// State of a tab close that couldn't complete immediately because the
@@ -63,6 +68,17 @@ pub struct App {
 enum PendingClose {
     /// The save/discard/cancel modal is up for this tab.
     Prompt { program_id: String },
+    /// The user chose save and the file dialog is up, waiting for them to
+    /// pick a path.
+    ///
+    /// The prompt modal must not render in this state. `egui::Modal` installs
+    /// a modal layer that blocks interaction with everything ordered below it,
+    /// and the file dialog is an ordinary window — drawn under a live prompt it
+    /// would be visible but completely dead to input.
+    ///
+    /// Unlike `AwaitingSave` this has deliberately no timeout: the user may
+    /// browse for as long as they like.
+    AwaitingPathChoice { program_id: String },
     /// The user chose save and picked a path; waiting for the engine's
     /// `SavedTo` ack before actually closing — closing aborts the engine
     /// task, which would race the write if we didn't wait for confirmation.
@@ -110,8 +126,8 @@ impl eframe::App for App {
             if bar_response.new_graph_requested {
                 self.create_new_program();
             }
-            if let Some(path) = bar_response.open_path {
-                self.open_or_focus(path);
+            if bar_response.open_file_requested {
+                self.file_dialog.open(FileDialogRequest::OpenGraph, None);
             }
 
             if let Some(current_program) = bar_response.current_program {
@@ -156,6 +172,8 @@ impl eframe::App for App {
             // (main window + secondary windows), applied after rendering so the
             // borrow on `program` has ended.
             let mut panel_actions: Vec<PanelAction> = Vec::new();
+            // Raised inside the `program` borrow below, opened after it ends.
+            let mut pending_file_dialog: Option<(FileDialogRequest, String)> = None;
 
             if let Some(current_program) = &self.current_program {
                 let has_preview_2d_panel = self.has_preview_2d_panel();
@@ -205,7 +223,18 @@ impl eframe::App for App {
                     if let Some(err) = program.take_library_preview_error() {
                         self.libraries.set_error(err);
                     }
+
+                    // A browse button in this program's settings panels. The
+                    // program id is stamped on here so the pick can be routed
+                    // back to this tab whenever it eventually lands.
+                    pending_file_dialog = program
+                        .take_pending_file_dialog()
+                        .map(|request| (request, current_program.clone()));
                 }
+            }
+
+            if let Some((request, program_id)) = pending_file_dialog {
+                self.file_dialog.open(request, Some(program_id));
             }
 
             // With no graphs open, the panel tree has nothing to render (all
@@ -286,6 +315,13 @@ impl eframe::App for App {
             // click) dismisses — unlike the file-conflict modal, there is
             // nothing to decide, just something to acknowledge.
             self.show_error_modal(ui);
+
+            // The file dialog draws last and dispatches last: the pick it
+            // returns mutates `programs` / `libraries`, which are still
+            // borrowed while the panels above are rendering.
+            if let Some((intent, path)) = self.file_dialog.update(&ctx) {
+                self.apply_file_pick(intent, path);
+            }
         });
     }
 
@@ -323,6 +359,60 @@ impl eframe::App for App {
 }
 
 impl App {
+
+    /// Routes a picked path to whoever asked for it — the single dispatch
+    /// point for every file dialog in the app, and the mirror of the Libraries
+    /// panel's `apply_dialog`.
+    ///
+    /// Every program-scoped arm tolerates a missing tab: the dialog is modeless
+    /// as far as the rest of the app is concerned, so the tab that opened it
+    /// can be closed (or the whole app quit into a different state) while the
+    /// user is still browsing.
+    fn apply_file_pick(&mut self, intent: FileDialogIntent, path: PathBuf) {
+        match intent {
+            FileDialogIntent::OpenGraph => self.open_or_focus(path),
+            FileDialogIntent::AddLibrary => self.libraries.add_library(path),
+            FileDialogIntent::SaveGraph { program_id } => {
+                let path = crate::file_dialog::force_graph_extension(path);
+                let Some(program) = self.programs.get_mut(&program_id) else {
+                    return;
+                };
+                program.set_save_location(path);
+
+                // A save chosen from the close prompt resumes that flow: the
+                // tab closes once the engine acks the write. Matched on the
+                // tab id, not just the state, so an unrelated save can never
+                // resume someone else's close.
+                let closing_this_tab = matches!(
+                    &self.pending_close,
+                    Some(PendingClose::AwaitingPathChoice { program_id: p }) if *p == program_id
+                );
+                if closing_this_tab {
+                    self.pending_close = Some(PendingClose::AwaitingSave {
+                        program_id,
+                        since: std::time::Instant::now(),
+                    });
+                }
+            }
+            FileDialogIntent::SubgraphPath {
+                program_id,
+                node_id,
+            } => {
+                if let Some(program) = self.programs.get_mut(&program_id) {
+                    program.set_subgraph_path(&node_id, path);
+                }
+            }
+            FileDialogIntent::InputPath {
+                program_id,
+                node_id,
+                input_index,
+            } => {
+                if let Some(program) = self.programs.get_mut(&program_id) {
+                    program.set_path_input(&node_id, input_index, path);
+                }
+            }
+        }
+    }
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         setup_fonts(&cc.egui_ctx);
 
@@ -382,6 +472,7 @@ impl App {
             error_modal,
             pending_close: None,
             quit_requested: false,
+            file_dialog: AppFileDialog::new(),
         }
     }
 
@@ -464,12 +555,27 @@ impl App {
         let program_id = match &pending {
             PendingClose::Prompt { program_id } => program_id.clone(),
             PendingClose::AwaitingSave { program_id, .. } => program_id.clone(),
+            PendingClose::AwaitingPathChoice { program_id } => program_id.clone(),
         };
 
         // The tab vanished out from under the prompt (shouldn't happen —
         // request_close is the only closer — but don't wedge the modal).
         if !self.programs.contains_key(&program_id) {
             self.pending_close = None;
+            return;
+        }
+
+        // While the save dialog is up, render nothing: a modal layer here
+        // would leave that dialog visible but unclickable (see the variant's
+        // docs). If it closed without a pick the user cancelled it, so fall
+        // back to the prompt — the same "stay in Prompt" behaviour the
+        // blocking dialog had when it returned None.
+        if let PendingClose::AwaitingPathChoice { program_id } = &pending {
+            if !self.file_dialog.is_open() {
+                self.pending_close = Some(PendingClose::Prompt {
+                    program_id: program_id.clone(),
+                });
+            }
             return;
         }
 
@@ -554,19 +660,17 @@ impl App {
             let default_dir = config.ensure_default_library();
             config.save();
 
-            if let Some(path) = crate::settings::graph_settings_panel::choose_graph_save_path(
-                default_dir.as_deref(),
-                &display_name,
-            ) {
-                if let Some(program) = self.programs.get_mut(&program_id) {
-                    program.set_save_location(path);
-                }
-                self.pending_close = Some(PendingClose::AwaitingSave {
-                    program_id,
-                    since: std::time::Instant::now(),
-                });
-            }
-            // Dialog cancelled: stay in Prompt, the modal remains.
+            self.file_dialog.open(
+                FileDialogRequest::SaveGraph {
+                    default_dir,
+                    default_stem: display_name.clone(),
+                },
+                Some(program_id.clone()),
+            );
+            // The prompt stops rendering while the dialog is up, and
+            // `apply_file_pick` advances this to `AwaitingSave` on a pick.
+            // Cancelling comes back to `Prompt` (see show_close_prompt_modal).
+            self.pending_close = Some(PendingClose::AwaitingPathChoice { program_id });
         } else if chose_discard {
             self.pending_close = None;
             self.close_program(&program_id);
@@ -641,6 +745,9 @@ impl App {
         use crate::libraries::libraries_state::LibraryAction;
         match action {
             LibraryAction::OpenGraph { path } => self.open_or_focus(path),
+            LibraryAction::RequestAddLibrary => {
+                self.file_dialog.open(FileDialogRequest::AddLibrary, None);
+            }
             LibraryAction::CreateGraph { path, name } => {
                 // A blank tab pointed at the target path: the engine writes
                 // the file immediately on SetSavePath (this is the one

@@ -36,8 +36,6 @@ struct PanelCommands {
     open_dialog: Option<LibraryDialog>,
     /// Actions to queue for `App` (open graph, ...).
     actions: Vec<LibraryAction>,
-    /// A folder the user picked to link as a new library.
-    add_library: Option<PathBuf>,
     /// The user asked for an immediate rescan.
     refresh: bool,
     /// Show this path in the OS file manager; `true` = select the item in
@@ -116,9 +114,6 @@ pub fn show(
 
     // --- apply collected commands (deferred: the tree render above held
     // immutable borrows of the state's entries and scan snapshot) -----------
-    if let Some(path) = commands.add_library {
-        state.add_library(path);
-    }
     if commands.refresh {
         state.request_rescan();
     }
@@ -174,16 +169,16 @@ fn show_header(
 }
 
 /// The two add-library entries shared by the "+" menu and the empty-space
-/// right-click menu. Both open the OS folder picker; its built-in "New
-/// Folder" button covers the create-new case, so they differ only in intent.
+/// right-click menu. Both open the folder picker; its built-in "new folder"
+/// button covers the create-new case, so they differ only in intent.
 fn add_library_menu_items(ui: &mut egui::Ui, colors: &ThemeValues, commands: &mut PanelCommands) {
     strengthen_menu_hover(ui, colors);
     if ui.button("create new library…").clicked() {
-        commands.add_library = pick_library_folder();
+        commands.actions.push(LibraryAction::RequestAddLibrary);
         ui.close();
     }
     if ui.button("add existing library…").clicked() {
-        commands.add_library = pick_library_folder();
+        commands.actions.push(LibraryAction::RequestAddLibrary);
         ui.close();
     }
 }
@@ -340,11 +335,6 @@ fn show_tree(
                 });
             }
         });
-}
-
-/// Opens the OS folder picker for linking a library.
-fn pick_library_folder() -> Option<PathBuf> {
-    rfd::FileDialog::new().pick_folder()
 }
 
 /// Renders one folder's subfolders and graphs (recursively), collecting any
