@@ -9,10 +9,12 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use super::common::smoothstep;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -32,7 +34,7 @@ impl OpImageAdjustmentHistogramSelect {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image whose luminance is selected into a mask."),
             Input::new("position".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Target luminance at the centre of the selection band."),
@@ -52,19 +54,13 @@ impl OpImageAdjustmentHistogramSelect {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let position_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let range_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let contrast_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(position) = position_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(range) = range_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(contrast) = contrast_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(position) = 1,
+            Decimal(range) = 2,
+            Decimal(contrast) = 3,
+        }
 
         let half_range = (range * 0.5).max(1e-6);
         let contrast = contrast.clamp(0.0, 1.0);
@@ -79,11 +75,12 @@ impl OpImageAdjustmentHistogramSelect {
         let color_ch = if ch == 2 || ch == 4 { ch - 1 } else { ch };
 
         let mut output = FloatImage::new(width, height, 1);
-        for y in 0..height {
-            for x in 0..width {
-                let p = data.get_pixel(x, y);
+        output
+            .par_pixels_mut()
+            .zip(data.par_pixels())
+            .for_each(|(dst, p)| {
                 let lum = if color_ch >= 3 {
-                    0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]
+                    crate::luma::rec709(p[0], p[1], p[2])
                 } else {
                     p[0]
                 };
@@ -93,10 +90,8 @@ impl OpImageAdjustmentHistogramSelect {
                 // fade between them. The shared `smoothstep` clamps the input and
                 // degenerates to a hard step when the edges coincide (contrast 1),
                 // giving the rectangular band for free.
-                let mask = 1.0 - smoothstep(soft_edge, hard_edge, d);
-                output.put_pixel(x, y, &[mask]);
-            }
-        }
+                dst[0] = 1.0 - smoothstep(soft_edge, hard_edge, d);
+            });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

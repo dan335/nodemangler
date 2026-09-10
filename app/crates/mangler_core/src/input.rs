@@ -167,18 +167,15 @@ pub struct InputLink {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InputSettings {
     /// A file/folder path picker dialog.
-    Path {
-        /// Allowed file extensions (e.g. `["png", "jpg"]`).
-        extension_filter: Vec<String>,
-        /// Starting directory for the file dialog.
-        set_directory: Option<PathBuf>,
-        /// Default file name pre-filled in the dialog.
-        set_file_name: Option<String>,
-        /// Title bar text for the file dialog window.
-        set_title: Option<String>,
-        /// Whether to pick a file, pick a folder, or save a file.
-        file_dialog_type: FileDialogType,
-    },
+    ///
+    /// **Boxed on purpose.** Its payload is by far the largest of any variant
+    /// (a `Vec`, a `PathBuf` and two `String`s, all optional), and an enum is
+    /// as large as its largest variant — so an unboxed `Path` set the size of
+    /// the `Option<InputSettings>` that every single [`Input`] carries. Six
+    /// operations in the whole crate use a path picker; over a thousand inputs
+    /// use `Slider` or `DragValue`, and those are the ones allocated in bulk by
+    /// `create_inputs()` on every node creation and every graph load.
+    Path(Box<PathSettings>),
     /// A numeric drag widget with optional clamping and drag speed.
     DragValue {
         /// Optional (min, max) clamp range.
@@ -216,6 +213,25 @@ pub enum InputSettings {
     /// histogram behind it) instead of the read-only curve summary, and the
     /// 2D preview's spatial curve-overlay editor skips these inputs.
     ToneCurve,
+}
+
+/// The configuration a [`InputSettings::Path`] picker carries.
+///
+/// A named struct rather than inline enum fields so the variant can be boxed
+/// (see [`InputSettings::Path`]) without every construction site growing a
+/// second set of braces.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathSettings {
+    /// Allowed file extensions (e.g. `["png", "jpg"]`).
+    pub extension_filter: Vec<String>,
+    /// Starting directory for the file dialog.
+    pub set_directory: Option<PathBuf>,
+    /// Default file name pre-filled in the dialog.
+    pub set_file_name: Option<String>,
+    /// Title bar text for the file dialog window.
+    pub set_title: Option<String>,
+    /// Whether to pick a file, pick a folder, or save a file.
+    pub file_dialog_type: FileDialogType,
 }
 
 /// The type of file dialog to present when an input uses `InputSettings::Path`.

@@ -15,9 +15,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -38,7 +39,7 @@ impl OpImageAdjustmentVectorMorphology {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Normal map (or RG direction field) to morph."),
             Input::new("mode".to_string(), Value::Integer(0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(1.0), clamp_to_range: true }), None)
                 .with_description("0 = erode (flatten), 1 = dilate (sharpen edges)."),
@@ -56,17 +57,12 @@ impl OpImageAdjustmentVectorMorphology {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let mode_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let radius_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mode) = mode_converted.unwrap() else { unreachable!() };
-        let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(mode) = 1,
+            Integer(radius) = 2,
+        }
 
         let mode = mode.clamp(0, 1);
         // Radius is authored in reference pixels (at 1024px) and scaled to the

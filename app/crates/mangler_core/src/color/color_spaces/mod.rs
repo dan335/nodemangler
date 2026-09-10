@@ -21,6 +21,22 @@ pub mod hwb;
 pub mod ycbcr;
 pub mod xyy;
 
+/// Shared test helper: assert two colours match channel-by-channel within
+/// `eps`, naming the channel that differs.
+///
+/// Every colour-space test module needs exactly this, and each one used to
+/// carry its own byte-identical copy — thirteen of them. The per-space
+/// `EPSILON` constants stay local, because they are genuinely different (CMYK
+/// round-trips to 1e-7, YUV only to 1e-3) and that difference is part of what
+/// each module is asserting.
+#[cfg(test)]
+pub(crate) fn assert_color_approx(c1: &super::Color, c2: &super::Color, eps: f32) {
+    assert!((c1.r - c2.r).abs() < eps, "Red: {} vs {}", c1.r, c2.r);
+    assert!((c1.g - c2.g).abs() < eps, "Green: {} vs {}", c1.g, c2.g);
+    assert!((c1.b - c2.b).abs() < eps, "Blue: {} vs {}", c1.b, c2.b);
+    assert!((c1.a - c2.a).abs() < eps, "Alpha: {} vs {}", c1.a, c2.a);
+}
+
 /// Enumerates all supported color spaces for conversion and blending.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ColorSpace {

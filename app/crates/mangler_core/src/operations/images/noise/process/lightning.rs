@@ -18,9 +18,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -217,29 +218,18 @@ impl OpImageNoiseLightning {
     /// the segment width with an exponential glow halo around it.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let bolts_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
-        let depth_converted = convert_input(inputs, 4, ValueType::Integer, &mut input_errors);
-        let branches_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let jaggedness_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let bolt_width_converted = convert_input(inputs, 7, ValueType::Decimal, &mut input_errors);
-        let glow_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Integer(bolts) = bolts_converted.unwrap() else { unreachable!() };
-        let Value::Integer(depth) = depth_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(branches) = branches_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(jaggedness) = jaggedness_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(bolt_width) = bolt_width_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(glow) = glow_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut seed) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Integer(bolts) = 3,
+            Integer(depth) = 4,
+            Decimal(branches) = 5,
+            Decimal(jaggedness) = 6,
+            Decimal(bolt_width) = 7,
+            Decimal(glow) = 8,
+        }
 
         width = width.max(4);
         height = height.max(4);

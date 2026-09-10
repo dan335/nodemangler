@@ -5,10 +5,9 @@
 //! `FloatImage` is converted to RGBA8 via [`FloatImage::to_rgba8`] before
 //! writing to the clipboard.
 
-use crate::get_id;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, convert_input, image_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -45,7 +44,7 @@ impl OpImageOutputClipboard {
     /// gating inputs.
     pub fn create_inputs() -> Vec<Input> {
         let mut inputs = vec![
-            Input::new("image".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("image")
                 .with_description("Image to write to the system clipboard as RGBA8."),
         ];
         inputs.extend(save_gate_inputs());

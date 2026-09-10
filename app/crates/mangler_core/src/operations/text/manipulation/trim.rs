@@ -5,9 +5,10 @@
 
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -50,15 +51,11 @@ impl OpTextTrim {
     /// Converts the inputs and trims the requested characters from both ends.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let text_converted = convert_input(inputs, 0, ValueType::Text, &mut input_errors);
-        let characters_converted = convert_input(inputs, 1, ValueType::Text, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Text(text) = text_converted.unwrap() else { unreachable!() };
-        let Value::Text(characters) = characters_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Text(text) = 0,
+            Text(characters) = 1,
+        }
 
         let output = if characters.is_empty() {
             text.trim().to_string()

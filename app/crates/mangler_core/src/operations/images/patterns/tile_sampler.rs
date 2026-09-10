@@ -9,9 +9,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -65,7 +66,7 @@ impl OpImagePatternTileSampler {
     /// and randomization parameters (scale_random, rotation_random, offset_random, seed).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("pattern".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("pattern")
                 .with_description("Source image stamped into each grid cell."),
             Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
                 .with_description("Output image width in pixels."),
@@ -102,34 +103,19 @@ impl OpImagePatternTileSampler {
     /// Compositing uses max blend (brightest value per channel wins).
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let pattern_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let count_x_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
-        let count_y_converted = convert_input(inputs, 4, ValueType::Integer, &mut input_errors);
-        let scale_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let scale_random_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let rotation_random_converted = convert_input(inputs, 7, ValueType::Decimal, &mut input_errors);
-        let offset_random_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
-        let seed_converted = convert_input(inputs, 9, ValueType::Integer, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image { data: pattern, change_id: _ } = pattern_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut count_x) = count_x_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut count_y) = count_y_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(scale) = scale_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(scale_random) = scale_random_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(rotation_random) = rotation_random_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(offset_random) = offset_random_converted.unwrap() else { unreachable!() };
-        let Value::Integer(seed) = seed_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(pattern) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Integer(mut count_x) = 3,
+            Integer(mut count_y) = 4,
+            Decimal(scale) = 5,
+            Decimal(scale_random) = 6,
+            Decimal(rotation_random) = 7,
+            Decimal(offset_random) = 8,
+            Integer(seed) = 9,
+        }
 
         // run node
         width = width.max(1);

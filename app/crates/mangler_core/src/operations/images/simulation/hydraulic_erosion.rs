@@ -28,9 +28,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -113,7 +114,7 @@ impl OpImageSimulationHydraulicErosion {
                 .with_description("Output image width in pixels."),
             Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None)
                 .with_description("Output image height in pixels."),
-            Input::new("height map".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("height map")
                 .with_description("Optional starting terrain to erode; when unconnected an internal fBm heightmap is generated from the seed."),
             Input::new("droplets".to_string(), Value::Integer(400000), Some(InputSettings::DragValue { clamp: Some((0.0, 4000000.0)), speed: Some(1000.0) }), None)
                 .with_description("Number of raindrops simulated; more droplets deepen and extend the gully network."),
@@ -159,39 +160,23 @@ impl OpImageSimulationHydraulicErosion {
     /// 4. Normalizes the eroded heightmap to [0, 1]
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let map_converted = convert_input(inputs, 3, ValueType::Image, &mut input_errors);
-        let droplets_converted = convert_input(inputs, 4, ValueType::Integer, &mut input_errors);
-        let capacity_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let erosion_rate_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let deposition_rate_converted = convert_input(inputs, 7, ValueType::Decimal, &mut input_errors);
-        let lifetime_converted = convert_input(inputs, 8, ValueType::Integer, &mut input_errors);
-        let radius_converted = convert_input(inputs, 9, ValueType::Integer, &mut input_errors);
-        let inertia_converted = convert_input(inputs, 10, ValueType::Decimal, &mut input_errors);
-        let evaporation_converted = convert_input(inputs, 11, ValueType::Decimal, &mut input_errors);
-        let octaves_converted = convert_input(inputs, 12, ValueType::Integer, &mut input_errors);
-        let frequency_converted = convert_input(inputs, 13, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Image { data: map_data, change_id: _ } = map_converted.unwrap() else { unreachable!() };
-        let Value::Integer(droplets) = droplets_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(capacity) = capacity_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(erosion_rate) = erosion_rate_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(deposition_rate) = deposition_rate_converted.unwrap() else { unreachable!() };
-        let Value::Integer(lifetime) = lifetime_converted.unwrap() else { unreachable!() };
-        let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(inertia) = inertia_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(evaporation) = evaporation_converted.unwrap() else { unreachable!() };
-        let Value::Integer(octaves) = octaves_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(frequency) = frequency_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut seed) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Image(map_data) = 3,
+            Integer(droplets) = 4,
+            Decimal(capacity) = 5,
+            Decimal(erosion_rate) = 6,
+            Decimal(deposition_rate) = 7,
+            Integer(lifetime) = 8,
+            Integer(radius) = 9,
+            Decimal(inertia) = 10,
+            Decimal(evaporation) = 11,
+            Integer(octaves) = 12,
+            Decimal(frequency) = 13,
+        }
 
         width = width.max(4);
         height = height.max(4);

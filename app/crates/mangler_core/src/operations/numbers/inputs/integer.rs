@@ -5,9 +5,10 @@
 
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -52,17 +53,10 @@ impl OpNumberInputInteger {
     /// Executes the node: converts the input to an integer and passes it through.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let input_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Integer(input) = input_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(input) = 0,
+        }
 
         // run node
         Ok(OperationResponse { 

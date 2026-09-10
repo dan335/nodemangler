@@ -7,9 +7,10 @@
 use crate::color::Color;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use std::collections::HashMap;
@@ -31,7 +32,7 @@ impl OpColorSampleMostCommonColors {
     /// Creates the input definitions: an image and quantization precision for hue, saturation, and lightness.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image{data:crate::operations::default_image(), change_id:crate::get_id()}, None, None)
+            image_input("image")
                 .with_description("Image whose pixels are scanned to find the most common quantized HSL colors."),
             Input::new("hue quantization".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (1.0, 100.0), step_by: Some(1.0), clamp_to_range: true}), None)
                 .with_description("Number of hue buckets; higher values distinguish more hues."),
@@ -61,23 +62,13 @@ impl OpColorSampleMostCommonColors {
     /// Executes the operation, scanning all pixels and returning the 5 most common quantized colors.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let hue_precision_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let saturation_precision_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let lightness_precision_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image{data:image, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(hue_precision) = hue_precision_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(saturation_precision) = saturation_precision_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(lightness_precision) = lightness_precision_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(image) = 0,
+            Decimal(hue_precision) = 1,
+            Decimal(saturation_precision) = 2,
+            Decimal(lightness_precision) = 3,
+        }
 
         // Quantize each pixel's HSL values into buckets and count occurrences.
         // Higher precision values produce more buckets (finer color distinction).

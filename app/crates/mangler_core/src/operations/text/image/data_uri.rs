@@ -4,10 +4,9 @@
 //! PNG, and wraps the Base64 bytes in a `data:image/png;base64,…` URI for
 //! embedding directly in HTML, CSS, or Markdown.
 
-use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input, image_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
@@ -34,7 +33,7 @@ impl OpTextImageDataUri {
     /// Creates the input ports: the image and the maximum longest-side size.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Image to encode."),
             Input::new("max size".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((16.0, 4096.0)), speed: None }), None)
                 .with_description("Longest side is downscaled to at most this many pixels (16..4096)."),

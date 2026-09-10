@@ -6,10 +6,13 @@
 //! estimating how much airlight has been mixed into each pixel and inverting it.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
+use crate::operations::images::filter::morphology::erode::separable_morphology;
+use crate::float_image::FloatImage;
+use rayon::prelude::*;
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -50,7 +53,7 @@ channels) have no chroma dark channel and pass through unchanged.".to_string(),
     /// Creates the input ports: source image, haze-removal amount, and dark-channel filter radius.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to remove haze from (needs 3+ channels for an effect)."),
             Input::new("amount".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("How aggressively to remove estimated haze; 0 is identity, 1 is maximal."),
@@ -70,20 +73,12 @@ channels) have no chroma dark channel and pass through unchanged.".to_string(),
     /// Executes the dehaze operation using a simplified dark-channel prior.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // Convert inputs.
-        let image_converted  = convert_input(inputs, 0, ValueType::Image,   &mut input_errors);
-        let amount_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let radius_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-
-        // Return if any input failed to convert.
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // Extract values.
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(radius) = radius_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(amount) = 1,
+            Decimal(radius) = 2,
+        }
 
         let mut result = (*data).clone();
         let ch = result.channels() as usize;
@@ -106,34 +101,23 @@ channels) have no chroma dark channel and pass through unchanged.".to_string(),
         let r = crate::operations::scale_to_resolution(radius as f32, w, h).round().max(1.0) as i32;
 
         // --- Dark channel: per-pixel minimum over the first three colour channels. ---
-        let mut dark = vec![0.0f32; wu * hu];
-        for y in 0..hu {
-            for x in 0..wu {
-                let px = result.get_pixel(x as u32, y as u32);
-                let m = px[0].min(px[1]).min(px[2]);
-                dark[y * wu + x] = m;
-            }
-        }
+        let dark: Vec<f32> = result
+            .as_raw()
+            .par_chunks_exact(ch)
+            .map(|px| px[0].min(px[1]).min(px[2]))
+            .collect();
 
         // --- Min-filter the dark channel over a (2r+1) square window, edges clamped. ---
-        let mut darkmin = vec![0.0f32; wu * hu];
-        for y in 0..hu {
-            for x in 0..wu {
-                let mut m = f32::INFINITY;
-                let y0 = (y as i32 - r).max(0) as usize;
-                let y1 = ((y as i32 + r) as usize).min(hu - 1);
-                let x0 = (x as i32 - r).max(0) as usize;
-                let x1 = ((x as i32 + r) as usize).min(wu - 1);
-                for yy in y0..=y1 {
-                    let row = yy * wu;
-                    for xx in x0..=x1 {
-                        let v = dark[row + xx];
-                        if v < m { m = v; }
-                    }
-                }
-                darkmin[y * wu + x] = m;
-            }
-        }
+        // Erosion *is* a min filter, and the shared morphology helper does it
+        // separably with a van Herk running min: O(1) per pixel instead of
+        // O(r^2), parallel, and exact — min folds are order-independent and its
+        // edge handling is the same replicate-clamp this used to do by hand.
+        let darkmin = {
+            let plane = FloatImage::from_raw(w, h, 1, dark.clone())
+                .expect("dark channel has one value per pixel");
+            let eroded = separable_morphology(&plane, r, f32::min);
+            eroded.as_raw().to_vec()
+        };
 
         // --- Atmospheric light A (global estimate). ---
         // Prefer averaging the RGB of the brightest-darkmin pixels (the haziest, most airlight-dominated
@@ -141,10 +125,20 @@ channels) have no chroma dark channel and pass through unchanged.".to_string(),
         let total = wu * hu;
         // Number of pixels forming the top 0.1% (at least 1).
         let top_n = ((total as f32 * 0.001).round() as usize).max(1);
-        // Collect (darkmin, index) and select the largest `top_n` by darkmin.
+        // Select the largest `top_n` by darkmin. Only the *set* of top pixels
+        // matters — they are averaged, not ranked — so a full O(n log n) sort of
+        // every pixel index is wasted work. `select_nth_unstable_by` partitions
+        // in O(n): everything at or before `top_n - 1` is >= everything after it.
+        // Which of several *equal* darkmin values lands inside the cut was
+        // already unspecified with the previous `sort_unstable_by`, so this
+        // gives up no guarantee that was being relied on.
         let mut order: Vec<usize> = (0..total).collect();
-        // Partial ordering: sort indices by descending darkmin. `sort_unstable_by` is fine here.
-        order.sort_unstable_by(|&a, &b| darkmin[b].partial_cmp(&darkmin[a]).unwrap_or(std::cmp::Ordering::Equal));
+        let cmp_desc = |&a: &usize, &b: &usize| {
+            darkmin[b].partial_cmp(&darkmin[a]).unwrap_or(std::cmp::Ordering::Equal)
+        };
+        if top_n < order.len() {
+            order.select_nth_unstable_by(top_n - 1, cmp_desc);
+        }
 
         let mut a_r;
         let mut a_g;
@@ -174,23 +168,27 @@ channels) have no chroma dark channel and pass through unchanged.".to_string(),
         let a_channels = [a_r, a_g, a_b];
 
         // Luma of the atmospheric light drives the transmission normalisation.
-        let a_luma = (0.2126 * a_r + 0.7152 * a_g + 0.0722 * a_b).max(0.1);
+        let a_luma = (crate::luma::rec709(a_r, a_g, a_b)).max(0.1);
 
         // --- Recover the scene per pixel: J_c = (I_c - A_c)/t + A_c. ---
         let amount_f = amount as f32;
-        for y in 0..hu {
-            for x in 0..wu {
+        // Rewritten in place over the pixel slices: the previous version built a
+        // `to_vec()` copy of every pixel plus a `clone()` of that copy, i.e. two
+        // heap allocations per pixel, and then wrote the result back through a
+        // bounds-checked `put_pixel`.
+        let color_n = color_ch.min(3);
+        result
+            .as_raw_mut()
+            .par_chunks_exact_mut(ch)
+            .zip(darkmin.par_iter())
+            .for_each(|(px, &dm)| {
                 // Transmission: how much of the original scene survives the haze at this pixel.
-                let t = (1.0 - amount_f * 0.95 * (darkmin[y * wu + x] / a_luma)).clamp(0.1, 1.0);
-                let px = result.get_pixel(x as u32, y as u32).to_vec();
-                let mut out = px.clone();
-                for c in 0..color_ch.min(3) {
+                let t = (1.0 - amount_f * 0.95 * (dm / a_luma)).clamp(0.1, 1.0);
+                for c in 0..color_n {
                     // Invert the haze model; J is intentionally left unclamped.
-                    out[c] = (px[c] - a_channels[c]) / t + a_channels[c];
+                    px[c] = (px[c] - a_channels[c]) / t + a_channels[c];
                 }
-                result.put_pixel(x as u32, y as u32, &out);
-            }
-        }
+            });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

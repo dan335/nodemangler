@@ -292,7 +292,7 @@ pub(crate) fn map_default(map: SourceMap, channel: SourceChannel) -> f32 {
         SourceChannel::G => rgba[1],
         SourceChannel::B => rgba[2],
         SourceChannel::A => rgba[3],
-        SourceChannel::Luma => 0.299 * rgba[0] + 0.587 * rgba[1] + 0.114 * rgba[2],
+        SourceChannel::Luma => crate::luma::rec601(rgba[0], rgba[1], rgba[2]),
     }
 }
 
@@ -309,7 +309,7 @@ fn sample_channel(img: &FloatImage, channel: SourceChannel, x: usize, y: usize, 
         SourceChannel::G => if ch >= 3 { px[1] } else { px[0] },
         SourceChannel::B => if ch >= 3 { px[2] } else { px[0] },
         SourceChannel::A => if ch == 2 || ch == 4 { px[ch - 1] } else { 1.0 },
-        SourceChannel::Luma => if ch >= 3 { 0.299 * px[0] + 0.587 * px[1] + 0.114 * px[2] } else { px[0] },
+        SourceChannel::Luma => if ch >= 3 { crate::luma::rec601(px[0], px[1], px[2]) } else { px[0] },
     }
 }
 

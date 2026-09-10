@@ -18,9 +18,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -42,7 +43,7 @@ impl OpImageAdjustmentOrderedDither {
     /// Creates input ports: image, matrix size (2/4/8), and quantization levels.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to quantize via a tiled Bayer threshold matrix."),
             // Matrix size — only 2, 4, or 8 are meaningful; larger values are clamped
             Input::new("matrix size".to_string(), Value::Integer(4), Some(InputSettings::Slider { range: (2.0, 8.0), step_by: Some(2.0), clamp_to_range: true }), None)
@@ -64,17 +65,12 @@ impl OpImageAdjustmentOrderedDither {
     /// Runs the ordered dither filter.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let size_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let levels_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Integer(size) = size_converted.unwrap() else { unreachable!() };
-        let Value::Integer(levels) = levels_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(size) = 1,
+            Integer(levels) = 2,
+        }
 
         // Snap matrix size to the next supported value (2, 4, or 8); anything
         // larger collapses to 8 because our recursion generator tops out there

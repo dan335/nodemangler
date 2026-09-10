@@ -17,9 +17,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -110,43 +111,25 @@ impl OpImageNoiseLeaks {
     /// falloff times the length fade times the per-streak intensity.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let density_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let coverage_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let length_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let length_var_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let thickness_converted = convert_input(inputs, 7, ValueType::Decimal, &mut input_errors);
-        let thickness_var_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
-        let wander_converted = convert_input(inputs, 9, ValueType::Decimal, &mut input_errors);
-        let wander_var_converted = convert_input(inputs, 10, ValueType::Decimal, &mut input_errors);
-        let fade_converted = convert_input(inputs, 11, ValueType::Decimal, &mut input_errors);
-        let fade_var_converted = convert_input(inputs, 12, ValueType::Decimal, &mut input_errors);
-        let intensity_converted = convert_input(inputs, 13, ValueType::Decimal, &mut input_errors);
-        let intensity_var_converted = convert_input(inputs, 14, ValueType::Decimal, &mut input_errors);
-        let alignment_converted = convert_input(inputs, 15, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(density) = density_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(coverage) = coverage_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(length) = length_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(length_variation) = length_var_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(thickness) = thickness_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(thickness_variation) = thickness_var_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(wander) = wander_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(wander_variation) = wander_var_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(fade) = fade_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(fade_variation) = fade_var_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(intensity) = intensity_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(intensity_variation) = intensity_var_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(alignment) = alignment_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut seed) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Decimal(density) = 3,
+            Decimal(coverage) = 4,
+            Decimal(length) = 5,
+            Decimal(length_variation) = 6,
+            Decimal(thickness) = 7,
+            Decimal(thickness_variation) = 8,
+            Decimal(wander) = 9,
+            Decimal(wander_variation) = 10,
+            Decimal(fade) = 11,
+            Decimal(fade_variation) = 12,
+            Decimal(intensity) = 13,
+            Decimal(intensity_variation) = 14,
+            Decimal(alignment) = 15,
+        }
 
         width = width.max(4);
         height = height.max(4);

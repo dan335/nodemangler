@@ -11,9 +11,11 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -33,7 +35,7 @@ impl OpImageAdjustmentColorToMask {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to scan for the target color."),
             Input::new("color".to_string(), Value::Color(Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }), None, None)
                 .with_description("Target color to select; pixels close to this produce mask = 1."),
@@ -53,19 +55,13 @@ impl OpImageAdjustmentColorToMask {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let color_converted = convert_input(inputs, 1, ValueType::Color, &mut input_errors);
-        let tolerance_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let softness_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Color(target) = color_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(tolerance) = tolerance_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(softness) = softness_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Color(target) = 1,
+            Decimal(tolerance) = 2,
+            Decimal(softness) = 3,
+        }
 
         let tolerance = tolerance.clamp(0.0, 1.0);
         let softness = softness.max(0.0);
@@ -78,15 +74,16 @@ impl OpImageAdjustmentColorToMask {
 
         // Precompute the target grayscale equivalent for 1/2-channel inputs,
         // using the same Rec.709 weights used elsewhere in the codebase.
-        let target_luma = 0.2126 * target.r + 0.7152 * target.g + 0.0722 * target.b;
+        let target_luma = crate::luma::rec709(target.r, target.g, target.b);
 
         // sqrt(3) is the maximum Euclidean distance in the unit RGB cube,
         // so dividing by it normalises the distance into [0, 1].
         let norm = 3.0_f32.sqrt();
 
-        for y in 0..h {
-            for x in 0..w {
-                let px = data.get_pixel(x, y);
+        output
+            .par_pixels_mut()
+            .zip(data.par_pixels())
+            .for_each(|(dst, px)| {
                 let dist = if ch >= 3 {
                     let dr = px[0] - target.r;
                     let dg = px[1] - target.g;
@@ -97,10 +94,8 @@ impl OpImageAdjustmentColorToMask {
                     (px[0] - target_luma).abs()
                 };
 
-                let mask = smooth_select(dist, tolerance, outer);
-                output.put_pixel(x, y, &[mask]);
-            }
-        }
+                dst[0] = smooth_select(dist, tolerance, outer);
+            });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

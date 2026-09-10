@@ -5,10 +5,10 @@
 
 use crate::float_image::FloatImage;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -26,13 +26,13 @@ impl OpImagePbrHeightBlend {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("base color".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("base color")
                 .with_description("Albedo/color image of the base material layer."),
-            Input::new("base height".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("base height")
                 .with_description("Height map describing the surface of the base material."),
-            Input::new("overlay color".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("overlay color")
                 .with_description("Albedo/color image of the material layered on top."),
-            Input::new("overlay height".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("overlay height")
                 .with_description("Height map describing the surface of the overlay material."),
             Input::new("blend amount".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Shifts how much of the overlay shows through, 0 all base to 1 all overlay."),
@@ -53,23 +53,15 @@ impl OpImagePbrHeightBlend {
     /// Blends two materials using height-based masking and outputs both color and height.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let base_color_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let base_height_converted = convert_input(inputs, 1, ValueType::Image, &mut input_errors);
-        let overlay_color_converted = convert_input(inputs, 2, ValueType::Image, &mut input_errors);
-        let overlay_height_converted = convert_input(inputs, 3, ValueType::Image, &mut input_errors);
-        let blend_amount_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let contrast_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data: base_color_data, change_id: _ } = base_color_converted.unwrap() else { unreachable!() };
-        let Value::Image { data: base_height_data, change_id: _ } = base_height_converted.unwrap() else { unreachable!() };
-        let Value::Image { data: overlay_color_data, change_id: _ } = overlay_color_converted.unwrap() else { unreachable!() };
-        let Value::Image { data: overlay_height_data, change_id: _ } = overlay_height_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(blend_amount) = blend_amount_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(contrast) = contrast_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(base_color_data) = 0,
+            Image(base_height_data) = 1,
+            Image(overlay_color_data) = 2,
+            Image(overlay_height_data) = 3,
+            Decimal(blend_amount) = 4,
+            Decimal(contrast) = 5,
+        }
 
         let width = base_color_data.width();
         let height = base_color_data.height();
@@ -81,7 +73,7 @@ impl OpImagePbrHeightBlend {
         let lum = |img: &FloatImage, x: u32, y: u32| -> f32 {
             let px = img.get_pixel(x.min(img.width() - 1), y.min(img.height() - 1));
             let ch = img.channels() as usize;
-            if ch >= 3 { 0.2126 * px[0] + 0.7152 * px[1] + 0.0722 * px[2] } else { px[0] }
+            if ch >= 3 { crate::luma::rec709(px[0], px[1], px[2]) } else { px[0] }
         };
 
         // Helper: get RGBA from any channel count, padding with defaults

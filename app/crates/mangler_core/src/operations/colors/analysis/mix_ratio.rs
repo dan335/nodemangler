@@ -7,9 +7,10 @@
 use crate::color::Color;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -54,20 +55,13 @@ impl OpColorAnalysisMixRatio {
     /// average of all non-degenerate channel results, clamped to 0–1.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
         // Convert all three color inputs.
-        let src_converted = convert_input(inputs, 0, ValueType::Color, &mut input_errors);
-        let tgt_converted = convert_input(inputs, 1, ValueType::Color, &mut input_errors);
-        let mix_converted = convert_input(inputs, 2, ValueType::Color, &mut input_errors);
-
-        // Return early on conversion errors.
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // Unwrap the converted values.
-        let Value::Color(source) = src_converted.unwrap() else { unreachable!() };
-        let Value::Color(target) = tgt_converted.unwrap() else { unreachable!() };
-        let Value::Color(mixed) = mix_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Color(source) = 0,
+            Color(target) = 1,
+            Color(mixed) = 2,
+        }
 
         // Compute per-channel reverse-lerp for each of R, G, B.
         let channels = [

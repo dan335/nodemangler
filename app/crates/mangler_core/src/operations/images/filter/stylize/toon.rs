@@ -22,10 +22,10 @@
 use crate::color::Color;
 use crate::float_image::FloatImage;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::operations::images::filter::smoothing::guided::box_blur_2d;
 use crate::output::Output;
 use crate::value::Value;
@@ -51,7 +51,7 @@ impl OpImageAdjustmentToon {
     /// Creates the input ports for the toon operation.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to cel-shade with quantized lightness bands."),
             // number of lightness bands. 4 = classic shadow / midtone / highlight / specular
             Input::new("levels".to_string(), Value::Integer(4), Some(InputSettings::DragValue { speed: None, clamp: Some((2.0, 8.0)) }), None)
@@ -85,26 +85,15 @@ impl OpImageAdjustmentToon {
     /// Executes the toon filter pipeline.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let levels_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let smoothing_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let thickness_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
-        let edge_color_converted = convert_input(inputs, 4, ValueType::Color, &mut input_errors);
-        let edge_strength_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Integer(levels) = levels_converted.unwrap() else { unreachable!() };
-        let Value::Integer(smoothing) = smoothing_converted.unwrap() else { unreachable!() };
-        let Value::Integer(edge_thickness) = thickness_converted.unwrap() else { unreachable!() };
-        let Value::Color(edge_color) = edge_color_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(edge_strength) = edge_strength_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(levels) = 1,
+            Integer(smoothing) = 2,
+            Integer(edge_thickness) = 3,
+            Color(edge_color) = 4,
+            Decimal(edge_strength) = 5,
+        }
 
         let levels = (levels.max(2)) as f32;
         let steps = levels - 1.0;
@@ -243,7 +232,7 @@ impl OpImageAdjustmentToon {
                     out_row[x * ch + 1] = quantized[1][i] * (1.0 - blend) + edge_g * blend;
                     out_row[x * ch + 2] = quantized[2][i] * (1.0 - blend) + edge_b * blend;
                 } else {
-                    let edge_lum = 0.2126 * edge_r + 0.7152 * edge_g + 0.0722 * edge_b;
+                    let edge_lum = crate::luma::rec709(edge_r, edge_g, edge_b);
                     out_row[x * ch] = quantized[0][i] * (1.0 - blend) + edge_lum * blend;
                 }
                 if has_alpha {

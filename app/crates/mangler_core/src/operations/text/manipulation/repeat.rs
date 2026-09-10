@@ -4,9 +4,10 @@
 
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -48,15 +49,11 @@ impl OpTextRepeat {
     /// Converts the inputs and returns the text repeated `count` times.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let text_converted = convert_input(inputs, 0, ValueType::Text, &mut input_errors);
-        let count_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Text(text) = text_converted.unwrap() else { unreachable!() };
-        let Value::Integer(count) = count_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Text(text) = 0,
+            Integer(count) = 1,
+        }
 
         // `count`'s DragValue clamp (0..10000) only applies to manual entry;
         // a value arriving from a wired node can be arbitrarily large, and

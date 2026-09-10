@@ -7,9 +7,10 @@
 use crate::color::Color;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -52,23 +53,16 @@ impl OpColorAnalysisContrastRatio {
     /// Executes the WCAG contrast ratio computation between two colors.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // Convert both color inputs.
-        let a_converted = convert_input(inputs, 0, ValueType::Color, &mut input_errors);
-        let b_converted = convert_input(inputs, 1, ValueType::Color, &mut input_errors);
-
-        // Return early if any input failed conversion.
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // Unwrap the converted values.
-        let Value::Color(a) = a_converted.unwrap() else { unreachable!() };
-        let Value::Color(b) = b_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Color(a) = 0,
+            Color(b) = 1,
+        }
 
         // WCAG relative luminance using BT.709 coefficients on linear RGB channels.
         let relative_luminance = |c: &Color| -> f32 {
             let lin = c.to_rgb_linear();
-            (0.2126 * lin.0 + 0.7152 * lin.1 + 0.0722 * lin.2).clamp(0.0, 1.0)
+            (crate::luma::rec709(lin.0, lin.1, lin.2)).clamp(0.0, 1.0)
         };
 
         // l1 is the lighter color (higher luminance), l2 is the darker one.

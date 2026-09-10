@@ -356,6 +356,43 @@ impl FloatImage {
         })
     }
 
+    /// Parallel counterpart to [`Self::pixels_mut`]: yields every pixel as a
+    /// `&mut [f32]` of `channels` values, spread across rayon's thread pool.
+    ///
+    /// The per-pixel adjustment operations (levels, curves, tone mapping,
+    /// colour grading, …) are pixel-local by construction — each output pixel
+    /// depends only on its own input pixel and the node's scalar settings — so
+    /// they are exactly the shape this fits. Prefer it to a serial
+    /// `pixels_mut()` loop in any operation that touches every pixel: at
+    /// 26 megapixels a serial pass leaves every core but one idle.
+    ///
+    /// Reduction order is irrelevant here (each pixel is written independently),
+    /// so results are bit-identical to the serial loop.
+    pub fn par_pixels_mut(&mut self) -> impl rayon::iter::IndexedParallelIterator<Item = &mut [f32]> {
+        use rayon::prelude::*;
+        self.data.par_chunks_exact_mut(self.channels as usize)
+    }
+
+    /// Parallel counterpart to [`Self::enumerate_pixels_mut`], yielding
+    /// `(x, y, pixel_slice)`. See [`Self::par_pixels_mut`] for when to use it.
+    pub fn par_enumerate_pixels_mut(
+        &mut self,
+    ) -> impl rayon::iter::IndexedParallelIterator<Item = (u32, u32, &mut [f32])> {
+        use rayon::prelude::*;
+        let w = self.width;
+        let ch = self.channels as usize;
+        self.data
+            .par_chunks_exact_mut(ch)
+            .enumerate()
+            .map(move |(i, px)| ((i as u32) % w, (i as u32) / w, px))
+    }
+
+    /// Parallel counterpart to [`Self::pixels`].
+    pub fn par_pixels(&self) -> impl rayon::iter::IndexedParallelIterator<Item = &[f32]> {
+        use rayon::prelude::*;
+        self.data.par_chunks_exact(self.channels as usize)
+    }
+
     /// Samples the image at fractional coordinates using bilinear interpolation.
     ///
     /// Coordinates outside the image are clamped to the nearest edge pixel.

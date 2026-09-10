@@ -8,7 +8,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use crate::float_image::FloatImage;
@@ -44,7 +44,7 @@ impl OpImageAdjustmentConvolution {
     /// Creates input ports: image, nine kernel weights, divisor, and bias.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to convolve."),
             weight_input("k00", 0.0), weight_input("k01", 0.0), weight_input("k02", 0.0),
             weight_input("k10", 0.0), weight_input("k11", 1.0), weight_input("k12", 0.0),

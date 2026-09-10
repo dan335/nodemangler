@@ -16,13 +16,14 @@ use crate::color::color_spaces::rgb_linear::{linear_to_nonlinear_srgb, nonlinear
 use crate::color::Color;
 use crate::color::color_spaces::xyz::{RGB2XYZ_MATRIX, XYZ2RGB_MATRIX};
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use glam::f32::{Mat3, Vec3};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -181,7 +182,7 @@ impl OpImageAdjustmentWhiteBalance {
     /// Creates input ports: image, temperature (Kelvin), and tint.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source colour image to white-balance."),
             Input::new("temperature".to_string(), Value::Decimal(NEUTRAL_TEMPERATURE), Some(InputSettings::Slider { range: (2000.0, 12000.0), step_by: Some(50.0), clamp_to_range: true }), None)
                 .with_description("Colour temperature in Kelvin; above 6500 warms the image, below cools it."),
@@ -204,19 +205,13 @@ impl OpImageAdjustmentWhiteBalance {
     /// applies it to every pixel in linear RGB.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let temp_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let tint_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let reference_converted = convert_input(inputs, 3, ValueType::Color, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(temperature) = temp_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(tint) = tint_converted.unwrap() else { unreachable!() };
-        let Value::Color(reference) = reference_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(temperature) = 1,
+            Decimal(tint) = 2,
+            Color(reference) = 3,
+        }
 
         let reference_matrix = neutral_reference_matrix(reference);
         let temperature_neutral =
@@ -240,7 +235,7 @@ impl OpImageAdjustmentWhiteBalance {
         }
 
         let mut result = (*data).clone();
-        for pixel in result.pixels_mut() {
+        result.par_pixels_mut().for_each(|pixel| {
             let linear = Vec3::new(
                 nonlinear_to_linear_rgb(pixel[0]),
                 nonlinear_to_linear_rgb(pixel[1]),
@@ -251,7 +246,7 @@ impl OpImageAdjustmentWhiteBalance {
             pixel[1] = linear_to_nonlinear_srgb(balanced.y).clamp(0.0, 1.0);
             pixel[2] = linear_to_nonlinear_srgb(balanced.z).clamp(0.0, 1.0);
             // alpha (and any further channels) untouched
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

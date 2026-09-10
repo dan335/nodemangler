@@ -10,15 +10,16 @@
 //! Lightroom's Basic panel sliders, not a calibrated tone-mapping model.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::operations::images::blur::blur::gaussian_blur_planar;
 use crate::operations::numbers::image::luma_values;
 use super::common::smoothstep;
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -50,7 +51,7 @@ impl OpImageAdjustmentShadowsHighlights {
     /// Creates the input ports: image, four tone sliders, and mask radius.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to recover shadow/highlight detail in."),
             slider("shadows", "Lifts dark regions (masked by local brightness); negative crushes them further."),
             slider("highlights", "Recovers/compresses bright regions (masked by local brightness); negative darkens, positive brightens."),
@@ -72,23 +73,15 @@ impl OpImageAdjustmentShadowsHighlights {
     /// Executes the shadows/highlights recovery.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let shadows_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let highlights_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let whites_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let blacks_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let radius_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(shadows) = shadows_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(highlights) = highlights_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(whites) = whites_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(blacks) = blacks_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(radius) = radius_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(shadows) = 1,
+            Decimal(highlights) = 2,
+            Decimal(whites) = 3,
+            Decimal(blacks) = 4,
+            Decimal(radius) = 5,
+        }
 
         let shadows = shadows as f32;
         let highlights = highlights as f32;
@@ -106,19 +99,18 @@ impl OpImageAdjustmentShadowsHighlights {
         let mut result = (*data).clone();
         let (w, h) = result.dimensions();
         let ch = result.channels() as usize;
-        let wu = w as usize;
 
         let sigma = scale_to_resolution(radius as f32, w, h).max(0.0);
 
         let luma = luma_values(&result);
         let mask = gaussian_blur_planar(&luma, w, h, sigma);
 
-        for y in 0..h {
-            for x in 0..w {
-                let i = y as usize * wu + x as usize;
-                let l0 = luma[i];
-                let m = mask[i];
-
+        let color_ch = if ch == 4 { 3 } else { ch };
+        result
+            .par_pixels_mut()
+            .zip(luma.par_iter())
+            .zip(mask.par_iter())
+            .for_each(|((px, &l0), &m)| {
                 let mut l = l0;
                 // Shadow lift, gated by the "this region is dark" mask weight.
                 let w_sh = 1.0 - smoothstep(0.0, 0.5, m);
@@ -131,11 +123,9 @@ impl OpImageAdjustmentShadowsHighlights {
                 l += blacks * (1.0 - smoothstep(0.0, 0.3, l)) * 0.3;
                 let new_luma = l;
 
-                let px = result.get_pixel_mut(x, y);
                 if ch >= 3 {
                     // Preserve hue/chroma: scale colour channels by the luma ratio.
                     let scale = if l0.abs() > 1e-5 { new_luma / l0 } else { 1.0 };
-                    let color_ch = if ch == 4 { 3 } else { ch };
                     for c in 0..color_ch {
                         px[c] = (px[c] * scale).clamp(0.0, 1.0);
                     }
@@ -144,8 +134,7 @@ impl OpImageAdjustmentShadowsHighlights {
                     // Single/luma+alpha image: channel 0 IS the luma.
                     px[0] = new_luma.clamp(0.0, 1.0);
                 }
-            }
-        }
+            });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

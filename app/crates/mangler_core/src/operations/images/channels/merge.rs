@@ -6,10 +6,10 @@
 
 use crate::float_image::FloatImage;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -51,7 +51,7 @@ impl<'a> SourceRow<'a> {
     fn value(&self, x: usize) -> f32 {
         if x < self.in_w {
             let px = &self.row[x * self.ch..];
-            if self.luma { 0.299 * px[0] + 0.587 * px[1] + 0.114 * px[2] } else { px[0] }
+            if self.luma { crate::luma::rec601(px[0], px[1], px[2]) } else { px[0] }
         } else {
             self.fill
         }
@@ -73,13 +73,13 @@ impl OpImageChannelMerge {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("red".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("red")
                 .with_description("Image whose luminance becomes the red channel of the output."),
-            Input::new("green".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("green")
                 .with_description("Image whose luminance becomes the green channel of the output."),
-            Input::new("blue".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("blue")
                 .with_description("Image whose luminance becomes the blue channel of the output."),
-            Input::new("alpha".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("alpha")
                 .with_description("Image whose luminance becomes the alpha channel of the output."),
         ]
     }
@@ -92,19 +92,13 @@ impl OpImageChannelMerge {
     /// Merges four images by taking each one's first channel (or luminance) as an RGBA component.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let red_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let green_converted = convert_input(inputs, 1, ValueType::Image, &mut input_errors);
-        let blue_converted = convert_input(inputs, 2, ValueType::Image, &mut input_errors);
-        let alpha_converted = convert_input(inputs, 3, ValueType::Image, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image{data:red_data, change_id:_} = red_converted.unwrap() else { unreachable!() };
-        let Value::Image{data:green_data, change_id:_} = green_converted.unwrap() else { unreachable!() };
-        let Value::Image{data:blue_data, change_id:_} = blue_converted.unwrap() else { unreachable!() };
-        let Value::Image{data:alpha_data, change_id:_} = alpha_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(red_data) = 0,
+            Image(green_data) = 1,
+            Image(blue_data) = 2,
+            Image(alpha_data) = 3,
+        }
 
         // Use the red channel's dimensions as the output size
         let (width, height) = red_data.dimensions();

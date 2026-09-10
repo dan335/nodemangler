@@ -7,9 +7,10 @@
 use crate::color::Color;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -51,18 +52,11 @@ impl OpColorGenerationToHex {
     /// Produces `#RRGGBB` when `include alpha` is false, or `#RRGGBBAA` when true.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let color_converted = convert_input(inputs, 0, ValueType::Color, &mut input_errors);
-        let include_alpha_converted = convert_input(inputs, 1, ValueType::Bool, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Color(color) = color_converted.unwrap() else { unreachable!() };
-        let Value::Bool(include_alpha) = include_alpha_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Color(color) = 0,
+            Bool(include_alpha) = 1,
+        }
 
         // Convert float channels to u8 by rounding
         let r = (color.r * 255.0).round() as u8;

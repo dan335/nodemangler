@@ -9,7 +9,7 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use crate::float_image::FloatImage;
@@ -77,7 +77,7 @@ impl OpImageTransformPerspective {
     /// Creates input ports: image plus eight per-corner X/Y offsets.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to warp."),
             offset_input("top-left x", "Horizontal offset of the top-left corner."),
             offset_input("top-left y", "Vertical offset of the top-left corner."),

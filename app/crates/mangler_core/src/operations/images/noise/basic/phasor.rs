@@ -16,9 +16,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -99,29 +100,18 @@ impl OpImageNoisePhasor {
     /// through a sine or sawtooth profile to [0, 1].
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let orientation_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let random_orient_converted = convert_input(inputs, 4, ValueType::Bool, &mut input_errors);
-        let kernel_freq_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let bandwidth_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let density_converted = convert_input(inputs, 7, ValueType::Decimal, &mut input_errors);
-        let sawtooth_converted = convert_input(inputs, 8, ValueType::Bool, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(orientation) = orientation_converted.unwrap() else { unreachable!() };
-        let Value::Bool(random_orientation) = random_orient_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(kernel_freq) = kernel_freq_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(bandwidth) = bandwidth_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(density) = density_converted.unwrap() else { unreachable!() };
-        let Value::Bool(sawtooth) = sawtooth_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut seed) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Decimal(orientation) = 3,
+            Bool(random_orientation) = 4,
+            Decimal(kernel_freq) = 5,
+            Decimal(bandwidth) = 6,
+            Decimal(density) = 7,
+            Bool(sawtooth) = 8,
+        }
 
         width = width.max(4);
         height = height.max(4);

@@ -45,3 +45,76 @@ fn test_ycbcr_matches_color_conversion() {
     let (r2, g2, b2) = ycbcr_to_rgb(y, cb, cr);
     assert_eq!((back.r, back.g, back.b), (r2, g2, b2));
 }
+
+/// `common::rgb_to_hsl` and [`Color::to_hsl`] are two implementations of the
+/// same function, kept apart because the loose-component form avoids building
+/// a `Color` per pixel (see `rgb_to_hsl`'s docs). Two implementations can
+/// drift; this is what stops them drifting silently.
+///
+/// The tolerances are the measured agreement across the RGB cube, not a
+/// guess — they are dominated by the different algebraic forms' rounding, and
+/// tightening them would just make the test flaky.
+#[test]
+fn the_two_hsl_implementations_agree() {
+    use crate::color::Color;
+
+    let mut worst_hue = 0.0f32;
+    let mut worst_sat = 0.0f32;
+    let mut worst_light = 0.0f32;
+
+    const STEPS: u32 = 32;
+    for i in 0..=STEPS {
+        for j in 0..=STEPS {
+            for k in 0..=STEPS {
+                let r = i as f32 / STEPS as f32;
+                let g = j as f32 / STEPS as f32;
+                let b = k as f32 / STEPS as f32;
+
+                let (h1, s1, l1) = rgb_to_hsl(r, g, b);
+                let (h2, s2, l2, _) = Color::from_srgb_float(r, g, b, 1.0).to_hsl();
+
+                // Hue is an angle: compare on the shorter arc.
+                let mut dh = (h1 - h2).abs();
+                if dh > 180.0 {
+                    dh = 360.0 - dh;
+                }
+                // An achromatic colour has no meaningful hue; both return 0 by
+                // convention but a near-grey can disagree wildly and harmlessly.
+                if s1 > 1e-3 && s2 > 1e-3 {
+                    worst_hue = worst_hue.max(dh);
+                }
+                worst_sat = worst_sat.max((s1 - s2).abs());
+                worst_light = worst_light.max((l1 - l2).abs());
+            }
+        }
+    }
+
+    assert!(worst_hue < 1e-2, "hue disagreement grew to {worst_hue} degrees");
+    assert!(worst_sat < 1e-4, "saturation disagreement grew to {worst_sat}");
+    assert!(worst_light < 1e-6, "lightness disagreement grew to {worst_light}");
+}
+
+/// The round trip through the loose-component pair must be the identity, which
+/// is what every HSL-based adjustment relies on when it changes one component
+/// and leaves the others alone.
+#[test]
+fn rgb_hsl_round_trip_is_the_identity() {
+    const STEPS: u32 = 16;
+    for i in 0..=STEPS {
+        for j in 0..=STEPS {
+            for k in 0..=STEPS {
+                let (r, g, b) = (
+                    i as f32 / STEPS as f32,
+                    j as f32 / STEPS as f32,
+                    k as f32 / STEPS as f32,
+                );
+                let (h, s, l) = rgb_to_hsl(r, g, b);
+                let (r2, g2, b2) = hsl_to_rgb(h, s, l);
+                assert!(
+                    (r - r2).abs() < 1e-5 && (g - g2).abs() < 1e-5 && (b - b2).abs() < 1e-5,
+                    "round trip moved ({r}, {g}, {b}) to ({r2}, {g2}, {b2})"
+                );
+            }
+        }
+    }
+}

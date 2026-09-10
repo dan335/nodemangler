@@ -16,9 +16,10 @@ use crate::get_id;
 use crate::operations::images::blur::blur::gaussian_blur_planar;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -41,7 +42,7 @@ impl OpImageAdjustmentCanny {
     /// thresholds for hysteresis.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image whose luminance is analyzed for edges."),
             // sigma for the pre-smoothing Gaussian
             Input::new("sigma".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 5.0), step_by: Some(0.1), clamp_to_range: true }), None)
@@ -66,19 +67,13 @@ impl OpImageAdjustmentCanny {
     /// Runs Canny edge detection.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let sigma_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let low_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let high_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(sigma) = sigma_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(low) = low_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(high) = high_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(sigma) = 1,
+            Decimal(low) = 2,
+            Decimal(high) = 3,
+        }
 
         // Ensure high >= low so hysteresis has a sensible band
         let low = low.clamp(0.0, 1.0);
@@ -100,7 +95,7 @@ impl OpImageAdjustmentCanny {
             for x in 0..width {
                 let p = data.get_pixel(x, y);
                 lum[(y * width + x) as usize] = if ch >= 3 {
-                    0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]
+                    crate::luma::rec709(p[0], p[1], p[2])
                 } else {
                     p[0]
                 };

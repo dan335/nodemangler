@@ -72,13 +72,13 @@ impl OpImageInputFromFolder {
     /// Creates the input definitions: folder selection, index/pin, and raw develop controls.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("folder".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path {
+            Input::new("folder".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path(Box::new(crate::input::PathSettings {
                 extension_filter: vec![],
                 set_directory: None,
                 set_file_name: None,
                 set_title: Some("image folder".to_string()),
                 file_dialog_type: crate::input::FileDialogType::PickFolder,
-            }), None)
+            }))), None)
                 .with_description("Folder containing the images to step through. Relative paths resolve against the graph's own folder."),
             Input::new("index".to_string(), Value::Integer(0), Some(InputSettings::DragValue { clamp: Some((0.0, 100000.0)), speed: None }), None)
                 .with_description("Which image to load (0-based), clamped to the number of files found. The batch run steps this automatically."),

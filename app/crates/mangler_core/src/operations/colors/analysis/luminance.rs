@@ -7,9 +7,10 @@
 use crate::color::Color;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -46,23 +47,18 @@ impl OpColorAnalysisLuminance {
     /// Executes the luminance computation using BT.709 coefficients on linear RGB.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
         // Convert the input color.
-        let color_converted = convert_input(inputs, 0, ValueType::Color, &mut input_errors);
-
-        // Return early if input conversion failed.
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // Unwrap the converted value.
-        let Value::Color(color) = color_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Color(color) = 0,
+        }
 
         // Convert to linear RGB for physically accurate luminance weighting.
         // to_rgb_linear() returns (r_lin, g_lin, b_lin, alpha).
         let lin = color.to_rgb_linear();
 
         // BT.709 relative luminance: weighted sum of linearised RGB channels.
-        let luminance = (0.2126 * lin.0 + 0.7152 * lin.1 + 0.0722 * lin.2).clamp(0.0, 1.0);
+        let luminance = (crate::luma::rec709(lin.0, lin.1, lin.2)).clamp(0.0, 1.0);
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

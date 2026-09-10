@@ -6,9 +6,10 @@
 
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -62,15 +63,11 @@ impl OpNumberMathGcd {
     /// Executes the GCD computation on the two integer inputs.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let a_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let b_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(a) = a_converted.unwrap() else { unreachable!() };
-        let Value::Integer(b) = b_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(a) = 0,
+            Integer(b) = 1,
+        }
 
         let result = if a == 0 && b == 0 {
             0

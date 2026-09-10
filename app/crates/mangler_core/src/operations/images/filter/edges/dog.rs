@@ -19,9 +19,10 @@ use crate::operations::images::blur::blur::gaussian_blur_planar;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -45,7 +46,7 @@ impl OpImageAdjustmentDog {
     /// and a toggle between plain DoG and XDoG.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image whose luminance is stylized into a line drawing."),
             // small sigma (inner Gaussian) — controls line thickness
             Input::new("sigma".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.1, 10.0), step_by: Some(0.1), clamp_to_range: true }), None)
@@ -79,26 +80,16 @@ impl OpImageAdjustmentDog {
     /// Runs the DoG / XDoG filter on the image's luminance channel.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let sigma_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let k_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let p_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let eps_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let phi_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let xdog_converted = convert_input(inputs, 6, ValueType::Bool, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(sigma) = sigma_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(k) = k_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(p) = p_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(eps) = eps_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(phi) = phi_converted.unwrap() else { unreachable!() };
-        let Value::Bool(use_xdog) = xdog_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(sigma) = 1,
+            Decimal(k) = 2,
+            Decimal(p) = 3,
+            Decimal(eps) = 4,
+            Decimal(phi) = 5,
+            Bool(use_xdog) = 6,
+        }
 
         let (width, height) = data.dimensions();
         let ch = data.channels() as usize;
@@ -114,7 +105,7 @@ impl OpImageAdjustmentDog {
             for x in 0..width {
                 let p = data.get_pixel(x, y);
                 let l = if ch >= 3 {
-                    0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]
+                    crate::luma::rec709(p[0], p[1], p[2])
                 } else {
                     p[0]
                 };

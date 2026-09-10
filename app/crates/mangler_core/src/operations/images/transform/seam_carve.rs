@@ -10,11 +10,12 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
+use crate::convert_inputs;
 use crate::operations::{
-    convert_input, default_image, OperationError, OperationResponse, OutputResponse,
+    default_image, OperationError, OperationResponse, OutputResponse,
 };
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -99,31 +100,13 @@ impl OpImageTransformSeamCarve {
     /// and returns the resized image along with its actual dimensions.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
         // Convert inputs to expected types
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-
-        // Return early if any input failed conversion
-        if !input_errors.is_empty() {
-            return Err(OperationError {
-                input_errors,
-                node_error: None,
-            });
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
         }
-
-        // Extract values (safe to unwrap after error check)
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Integer(mut width) = width_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Integer(mut height) = height_converted.unwrap() else {
-            unreachable!()
-        };
 
         // Ensure minimum dimensions of 1x1
         width = width.max(1);

@@ -12,9 +12,10 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::transform::transform::sample_bilinear;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{EdgeMode, Value, ValueType};
+use crate::value::{EdgeMode, Value};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -39,7 +40,7 @@ impl OpImageTransformChromaticAberration {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to add or correct fringing on."),
             Input::new("red cyan".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None)
                 .with_description("Radial scale of the red channel; positive spreads red outward (fringe), negative pulls it inward (correction)."),
@@ -59,19 +60,13 @@ impl OpImageTransformChromaticAberration {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let rc_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let by_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let edge_converted = convert_input(inputs, 3, ValueType::EdgeMode, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(red_cyan) = rc_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(blue_yellow) = by_converted.unwrap() else { unreachable!() };
-        let Value::EdgeMode(edge) = edge_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(red_cyan) = 1,
+            Decimal(blue_yellow) = 2,
+            EdgeMode(edge) = 3,
+        }
 
         let nch = data.channels() as usize;
 

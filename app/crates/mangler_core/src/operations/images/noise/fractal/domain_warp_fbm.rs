@@ -13,9 +13,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -114,32 +115,18 @@ impl OpImageNoiseDomainWarpFbm {
     /// 4. Normalizes and gamma-corrects the result
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // Convert inputs
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let octaves_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
-        let frequency_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let lacunarity_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let persistence_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let warp_iterations_converted = convert_input(inputs, 7, ValueType::Integer, &mut input_errors);
-        let warp_strength_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
-
-        // Return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // Get values
-        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Integer(octaves) = octaves_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(frequency) = frequency_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(lacunarity) = lacunarity_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(persistence) = persistence_converted.unwrap() else { unreachable!() };
-        let Value::Integer(warp_iterations) = warp_iterations_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(warp_strength) = warp_strength_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut seed) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Integer(octaves) = 3,
+            Decimal(frequency) = 4,
+            Decimal(lacunarity) = 5,
+            Decimal(persistence) = 6,
+            Integer(warp_iterations) = 7,
+            Decimal(warp_strength) = 8,
+        }
 
         // Clamp values
         width = width.max(1);

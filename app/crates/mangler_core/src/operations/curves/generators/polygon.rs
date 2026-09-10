@@ -8,9 +8,10 @@ use crate::curve::Curve;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::curves::common::linear_curve;
-use crate::operations::{convert_input, OperationError, OperationResponse, OutputResponse};
+use crate::convert_inputs;
+use crate::operations::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -73,23 +74,14 @@ impl OpCurveGeneratorPolygon {
     /// Generates the polygon curve from the given inputs.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let cx_converted = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
-        let cy_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let radius_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let sides_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
-        let rotation_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Decimal(cx) = 0,
+            Decimal(cy) = 1,
+            Decimal(radius) = 2,
+            Integer(sides) = 3,
+            Decimal(rotation) = 4,
         }
-
-        let Value::Decimal(cx) = cx_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(cy) = cy_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(radius) = radius_converted.unwrap() else { unreachable!() };
-        let Value::Integer(sides) = sides_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(rotation) = rotation_converted.unwrap() else { unreachable!() };
 
         let radius = (radius as f64).max(0.001);
         let sides = sides.clamp(3, 64) as usize;

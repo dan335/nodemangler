@@ -8,9 +8,10 @@ use crate::curve::Curve;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
 use crate::operations::curves::common::flatten_f64;
-use crate::operations::{convert_input, OperationError, OperationResponse, OutputResponse};
+use crate::convert_inputs;
+use crate::operations::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -87,13 +88,10 @@ impl OpNumberCurveCentroid {
     /// Executes the centroid computation.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let curve_converted = convert_input(inputs, 0, ValueType::Curve, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Curve(curve) = curve_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Curve(curve) = 0,
+        }
 
         let poly = flatten_f64(&curve, 48);
         let [cx, cy] = weighted_centroid(&poly);

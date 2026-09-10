@@ -25,10 +25,10 @@
 
 use crate::float_image::FloatImage;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::operations::images::filter::smoothing::guided::box_blur_2d;
 use crate::output::Output;
 use crate::value::Value;
@@ -59,7 +59,7 @@ impl OpImageAdjustmentAnisotropicKuwahara {
     /// Creates the input ports.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to stylize with edge-following painterly smoothing."),
             // base sampling radius — neighborhood is (2r+1) x (2r+1) before the elliptical warp
             Input::new("radius".to_string(), Value::Integer(4), Some(InputSettings::Slider { range: (2.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
@@ -88,22 +88,13 @@ impl OpImageAdjustmentAnisotropicKuwahara {
     /// Executes the anisotropic Kuwahara filter.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let radius_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let sharpness_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let alpha_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(sharpness) = sharpness_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(alpha) = alpha_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(radius) = 1,
+            Decimal(sharpness) = 2,
+            Decimal(alpha) = 3,
+        }
 
         let (width, height) = data.dimensions();
         // Radius is authored in reference pixels (at 1024px) and scaled to the actual image.
@@ -125,7 +116,7 @@ impl OpImageAdjustmentAnisotropicKuwahara {
             (0..w).map(move |x| {
                 let p = data_ref.get_pixel(x as u32, y as u32);
                 if color_ch >= 3 {
-                    0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]
+                    crate::luma::rec709(p[0], p[1], p[2])
                 } else {
                     p[0]
                 }
@@ -312,7 +303,7 @@ impl OpImageAdjustmentAnisotropicKuwahara {
 
                         // luminance of the sampled pixel for variance bookkeeping
                         let s_lum = if color_ch >= 3 {
-                            0.2126 * sample[0] + 0.7152 * sample[1] + 0.0722 * sample[2]
+                            crate::luma::rec709(sample[0], sample[1], sample[2])
                         } else {
                             sample[0]
                         };

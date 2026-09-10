@@ -7,17 +7,9 @@
 
 use noise::permutationtable::{PermutationTable, NoiseHasher};
 
-/// Linearly interpolate between two values.
-#[inline(always)]
-fn lerp(a: f64, b: f64, t: f64) -> f64 {
-    a + t * (b - a)
-}
 
-/// Quintic smoothstep curve (6t^5 - 15t^4 + 10t^3) for smooth interpolation.
-#[inline(always)]
-fn quintic(t: f64) -> f64 {
-    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
-}
+// Shared with every other noise generator via `crate::math`.
+use crate::math::{lerp_f64 as lerp, quintic};
 
 /// Periodic 2D Perlin noise. Same algorithm as the noise crate's `perlin_2d`
 /// but wraps lattice corners with `rem_euclid(period)` before hashing, so the

@@ -7,9 +7,10 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::tone_curve::{anti_diagonal_tone_curve, sample_lut, tone_curve_lut, TONE_LUT_SIZE};
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -54,23 +55,15 @@ impl OpImageShapePyramid {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let w_c = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let h_c = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let size_c = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let steps_c = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
-        let rot_c = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let profile_c = convert_input(inputs, 5, ValueType::Curve, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(mut width) = w_c.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = h_c.unwrap() else { unreachable!() };
-        let Value::Decimal(size) = size_c.unwrap() else { unreachable!() };
-        let Value::Integer(steps) = steps_c.unwrap() else { unreachable!() };
-        let Value::Decimal(rotation) = rot_c.unwrap() else { unreachable!() };
-        let Value::Curve(profile) = profile_c.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut width) = 0,
+            Integer(mut height) = 1,
+            Decimal(size) = 2,
+            Integer(steps) = 3,
+            Decimal(rotation) = 4,
+            Curve(profile) = 5,
+        }
 
         width = width.max(1);
         height = height.max(1);

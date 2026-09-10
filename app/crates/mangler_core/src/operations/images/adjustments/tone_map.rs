@@ -15,13 +15,15 @@
 //! - **Drago** — exposure + white point + bias
 
 use crate::get_id;
-use crate::value::{ToneMapOperator, ValueType};
+use crate::value::ToneMapOperator;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::operations::images::adjustments::common::smoothstep;
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -38,10 +40,6 @@ const DEFAULT_KEY: f32 = 0.18;
 /// Default Drago bias (paper recommends ~0.85).
 const DEFAULT_DRAGO_BIAS: f32 = 0.85;
 
-/// Rec.709 luminance weights (linear light).
-const LUMA_R: f32 = 0.2126;
-const LUMA_G: f32 = 0.7152;
-const LUMA_B: f32 = 0.0722;
 
 /// Uncharted 2 filmic curve constants (Hable 2010).
 const HABLE_A: f32 = 0.15;
@@ -100,7 +98,7 @@ impl OpImageAdjustmentToneMap {
     /// values persist across operator switches; the GUI hides unused ones.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to tone map."),
             Input::new("operator".to_string(), Value::ToneMapOperator(ToneMapOperator::Reinhard), None, None)
                 .with_description("Tone mapping curve to apply."),
@@ -132,31 +130,18 @@ impl OpImageAdjustmentToneMap {
     /// Executes the tone map operation: exposure pre-scale, then the selected operator, then clamp.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted       = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let operator_converted    = convert_input(inputs, 1, ValueType::ToneMapOperator, &mut input_errors);
-        let exposure_converted    = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let white_point_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let contrast_converted    = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let mid_gray_converted    = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let key_converted         = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let adapt_converted       = convert_input(inputs, 7, ValueType::Bool, &mut input_errors);
-        let bias_converted        = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            ToneMapOperator(operator) = 1,
+            Decimal(exposure) = 2,
+            Decimal(white_point) = 3,
+            Decimal(contrast) = 4,
+            Decimal(mid_gray) = 5,
+            Decimal(key) = 6,
+            Bool(adapt) = 7,
+            Decimal(bias) = 8,
         }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::ToneMapOperator(operator) = operator_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(exposure) = exposure_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(white_point) = white_point_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(contrast) = contrast_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(mid_gray) = mid_gray_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(key) = key_converted.unwrap() else { unreachable!() };
-        let Value::Bool(adapt) = adapt_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(bias) = bias_converted.unwrap() else { unreachable!() };
 
         let exposure_gain = 2f32.powf(exposure);
         let white_point = white_point.max(1e-3);
@@ -193,88 +178,99 @@ impl OpImageAdjustmentToneMap {
 
         // Drago Lmax: user white point after exposure scaling context.
         let drago_lmax = white_point.max(1e-3);
+        // Loop-invariant: the value the Drago curve reaches at the white point.
+        let drago_at_white = drago_normalizer(drago_lmax, bias);
 
-        for pixel in result.pixels_mut() {
-            match operator {
-                // --- RGB / multi-channel operators ---
-                ToneMapOperator::Agx | ToneMapOperator::PbrNeutral if color_ch >= 3 => {
-                    let mut rgb = [
-                        pixel[0] * exposure_gain,
-                        pixel[1] * exposure_gain,
-                        pixel[2] * exposure_gain,
-                    ];
-                    rgb = match operator {
-                        ToneMapOperator::Agx => agx_rgb(rgb),
-                        ToneMapOperator::PbrNeutral => pbr_neutral_rgb(rgb),
-                        _ => unreachable!(),
-                    };
-                    pixel[0] = rgb[0].clamp(0.0, 1.0);
-                    pixel[1] = rgb[1].clamp(0.0, 1.0);
-                    pixel[2] = rgb[2].clamp(0.0, 1.0);
-                }
-
-                // --- Luminance operators (3+ channels) ---
-                ToneMapOperator::ReinhardLuminance
+        // Which of the three mapping paths this run takes depends only on the
+        // operator and the channel count — both fixed for the whole image — so
+        // it is decided once here rather than re-matched (with guards) for
+        // every pixel. The per-channel path goes further and resolves its
+        // 13-way operator match into a single closure up front, so the inner
+        // loop is a call, not a dispatch.
+        let rgb_direct = matches!(
+            operator,
+            ToneMapOperator::Agx | ToneMapOperator::PbrNeutral
+        ) && color_ch >= 3;
+        let luminance_scaled = matches!(
+            operator,
+            ToneMapOperator::ReinhardLuminance
                 | ToneMapOperator::PhotographicReinhard
                 | ToneMapOperator::Drago
-                    if color_ch >= 3 =>
-                {
-                    let r = pixel[0] * exposure_gain;
-                    let g = pixel[1] * exposure_gain;
-                    let b = pixel[2] * exposure_gain;
-                    let lum = luminance(r, g, b).max(0.0);
-                    let lum_mapped = match operator {
-                        ToneMapOperator::ReinhardLuminance => reinhard(lum),
-                        ToneMapOperator::PhotographicReinhard => {
-                            let scaled = lum * photo_scale;
-                            reinhard_extended(scaled, white_point)
-                        }
-                        ToneMapOperator::Drago => drago_normalized(lum, drago_lmax, bias),
-                        _ => unreachable!(),
-                    };
-                    let scale = if lum > 1e-8 { lum_mapped / lum } else { 0.0 };
-                    pixel[0] = (r * scale).clamp(0.0, 1.0);
-                    pixel[1] = (g * scale).clamp(0.0, 1.0);
-                    pixel[2] = (b * scale).clamp(0.0, 1.0);
-                }
+        ) && color_ch >= 3;
 
-                // --- Per-channel (and grayscale fallbacks) ---
-                _ => {
-                    for val in pixel.iter_mut().take(color_ch) {
-                        let v = *val * exposure_gain;
-                        let mapped = match operator {
-                            ToneMapOperator::Linear => v,
-                            ToneMapOperator::Reinhard => reinhard(v),
-                            ToneMapOperator::ReinhardLuminance => reinhard(v),
-                            ToneMapOperator::ReinhardExtended => reinhard_extended(v, white_point),
-                            ToneMapOperator::PhotographicReinhard => {
-                                reinhard_extended(v * photo_scale, white_point)
-                            }
-                            ToneMapOperator::Aces => aces(v),
-                            ToneMapOperator::HableFilmic => {
-                                if hable_norm.abs() < 1e-6 {
-                                    0.0
-                                } else {
-                                    hable_filmic_curve(v) / hable_norm
-                                }
-                            }
-                            ToneMapOperator::Hejl => hejl(v),
-                            ToneMapOperator::Gt => gt_uchimura(v, contrast),
-                            ToneMapOperator::Agx => {
-                                let rgb = agx_rgb([v, v, v]);
-                                rgb[0]
-                            }
-                            ToneMapOperator::Sigmoid => sigmoid(v, contrast, mid_gray),
-                            ToneMapOperator::Drago => drago_normalized(v, drago_lmax, bias),
-                            ToneMapOperator::PbrNeutral => {
-                                let rgb = pbr_neutral_rgb([v, v, v]);
-                                rgb[0]
-                            }
-                        };
-                        *val = mapped.clamp(0.0, 1.0);
-                    }
+        if rgb_direct {
+            // --- RGB / multi-channel operators ---
+            let map_rgb: fn([f32; 3]) -> [f32; 3] = match operator {
+                ToneMapOperator::Agx => agx_rgb,
+                ToneMapOperator::PbrNeutral => pbr_neutral_rgb,
+                _ => unreachable!("rgb_direct is only set for Agx and PbrNeutral"),
+            };
+            result.par_pixels_mut().for_each(|pixel| {
+                let rgb = map_rgb([
+                    pixel[0] * exposure_gain,
+                    pixel[1] * exposure_gain,
+                    pixel[2] * exposure_gain,
+                ]);
+                pixel[0] = rgb[0].clamp(0.0, 1.0);
+                pixel[1] = rgb[1].clamp(0.0, 1.0);
+                pixel[2] = rgb[2].clamp(0.0, 1.0);
+            });
+        } else if luminance_scaled {
+            // --- Luminance operators (3+ channels) ---
+            let map_lum: Box<dyn Fn(f32) -> f32 + Sync> = match operator {
+                ToneMapOperator::ReinhardLuminance => Box::new(reinhard),
+                ToneMapOperator::PhotographicReinhard => {
+                    Box::new(move |lum| reinhard_extended(lum * photo_scale, white_point))
                 }
-            }
+                ToneMapOperator::Drago => {
+                    Box::new(move |lum| drago_normalized(lum, drago_lmax, bias, drago_at_white))
+                }
+                _ => unreachable!("luminance_scaled is only set for the three luminance operators"),
+            };
+            result.par_pixels_mut().for_each(|pixel| {
+                let r = pixel[0] * exposure_gain;
+                let g = pixel[1] * exposure_gain;
+                let b = pixel[2] * exposure_gain;
+                let lum = crate::luma::rec709(r, g, b).max(0.0);
+                let lum_mapped = map_lum(lum);
+                let scale = if lum > 1e-8 { lum_mapped / lum } else { 0.0 };
+                pixel[0] = (r * scale).clamp(0.0, 1.0);
+                pixel[1] = (g * scale).clamp(0.0, 1.0);
+                pixel[2] = (b * scale).clamp(0.0, 1.0);
+            });
+        } else {
+            // --- Per-channel (and grayscale fallbacks) ---
+            let map_channel: Box<dyn Fn(f32) -> f32 + Sync> = match operator {
+                ToneMapOperator::Linear => Box::new(|v| v),
+                ToneMapOperator::Reinhard | ToneMapOperator::ReinhardLuminance => Box::new(reinhard),
+                ToneMapOperator::ReinhardExtended => {
+                    Box::new(move |v| reinhard_extended(v, white_point))
+                }
+                ToneMapOperator::PhotographicReinhard => {
+                    Box::new(move |v| reinhard_extended(v * photo_scale, white_point))
+                }
+                ToneMapOperator::Aces => Box::new(aces),
+                ToneMapOperator::HableFilmic => Box::new(move |v| {
+                    if hable_norm.abs() < 1e-6 {
+                        0.0
+                    } else {
+                        hable_filmic_curve(v) / hable_norm
+                    }
+                }),
+                ToneMapOperator::Hejl => Box::new(hejl),
+                ToneMapOperator::Gt => Box::new(move |v| gt_uchimura(v, contrast)),
+                ToneMapOperator::Agx => Box::new(|v| agx_rgb([v, v, v])[0]),
+                ToneMapOperator::Sigmoid => Box::new(move |v| sigmoid(v, contrast, mid_gray)),
+                ToneMapOperator::Drago => {
+                    Box::new(move |v| drago_normalized(v, drago_lmax, bias, drago_at_white))
+                }
+                ToneMapOperator::PbrNeutral => Box::new(|v| pbr_neutral_rgb([v, v, v])[0]),
+            };
+            result.par_pixels_mut().for_each(|pixel| {
+                for val in pixel.iter_mut().take(color_ch) {
+                    *val = map_channel(*val * exposure_gain).clamp(0.0, 1.0);
+                }
+            });
         }
 
         Ok(OperationResponse {
@@ -290,9 +286,6 @@ impl OpImageAdjustmentToneMap {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn luminance(r: f32, g: f32, b: f32) -> f32 {
-    LUMA_R * r + LUMA_G * g + LUMA_B * b
-}
 
 /// Log-average and max Rec.709 luminance over color channels (post exposure gain).
 fn scene_luminance_stats(img: &crate::float_image::FloatImage, color_ch: usize, exposure_gain: f32) -> (f32, f32) {
@@ -303,7 +296,7 @@ fn scene_luminance_stats(img: &crate::float_image::FloatImage, color_ch: usize, 
 
     for pixel in img.pixels() {
         let lum = if color_ch >= 3 {
-            luminance(
+            crate::luma::rec709(
                 pixel[0] * exposure_gain,
                 pixel[1] * exposure_gain,
                 pixel[2] * exposure_gain,
@@ -397,11 +390,24 @@ fn sigmoid(v: f32, contrast: f32, mid_gray: f32) -> f32 {
     1.0 / (1.0 + ratio.powf(-contrast.max(1e-3)))
 }
 
+/// The Drago normalizer `drago_raw(lmax, lmax, bias)` — the value the curve
+/// reaches at the white point, which every pixel is divided by.
+///
+/// It depends only on `lmax` and `bias`, both fixed for a whole image, so it is
+/// computed once per run and handed to [`drago_normalized`]. It used to be
+/// recomputed *inside* `drago_normalized`, i.e. once per pixel (and once per
+/// channel on the per-channel path), which put a `ln`, two `log10`s and a
+/// `powf` of loop-invariant work in the hot loop. `hable_filmic`'s equivalent
+/// normalizer was already hoisted this way; Drago's was not.
+fn drago_normalizer(lmax: f32, bias: f32) -> f32 {
+    drago_raw(lmax, lmax, bias).max(1e-6)
+}
+
 /// Drago 2003 adaptive logarithmic map, normalized so `Lmax → ~1`.
-fn drago_normalized(lum: f32, lmax: f32, bias: f32) -> f32 {
-    let raw = drago_raw(lum, lmax, bias);
-    let at_white = drago_raw(lmax, lmax, bias).max(1e-6);
-    raw / at_white
+///
+/// `at_white` comes from [`drago_normalizer`], hoisted out of the pixel loop.
+fn drago_normalized(lum: f32, lmax: f32, bias: f32, at_white: f32) -> f32 {
+    drago_raw(lum, lmax, bias) / at_white
 }
 
 fn drago_raw(lum: f32, lmax: f32, bias: f32) -> f32 {

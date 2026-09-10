@@ -9,11 +9,12 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::adjustments::common::smoothstep;
+use crate::convert_inputs;
 use crate::operations::{
-    OperationError, OperationResponse, OutputResponse, convert_input, default_image,
+    OperationError, OperationResponse, OutputResponse, default_image,
 };
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -134,48 +135,17 @@ impl OpImageMaskRadialGradient {
     /// Generates the radial gradient mask.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let width_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let cx_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let cy_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let radius_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let softness_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let aspect_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let invert_converted = convert_input(inputs, 7, ValueType::Bool, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError {
-                input_errors,
-                node_error: None,
-            });
+        convert_inputs! { inputs;
+            Integer(mut width) = 0,
+            Integer(mut height) = 1,
+            Decimal(cx) = 2,
+            Decimal(cy) = 3,
+            Decimal(radius) = 4,
+            Decimal(softness) = 5,
+            Decimal(aspect) = 6,
+            Bool(invert) = 7,
         }
-
-        let Value::Integer(mut width) = width_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Integer(mut height) = height_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Decimal(cx) = cx_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Decimal(cy) = cy_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Decimal(radius) = radius_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Decimal(softness) = softness_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Decimal(aspect) = aspect_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Bool(invert) = invert_converted.unwrap() else {
-            unreachable!()
-        };
 
         width = width.clamp(1, 10000);
         height = height.clamp(1, 10000);

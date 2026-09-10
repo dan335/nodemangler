@@ -10,9 +10,11 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -32,7 +34,7 @@ impl OpImageAdjustmentReplaceColor {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image whose matching pixels will be recolored."),
             Input::new("from".to_string(), Value::Color(Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }), None, None)
                 .with_description("Color to find; pixels near this are replaced."),
@@ -54,21 +56,14 @@ impl OpImageAdjustmentReplaceColor {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let from_converted = convert_input(inputs, 1, ValueType::Color, &mut input_errors);
-        let to_converted = convert_input(inputs, 2, ValueType::Color, &mut input_errors);
-        let tolerance_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let softness_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Color(from) = from_converted.unwrap() else { unreachable!() };
-        let Value::Color(to) = to_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(tolerance) = tolerance_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(softness) = softness_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Color(from) = 1,
+            Color(to) = 2,
+            Decimal(tolerance) = 3,
+            Decimal(softness) = 4,
+        }
 
         let tolerance = tolerance.clamp(0.0, 1.0);
         let softness = softness.max(0.0);
@@ -80,13 +75,14 @@ impl OpImageAdjustmentReplaceColor {
 
         let norm = 3.0_f32.sqrt();
         // Pre-compute grayscale equivalents for 1/2-channel paths.
-        let from_luma = 0.2126 * from.r + 0.7152 * from.g + 0.0722 * from.b;
-        let to_luma = 0.2126 * to.r + 0.7152 * to.g + 0.0722 * to.b;
+        let from_luma = crate::luma::rec709(from.r, from.g, from.b);
+        let to_luma = crate::luma::rec709(to.r, to.g, to.b);
 
-        let mut buf = [0.0f32; 4];
-        for y in 0..h {
-            for x in 0..w {
-                let src = data.get_pixel(x, y);
+        output
+            .par_pixels_mut()
+            .zip(data.par_pixels())
+            .for_each(|(dst, src)| {
+                let mut buf = [0.0f32; 4];
                 let weight = if ch >= 3 {
                     let dr = src[0] - from.r;
                     let dg = src[1] - from.g;
@@ -113,9 +109,8 @@ impl OpImageAdjustmentReplaceColor {
                         buf[1] = src[1];
                     }
                 }
-                output.put_pixel(x, y, &buf[..ch]);
-            }
-        }
+                dst.copy_from_slice(&buf[..ch]);
+            });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

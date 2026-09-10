@@ -6,9 +6,10 @@
 use crate::color::Color;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -48,18 +49,11 @@ impl OpColorManipulationInvert {
     /// Executes the invert operation, flipping each RGB channel and optionally the alpha.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // Convert inputs
-        let color_converted = convert_input(inputs, 0, ValueType::Color, &mut input_errors);
-        let invert_alpha_converted = convert_input(inputs, 1, ValueType::Bool, &mut input_errors);
-
-        // Return early on conversion errors
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // Unwrap values
-        let Value::Color(color) = color_converted.unwrap() else { unreachable!() };
-        let Value::Bool(invert_alpha) = invert_alpha_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Color(color) = 0,
+            Bool(invert_alpha) = 1,
+        }
 
         // Invert each RGB channel; conditionally invert alpha
         let new_r = 1.0 - color.r;

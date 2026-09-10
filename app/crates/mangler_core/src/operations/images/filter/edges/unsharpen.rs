@@ -6,10 +6,10 @@
 
 use crate::float_image::FloatImage;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -33,7 +33,7 @@ impl OpImageAdjustmentUnsharpen {
     /// Creates the input ports: an image, sigma (blur radius), and threshold (edge sensitivity).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to sharpen via unsharp masking."),
             Input::new("sigma".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 1000.0)) }), None)
                 .with_description("Gaussian blur standard deviation, in pixels at a 1024px reference (scales with image size); larger values widen the sharpening halo."),
@@ -53,20 +53,12 @@ impl OpImageAdjustmentUnsharpen {
     /// Executes the unsharp mask. Converts to DynamicImage for the blur step, then back.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let sigma_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let threshold_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(mut sigma) = sigma_converted.unwrap() else { unreachable!() };
-        let Value::Integer(threshold) = threshold_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(mut sigma) = 1,
+            Integer(threshold) = 2,
+        }
 
         // run node — use DynamicImage for unsharpen, then convert back.
         // image 0.25's blur rejects sigma=0/subnormal; unsharpen with sigma<=0 is a no-op so pass through.

@@ -6,9 +6,10 @@
 use crate::color::Color;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -51,19 +52,13 @@ impl OpColorInputHwb {
     /// Executes the operation, assembling a color from HWB float channels.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let h_converted = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
-        let w_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let b_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let alpha_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Decimal(h) = h_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(w) = w_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(b) = b_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(alpha) = alpha_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Decimal(h) = 0,
+            Decimal(w) = 1,
+            Decimal(b) = 2,
+            Decimal(alpha) = 3,
+        }
 
         let color = Color::from_hwb(h, w, b, alpha);
 

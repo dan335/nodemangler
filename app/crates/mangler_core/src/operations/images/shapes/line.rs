@@ -8,9 +8,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -69,28 +70,16 @@ impl OpImageShapeLine {
     /// 0.0 = outside, with smooth anti-aliased edges.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let width_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let start_x_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let start_y_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let end_x_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let end_y_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let thickness_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(start_x) = start_x_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(start_y) = start_y_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(end_x) = end_x_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(end_y) = end_y_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(thickness) = thickness_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut width) = 0,
+            Integer(mut height) = 1,
+            Decimal(start_x) = 2,
+            Decimal(start_y) = 3,
+            Decimal(end_x) = 4,
+            Decimal(end_y) = 5,
+            Decimal(thickness) = 6,
+        }
 
         // run node
         width = width.max(1);

@@ -9,9 +9,10 @@ use crate::color::blend::BlendMode;
 use crate::color::color_spaces::ColorSpace;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -57,24 +58,15 @@ impl OpColorBlendMode {
     /// in the chosen color space.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
         // Convert all inputs to their required types.
-        let a_converted = convert_input(inputs, 0, ValueType::Color, &mut input_errors);
-        let b_converted = convert_input(inputs, 1, ValueType::Color, &mut input_errors);
-        let amount_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let blend_mode_converted = convert_input(inputs, 3, ValueType::BlendMode, &mut input_errors);
-        let color_space_converted = convert_input(inputs, 4, ValueType::ColorSpace, &mut input_errors);
-
-        // Return early if any input failed to convert.
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // Unwrap the converted values.
-        let Value::Color(a) = a_converted.unwrap() else { unreachable!() };
-        let Value::Color(b) = b_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
-        let Value::BlendMode(blend_mode) = blend_mode_converted.unwrap() else { unreachable!() };
-        let Value::ColorSpace(color_space) = color_space_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Color(a) = 0,
+            Color(b) = 1,
+            Decimal(amount) = 2,
+            BlendMode(blend_mode) = 3,
+            ColorSpace(color_space) = 4,
+        }
 
         // Dispatch to the appropriate blend function based on the chosen color space.
         // Each color space produces perceptually different blending results.

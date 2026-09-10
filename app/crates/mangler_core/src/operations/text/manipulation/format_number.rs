@@ -5,9 +5,10 @@
 
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -54,19 +55,13 @@ impl OpTextFormatNumber {
     /// Converts the inputs and returns the formatted number string.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let value_converted = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
-        let decimals_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let pad_converted = convert_input(inputs, 3, ValueType::Bool, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Decimal(value) = value_converted.unwrap() else { unreachable!() };
-        let Value::Integer(decimals) = decimals_converted.unwrap() else { unreachable!() };
-        let Value::Integer(min_width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Bool(pad_zeros) = pad_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Decimal(value) = 0,
+            Integer(decimals) = 1,
+            Integer(min_width) = 2,
+            Bool(pad_zeros) = 3,
+        }
 
         // `decimals` and `min width` only get UI-clamped by their DragValue
         // widgets; a value arriving from a wired node can be arbitrarily

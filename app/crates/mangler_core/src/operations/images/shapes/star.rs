@@ -8,9 +8,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -127,26 +128,15 @@ impl OpImageShapeStar {
     /// 0.0 = outside, with smooth anti-aliased edges.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let width_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let points_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let outer_radius_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let inner_radius_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let rotation_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut points) = points_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(outer_radius) = outer_radius_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(inner_radius) = inner_radius_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(rotation) = rotation_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut width) = 0,
+            Integer(mut height) = 1,
+            Integer(mut points) = 2,
+            Decimal(outer_radius) = 3,
+            Decimal(inner_radius) = 4,
+            Decimal(rotation) = 5,
+        }
 
         // run node
         width = width.max(1);

@@ -5,9 +5,10 @@
 
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -52,17 +53,12 @@ impl OpTextReplace {
     /// Converts the inputs to `Text` and replaces every occurrence of `from`.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let text_converted = convert_input(inputs, 0, ValueType::Text, &mut input_errors);
-        let from_converted = convert_input(inputs, 1, ValueType::Text, &mut input_errors);
-        let to_converted = convert_input(inputs, 2, ValueType::Text, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Text(text) = text_converted.unwrap() else { unreachable!() };
-        let Value::Text(from) = from_converted.unwrap() else { unreachable!() };
-        let Value::Text(to) = to_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Text(text) = 0,
+            Text(from) = 1,
+            Text(to) = 2,
+        }
 
         let output = if from.is_empty() {
             text

@@ -986,7 +986,7 @@ impl Graph {
         node.settings.name = subgraph.name.clone();
         node.node_type = NodeType::Subgraph {
             path: path.clone(),
-            graph: Some(subgraph),
+            graph: Some(Box::new(subgraph)),
             last_mtime: loaded_mtime,
         };
         node.is_dirty = true;
@@ -1224,22 +1224,6 @@ impl Graph {
     pub async fn run(&mut self) {
         let run_start = std::time::Instant::now();
 
-        // Graph context handed to each node's operation for this run (via a
-        // thread-local; see `crate::run_context`). Output ops use `graph_dir`
-        // to resolve relative folder inputs, `graph_name` as the default output
-        // file name, `force_save` to write even when their own auto-save
-        // toggle is off (headless CLI runs), and `batch_item_stem` (set only
-        // by the engine's batch driver, for the duration of one iteration) to
-        // name per-item files instead of overwriting one file every
-        // iteration. Computed once here from the graph's save location so
-        // per-node cloning is cheap.
-        let run_ctx = crate::run_context::RunContext {
-            graph_dir: self.output_base_dir(),
-            graph_name: self.name.clone(),
-            force_save: self.force_save_outputs,
-            batch_item_stem: self.batch_item_stem.clone(),
-        };
-
         let mut dirty_nodes: HashSet<String> = HashSet::new();
         let mut checked_nodes: HashSet<String> = HashSet::new();
         let mut nodes_to_check: VecDeque<String> = VecDeque::new();
@@ -1270,6 +1254,27 @@ impl Graph {
         if nodes_to_check.is_empty() {
             return;
         }
+
+        // Built *after* the early return above, not before it: the engine ticks
+        // at ~60 Hz whether or not anything is dirty, and this clones a
+        // `PathBuf`, the graph name and the batch stem. On an idle graph that
+        // was three allocations per tick for a context nothing would read.
+        //
+        // Graph context handed to each node's operation for this run (via a
+        // thread-local; see `crate::run_context`). Output ops use `graph_dir`
+        // to resolve relative folder inputs, `graph_name` as the default output
+        // file name, `force_save` to write even when their own auto-save
+        // toggle is off (headless CLI runs), and `batch_item_stem` (set only
+        // by the engine's batch driver, for the duration of one iteration) to
+        // name per-item files instead of overwriting one file every
+        // iteration. Computed once here from the graph's save location so
+        // per-node cloning is cheap.
+        let run_ctx = crate::run_context::RunContext {
+            graph_dir: self.output_base_dir(),
+            graph_name: self.name.clone(),
+            force_save: self.force_save_outputs,
+            batch_item_stem: self.batch_item_stem.clone(),
+        };
 
         // loop through dirty nodes and their dependecies
         // add to list to run

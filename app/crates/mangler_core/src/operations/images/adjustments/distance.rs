@@ -9,13 +9,13 @@
 
 use crate::float_image::FloatImage;
 use crate::get_id;
-use crate::value::ValueType;
 use rayon::prelude::*;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::simulation::distance_field_labeled;
 use crate::operations::images::tone_curve::{optional_lut, sample_lut, tone_curve_input};
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -40,7 +40,7 @@ impl OpImageAdjustmentDistance {
     /// (maximum search radius in pixels).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image; its luminance is thresholded into inside/outside regions."),
             Input::new("threshold".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Luminance cutoff separating inside (above) from outside (below)."),
@@ -62,22 +62,13 @@ impl OpImageAdjustmentDistance {
     /// transform (two Felzenszwalb-Huttenlocher passes, one per class).
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let threshold_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let spread_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let remap_converted = convert_input(inputs, 3, ValueType::Curve, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(threshold) = threshold_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(spread) = spread_converted.unwrap() else { unreachable!() };
-        let Value::Curve(remap_curve) = remap_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(threshold) = 1,
+            Decimal(spread) = 2,
+            Curve(remap_curve) = 3,
+        }
         let lut = optional_lut(&remap_curve);
 
         // run node — work directly on FloatImage data
@@ -95,7 +86,7 @@ impl OpImageAdjustmentDistance {
             (0..w).map(move |x| {
                 let px = data_ref.get_pixel(x as u32, y as u32);
                 let lum = if ch >= 3 {
-                    0.2126 * px[0] + 0.7152 * px[1] + 0.0722 * px[2]
+                    crate::luma::rec709(px[0], px[1], px[2])
                 } else {
                     px[0]
                 };

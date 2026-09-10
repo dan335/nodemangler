@@ -28,8 +28,17 @@ pub enum NodeType {
         ///
         /// Exposed outputs are read directly from this graph's node storage
         /// after each run — no message channel sits between parent and child.
+        ///
+        /// **Boxed on purpose.** An enum is as large as its largest variant, so
+        /// storing a `Graph` (a few hundred bytes) inline here made *every*
+        /// `NodeType` — and therefore every `Node`, subgraph or not — carry that
+        /// size. A plain operation node is the overwhelmingly common case and
+        /// pays nothing for a subgraph's payload behind a `Box`; `Node` is
+        /// cloned per `LoadedNode` message and lives in the graph's `HashMap`
+        /// by value, and `GraphChangedMessage` is sized by the variant that
+        /// holds one, so the saving shows up in three places at once.
         #[serde(skip)]
-        graph: Option<Graph>,
+        graph: Option<Box<Graph>>,
         /// Modified-time of `path` at the moment the child was last loaded.
         /// Used by `Graph::check_subgraphs_for_changes` to detect external edits
         /// (e.g. the child being saved from another tab) and trigger a reload.

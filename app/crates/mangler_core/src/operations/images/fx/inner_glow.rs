@@ -12,9 +12,10 @@ use crate::operations::images::blur::blur::gaussian_blur_image;
 use crate::operations::images::filter::morphology::erode::separable_morphology;
 use crate::operations::images::fx::outer_glow::{subtract_fields, tint_field, to_mask_field};
 use crate::operations::images::tone_curve::{optional_lut, sample_lut, tone_curve_input};
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -34,7 +35,7 @@ impl OpImageFxInnerGlow {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("mask")
                 .with_description("Shape whose inside edge the glow hugs."),
             Input::new("radius".to_string(), Value::Integer(4), Some(InputSettings::Slider { range: (1.0, 64.0), step_by: Some(1.0), clamp_to_range: true }), None)
                 .with_description("Erosion distance in pixels at a 1024px reference (scales with image size); larger values push the glow further inward."),
@@ -55,21 +56,14 @@ impl OpImageFxInnerGlow {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let mask_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let radius_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let intensity_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let color_converted = convert_input(inputs, 3, ValueType::Color, &mut input_errors);
-        let falloff_converted = convert_input(inputs, 4, ValueType::Curve, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = mask_converted.unwrap() else { unreachable!() };
-        let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(intensity) = intensity_converted.unwrap() else { unreachable!() };
-        let Value::Color(color) = color_converted.unwrap() else { unreachable!() };
-        let Value::Curve(falloff_curve) = falloff_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(radius) = 1,
+            Decimal(intensity) = 2,
+            Color(color) = 3,
+            Curve(falloff_curve) = 4,
+        }
         let lut = optional_lut(&falloff_curve);
 
         let (width, height) = data.dimensions();

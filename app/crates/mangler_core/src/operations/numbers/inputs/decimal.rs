@@ -5,9 +5,10 @@
 
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -51,17 +52,10 @@ impl OpNumberInputDecimal {
     /// Executes the node: converts the input to a decimal and passes it through.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let input_converted = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
-
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Decimal(input) = input_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Decimal(input) = 0,
+        }
 
         // run node
         Ok(OperationResponse { 

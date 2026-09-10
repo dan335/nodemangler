@@ -11,9 +11,10 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, image_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -59,15 +60,15 @@ impl OpImageAdjustmentColorLookup {
     /// Creates the input ports: the source image, the `.cube` LUT path, and a strength slider.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to grade through the LUT."),
-            Input::new("lut".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path {
+            Input::new("lut".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path(Box::new(crate::input::PathSettings {
                 extension_filter: vec!["cube".to_string()],
                 set_directory: None,
                 set_file_name: None,
                 set_title: Some("LUT (.cube)".to_string()),
                 file_dialog_type: crate::input::FileDialogType::PickFile,
-            }), None)
+            }))), None)
                 .with_description("Path to an Adobe .cube LUT file (1D or 3D). Empty = pass-through."),
             Input::new("strength".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Blend between the original (0) and the fully graded result (1)."),
@@ -132,7 +133,7 @@ impl OpImageAdjustmentColorLookup {
         // Only images with at least three colour channels carry RGB; anything
         // smaller (grayscale, gray+alpha) has no chroma to grade, so pass through.
         if ch >= 3 {
-            for pixel in result.pixels_mut() {
+            result.par_pixels_mut().for_each(|pixel| {
                 // Sample the LUT for the pixel's RGB triple.
                 let rgb = [pixel[0], pixel[1], pixel[2]];
                 let looked_up = sample(&lut, rgb);
@@ -141,7 +142,7 @@ impl OpImageAdjustmentColorLookup {
                     pixel[c] = rgb[c] + (looked_up[c] - rgb[c]) * strength as f32;
                 }
                 // Channels 3.. (alpha) are left untouched.
-            }
+            });
         }
 
         Ok(OperationResponse {

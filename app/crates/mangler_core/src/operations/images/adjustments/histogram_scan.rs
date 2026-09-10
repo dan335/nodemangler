@@ -6,13 +6,14 @@
 
 use crate::float_image::FloatImage;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use super::common::smoothstep;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -34,7 +35,7 @@ impl OpImageAdjustmentHistogramScan {
     /// Creates the input ports: image, center position of the luminance band, and band width (range).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image whose luminance is scanned for a narrow band."),
             Input::new("position".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Centre luminance of the band that will become white in the mask."),
@@ -55,20 +56,12 @@ impl OpImageAdjustmentHistogramScan {
     /// transitions at the low and high edges of the selected band. Output is a 4-channel image.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let position_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let range_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(position) = position_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(range) = range_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(position) = 1,
+            Decimal(range) = 2,
+        }
 
         // run node — work directly on FloatImage
         let (width, height) = data.dimensions();
@@ -78,12 +71,13 @@ impl OpImageAdjustmentHistogramScan {
 
         let mut output = FloatImage::new(width, height, 4);
 
-        for y in 0..height {
-            for x in 0..width {
-                let px = data.get_pixel(x, y);
+        output
+            .par_pixels_mut()
+            .zip(data.par_pixels())
+            .for_each(|(dst, px)| {
                 // Compute luminance from available channels
                 let lum = if ch >= 3 {
-                    0.2126 * px[0] + 0.7152 * px[1] + 0.0722 * px[2]
+                    crate::luma::rec709(px[0], px[1], px[2])
                 } else {
                     px[0]
                 };
@@ -95,9 +89,8 @@ impl OpImageAdjustmentHistogramScan {
                 let high_edge = 1.0 - smoothstep(high - edge_width, high + edge_width, lum);
                 let result = low_edge * high_edge;
 
-                output.put_pixel(x, y, &[result, result, result, alpha]);
-            }
-        }
+                dst.copy_from_slice(&[result, result, result, alpha]);
+            });
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

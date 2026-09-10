@@ -18,7 +18,7 @@
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, image_input};
 use crate::output::Output;
 use crate::value::{Value, ValueType, ColorFormat};
 use serde::{Deserialize, Serialize};
@@ -72,15 +72,15 @@ impl OpImageOutputFile {
     /// which is a positional contract with [`Self::run`].
     pub fn create_inputs() -> Vec<Input> {
         let mut inputs = vec![
-            Input::new("image".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("image")
                 .with_description("Image to encode and save to disk."),
-            Input::new("folder".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path {
+            Input::new("folder".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path(Box::new(crate::input::PathSettings {
                 extension_filter: vec![],
                 set_directory: None,
                 set_file_name: None,
                 set_title: Some("output folder".to_string()),
                 file_dialog_type: crate::input::FileDialogType::PickFolder,
-            }), None)
+            }))), None)
                 .with_description("Destination folder (absolute, or relative to where the graph is saved). Pre-filled with the graph's own folder when the node is created; empty = the graph's own folder."),
             Input::new("file name".to_string(), Value::Text(String::new()), Some(InputSettings::SingleLineText), None)
                 .with_description("Output file name (without extension). Empty = the graph's name."),

@@ -14,9 +14,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{EdgeMode, Value, ValueType};
+use crate::value::{EdgeMode, Value};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -36,7 +37,7 @@ impl OpImageTransformAffine {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to transform."),
             Input::new("offset x".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: None, clamp_to_range: false }), None)
                 .with_description("Horizontal shift as a fraction of image width (0.25 = a quarter across); positive moves content right. Resolution-independent."),
@@ -64,34 +65,24 @@ impl OpImageTransformAffine {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let ox_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let oy_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let rot_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let scale_x_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let scale_y_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let edge_converted = convert_input(inputs, 6, ValueType::EdgeMode, &mut input_errors);
-        let fill_converted = convert_input(inputs, 7, ValueType::Color, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(offset_x) = ox_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(offset_y) = oy_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(rotation) = rot_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(scale_x) = scale_x_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(scale_y) = scale_y_converted.unwrap() else { unreachable!() };
-        let Value::EdgeMode(edge) = edge_converted.unwrap() else { unreachable!() };
-        let Value::Color(fill) = fill_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(offset_x) = 1,
+            Decimal(offset_y) = 2,
+            Decimal(rotation) = 3,
+            Decimal(scale_x) = 4,
+            Decimal(scale_y) = 5,
+            EdgeMode(edge) = 6,
+            Color(fill) = 7,
+        }
 
         let (width, height) = data.dimensions();
         let nch = data.channels() as usize;
 
         // The fill colour reduced to the source's channel layout so exposed
         // space matches the image's storage (see `help`).
-        let luma = 0.2126 * fill.r + 0.7152 * fill.g + 0.0722 * fill.b;
+        let luma = crate::luma::rec709(fill.r, fill.g, fill.b);
         let mut fill_px: Vec<f32> = match nch {
             1 => vec![luma],
             2 => vec![luma, fill.a],

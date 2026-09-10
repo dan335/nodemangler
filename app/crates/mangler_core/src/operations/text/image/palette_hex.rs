@@ -4,12 +4,12 @@
 //! the buckets, and emits the `count` most common colors as newline-separated
 //! `#RRGGBB` codes.
 
-use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -33,7 +33,7 @@ impl OpTextImagePaletteHex {
     /// Creates the input ports: the image, the palette size, and the quantization level.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Image to extract the palette from."),
             Input::new("count".to_string(), Value::Integer(5), Some(InputSettings::DragValue { clamp: Some((1.0, 32.0)), speed: None }), None)
                 .with_description("Number of colors to output (1..32)."),
@@ -53,17 +53,12 @@ impl OpTextImagePaletteHex {
     /// Executes the palette extraction.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let count_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let levels_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Integer(count) = count_converted.unwrap() else { unreachable!() };
-        let Value::Integer(levels) = levels_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(count) = 1,
+            Integer(levels) = 2,
+        }
 
         let levels = levels.clamp(2, 32) as u32;
         let count = count.clamp(1, 32) as usize;

@@ -75,13 +75,13 @@ impl OpImageOutputMaterial {
             // 9/10/11 — destination folder, base file name, and format (the
             // same authoring model as the `to file` node). Every exported
             // texture is written as `{file name}_{suffix}.{ext}` in the folder.
-            Input::new("folder".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path {
+            Input::new("folder".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path(Box::new(crate::input::PathSettings {
                 extension_filter: vec![],
                 set_directory: None,
                 set_file_name: None,
                 set_title: Some("output folder".to_string()),
                 file_dialog_type: crate::input::FileDialogType::PickFolder,
-            }), None)
+            }))), None)
                 .with_description("Destination folder, relative to where the graph is saved (or absolute). Empty = the graph's own folder. Pre-filled with the graph's folder when the node is created."),
             Input::new("file name".to_string(), Value::Text(String::new()), Some(InputSettings::SingleLineText), None)
                 .with_description("Base name reused for every exported texture (`{file name}_{suffix}`). Empty = the graph's name."),

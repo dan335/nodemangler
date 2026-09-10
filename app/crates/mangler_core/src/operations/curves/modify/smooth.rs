@@ -11,9 +11,10 @@ use crate::curve::Curve;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::curves::common::{laplacian_smooth_once, linear_curve, rdp_decimate, MAX_OUTPUT_POINTS};
-use crate::operations::{convert_input, OperationError, OperationResponse, OutputResponse};
+use crate::convert_inputs;
+use crate::operations::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -116,19 +117,12 @@ impl OpCurveModifySmooth {
     /// Smooths the curve from the given inputs.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let curve_converted = convert_input(inputs, 0, ValueType::Curve, &mut input_errors);
-        let method_converted = convert_input(inputs, 1, ValueType::Text, &mut input_errors);
-        let iterations_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Curve(curve) = 0,
+            Text(method) = 1,
+            Integer(iterations) = 2,
         }
-
-        let Value::Curve(curve) = curve_converted.unwrap() else { unreachable!() };
-        let Value::Text(method) = method_converted.unwrap() else { unreachable!() };
-        let Value::Integer(iterations) = iterations_converted.unwrap() else { unreachable!() };
 
         let iterations = iterations.clamp(1, 8) as u32;
 

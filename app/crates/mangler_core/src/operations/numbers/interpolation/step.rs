@@ -5,9 +5,10 @@
 
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -49,18 +50,11 @@ impl OpNumberMathStep {
     /// Executes the step operation: returns `0.0` if `input < edge`, `1.0` otherwise.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let input_val = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
-        let edge_val = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Decimal(input) = input_val.unwrap() else { unreachable!() };
-        let Value::Decimal(edge) = edge_val.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Decimal(input) = 0,
+            Decimal(edge) = 1,
+        }
 
         // run node
         let value = Value::Decimal(if input < edge { 0.0 } else { 1.0 });

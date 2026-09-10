@@ -6,9 +6,10 @@
 use crate::color::Color;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -51,23 +52,13 @@ impl OpColorInputHsva {
     /// Executes the operation, assembling a color from HSV float channels.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let hue_converted = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
-        let saturation_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let value_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let alpha_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Decimal(hue) = hue_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(saturation) = saturation_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(value) = value_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(alpha) = alpha_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Decimal(hue) = 0,
+            Decimal(saturation) = 1,
+            Decimal(value) = 2,
+            Decimal(alpha) = 3,
+        }
 
         // run node
         let color = Color::from_hsv(hue, saturation, value, alpha);

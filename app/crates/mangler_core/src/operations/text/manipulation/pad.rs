@@ -5,9 +5,10 @@
 
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -57,19 +58,13 @@ impl OpTextPad {
     /// Converts the inputs and pads the text to the requested width.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let text_converted = convert_input(inputs, 0, ValueType::Text, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let fill_converted = convert_input(inputs, 2, ValueType::Text, &mut input_errors);
-        let side_converted = convert_input(inputs, 3, ValueType::Text, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Text(text) = text_converted.unwrap() else { unreachable!() };
-        let Value::Integer(width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Text(fill) = fill_converted.unwrap() else { unreachable!() };
-        let Value::Text(side) = side_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Text(text) = 0,
+            Integer(width) = 1,
+            Text(fill) = 2,
+            Text(side) = 3,
+        }
 
         let fill_char = fill.chars().next().unwrap_or(' ');
         let len = text.chars().count();

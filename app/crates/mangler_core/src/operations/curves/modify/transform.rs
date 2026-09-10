@@ -10,9 +10,10 @@ use crate::curve::Curve;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::curves::common::{dist, flatten_f64};
-use crate::operations::{convert_input, OperationError, OperationResponse, OutputResponse};
+use crate::convert_inputs;
+use crate::operations::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -132,25 +133,15 @@ impl OpCurveModifyTransform {
     /// Transforms the curve from the given inputs.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let curve_converted = convert_input(inputs, 0, ValueType::Curve, &mut input_errors);
-        let ox_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let oy_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let rot_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let sx_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let sy_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Curve(curve) = 0,
+            Decimal(offset_x) = 1,
+            Decimal(offset_y) = 2,
+            Decimal(rotation) = 3,
+            Decimal(scale_x) = 4,
+            Decimal(scale_y) = 5,
         }
-
-        let Value::Curve(curve) = curve_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(offset_x) = ox_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(offset_y) = oy_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(rotation) = rot_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(scale_x) = sx_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(scale_y) = sy_converted.unwrap() else { unreachable!() };
 
         let out = transform_curve(
             &curve,

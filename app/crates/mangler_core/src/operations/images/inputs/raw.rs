@@ -64,14 +64,14 @@ impl OpImageInputRaw {
     /// Creates the input definitions.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("path".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path {
+            Input::new("path".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path(Box::new(crate::input::PathSettings {
                 // Raw-only: this node cannot open a PNG, so offering one would lie.
                 extension_filter: ValueType::raw_file_extensions(),
                 set_directory: None,
                 set_file_name: None,
                 set_title: Some("raw photo".to_string()),
                 file_dialog_type: crate::input::FileDialogType::PickFile,
-            }), None)
+            }))), None)
                 .with_description("Path to a camera raw file to develop."),
             Input::new("white balance".to_string(), Value::Text("as shot".to_string()), Some(InputSettings::Dropdown {
                 options: vec!["as shot".to_string(), "camera neutral".to_string(), "none".to_string()],

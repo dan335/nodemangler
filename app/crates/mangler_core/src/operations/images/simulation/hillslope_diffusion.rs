@@ -30,9 +30,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -64,7 +65,7 @@ impl OpImageSimulationHillslopeDiffusion {
                 .with_description("Output image width in pixels."),
             Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None)
                 .with_description("Output image height in pixels."),
-            Input::new("height map".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("height map")
                 .with_description("Optional terrain to diffuse; when unconnected an internal fBm heightmap is generated from the seed."),
             Input::new("iterations".to_string(), Value::Integer(500), Some(InputSettings::DragValue { clamp: Some((0.0, 2000.0)), speed: Some(10.0) }), None)
                 .with_description("Number of diffusion steps simulated; more iterations round crests and relax slopes further toward the critical angle - step through it to watch the terrain age."),
@@ -100,29 +101,18 @@ impl OpImageSimulationHillslopeDiffusion {
     /// 3. Normalizes the diffused heightmap to [0, 1]
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let map_converted = convert_input(inputs, 3, ValueType::Image, &mut input_errors);
-        let iterations_converted = convert_input(inputs, 4, ValueType::Integer, &mut input_errors);
-        let creep_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let critical_slope_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let octaves_converted = convert_input(inputs, 7, ValueType::Integer, &mut input_errors);
-        let frequency_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Image { data: map_data, change_id: _ } = map_converted.unwrap() else { unreachable!() };
-        let Value::Integer(iterations) = iterations_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(creep) = creep_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(critical_slope) = critical_slope_converted.unwrap() else { unreachable!() };
-        let Value::Integer(octaves) = octaves_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(frequency) = frequency_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut seed) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Image(map_data) = 3,
+            Integer(iterations) = 4,
+            Decimal(creep) = 5,
+            Decimal(critical_slope) = 6,
+            Integer(octaves) = 7,
+            Decimal(frequency) = 8,
+        }
 
         width = width.max(4);
         height = height.max(4);

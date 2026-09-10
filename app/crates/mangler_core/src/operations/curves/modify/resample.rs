@@ -11,9 +11,10 @@ use crate::curve::Curve;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::curves::common::{drop_closing_duplicate, flatten_f64, linear_curve, polyline_length, resample as resample_polyline, MAX_OUTPUT_POINTS};
-use crate::operations::{convert_input, OperationError, OperationResponse, OutputResponse};
+use crate::convert_inputs;
+use crate::operations::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -84,21 +85,13 @@ impl OpCurveModifyResample {
     /// Resamples the curve from the given inputs.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let curve_converted = convert_input(inputs, 0, ValueType::Curve, &mut input_errors);
-        let mode_converted = convert_input(inputs, 1, ValueType::Text, &mut input_errors);
-        let spacing_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let count_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Curve(curve) = 0,
+            Text(mode) = 1,
+            Decimal(spacing) = 2,
+            Integer(count) = 3,
         }
-
-        let Value::Curve(curve) = curve_converted.unwrap() else { unreachable!() };
-        let Value::Text(mode) = mode_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(spacing) = spacing_converted.unwrap() else { unreachable!() };
-        let Value::Integer(count) = count_converted.unwrap() else { unreachable!() };
 
         let spacing_norm = (spacing as f64).clamp(1.0, 256.0) / 1024.0;
         let count = count.clamp(2, MAX_OUTPUT_POINTS as i32) as usize;

@@ -9,11 +9,12 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::adjustments::common::{rgb_to_hsl, smoothstep};
+use crate::convert_inputs;
 use crate::operations::{
-    OperationError, OperationResponse, OutputResponse, convert_input, default_image,
+    OperationError, OperationResponse, OutputResponse, default_image,
 };
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -120,40 +121,15 @@ impl OpImageMaskHueRange {
     /// Builds the hue-range mask from the source image.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let hue_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let range_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let softness_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let min_chroma_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let invert_converted = convert_input(inputs, 5, ValueType::Bool, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError {
-                input_errors,
-                node_error: None,
-            });
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(hue) = 1,
+            Decimal(range) = 2,
+            Decimal(softness) = 3,
+            Decimal(min_chroma) = 4,
+            Bool(invert) = 5,
         }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Decimal(hue) = hue_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Decimal(range) = range_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Decimal(softness) = softness_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Decimal(min_chroma) = min_chroma_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Bool(invert) = invert_converted.unwrap() else {
-            unreachable!()
-        };
 
         let hue = hue.rem_euclid(360.0);
         let range = range.clamp(0.0, 180.0);

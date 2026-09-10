@@ -7,10 +7,10 @@
 
 use crate::float_image::FloatImage;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -36,9 +36,9 @@ impl OpImageAdjustmentNonUniformBlur {
     /// maximum blur intensity (pixels), and sample count per pixel.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to blur with a spatially varying radius."),
-            Input::new("blur map".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("blur map")
                 .with_description("Grayscale map; bright pixels get more blur, dark pixels stay sharp."),
             Input::new("max intensity".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 50.0), step_by: Some(0.5), clamp_to_range: true }), None)
                 .with_description("Blur radius in pixels at a 1024px reference (scales with image size, so the effect looks the same at any resolution) when the blur map is fully white."),
@@ -59,22 +59,13 @@ impl OpImageAdjustmentNonUniformBlur {
     /// generates a Vogel disc sampling pattern, and averages bilinear samples per pixel.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let blur_map_converted = convert_input(inputs, 1, ValueType::Image, &mut input_errors);
-        let max_intensity_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let samples_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Image { data: blur_map_data, change_id: _ } = blur_map_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(max_intensity) = max_intensity_converted.unwrap() else { unreachable!() };
-        let Value::Integer(samples) = samples_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Image(blur_map_data) = 1,
+            Decimal(max_intensity) = 2,
+            Integer(samples) = 3,
+        }
 
         // run node
         let samples = samples.max(1) as u32;

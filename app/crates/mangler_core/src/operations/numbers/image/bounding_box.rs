@@ -5,12 +5,12 @@
 //! Significance is the alpha channel when the image has one, otherwise
 //! luminance — so a shape on transparency and a shape on black both measure.
 
-use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -31,7 +31,7 @@ impl OpNumberImageBoundingBox {
     /// Creates the input ports: the image and a significance threshold.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Image whose content is measured."),
             Input::new("threshold".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
                 .with_description("A pixel counts as content when its significance (alpha, or luminance) exceeds this."),
@@ -55,15 +55,11 @@ impl OpNumberImageBoundingBox {
     /// Executes the bounding-box measurement.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let threshold_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(threshold) = threshold_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(threshold) = 1,
+        }
 
         let (w, h) = data.dimensions();
         let ch = data.channels();

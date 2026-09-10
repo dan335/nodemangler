@@ -5,10 +5,10 @@
 //! as a grayscale image.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -32,7 +32,7 @@ impl OpImageAdjustmentEdgeDetect {
     /// Creates the input ports: an image and an intensity multiplier for edge strength.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image whose luminance is analyzed for edge gradients."),
             Input::new("intensity".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 10.0), step_by: Some(0.1), clamp_to_range: true }), None)
                 .with_description("Multiplier applied to the Sobel magnitude; higher values make edges brighter."),
@@ -48,15 +48,11 @@ impl OpImageAdjustmentEdgeDetect {
     /// Executes edge detection using Sobel Gx and Gy kernels on Rec. 709 luminance.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let intensity_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(intensity) = intensity_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(intensity) = 1,
+        }
 
         // run node — work directly on FloatImage pixels
         let (width, height) = (data.width(), data.height());
@@ -66,7 +62,7 @@ impl OpImageAdjustmentEdgeDetect {
         // Helper: compute luminance from a pixel
         let lum_at = |px: u32, py: u32| -> f32 {
             let p = data.get_pixel(px.clamp(0, width - 1), py.clamp(0, height - 1));
-            if ch >= 3 { 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2] } else { p[0] }
+            if ch >= 3 { crate::luma::rec709(p[0], p[1], p[2]) } else { p[0] }
         };
 
         for y in 0..height {

@@ -9,9 +9,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -46,10 +47,10 @@ impl OpImageCombineCompare {
     pub fn create_inputs() -> Vec<Input> {
         vec![
             // First image to compare.
-            Input::new("image a".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image a")
                 .with_description("First image; its dimensions determine the output size."),
             // Second image to compare.
-            Input::new("image b".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image b")
                 .with_description("Second image; pixels outside its bounds are treated as black."),
             // Multiplier that amplifies small differences (1.0 = raw, higher = more visible).
             Input::new("gain".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (1.0, 10.0), step_by: Some(0.1), clamp_to_range: true }), None)
@@ -69,19 +70,12 @@ impl OpImageCombineCompare {
     /// difference is `clamp(gain * mean(|Ra-Rb|, |Ga-Gb|, |Ba-Bb|), 0, 1)`.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let a_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let b_converted = convert_input(inputs, 1, ValueType::Image, &mut input_errors);
-        let gain_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Image(img_a) = 0,
+            Image(img_b) = 1,
+            Decimal(gain) = 2,
         }
-
-        let Value::Image { data: img_a, .. } = a_converted.unwrap() else { unreachable!() };
-        let Value::Image { data: img_b, .. } = b_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(gain) = gain_converted.unwrap() else { unreachable!() };
 
         let (w, h) = img_a.dimensions();
         let (bw, bh) = img_b.dimensions();

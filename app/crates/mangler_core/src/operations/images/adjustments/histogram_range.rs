@@ -4,12 +4,13 @@
 //! remaps all pixel values so the output spans a user-specified target range.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -31,7 +32,7 @@ impl OpImageAdjustmentHistogramRange {
     /// Creates the input ports: image, target range min, and target range max.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image whose actual luminance span is rescaled."),
             Input::new("range min".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Value the image's darkest pixels will be mapped to."),
@@ -52,20 +53,12 @@ impl OpImageAdjustmentHistogramRange {
     /// maps each channel from [actual_min, actual_max] to [range_min, range_max].
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let range_min_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let range_max_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(range_min) = range_min_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(range_max) = range_max_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(range_min) = 1,
+            Decimal(range_max) = 2,
+        }
 
         // run node — clone and work directly on FloatImage
         let mut result = (*data).clone();
@@ -77,7 +70,7 @@ impl OpImageAdjustmentHistogramRange {
         let mut actual_max: f32 = f32::MIN;
         for pixel in result.pixels() {
             let lum = if color_ch >= 3 {
-                0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2]
+                crate::luma::rec709(pixel[0], pixel[1], pixel[2])
             } else {
                 pixel[0]
             };
@@ -88,7 +81,7 @@ impl OpImageAdjustmentHistogramRange {
         let actual_range = actual_max - actual_min;
         let target_range = range_max - range_min;
 
-        for pixel in result.pixels_mut() {
+        result.par_pixels_mut().for_each(|pixel| {
             for val in pixel.iter_mut().take(color_ch) {
                 if actual_range <= 0.0 {
                     *val = range_min;
@@ -98,7 +91,7 @@ impl OpImageAdjustmentHistogramRange {
                 }
             }
             // alpha unchanged
-        }
+        });
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

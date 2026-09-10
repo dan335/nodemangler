@@ -42,13 +42,13 @@ impl OpImageInputFile {
     /// Creates the input definitions: a single file path input with image extension filtering.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("path".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path{
+            Input::new("path".to_string(), Value::Path(PathBuf::new()), Some(InputSettings::Path(Box::new(crate::input::PathSettings {
                 extension_filter: ValueType::file_extensions(&ValueType::Image),
                 set_directory: None,
                 set_file_name: None,
                 set_title: Some("image".to_string()),
                 file_dialog_type: crate::input::FileDialogType::PickFile,
-            }), None)
+            }))), None)
                 .with_description("Path to an image file to load from disk."),
         ]
     }

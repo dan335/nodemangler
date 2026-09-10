@@ -7,9 +7,10 @@ use crate::curve::Curve;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::curves::common::linear_curve;
-use crate::operations::{convert_input, OperationError, OperationResponse, OutputResponse};
+use crate::convert_inputs;
+use crate::operations::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -78,29 +79,17 @@ impl OpCurveGeneratorLissajous {
     /// Generates the Lissajous curve from the given inputs.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let cx_converted = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
-        let cy_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let rx_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let ry_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let freq_a_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let freq_b_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let phase_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let points_converted = convert_input(inputs, 7, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Decimal(cx) = 0,
+            Decimal(cy) = 1,
+            Decimal(rx) = 2,
+            Decimal(ry) = 3,
+            Decimal(freq_a) = 4,
+            Decimal(freq_b) = 5,
+            Decimal(phase) = 6,
+            Integer(points) = 7,
         }
-
-        let Value::Decimal(cx) = cx_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(cy) = cy_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(rx) = rx_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(ry) = ry_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(freq_a) = freq_a_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(freq_b) = freq_b_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(phase) = phase_converted.unwrap() else { unreachable!() };
-        let Value::Integer(points) = points_converted.unwrap() else { unreachable!() };
 
         let rx = (rx as f64).max(0.0);
         let ry = (ry as f64).max(0.0);

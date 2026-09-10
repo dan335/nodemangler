@@ -8,10 +8,10 @@
 
 use crate::float_image::FloatImage;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -34,7 +34,7 @@ impl OpImageAdjustmentBlur {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to blur."),
             Input::new("sigma".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 1000.0)) }), None)
                 .with_description("Gaussian standard deviation, in pixels at a 1024px reference (scales with image size, so the blur looks the same at any resolution); larger values are softer."),
@@ -52,15 +52,11 @@ impl OpImageAdjustmentBlur {
     /// so we work directly on a flat buffer without any u8 conversion.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let sigma_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(sigma) = sigma_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(sigma) = 1,
+        }
 
         // Sigma is authored in reference pixels (at 1024px) and scaled to the
         // actual image, so the same value blurs the same amount relative to the
@@ -158,6 +154,40 @@ pub(crate) fn gaussian_blur_planar(src: &[f32], width: u32, height: u32, sigma: 
         box_blur_v(&tmp, &mut buf, width, height, 1, *radius);
     }
 
+    buf
+}
+
+/// Apply `passes` box-blur passes at a *fixed* radius to a single-channel
+/// planar buffer.
+///
+/// The Gaussian helpers above pick their radii from a sigma; this one takes the
+/// radius directly, for callers whose parameter genuinely is a window
+/// half-width (local-contrast unsharp masking, dark-channel windows). Three
+/// passes approximate a Gaussian of comparable extent.
+///
+/// Uses the same running-sum passes as the Gaussian path, so cost is O(1) per
+/// pixel regardless of radius, and both passes are parallel over rows/columns.
+/// Edges are clamped (the border pixel is extended), matching
+/// [`gaussian_blur_planar`].
+pub(crate) fn box_blur_planar_passes(
+    src: &[f32],
+    width: u32,
+    height: u32,
+    radius: u32,
+    passes: usize,
+) -> Vec<f32> {
+    // A zero radius is the identity, and the parallel passes chunk by row
+    // length, which would panic on a zero-sized chunk for an empty image.
+    if radius == 0 || passes == 0 || width == 0 || height == 0 || src.is_empty() {
+        return src.to_vec();
+    }
+
+    let mut buf: Vec<f32> = src.to_vec();
+    let mut tmp = vec![0.0f32; src.len()];
+    for _ in 0..passes {
+        box_blur_h(&buf, &mut tmp, width, height, 1, radius);
+        box_blur_v(&tmp, &mut buf, width, height, 1, radius);
+    }
     buf
 }
 

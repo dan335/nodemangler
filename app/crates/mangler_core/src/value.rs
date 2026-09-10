@@ -333,11 +333,11 @@ impl Value {
             Value::Color(a) => match other {
                 ValueType::Bool => Ok(Value::Bool(a.r != 0.0 || a.g != 0.0 || a.b != 0.0)),
                 ValueType::Integer => {
-                    let lum = 0.2126 * a.r + 0.7152 * a.g + 0.0722 * a.b;
+                    let lum = crate::luma::rec709(a.r, a.g, a.b);
                     Ok(Value::Integer((lum.clamp(0.0, 1.0) * 255.0) as i32))
                 }
                 ValueType::Decimal => {
-                    let lum = 0.2126 * a.r + 0.7152 * a.g + 0.0722 * a.b;
+                    let lum = crate::luma::rec709(a.r, a.g, a.b);
                     Ok(Value::Decimal(lum))
                 }
                 ValueType::Text => Ok(Value::Text(format!("rgba({}, {}, {}, {})", a.r, a.g, a.b, a.a))),

@@ -10,9 +10,10 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::patterns::{draw_stamp, StampPlacement};
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -44,7 +45,7 @@ impl OpImagePatternSplatter {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("pattern".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("pattern")
                 .with_description("Source image stamped at each random position."),
             Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
                 .with_description("Output image width in pixels."),
@@ -74,29 +75,18 @@ impl OpImagePatternSplatter {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let pattern_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let count_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
-        let stamp_size_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let scale_random_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let rotation_random_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let color_variation_converted = convert_input(inputs, 7, ValueType::Decimal, &mut input_errors);
-        let seed_converted = convert_input(inputs, 8, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data: pattern, change_id: _ } = pattern_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut count) = count_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(stamp_size) = stamp_size_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(scale_random) = scale_random_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(rotation_random) = rotation_random_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(color_variation) = color_variation_converted.unwrap() else { unreachable!() };
-        let Value::Integer(seed) = seed_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(pattern) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Integer(mut count) = 3,
+            Decimal(stamp_size) = 4,
+            Decimal(scale_random) = 5,
+            Decimal(rotation_random) = 6,
+            Decimal(color_variation) = 7,
+            Integer(seed) = 8,
+        }
 
         width = width.max(1);
         height = height.max(1);

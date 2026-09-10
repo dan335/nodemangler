@@ -17,9 +17,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -139,31 +140,19 @@ impl OpImageNoiseGrowth {
     /// dense growth fuses into a solid crust while fringe speckles stay dim.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let clusters_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let coverage_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let cluster_size_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let growth_converted = convert_input(inputs, 6, ValueType::Integer, &mut input_errors);
-        let blob_size_converted = convert_input(inputs, 7, ValueType::Decimal, &mut input_errors);
-        let roughness_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
-        let falloff_converted = convert_input(inputs, 9, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(clusters) = clusters_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(coverage) = coverage_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(cluster_size) = cluster_size_converted.unwrap() else { unreachable!() };
-        let Value::Integer(growth) = growth_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(blob_size) = blob_size_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(roughness) = roughness_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(falloff) = falloff_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut seed) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Decimal(clusters) = 3,
+            Decimal(coverage) = 4,
+            Decimal(cluster_size) = 5,
+            Integer(growth) = 6,
+            Decimal(blob_size) = 7,
+            Decimal(roughness) = 8,
+            Decimal(falloff) = 9,
+        }
 
         width = width.max(4);
         height = height.max(4);

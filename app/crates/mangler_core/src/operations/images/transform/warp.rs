@@ -4,10 +4,10 @@
 //! [`FloatImage::bilinear_sample`] for channel-agnostic interpolation.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use crate::float_image::FloatImage;
@@ -38,9 +38,9 @@ impl OpImageTransformWarp {
     /// Creates the default inputs: source image, displacement map, and intensity scalar.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to displace."),
-            Input::new("displacement".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("displacement")
                 .with_description("Displacement map: red channel drives X offset, green drives Y offset."),
             Input::new("intensity".to_string(), Value::Decimal(10.0), Some(InputSettings::Slider { range: (0.0, 200.0), step_by: Some(0.1), clamp_to_range: false }), None)
                 .with_description("Maximum displacement in pixels at a 1024px reference (scales with image size, so the effect looks the same at any resolution), scaled by the map values."),
@@ -58,17 +58,12 @@ impl OpImageTransformWarp {
     /// Executes the warp by sampling the displacement map for each output pixel.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let disp_converted = convert_input(inputs, 1, ValueType::Image, &mut input_errors);
-        let intensity_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data: src_data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Image { data: disp_data, change_id: _ } = disp_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(intensity) = intensity_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(src_data) = 0,
+            Image(disp_data) = 1,
+            Decimal(intensity) = 2,
+        }
 
         let (w, h) = src_data.dimensions();
         // Intensity is authored in reference pixels (at 1024px) and scaled to the

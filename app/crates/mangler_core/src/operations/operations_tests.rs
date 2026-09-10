@@ -218,3 +218,175 @@ fn test_no_operation_panics_on_default_inputs() {
     }
     assert!(panicked.is_empty(), "operations panicked on default inputs: {panicked:?}");
 }
+
+// ---------------------------------------------------------------------------
+// convert_inputs! — the macro that replaced ~1,500 hand-written
+// convert-then-destructure pairs across the operation library.
+// ---------------------------------------------------------------------------
+
+mod convert_inputs_macro {
+    use crate::convert_inputs;
+    use crate::float_image::FloatImage;
+    use crate::input::Input;
+    use crate::operations::{OperationError, OperationResponse, OutputResponse};
+    use crate::value::Value;
+    use crate::get_id;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    fn input(name: &str, value: Value) -> Input {
+        Input::new(name.to_string(), value, None, None)
+    }
+
+    fn ok(values: Vec<Value>) -> Result<OperationResponse, OperationError> {
+        Ok(OperationResponse {
+            time: Duration::ZERO,
+            responses: values.into_iter().map(|value| OutputResponse { value }).collect(),
+        })
+    }
+
+    /// A stand-in operation with the shape the macro is built for.
+    fn run_typical(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(amount) = 1,
+            Integer(mut count) = 2,
+            Bool(flag) = 3,
+        }
+        count += 1;
+        ok(vec![
+            Value::Decimal(data.width() as f32 + amount + count as f32 + flag as i32 as f32),
+        ])
+    }
+
+    #[test]
+    fn unpacks_each_variant_into_its_inner_value() {
+        let image = Arc::new(FloatImage::new(7, 3, 4));
+        let mut inputs = vec![
+            input("image", Value::Image { data: image, change_id: get_id() }),
+            input("amount", Value::Decimal(0.5)),
+            input("count", Value::Integer(10)),
+            input("flag", Value::Bool(true)),
+        ];
+        let result = run_typical(&mut inputs).expect("all inputs convert");
+        // 7 (width) + 0.5 (amount) + 11 (count, incremented) + 1 (flag)
+        let Value::Decimal(v) = result.responses[0].value else { panic!() };
+        assert_eq!(v, 19.5);
+    }
+
+    /// `mut` in the binding is what the longhand `let Value::Integer(mut n)`
+    /// gave, and a dozen shape and simulation nodes rely on it. If the macro
+    /// stopped accepting patterns this would not compile.
+    #[test]
+    fn bindings_may_be_mutable() {
+        let mut inputs = vec![
+            input("image", Value::Image { data: Arc::new(FloatImage::new(1, 1, 1)), change_id: get_id() }),
+            input("amount", Value::Decimal(0.0)),
+            input("count", Value::Integer(0)),
+            input("flag", Value::Bool(false)),
+        ];
+        let result = run_typical(&mut inputs).expect("all inputs convert");
+        let Value::Decimal(v) = result.responses[0].value else { panic!() };
+        assert_eq!(v, 2.0, "count should have been incremented in place");
+    }
+
+    /// Conversions that the value system allows still happen: an Integer input
+    /// asked for as a Decimal arrives as one. The macro must not have narrowed
+    /// this to an exact-variant match.
+    #[test]
+    fn applies_the_value_systems_conversions() {
+        let mut inputs = vec![
+            input("image", Value::Image { data: Arc::new(FloatImage::new(2, 2, 1)), change_id: get_id() }),
+            // Integer where a Decimal is wanted.
+            input("amount", Value::Integer(3)),
+            // Decimal where an Integer is wanted.
+            input("count", Value::Decimal(4.0)),
+            input("flag", Value::Bool(false)),
+        ];
+        let result = run_typical(&mut inputs).expect("Integer/Decimal are interconvertible");
+        let Value::Decimal(v) = result.responses[0].value else { panic!() };
+        assert_eq!(v, 2.0 + 3.0 + 5.0);
+    }
+
+    /// The load-bearing property of the longhand this replaced: every input is
+    /// *attempted* before the first failure returns, so a node with two bad
+    /// inputs highlights both in the UI rather than one at a time. A macro that
+    /// returned at the first failure would silently degrade that.
+    #[test]
+    fn reports_every_failing_input_not_just_the_first() {
+        fn run_two_texts(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
+            convert_inputs! { inputs;
+                Decimal(a) = 0,
+                Decimal(b) = 1,
+            }
+            ok(vec![Value::Decimal(a + b)])
+        }
+
+        let mut inputs = vec![
+            input("a", Value::Text("not a number".to_string())),
+            input("b", Value::Text("also not a number".to_string())),
+        ];
+        let error = run_two_texts(&mut inputs).expect_err("neither input converts");
+        let indices: Vec<usize> = error.input_errors.iter().map(|(i, _)| *i).collect();
+        assert_eq!(indices, vec![0, 1], "both failing inputs should be reported");
+        assert!(error.node_error.is_none());
+    }
+
+    /// An index past the end of the slice is recorded as an input error rather
+    /// than panicking — the safety net `convert_input` documents, which the
+    /// macro must not have bypassed.
+    #[test]
+    fn a_missing_input_is_an_error_not_a_panic() {
+        fn run_three(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
+            convert_inputs! { inputs;
+                Decimal(a) = 0,
+                Decimal(b) = 1,
+                Decimal(c) = 2,
+            }
+            ok(vec![Value::Decimal(a + b + c)])
+        }
+
+        let mut inputs = vec![input("a", Value::Decimal(1.0))];
+        let error = run_three(&mut inputs).expect_err("inputs 1 and 2 are missing");
+        let indices: Vec<usize> = error.input_errors.iter().map(|(i, _)| *i).collect();
+        assert_eq!(indices, vec![1, 2]);
+    }
+
+    /// Indices are honoured as written, not inferred from the entry order.
+    #[test]
+    fn entries_may_reference_inputs_out_of_order() {
+        fn run_reversed(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
+            convert_inputs! { inputs;
+                Decimal(second) = 1,
+                Decimal(first) = 0,
+            }
+            ok(vec![Value::Decimal(second * 10.0 + first)])
+        }
+
+        let mut inputs = vec![input("a", Value::Decimal(3.0)), input("b", Value::Decimal(4.0))];
+        let result = run_reversed(&mut inputs).unwrap();
+        let Value::Decimal(v) = result.responses[0].value else { panic!() };
+        assert_eq!(v, 43.0);
+    }
+
+    /// The `Image` arm discards `change_id` and hands back the `Arc` itself —
+    /// the same `Arc`, not a copy of the pixels.
+    #[test]
+    fn image_unpacks_to_the_shared_arc() {
+        fn run_image(inputs: &mut [Input]) -> Arc<FloatImage> {
+            fn inner(inputs: &mut [Input]) -> Result<Arc<FloatImage>, OperationError> {
+                convert_inputs! { inputs; Image(data) = 0 }
+                Ok(data)
+            }
+            inner(inputs).unwrap()
+        }
+
+        let original = Arc::new(FloatImage::new(4, 4, 3));
+        let mut inputs = vec![input(
+            "image",
+            Value::Image { data: Arc::clone(&original), change_id: get_id() },
+        )];
+        let unpacked = run_image(&mut inputs);
+        assert!(Arc::ptr_eq(&original, &unpacked), "the image should not be copied");
+    }
+}

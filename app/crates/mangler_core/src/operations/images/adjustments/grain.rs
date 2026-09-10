@@ -6,12 +6,13 @@
 //! image resolution so the same value produces the same relative grain at any size.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -85,7 +86,7 @@ impl OpImageAdjustmentGrain {
     /// Creates the input ports: image, seed, amount, size (px@1024), and monochrome toggle.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to add grain to."),
             Input::new("seed".to_string(), Value::Integer(0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 1000000000.0)) }), None)
                 .with_description("Random seed; the grain pattern is deterministic for a given seed."),
@@ -109,24 +110,14 @@ impl OpImageAdjustmentGrain {
     /// Executes the grain operation: samples deterministic value noise and adds it per pixel.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted      = convert_input(inputs, 0, ValueType::Image,   &mut input_errors);
-        let seed_converted       = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let amount_converted     = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let size_converted       = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let monochrome_converted = convert_input(inputs, 4, ValueType::Bool,    &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::Integer(seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(size) = size_converted.unwrap() else { unreachable!() };
-        let Value::Bool(monochrome) = monochrome_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(seed) = 1,
+            Decimal(amount) = 2,
+            Decimal(size) = 3,
+            Bool(monochrome) = 4,
+        }
 
         // Clone the image so we can mutate it in place.
         let mut result = (*data).clone();
@@ -140,31 +131,30 @@ impl OpImageAdjustmentGrain {
         // Reinterpret the i32 seed's bits as the u32 the hash uses (well-defined in Rust).
         let base_seed = seed as u32;
 
-        // Iterate every pixel by coordinate so the noise is a stable function of position.
-        for y in 0..h {
-            for x in 0..w {
-                let px = x as f32;
-                let py = y as f32;
-                // Precompute the shared monochrome noise sample once per pixel.
-                let mono_n = if monochrome {
-                    value_noise(px, py, cell, base_seed)
+        // Iterate every pixel by coordinate so the noise is a stable function of
+        // position — which is also what makes the pass safe to run in parallel:
+        // the seeded hash depends on (x, y) alone, never on iteration order.
+        result.par_enumerate_pixels_mut().for_each(|(x, y, pixel)| {
+            let px = x as f32;
+            let py = y as f32;
+            // Precompute the shared monochrome noise sample once per pixel.
+            let mono_n = if monochrome {
+                value_noise(px, py, cell, base_seed)
+            } else {
+                0.0
+            };
+            for c in 0..color_ch {
+                // Monochrome reuses one field; colour grain hashes a per-channel offset seed.
+                let n = if monochrome {
+                    mono_n
                 } else {
-                    0.0
+                    value_noise(px, py, cell, base_seed.wrapping_add((c as u32).wrapping_mul(747796405)))
                 };
-                let pixel = result.get_pixel_mut(x, y);
-                for c in 0..color_ch {
-                    // Monochrome reuses one field; colour grain hashes a per-channel offset seed.
-                    let n = if monochrome {
-                        mono_n
-                    } else {
-                        value_noise(px, py, cell, base_seed.wrapping_add((c as u32).wrapping_mul(747796405)))
-                    };
-                    // Centre the 0..1 noise to -amount..amount and add it. Not clamped.
-                    let g = (n - 0.5) * 2.0 * amount;
-                    pixel[c] += g;
-                }
+                // Centre the 0..1 noise to -amount..amount and add it. Not clamped.
+                let g = (n - 0.5) * 2.0 * amount;
+                pixel[c] += g;
             }
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

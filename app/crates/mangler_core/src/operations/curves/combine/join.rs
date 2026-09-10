@@ -9,9 +9,10 @@ use crate::curve::Curve;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
 use crate::operations::curves::common::{dist, flatten_f64, linear_curve, rdp_decimate, MAX_OUTPUT_POINTS};
-use crate::operations::{convert_input, OperationError, OperationResponse, OutputResponse};
+use crate::convert_inputs;
+use crate::operations::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -121,21 +122,13 @@ impl OpCurveCombineJoin {
     /// Joins the two curves from the given inputs.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let a_converted = convert_input(inputs, 0, ValueType::Curve, &mut input_errors);
-        let b_converted = convert_input(inputs, 1, ValueType::Curve, &mut input_errors);
-        let auto_orient_converted = convert_input(inputs, 2, ValueType::Bool, &mut input_errors);
-        let close_converted = convert_input(inputs, 3, ValueType::Bool, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Curve(a) = 0,
+            Curve(b) = 1,
+            Bool(auto_orient) = 2,
+            Bool(close) = 3,
         }
-
-        let Value::Curve(a) = a_converted.unwrap() else { unreachable!() };
-        let Value::Curve(b) = b_converted.unwrap() else { unreachable!() };
-        let Value::Bool(auto_orient) = auto_orient_converted.unwrap() else { unreachable!() };
-        let Value::Bool(close) = close_converted.unwrap() else { unreachable!() };
 
         let out = join_curves(&a, &b, auto_orient, close);
 

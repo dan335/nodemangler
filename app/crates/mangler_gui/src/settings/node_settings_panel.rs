@@ -1367,13 +1367,14 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         });
 
                         if picked {
-                            if let Some(InputSettings::Path {
-                                extension_filter,
-                                set_directory,
-                                set_file_name,
-                                set_title,
-                                file_dialog_type
-                            }) = input.settings.clone() {
+                            if let Some(InputSettings::Path(path_settings)) = input.settings.clone() {
+                                let mangler_core::input::PathSettings {
+                                    extension_filter,
+                                    set_directory,
+                                    set_file_name,
+                                    set_title,
+                                    file_dialog_type,
+                                } = *path_settings;
                                 // `App` owns the dialog. The starting
                                 // directory rule (an explicit per-input
                                 // `set_directory` beats the graph's own

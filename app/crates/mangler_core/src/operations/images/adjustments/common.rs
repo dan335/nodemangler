@@ -3,29 +3,23 @@
 //! These live here so individual op files stay short and don't each carry a
 //! private copy of the same smoothstep / HSL conversion code.
 
-/// Smoothstep ramp between `e0` and `e1`. Degenerate to a hard step when the
-/// edges coincide (avoids a divide-by-zero).
-#[inline]
-pub(crate) fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
-    if (e1 - e0).abs() < 1e-9 {
-        return if x < e0 { 0.0 } else { 1.0 };
-    }
-    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
-}
-
-/// f64 counterpart of [`smoothstep`], for ops that work in f64 UV/SDF space.
-/// Degenerates to a hard step when the edges coincide (avoids a divide-by-zero).
-#[inline]
-pub(crate) fn smoothstep_f64(e0: f64, e1: f64, x: f64) -> f64 {
-    if (e1 - e0).abs() < 1e-9 {
-        return if x < e0 { 0.0 } else { 1.0 };
-    }
-    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
-}
+// The adjustments import `smoothstep`/`smoothstep_f64` from here by long habit
+// (dozens of call sites); the implementations live in `crate::math` alongside
+// the crate's other interpolation primitives.
+pub(crate) use crate::math::{smoothstep, smoothstep_f64};
 
 /// Converts an RGB colour (each in 0..1) to HSL (hue in 0..360, s/l in 0..1).
+///
+/// **A deliberate second HSL implementation.** [`crate::color::Color::to_hsl`]
+/// computes the same function, and the two agree to within 3e-5 degrees of hue
+/// across the RGB cube (`the_two_hsl_implementations_agree` pins that). This
+/// one exists because it takes and returns loose components: the per-pixel
+/// image loops that use it run over tens of millions of pixels, and routing
+/// each one through a `Color` value would be pure overhead.
+///
+/// They are *not* bit-identical — they use different algebraic forms and
+/// different achromatic epsilons — so the two are not interchangeable at a
+/// given call site without shifting that node's output. Fix bugs in both.
 pub(crate) fn rgb_to_hsl(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let max = r.max(g).max(b);
     let min = r.min(g).min(b);
@@ -71,10 +65,12 @@ fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
     p
 }
 
-// Rec. 709 luma coefficients — same convention as `color::color_spaces::ycbcr`.
-const KR: f32 = 0.2126;
-const KG: f32 = 0.7152;
-const KB: f32 = 0.0722;
+// BT.709 luma coefficients, taken from the crate's shared set (`crate::luma`)
+// rather than retyped: YCbCr needs the three weights individually, not just
+// their dot product, so it names them here but does not redefine them.
+const KR: f32 = crate::luma::REC709[0];
+const KG: f32 = crate::luma::REC709[1];
+const KB: f32 = crate::luma::REC709[2];
 
 /// Converts RGB (each 0..1) to full-range BT.709 YCbCr: luma `y` in 0..1,
 /// chroma `cb`/`cr` centered on 0 in -0.5..0.5. Matches

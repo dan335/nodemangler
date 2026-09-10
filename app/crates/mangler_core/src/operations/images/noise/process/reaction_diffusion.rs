@@ -12,9 +12,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -92,27 +93,17 @@ impl OpImageNoiseReactionDiffusion {
     /// 6. Output the B channel as grayscale (inverted so patterns are bright)
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let feed_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let kill_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let da_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let db_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let iterations_converted = convert_input(inputs, 7, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(feed) = feed_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(kill) = kill_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(da) = da_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(db) = db_converted.unwrap() else { unreachable!() };
-        let Value::Integer(iterations) = iterations_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut seed) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Decimal(feed) = 3,
+            Decimal(kill) = 4,
+            Decimal(da) = 5,
+            Decimal(db) = 6,
+            Integer(iterations) = 7,
+        }
 
         width = width.max(4);
         height = height.max(4);

@@ -5,10 +5,10 @@
 
 use crate::float_image::FloatImage;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -34,7 +34,7 @@ impl OpImageChannelShuffle {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image whose channels are reordered."),
             Input::new("red source".to_string(), Value::Integer(0), Some(InputSettings::Slider { range: (0.0, 3.0), step_by: Some(1.0), clamp_to_range: true }), None)
                 .with_description("Which source channel (0=R, 1=G, 2=B, 3=A) feeds the output red."),
@@ -55,21 +55,14 @@ impl OpImageChannelShuffle {
     /// Remaps each pixel's channels based on source indices. Always outputs 4-channel RGBA.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let red_source_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let green_source_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let blue_source_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
-        let alpha_source_converted = convert_input(inputs, 4, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::Integer(red_source) = red_source_converted.unwrap() else { unreachable!() };
-        let Value::Integer(green_source) = green_source_converted.unwrap() else { unreachable!() };
-        let Value::Integer(blue_source) = blue_source_converted.unwrap() else { unreachable!() };
-        let Value::Integer(alpha_source) = alpha_source_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(red_source) = 1,
+            Integer(green_source) = 2,
+            Integer(blue_source) = 3,
+            Integer(alpha_source) = 4,
+        }
 
         let red_idx = red_source.clamp(0, 3) as usize;
         let green_idx = green_source.clamp(0, 3) as usize;

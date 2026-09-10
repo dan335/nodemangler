@@ -13,9 +13,10 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::curves::common::{cumulative_arc, flatten_f64};
 use crate::operations::images::simulation::distance_field_labeled;
-use crate::operations::{convert_input, default_image, scale_to_resolution, OperationError, OperationResponse, OutputResponse};
+use crate::convert_inputs;
+use crate::operations::{default_image, scale_to_resolution, OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -63,21 +64,13 @@ impl OpImageShapeCurveGradient {
     /// Paints the curve's arc-length parameter outward into a grayscale image.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let curve_converted = convert_input(inputs, 0, ValueType::Curve, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let max_dist_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Curve(curve) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Decimal(max_distance) = 3,
         }
-
-        let Value::Curve(curve) = curve_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(max_distance) = max_dist_converted.unwrap() else { unreachable!() };
 
         width = width.max(1);
         height = height.max(1);

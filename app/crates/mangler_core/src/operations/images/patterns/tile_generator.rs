@@ -11,9 +11,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -34,7 +35,7 @@ impl OpImagePatternTileGenerator {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("pattern".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("pattern")
                 .with_description("Source image stamped into every grid cell."),
             Input::new("width".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 10000.0)), speed: None }), None)
                 .with_description("Output image width in pixels."),
@@ -64,29 +65,18 @@ impl OpImagePatternTileGenerator {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let pattern_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let count_x_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
-        let count_y_converted = convert_input(inputs, 4, ValueType::Integer, &mut input_errors);
-        let scale_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let rotation_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let row_offset_converted = convert_input(inputs, 7, ValueType::Decimal, &mut input_errors);
-        let col_offset_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data: pattern, change_id: _ } = pattern_converted.unwrap() else { unreachable!() };
-        let Value::Integer(width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Integer(count_x) = count_x_converted.unwrap() else { unreachable!() };
-        let Value::Integer(count_y) = count_y_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(scale) = scale_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(rotation_deg) = rotation_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(row_offset) = row_offset_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(col_offset) = col_offset_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(pattern) = 0,
+            Integer(width) = 1,
+            Integer(height) = 2,
+            Integer(count_x) = 3,
+            Integer(count_y) = 4,
+            Decimal(scale) = 5,
+            Decimal(rotation_deg) = 6,
+            Decimal(row_offset) = 7,
+            Decimal(col_offset) = 8,
+        }
         let row_offset = row_offset as f64;
         let col_offset = col_offset as f64;
 

@@ -14,9 +14,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -138,35 +139,21 @@ impl OpImageNoiseFibers {
     /// cells; cell coordinates wrap for seamless tiling.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let density_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let length_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let angle_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let angle_var_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let waviness_converted = convert_input(inputs, 7, ValueType::Decimal, &mut input_errors);
-        let wave_scale_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
-        let thickness_converted = convert_input(inputs, 9, ValueType::Decimal, &mut input_errors);
-        let intensity_converted = convert_input(inputs, 10, ValueType::Decimal, &mut input_errors);
-        let intensity_var_converted = convert_input(inputs, 11, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(density) = density_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(length) = length_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(angle) = angle_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(angle_variation) = angle_var_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(waviness) = waviness_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(wave_scale) = wave_scale_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(thickness) = thickness_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(intensity) = intensity_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(intensity_variation) = intensity_var_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut seed) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Decimal(density) = 3,
+            Decimal(length) = 4,
+            Decimal(angle) = 5,
+            Decimal(angle_variation) = 6,
+            Decimal(waviness) = 7,
+            Decimal(wave_scale) = 8,
+            Decimal(thickness) = 9,
+            Decimal(intensity) = 10,
+            Decimal(intensity_variation) = 11,
+        }
 
         width = width.max(4);
         height = height.max(4);

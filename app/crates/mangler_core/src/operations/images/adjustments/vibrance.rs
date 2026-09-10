@@ -18,13 +18,14 @@
 //! behaviour, but the numeric response will not match Photoshop pixel-for-pixel.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::operations::images::adjustments::common::{rgb_to_hsl, hsl_to_rgb};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -53,7 +54,7 @@ Grayscale inputs (fewer than 3 channels) have no chroma and pass through unchang
     /// Creates input ports: the source image plus vibrance and saturation sliders.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source colour image to adjust."),
             Input::new("vibrance".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Protective saturation boost weighted by (1 - s): lifts muted colours, spares already-vivid ones. 0 is identity."),
@@ -73,18 +74,13 @@ Grayscale inputs (fewer than 3 channels) have no chroma and pass through unchang
     /// Executes the vibrance/saturation adjustment by remapping HSL saturation per pixel.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
         // Convert and validate all inputs up front.
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let vibrance_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let saturation_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(vibrance) = vibrance_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(saturation) = saturation_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(vibrance) = 1,
+            Decimal(saturation) = 2,
+        }
 
         let ch = data.channels() as usize;
         if ch < 3 {
@@ -96,7 +92,7 @@ Grayscale inputs (fewer than 3 channels) have no chroma and pass through unchang
         }
 
         let mut result = (*data).clone();
-        for pixel in result.pixels_mut() {
+        result.par_pixels_mut().for_each(|pixel| {
             // Read the RGB colour channels (channel 3, if present, is alpha and is left alone).
             let (r, g, b) = (pixel[0], pixel[1], pixel[2]);
 
@@ -118,7 +114,7 @@ Grayscale inputs (fewer than 3 channels) have no chroma and pass through unchang
             pixel[0] = nr;
             pixel[1] = ng;
             pixel[2] = nb;
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

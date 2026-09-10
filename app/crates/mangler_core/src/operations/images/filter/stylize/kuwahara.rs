@@ -12,10 +12,10 @@
 
 use crate::float_image::FloatImage;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -40,7 +40,7 @@ impl OpImageAdjustmentKuwahara {
     /// Creates the input ports: image and radius controlling the size of each quadrant.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to smooth with classic Kuwahara quadrant averaging."),
             // radius is the half-size of each quadrant; quadrants are (radius+1) x (radius+1) pixels
             Input::new("radius".to_string(), Value::Integer(3), Some(InputSettings::Slider { range: (1.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None)
@@ -59,18 +59,11 @@ impl OpImageAdjustmentKuwahara {
     /// Executes the Kuwahara filter. Edge pixels are clamped to the image bounds.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let radius_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(radius) = 1,
+        }
 
         let (width, height) = data.dimensions();
         // clamp radius to at least 1 — a radius of 0 would make each quadrant a single pixel and the filter would be a no-op.
@@ -103,7 +96,7 @@ impl OpImageAdjustmentKuwahara {
                 }
                 // luminance used for variance: Rec. 709 for RGB, or the single channel for grayscale
                 let lum = if color_ch >= 3 {
-                    0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2]
+                    crate::luma::rec709(pixel[0], pixel[1], pixel[2])
                 } else {
                     pixel[0]
                 } as f64;

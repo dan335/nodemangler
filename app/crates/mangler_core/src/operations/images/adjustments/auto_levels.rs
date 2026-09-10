@@ -5,12 +5,13 @@
 //! percentages allow ignoring outlier pixels at both ends.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -32,7 +33,7 @@ impl OpImageAdjustmentAutoLevels {
     /// Creates the input ports: image and clip percentages for black and white ends of the histogram.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image whose histogram is analyzed and stretched."),
             Input::new("clip black".to_string(), Value::Decimal(0.005), Some(InputSettings::Slider { range: (0.0, 0.5), step_by: Some(0.001), clamp_to_range: true }), None)
                 .with_description("Fraction of darkest pixels to discard when finding the black point."),
@@ -53,20 +54,12 @@ impl OpImageAdjustmentAutoLevels {
     /// finds clip-adjusted black and white points, then linearly remaps all channels.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let clip_black_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let clip_white_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(clip_black) = clip_black_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(clip_white) = clip_white_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(clip_black) = 1,
+            Decimal(clip_white) = 2,
+        }
 
         // run node — data is already f32, clone and work directly
         let mut result = (*data).clone();
@@ -79,7 +72,7 @@ impl OpImageAdjustmentAutoLevels {
         for pixel in result.pixels() {
             // Compute luminance from available color channels
             let lum = if color_ch >= 3 {
-                0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2]
+                crate::luma::rec709(pixel[0], pixel[1], pixel[2])
             } else {
                 pixel[0]
             };
@@ -120,13 +113,13 @@ impl OpImageAdjustmentAutoLevels {
         // remap if valid range
         if white_point > black_point {
             let range = white_point - black_point;
-            for pixel in result.pixels_mut() {
+            result.par_pixels_mut().for_each(|pixel| {
                 for c in 0..color_ch {
                     let val = pixel[c];
                     pixel[c] = ((val - black_point) / range).clamp(0.0, 1.0);
                 }
                 // alpha unchanged
-            }
+            });
         }
 
         Ok(OperationResponse { 

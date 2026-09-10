@@ -15,11 +15,13 @@
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::operations::images::filter::smoothing::guided::guided_filter_plane;
 use crate::operations::numbers::image::luma_values;
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -49,7 +51,7 @@ impl OpImageAdjustmentTexture {
     /// Creates the input ports: source image, signed amount, and detail size.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to adjust."),
             Input::new("amount".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Texture strength; positive brings out fine detail, negative smooths it, 0 leaves the image unchanged."),
@@ -69,20 +71,12 @@ impl OpImageAdjustmentTexture {
     /// Executes the texture operation.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // Convert inputs.
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let amount_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let size_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-
-        // Return if any conversion failed.
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // Extract values.
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
-        let Value::Integer(size) = size_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(amount) = 1,
+            Integer(size) = 2,
+        }
 
         let amount = amount as f32;
 
@@ -111,7 +105,7 @@ impl OpImageAdjustmentTexture {
         let luma = luma_values(&result);
         let base = guided_filter_plane(&luma, &luma, wu, hu, radius, BASE_EPS);
 
-        for (i, px) in result.pixels_mut().enumerate() {
+        result.par_pixels_mut().enumerate().for_each(|(i, px)| {
             let l = luma[i];
             // Fine-detail residual, free of the edge overshoot an unsharp mask
             // would carry. No midtone weighting — that's `clarity`'s job.
@@ -129,7 +123,7 @@ impl OpImageAdjustmentTexture {
                 // Grayscale (+ optional alpha): the luma *is* the channel.
                 px[0] = new_luma;
             }
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

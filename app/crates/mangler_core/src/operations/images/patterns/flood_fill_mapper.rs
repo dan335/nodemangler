@@ -13,9 +13,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -35,9 +36,9 @@ impl OpImagePatternFloodFillMapper {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("flood fill".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("flood fill")
                 .with_description("Flood-fill data image produced by the flood fill node."),
-            Input::new("gradient".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("gradient")
                 .with_description("Horizontal gradient sampled per cell to pick its color."),
             Input::new("randomness".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Blends between using cell index (0) and per-cell random value (1) to sample the gradient."),
@@ -55,19 +56,13 @@ impl OpImagePatternFloodFillMapper {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let ff_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let gradient_converted = convert_input(inputs, 1, ValueType::Image, &mut input_errors);
-        let randomness_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let offset_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data: ff, change_id: _ } = ff_converted.unwrap() else { unreachable!() };
-        let Value::Image { data: gradient, change_id: _ } = gradient_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(randomness) = randomness_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(offset) = offset_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(ff) = 0,
+            Image(gradient) = 1,
+            Decimal(randomness) = 2,
+            Decimal(offset) = 3,
+        }
 
         let (width, height) = ff.dimensions();
         let g_ch = gradient.channels() as usize;

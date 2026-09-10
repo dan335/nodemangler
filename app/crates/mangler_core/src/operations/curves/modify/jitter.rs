@@ -8,9 +8,10 @@ use crate::curve::Curve;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::curves::common::{drop_closing_duplicate, flatten_f64, linear_curve, resample, vertex_tangent, MAX_OUTPUT_POINTS};
-use crate::operations::{convert_input, OperationError, OperationResponse, OutputResponse};
+use crate::convert_inputs;
+use crate::operations::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -92,23 +93,14 @@ impl OpCurveModifyJitter {
     /// Jitters the curve from the given inputs.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let curve_converted = convert_input(inputs, 0, ValueType::Curve, &mut input_errors);
-        let seed_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let amount_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let spacing_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let preserve_converted = convert_input(inputs, 4, ValueType::Bool, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Curve(curve) = 0,
+            Integer(seed) = 1,
+            Decimal(amount) = 2,
+            Decimal(spacing) = 3,
+            Bool(preserve_endpoints) = 4,
         }
-
-        let Value::Curve(curve) = curve_converted.unwrap() else { unreachable!() };
-        let Value::Integer(seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(spacing) = spacing_converted.unwrap() else { unreachable!() };
-        let Value::Bool(preserve_endpoints) = preserve_converted.unwrap() else { unreachable!() };
 
         let amount_norm = (amount as f64).clamp(0.0, 64.0) / 1024.0;
         let spacing_norm = (spacing as f64).clamp(1.0, 256.0) / 1024.0;

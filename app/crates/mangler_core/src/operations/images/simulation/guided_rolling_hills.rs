@@ -23,9 +23,10 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::noise::voronoi_common::{cell_hash, wrap_cell};
 use crate::operations::images::tone_curve::{optional_lut, sample_lut, tone_curve_input, tone_curve_lut, TONE_LUT_SIZE};
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -255,7 +256,7 @@ impl OpImageSimulationGuidedRollingHills {
                 .with_description("Output image width in pixels."),
             Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None)
                 .with_description("Output image height in pixels."),
-            Input::new("guidance map".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("guidance map")
                 .with_description("Optional river mask, dark = river (paint the river black on white; invert the meander node's river mask first). Unconnected behaves exactly like plain rolling hills."),
             Input::new("mask threshold".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Brightness at or below which a mask pixel counts as river."),
@@ -308,45 +309,26 @@ impl OpImageSimulationGuidedRollingHills {
     ///    wall alone.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let map_converted = convert_input(inputs, 3, ValueType::Image, &mut input_errors);
-        let threshold_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let river_width_converted = convert_input(inputs, 5, ValueType::Integer, &mut input_errors);
-        let valley_width_converted = convert_input(inputs, 6, ValueType::Integer, &mut input_errors);
-        let valley_profile_converted = convert_input(inputs, 7, ValueType::Curve, &mut input_errors);
-        let river_depth_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
-        let bank_height_converted = convert_input(inputs, 9, ValueType::Decimal, &mut input_errors);
-        let density_converted = convert_input(inputs, 10, ValueType::Decimal, &mut input_errors);
-        let size_converted = convert_input(inputs, 11, ValueType::Decimal, &mut input_errors);
-        let size_var_converted = convert_input(inputs, 12, ValueType::Decimal, &mut input_errors);
-        let height_var_converted = convert_input(inputs, 13, ValueType::Decimal, &mut input_errors);
-        let peakiness_converted = convert_input(inputs, 14, ValueType::Decimal, &mut input_errors);
-        let merge_converted = convert_input(inputs, 15, ValueType::Decimal, &mut input_errors);
-        let profile_converted = convert_input(inputs, 16, ValueType::Curve, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Image { data: map_data, change_id: _ } = map_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(threshold) = threshold_converted.unwrap() else { unreachable!() };
-        let Value::Integer(river_width) = river_width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(valley_width) = valley_width_converted.unwrap() else { unreachable!() };
-        let Value::Curve(valley_profile) = valley_profile_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(river_depth) = river_depth_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(bank_height) = bank_height_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(density) = density_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(size) = size_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(size_variation) = size_var_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(height_variation) = height_var_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(peakiness) = peakiness_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(merge) = merge_converted.unwrap() else { unreachable!() };
-        let Value::Curve(profile) = profile_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut seed) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Image(map_data) = 3,
+            Decimal(threshold) = 4,
+            Integer(river_width) = 5,
+            Integer(valley_width) = 6,
+            Curve(valley_profile) = 7,
+            Decimal(river_depth) = 8,
+            Decimal(bank_height) = 9,
+            Decimal(density) = 10,
+            Decimal(size) = 11,
+            Decimal(size_variation) = 12,
+            Decimal(height_variation) = 13,
+            Decimal(peakiness) = 14,
+            Decimal(merge) = 15,
+            Curve(profile) = 16,
+        }
 
         // Width/height/seed/hill-shape clamps match rolling hills exactly
         // (including the lack of an upper width/height bound) so the

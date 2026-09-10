@@ -12,9 +12,11 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -34,9 +36,9 @@ impl OpImageAdjustmentColorMatch {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("source".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("source")
                 .with_description("Image whose per-channel histogram will be remapped."),
-            Input::new("reference".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("reference")
                 .with_description("Image providing the target histogram the source is matched against."),
             Input::new("strength".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Blend between the original source (0) and the fully matched result (1)."),
@@ -52,17 +54,12 @@ impl OpImageAdjustmentColorMatch {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let source_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let reference_converted = convert_input(inputs, 1, ValueType::Image, &mut input_errors);
-        let strength_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data: source, change_id: _ } = source_converted.unwrap() else { unreachable!() };
-        let Value::Image { data: reference, change_id: _ } = reference_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(strength) = strength_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(source) = 0,
+            Image(reference) = 1,
+            Decimal(strength) = 2,
+        }
 
         let strength = strength.clamp(0.0, 1.0);
         let src_ch = source.channels() as usize;
@@ -85,22 +82,20 @@ impl OpImageAdjustmentColorMatch {
 
         let (width, height) = source.dimensions();
         let mut output = FloatImage::new(width, height, source.channels());
-        let mut buf = [0.0f32; 4];
-        for y in 0..height {
-            for x in 0..width {
-                let p = source.get_pixel(x, y);
+        output
+            .par_pixels_mut()
+            .zip(source.par_pixels())
+            .for_each(|(dst, p)| {
                 for c in 0..src_ch {
                     if has_alpha && c == src_ch - 1 {
-                        buf[c] = p[c];
+                        dst[c] = p[c];
                     } else {
                         let bin = ((p[c].clamp(0.0, 1.0)) * (BINS as f32 - 1.0)).round() as usize;
                         let mapped = luts[c][bin.min(BINS - 1)];
-                        buf[c] = p[c] * (1.0 - strength) + mapped * strength;
+                        dst[c] = p[c] * (1.0 - strength) + mapped * strength;
                     }
                 }
-                output.put_pixel(x, y, &buf[..src_ch]);
-            }
-        }
+            });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

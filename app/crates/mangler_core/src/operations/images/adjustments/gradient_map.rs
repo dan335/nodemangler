@@ -9,9 +9,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -35,7 +36,7 @@ impl OpImageAdjustmentGradientMap {
     /// a toggle for using the mid color, and a mid position slider.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image whose luminance picks a position along the gradient."),
             Input::new("color a".to_string(), Value::Color(Color::default()), None, None)
                 .with_description("Colour at the dark end of the gradient (luminance 0)."),
@@ -62,26 +63,15 @@ impl OpImageAdjustmentGradientMap {
     /// between gradient colors based on luminance position. Output is always 4-channel RGBA.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let color_a_converted = convert_input(inputs, 1, ValueType::Color, &mut input_errors);
-        let color_b_converted = convert_input(inputs, 2, ValueType::Color, &mut input_errors);
-        let color_c_converted = convert_input(inputs, 3, ValueType::Color, &mut input_errors);
-        let use_mid_converted = convert_input(inputs, 4, ValueType::Bool, &mut input_errors);
-        let mid_pos_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::Color(color_a) = color_a_converted.unwrap() else { unreachable!() };
-        let Value::Color(color_b) = color_b_converted.unwrap() else { unreachable!() };
-        let Value::Color(color_c) = color_c_converted.unwrap() else { unreachable!() };
-        let Value::Bool(use_mid) = use_mid_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(mid_pos) = mid_pos_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Color(color_a) = 1,
+            Color(color_b) = 2,
+            Color(color_c) = 3,
+            Bool(use_mid) = 4,
+            Decimal(mid_pos) = 5,
+        }
 
         // run node — compute luminance and map to gradient colors
         let (width, height) = data.dimensions();
@@ -105,7 +95,7 @@ impl OpImageAdjustmentGradientMap {
                 let original_a = if ch == 2 || ch == 4 { px[ch - 1] } else { 1.0 };
 
                 // Rec. 709 luminance
-                let lum = (0.2126 * r + 0.7152 * g + 0.0722 * b).clamp(0.0, 1.0);
+                let lum = (crate::luma::rec709(r, g, b)).clamp(0.0, 1.0);
 
                 let (out_r, out_g, out_b, _out_a) = if use_mid {
                     // Three-color gradient: lerp A->C below midpoint, C->B above midpoint

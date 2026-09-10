@@ -14,9 +14,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -112,33 +113,20 @@ impl OpImageNoiseCraters {
     /// contributions then sum onto a 0.5 base height, clamped to [0, 1].
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let density_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let size_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let size_var_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let depth_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let rim_height_converted = convert_input(inputs, 7, ValueType::Decimal, &mut input_errors);
-        let rim_width_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
-        let coverage_converted = convert_input(inputs, 9, ValueType::Decimal, &mut input_errors);
-        let octaves_converted = convert_input(inputs, 10, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(density) = density_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(size) = size_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(size_variation) = size_var_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(depth) = depth_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(rim_height) = rim_height_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(rim_width) = rim_width_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(coverage) = coverage_converted.unwrap() else { unreachable!() };
-        let Value::Integer(octaves) = octaves_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut seed) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Decimal(density) = 3,
+            Decimal(size) = 4,
+            Decimal(size_variation) = 5,
+            Decimal(depth) = 6,
+            Decimal(rim_height) = 7,
+            Decimal(rim_width) = 8,
+            Decimal(coverage) = 9,
+            Integer(octaves) = 10,
+        }
 
         width = width.max(4);
         height = height.max(4);

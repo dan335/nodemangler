@@ -36,6 +36,10 @@ pub mod thumbnail;
 pub mod thumbnail_service;
 pub mod app;
 pub mod float_image;
+/// Shared interpolation primitives (smoothstep, lerp, quintic).
+pub mod math;
+/// The crate's two luma (perceived-brightness) weightings.
+pub mod luma;
 pub mod float_image_serde;
 pub mod color;
 pub mod version;

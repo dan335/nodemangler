@@ -14,9 +14,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -87,29 +88,18 @@ impl OpImageNoiseScales {
     /// scale (top-most row) wins and contributes its domed height.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let density_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
-        let row_ratio_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let scale_width_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let scale_length_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let jitter_converted = convert_input(inputs, 7, ValueType::Decimal, &mut input_errors);
-        let height_var_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Integer(density) = density_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(row_ratio) = row_ratio_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(scale_width) = scale_width_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(scale_length) = scale_length_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(jitter) = jitter_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(height_variation) = height_var_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut seed) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Integer(density) = 3,
+            Decimal(row_ratio) = 4,
+            Decimal(scale_width) = 5,
+            Decimal(scale_length) = 6,
+            Decimal(jitter) = 7,
+            Decimal(height_variation) = 8,
+        }
 
         width = width.max(4);
         height = height.max(4);

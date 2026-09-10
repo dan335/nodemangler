@@ -6,10 +6,10 @@
 //! All sampling is bilinear and channel-agnostic.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use crate::float_image::FloatImage;
@@ -36,7 +36,7 @@ impl OpImageTransformPolarCoordinates {
     /// Creates input ports: source image and a direction toggle.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to remap between rectangular and polar space."),
             Input::new("to polar".to_string(), Value::Bool(true), None, None)
                 .with_description("On: rectangular → polar (wrap into a disk). Off: polar → rectangular (unwrap)."),
@@ -54,15 +54,11 @@ impl OpImageTransformPolarCoordinates {
     /// Executes the polar remap by inverse-sampling the source for each output pixel.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let to_polar_converted = convert_input(inputs, 1, ValueType::Bool, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Bool(to_polar) = to_polar_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Bool(to_polar) = 1,
+        }
 
         let (w, h) = data.dimensions();
         let ch = data.channels() as usize;

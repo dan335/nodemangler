@@ -9,9 +9,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::f32::consts::PI;
 use std::sync::Arc;
@@ -58,21 +59,14 @@ impl OpImageNoiseWave {
     /// Generates the wave pattern from the given inputs.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let width_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let freq_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let angle_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let phase_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Integer(frequency) = freq_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(angle) = angle_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(phase) = phase_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut width) = 0,
+            Integer(mut height) = 1,
+            Integer(frequency) = 2,
+            Decimal(angle) = 3,
+            Decimal(phase) = 4,
+        }
 
         width = width.max(1);
         height = height.max(1);

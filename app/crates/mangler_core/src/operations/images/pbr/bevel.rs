@@ -14,9 +14,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -97,7 +98,7 @@ impl OpImagePbrBevel {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("mask")
                 .with_description("Source mask that defines the shape to be beveled."),
             Input::new("distance".to_string(), Value::Decimal(16.0), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 256.0)) }), None)
                 .with_description("Bevel width in pixels at a 1024px reference (scales with image size), measured inward from the mask edge."),
@@ -123,23 +124,15 @@ impl OpImagePbrBevel {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let mask_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let distance_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let smoothing_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let corner_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
-        let mode_converted = convert_input(inputs, 4, ValueType::Integer, &mut input_errors);
-        let threshold_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = mask_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(distance) = distance_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(smoothing) = smoothing_converted.unwrap() else { unreachable!() };
-        let Value::Integer(corner) = corner_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mode) = mode_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(threshold) = threshold_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(distance) = 1,
+            Decimal(smoothing) = 2,
+            Integer(corner) = 3,
+            Integer(mode) = 4,
+            Decimal(threshold) = 5,
+        }
 
         let smoothing = smoothing.clamp(0.0, 1.0);
 
@@ -158,7 +151,7 @@ impl OpImagePbrBevel {
             (0..w).map(move |x| {
                 let p = data.get_pixel(x as u32, y as u32);
                 let lum = if ch >= 3 {
-                    0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]
+                    crate::luma::rec709(p[0], p[1], p[2])
                 } else {
                     p[0]
                 };

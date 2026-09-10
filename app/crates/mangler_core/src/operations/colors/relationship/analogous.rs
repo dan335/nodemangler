@@ -6,9 +6,10 @@
 use crate::color::Color;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -59,18 +60,11 @@ impl OpColorHarmonyAnalogous {
     /// Executes the analogous harmony, producing colors at +angle and -angle hue offsets.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // Convert inputs
-        let color_converted = convert_input(inputs, 0, ValueType::Color, &mut input_errors);
-        let angle_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-
-        // Return early on conversion errors
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // Unwrap values
-        let Value::Color(color) = color_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(angle) = angle_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Color(color) = 0,
+            Decimal(angle) = 1,
+        }
 
         // Decompose into HSL components for hue rotation
         let (h, s, l, a) = color.to_hsl();

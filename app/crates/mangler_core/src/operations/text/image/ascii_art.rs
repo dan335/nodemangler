@@ -3,12 +3,12 @@
 //! Samples the image on a character grid and maps each cell's luminance to a
 //! glyph from a light→dark ramp, producing a multi-line text picture.
 
-use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -31,7 +31,7 @@ impl OpTextImageAsciiArt {
     /// Creates the input ports: the image and the column count.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Image to render as ASCII art."),
             Input::new("columns".to_string(), Value::Integer(80), Some(InputSettings::DragValue { clamp: Some((8.0, 400.0)), speed: None }), None)
                 .with_description("Number of character columns (8..400)."),
@@ -49,15 +49,11 @@ impl OpTextImageAsciiArt {
     /// Executes the ASCII-art rendering.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let columns_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Integer(columns) = columns_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(columns) = 1,
+        }
 
         let (w, h) = data.dimensions();
         let ch = data.channels() as usize;

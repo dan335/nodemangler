@@ -17,10 +17,10 @@
 
 use crate::float_image::FloatImage;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -45,7 +45,7 @@ impl OpImageAdjustmentGuided {
     /// Creates the input ports: image, radius, and epsilon (edge sensitivity).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to smooth while preserving edges; also acts as its own guide."),
             // box-blur radius — cost is independent of this thanks to prefix sums, so we allow large values
             Input::new("radius".to_string(), Value::Integer(8), Some(InputSettings::Slider { range: (1.0, 64.0), step_by: Some(1.0), clamp_to_range: true }), None)
@@ -68,20 +68,12 @@ impl OpImageAdjustmentGuided {
     /// Executes the guided filter.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let radius_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let epsilon_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(epsilon) = epsilon_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(radius) = 1,
+            Decimal(epsilon) = 2,
+        }
 
         let epsilon = epsilon.max(1e-6);
 
@@ -111,7 +103,7 @@ impl OpImageAdjustmentGuided {
         let mut guide = vec![0.0f32; n];
         for i in 0..n {
             guide[i] = if color_ch >= 3 {
-                0.2126 * channels[0][i] + 0.7152 * channels[1][i] + 0.0722 * channels[2][i]
+                crate::luma::rec709(channels[0][i], channels[1][i], channels[2][i])
             } else {
                 channels[0][i]
             };

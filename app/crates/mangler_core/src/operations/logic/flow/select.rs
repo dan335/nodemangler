@@ -7,9 +7,10 @@
 
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -63,13 +64,10 @@ impl OpLogicFlowSelect {
     /// value is cloned and output as-is, preserving its original type.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let condition_converted = convert_input(inputs, 0, ValueType::Bool, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Bool(condition) = condition_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Bool(condition) = 0,
+        }
 
         // Forward the selected branch value without any type coercion
         let value = if condition {

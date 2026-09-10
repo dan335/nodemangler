@@ -9,9 +9,10 @@
 use crate::curve::Curve;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{convert_input, OperationError, OperationResponse, OutputResponse};
+use crate::convert_inputs;
+use crate::operations::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -121,23 +122,14 @@ impl OpCurveModifyMirror {
     /// Mirrors the curve from the given inputs.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let curve_converted = convert_input(inputs, 0, ValueType::Curve, &mut input_errors);
-        let axis_converted = convert_input(inputs, 1, ValueType::Text, &mut input_errors);
-        let angle_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let px_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let py_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Curve(curve) = 0,
+            Text(axis) = 1,
+            Decimal(angle) = 2,
+            Decimal(pivot_x) = 3,
+            Decimal(pivot_y) = 4,
         }
-
-        let Value::Curve(curve) = curve_converted.unwrap() else { unreachable!() };
-        let Value::Text(axis) = axis_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(angle) = angle_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(pivot_x) = px_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(pivot_y) = py_converted.unwrap() else { unreachable!() };
 
         let out = mirror_curve(&curve, &axis, angle as f64, [pivot_x as f64, pivot_y as f64]);
 

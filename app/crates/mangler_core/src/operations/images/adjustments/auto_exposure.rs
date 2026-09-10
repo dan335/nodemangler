@@ -7,12 +7,13 @@
 //! full histogram into [0, 1].
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -20,10 +21,6 @@ use std::time::Instant;
 /// Default photographic mid-gray (Reinhard 2002 key / 18% gray).
 const DEFAULT_TARGET: f32 = 0.18;
 
-/// Rec.709 luminance weights (linear light).
-const LUMA_R: f32 = 0.2126;
-const LUMA_G: f32 = 0.7152;
-const LUMA_B: f32 = 0.0722;
 
 /// Floor under log so pure black does not drive exposure to ±∞.
 const LOG_DELTA: f32 = 1e-6;
@@ -61,7 +58,7 @@ impl OpImageAdjustmentAutoExposure {
     /// Creates the input ports: image, target mid-gray, and blend strength.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image whose exposure is auto-corrected."),
             Input::new("target".to_string(), Value::Decimal(DEFAULT_TARGET), Some(InputSettings::Slider {
                 range: (0.01, 1.0),
@@ -91,19 +88,12 @@ impl OpImageAdjustmentAutoExposure {
     /// Executes auto exposure: log-average → stops → multiplicative gain.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let target_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let strength_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(target) = 1,
+            Decimal(strength) = 2,
         }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(target) = target_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(strength) = strength_converted.unwrap() else { unreachable!() };
 
         let target = target.max(1e-6);
         let strength = strength.clamp(0.0, 1.0);
@@ -119,11 +109,11 @@ impl OpImageAdjustmentAutoExposure {
 
         let mut result = (*data).clone();
         if (gain - 1.0).abs() > 1e-7 {
-            for pixel in result.pixels_mut() {
+            result.par_pixels_mut().for_each(|pixel| {
                 for val in pixel.iter_mut().take(color_ch) {
                     *val *= gain;
                 }
-            }
+            });
         }
 
         Ok(OperationResponse {
@@ -143,9 +133,6 @@ impl OpImageAdjustmentAutoExposure {
     }
 }
 
-fn luminance(r: f32, g: f32, b: f32) -> f32 {
-    LUMA_R * r + LUMA_G * g + LUMA_B * b
-}
 
 /// Log-average Rec.709 luminance over the image (geometric mean of luma + delta).
 fn log_average_luminance(img: &crate::float_image::FloatImage, color_ch: usize) -> f32 {
@@ -154,7 +141,7 @@ fn log_average_luminance(img: &crate::float_image::FloatImage, color_ch: usize) 
 
     for pixel in img.pixels() {
         let lum = if color_ch >= 3 {
-            luminance(pixel[0], pixel[1], pixel[2])
+            crate::luma::rec709(pixel[0], pixel[1], pixel[2])
         } else {
             pixel[0]
         }

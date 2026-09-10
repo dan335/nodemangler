@@ -11,9 +11,10 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::blur::blur::gaussian_blur_image;
 use crate::operations::images::fx::outer_glow::{tint_field, to_mask_field, PARALLEL_PIXELS};
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution, REFERENCE_RESOLUTION};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, REFERENCE_RESOLUTION, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -34,7 +35,7 @@ impl OpImageFxDropShadow {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("mask")
                 .with_description("Shape whose alpha or luminance defines the silhouette that casts the shadow."),
             Input::new("offset x".to_string(), Value::Decimal(6.0), Some(InputSettings::DragValue { speed: None, clamp: Some((-256.0, 256.0)) }), None)
                 .with_description("Horizontal offset of the shadow, in pixels at a 1024px reference (scales with image size, so the value stays the same at any resolution)."),
@@ -58,23 +59,15 @@ impl OpImageFxDropShadow {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let mask_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let off_x_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let off_y_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let blur_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let color_converted = convert_input(inputs, 4, ValueType::Color, &mut input_errors);
-        let opacity_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = mask_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(off_x) = off_x_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(off_y) = off_y_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(blur) = blur_converted.unwrap() else { unreachable!() };
-        let Value::Color(color) = color_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(opacity) = opacity_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(off_x) = 1,
+            Decimal(off_y) = 2,
+            Decimal(blur) = 3,
+            Color(color) = 4,
+            Decimal(opacity) = 5,
+        }
 
         let (width, height) = data.dimensions();
 

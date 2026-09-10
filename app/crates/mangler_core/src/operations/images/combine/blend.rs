@@ -11,7 +11,7 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, image_input};
 use crate::operations::images::combine::{placement, placement_inputs, PLACEMENT_HELP};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
@@ -35,13 +35,13 @@ impl OpImageCombineBlend {
 
     pub fn create_inputs() -> Vec<Input> {
         let mut inputs = vec![
-            Input::new("background".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("background")
                 .with_description("Base image the foreground is composited onto; sets the output size."),
-            Input::new("foreground".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("foreground")
                 .with_description("Image composited on top of the background using the chosen blend mode."),
             Input::new("amount".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Global opacity applied to the blended foreground; 0 shows only the background."),
-            Input::new("alpha".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("alpha")
                 .with_description("Optional mask image; its per-pixel RGB average multiplies the blend amount."),
             Input::new("blend mode".to_string(), Value::BlendMode(crate::color::blend::BlendMode::Over), None, None)
                 .with_description("Compositing formula used to combine foreground and background."),

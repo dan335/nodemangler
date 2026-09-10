@@ -5,9 +5,10 @@
 
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -52,17 +53,12 @@ impl OpTextSubstring {
     /// Converts the inputs and extracts the requested character range.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let text_converted = convert_input(inputs, 0, ValueType::Text, &mut input_errors);
-        let start_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let length_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Text(text) = text_converted.unwrap() else { unreachable!() };
-        let Value::Integer(start) = start_converted.unwrap() else { unreachable!() };
-        let Value::Integer(length) = length_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Text(text) = 0,
+            Integer(start) = 1,
+            Integer(length) = 2,
+        }
 
         let start = start.max(0) as usize;
         let output = if length <= 0 {

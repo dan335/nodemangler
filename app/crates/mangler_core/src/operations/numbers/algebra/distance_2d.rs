@@ -5,9 +5,10 @@
 
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -53,19 +54,13 @@ impl OpNumberMathDistance2d {
     /// Executes the distance operation: computes `(x2 - x1).hypot(y2 - y1)`.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let x1_converted = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
-        let y1_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let x2_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let y2_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Decimal(x1) = x1_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(y1) = y1_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(x2) = x2_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(y2) = y2_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Decimal(x1) = 0,
+            Decimal(y1) = 1,
+            Decimal(x2) = 2,
+            Decimal(y2) = 3,
+        }
 
         let distance = (x2 - x1).hypot(y2 - y1);
 

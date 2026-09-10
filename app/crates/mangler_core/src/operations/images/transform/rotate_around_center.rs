@@ -5,11 +5,11 @@
 
 use crate::color::Color;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::float_image::FloatImage;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -37,7 +37,7 @@ impl OpImageTransformRotateAroundCenter {
     /// Creates the default inputs: source image, rotation angle in degrees, and background fill color.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to rotate around its center."),
             Input::new("degrees".to_string(), Value::Decimal(45.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(0.01), clamp_to_range:false }), None)
                 .with_description("Rotation angle in degrees applied around the image center."),
@@ -58,20 +58,12 @@ impl OpImageTransformRotateAroundCenter {
     /// source and bilinear-sampling the f32 data directly.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let degrees_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let bg_color_converted = convert_input(inputs, 2, ValueType::Color, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(degrees) = degrees_converted.unwrap() else { unreachable!() };
-        let Value::Color(bg_color) = bg_color_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(degrees) = 1,
+            Color(bg_color) = 2,
+        }
 
         let (w, h) = data.dimensions();
         let ch = data.channels() as usize;

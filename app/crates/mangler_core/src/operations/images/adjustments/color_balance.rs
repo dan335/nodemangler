@@ -8,10 +8,11 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use super::common::smoothstep;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -47,7 +48,7 @@ impl OpImageAdjustmentColorBalance {
     /// Creates input ports: image plus nine per-band RGB offsets.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source colour image to balance."),
             offset_input("shadows r", "Red offset applied to dark tones."),
             offset_input("shadows g", "Green offset applied to dark tones."),
@@ -100,15 +101,15 @@ impl OpImageAdjustmentColorBalance {
         let hi = [bands[6], bands[7], bands[8]];
 
         let mut result = (*data).clone();
-        for pixel in result.pixels_mut() {
-            let luma = 0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2];
+        result.par_pixels_mut().for_each(|pixel| {
+            let luma = crate::luma::rec709(pixel[0], pixel[1], pixel[2]);
             let w_sh = 1.0 - smoothstep(0.0, 0.5, luma);
             let w_hi = smoothstep(0.5, 1.0, luma);
             let w_mid = (1.0 - w_sh - w_hi).max(0.0);
             for c in 0..3 {
                 pixel[c] += SCALE * (w_sh * sh[c] + w_mid * mid[c] + w_hi * hi[c]);
             }
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

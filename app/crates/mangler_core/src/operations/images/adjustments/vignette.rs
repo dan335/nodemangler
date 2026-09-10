@@ -5,14 +5,15 @@
 //! ramps over `softness`. Alpha is preserved.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::tone_curve::{optional_lut, sample_lut, tone_curve_input};
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use super::common::smoothstep;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -34,7 +35,7 @@ impl OpImageAdjustmentVignette {
     /// Creates input ports: image, strength, inner radius, and softness.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to apply the vignette to."),
             Input::new("amount".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Darkening strength; 1 drives the corners fully to black."),
@@ -57,21 +58,14 @@ impl OpImageAdjustmentVignette {
     /// Executes the vignette by scaling each colour channel by the radial falloff.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let amount_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let radius_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let softness_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let falloff_converted = convert_input(inputs, 4, ValueType::Curve, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(radius) = radius_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(softness) = softness_converted.unwrap() else { unreachable!() };
-        let Value::Curve(falloff_curve) = falloff_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(amount) = 1,
+            Decimal(radius) = 2,
+            Decimal(softness) = 3,
+            Curve(falloff_curve) = 4,
+        }
         let lut = optional_lut(&falloff_curve);
 
         if amount == 0.0 {
@@ -90,7 +84,7 @@ impl OpImageAdjustmentVignette {
         let end = (radius + softness).min(1.0).max(radius + 1e-4);
 
         let mut result = (*data).clone();
-        for (x, y, pixel) in result.enumerate_pixels_mut() {
+        result.par_enumerate_pixels_mut().for_each(|(x, y, pixel)| {
             // Centre-relative coordinates in [-1, 1] per axis.
             let dx = ((x as f32 + 0.5) / w as f32) * 2.0 - 1.0;
             let dy = ((y as f32 + 0.5) / h as f32) * 2.0 - 1.0;
@@ -104,7 +98,7 @@ impl OpImageAdjustmentVignette {
             for val in pixel.iter_mut().take(color_ch) {
                 *val *= mul;
             }
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

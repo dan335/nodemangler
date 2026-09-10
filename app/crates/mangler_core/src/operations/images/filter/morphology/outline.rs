@@ -18,10 +18,11 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::operations::images::adjustments::common::smoothstep;
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -42,7 +43,7 @@ impl OpImageAdjustmentOutline {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image or mask whose edges to stroke."),
             Input::new("thickness".to_string(), Value::Integer(2), Some(InputSettings::Slider { range: (1.0, 32.0), step_by: Some(1.0), clamp_to_range: true }), None)
                 .with_description("Stroke width in pixels at a 1024px reference (scales with image size, so the effect is the same at any resolution)."),
@@ -62,19 +63,13 @@ impl OpImageAdjustmentOutline {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let thickness_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let position_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let color_converted = convert_input(inputs, 3, ValueType::Color, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Integer(thickness) = thickness_converted.unwrap() else { unreachable!() };
-        let Value::Integer(position) = position_converted.unwrap() else { unreachable!() };
-        let Value::Color(color) = color_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(thickness) = 1,
+            Integer(position) = 2,
+            Color(color) = 3,
+        }
 
         let position = position.clamp(0, 2);
 
@@ -119,7 +114,7 @@ impl OpImageAdjustmentOutline {
                 let v = if use_alpha {
                     px[ch - 1]
                 } else if ch >= 3 {
-                    0.2126 * px[0] + 0.7152 * px[1] + 0.0722 * px[2]
+                    crate::luma::rec709(px[0], px[1], px[2])
                 } else {
                     px[0]
                 };

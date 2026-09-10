@@ -4,12 +4,12 @@
 //! interior pixels have a normalized gradient magnitude above a threshold.
 //! Higher values mean busier, more detailed images.
 
-use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -30,7 +30,7 @@ impl OpNumberImageEdgeDensity {
     /// Creates the input ports: the image and an edge-magnitude threshold.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Image whose edge density is measured."),
             Input::new("threshold".to_string(), Value::Decimal(0.2), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
                 .with_description("A pixel counts as an edge when its normalized Sobel magnitude exceeds this."),
@@ -48,15 +48,11 @@ impl OpNumberImageEdgeDensity {
     /// Executes the edge-density computation.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let threshold_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(threshold) = threshold_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(threshold) = 1,
+        }
 
         let (w, h) = data.dimensions();
         if w < 3 || h < 3 {

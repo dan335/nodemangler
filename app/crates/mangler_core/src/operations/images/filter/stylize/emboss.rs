@@ -6,10 +6,10 @@
 //! lighter/darker.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -33,7 +33,7 @@ impl OpImageAdjustmentEmboss {
     /// Creates the input ports: image, intensity, and angle (in degrees) controlling the emboss direction.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to convert into a 3D-relief emboss."),
             Input::new("intensity".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 10.0), step_by: Some(0.1), clamp_to_range: true }), None)
                 .with_description("Multiplier on the directional difference; higher values deepen the relief."),
@@ -52,17 +52,12 @@ impl OpImageAdjustmentEmboss {
     /// and outputs the scaled difference centered at 0.5.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let intensity_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let angle_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(intensity) = intensity_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(angle) = angle_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(intensity) = 1,
+            Decimal(angle) = 2,
+        }
 
         // run node — work directly on FloatImage
         let (width, height) = (data.width(), data.height());

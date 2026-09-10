@@ -6,12 +6,13 @@
 //! Matches the Substance Designer levels node behavior.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -37,7 +38,7 @@ impl OpImageAdjustmentLevels {
     /// Creates the input ports: image, input low/mid/high, and output low/high.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to remap through the levels curve."),
             Input::new("in low".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Input black point; values at or below this become 0."),
@@ -92,26 +93,15 @@ impl OpImageAdjustmentLevels {
     /// Executes the levels adjustment directly on FloatImage data.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let in_low_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let in_mid_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let in_high_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let out_low_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let out_high_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(in_low) = in_low_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(in_mid) = in_mid_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(in_high) = in_high_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(out_low) = out_low_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(out_high) = out_high_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(in_low) = 1,
+            Decimal(in_mid) = 2,
+            Decimal(in_high) = 3,
+            Decimal(out_low) = 4,
+            Decimal(out_high) = 5,
+        }
 
         // run node — data is already f32, clone and work directly
         let mut result = (*data).clone();
@@ -126,7 +116,7 @@ impl OpImageAdjustmentLevels {
         if gamma == 1.0 {
             // Neutral midtone (in_mid == 0.5): the gamma curve is the
             // identity, so skip the powf path entirely.
-            for pixel in result.pixels_mut() {
+            result.par_pixels_mut().for_each(|pixel| {
                 for val in pixel.iter_mut().take(color_ch) {
                     // Remap from [in_low, in_high] to [0, 1]
                     let remapped = ((*val - in_low) / in_range).clamp(0.0, 1.0);
@@ -134,12 +124,12 @@ impl OpImageAdjustmentLevels {
                     *val = out_low + remapped * out_range;
                 }
                 // alpha unchanged
-            }
+            });
         } else {
             // Build the gamma curve once and interpolate per pixel instead
             // of paying for powf on every channel.
             let lut = Self::build_gamma_lut(inv_gamma);
-            for pixel in result.pixels_mut() {
+            result.par_pixels_mut().for_each(|pixel| {
                 for val in pixel.iter_mut().take(color_ch) {
                     // Remap from [in_low, in_high] to [0, 1]
                     let remapped = ((*val - in_low) / in_range).clamp(0.0, 1.0);
@@ -149,7 +139,7 @@ impl OpImageAdjustmentLevels {
                     *val = out_low + corrected * out_range;
                 }
                 // alpha unchanged
-            }
+            });
         }
 
         Ok(OperationResponse { 

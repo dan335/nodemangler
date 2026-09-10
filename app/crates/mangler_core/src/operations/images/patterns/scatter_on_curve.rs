@@ -13,9 +13,10 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::curves::common::{cumulative_arc, flatten_f64};
 use crate::operations::images::patterns::{draw_stamp, StampPlacement};
-use crate::operations::{convert_input, default_image, scale_to_resolution, OperationError, OperationResponse, OutputResponse};
+use crate::convert_inputs;
+use crate::operations::{default_image, scale_to_resolution, OperationError, OperationResponse, OutputResponse, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -85,7 +86,7 @@ impl OpImagePatternScatterOnCurve {
         vec![
             Input::new("seed".to_string(), Value::Integer(42), Some(InputSettings::DragValue { clamp: None, speed: None }), None)
                 .with_description("Random seed; same seed always produces the same layout."),
-            Input::new("pattern".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("pattern")
                 .with_description("Source image stamped along the curve."),
             Input::new("curve".to_string(), Value::Curve(Curve::default()), None, None)
                 .with_description("The curve to stamp along."),
@@ -121,37 +122,21 @@ impl OpImagePatternScatterOnCurve {
     /// Stamps the pattern along the curve into a composite image.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let pattern_converted = convert_input(inputs, 1, ValueType::Image, &mut input_errors);
-        let curve_converted = convert_input(inputs, 2, ValueType::Curve, &mut input_errors);
-        let width_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 4, ValueType::Integer, &mut input_errors);
-        let spacing_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let stamp_size_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let align_converted = convert_input(inputs, 7, ValueType::Bool, &mut input_errors);
-        let scale_random_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
-        let rotation_random_converted = convert_input(inputs, 9, ValueType::Decimal, &mut input_errors);
-        let jitter_along_converted = convert_input(inputs, 10, ValueType::Decimal, &mut input_errors);
-        let jitter_across_converted = convert_input(inputs, 11, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Integer(seed) = 0,
+            Image(pattern) = 1,
+            Curve(curve) = 2,
+            Integer(mut width) = 3,
+            Integer(mut height) = 4,
+            Decimal(spacing) = 5,
+            Decimal(stamp_size) = 6,
+            Bool(align) = 7,
+            Decimal(scale_random) = 8,
+            Decimal(rotation_random) = 9,
+            Decimal(jitter_along) = 10,
+            Decimal(jitter_across) = 11,
         }
-
-        let Value::Integer(seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Image { data: pattern, change_id: _ } = pattern_converted.unwrap() else { unreachable!() };
-        let Value::Curve(curve) = curve_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(spacing) = spacing_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(stamp_size) = stamp_size_converted.unwrap() else { unreachable!() };
-        let Value::Bool(align) = align_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(scale_random) = scale_random_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(rotation_random) = rotation_random_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(jitter_along) = jitter_along_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(jitter_across) = jitter_across_converted.unwrap() else { unreachable!() };
 
         width = width.max(1);
         height = height.max(1);

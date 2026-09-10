@@ -1,10 +1,10 @@
 //! Crop operation for extracting a rectangular sub-region from an image.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -142,7 +142,7 @@ impl OpImageTransformCrop {
     /// region (0-1 fractions of the source), and an optional integer W:H aspect lock.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to crop."),
             Input::new("x".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
                 .with_description("Left edge of the crop region as a 0-1 fraction of image width (0.25 = a quarter across). Resolution-independent."),
@@ -177,29 +177,16 @@ impl OpImageTransformCrop {
     /// the optional aspect lock, and clamps them to the source image bounds before cropping.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let x_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let y_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let width_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let height_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let ratio_w_converted = convert_input(inputs, 5, ValueType::Integer, &mut input_errors);
-        let ratio_h_converted = convert_input(inputs, 6, ValueType::Integer, &mut input_errors);
-
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(x) = x_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(y) = y_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Integer(ratio_w) = ratio_w_converted.unwrap() else { unreachable!() };
-        let Value::Integer(ratio_h) = ratio_h_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(x) = 1,
+            Decimal(y) = 2,
+            Decimal(width) = 3,
+            Decimal(height) = 4,
+            Integer(ratio_w) = 5,
+            Integer(ratio_h) = 6,
+        }
 
         // run node
         // The parameters are 0-1 fractions of the source size, so resolve them

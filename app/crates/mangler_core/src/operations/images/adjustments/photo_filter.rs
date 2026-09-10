@@ -10,12 +10,13 @@
 
 use crate::color::Color;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -37,7 +38,7 @@ impl OpImageAdjustmentPhotoFilter {
     /// Creates input ports: image, filter colour, density, preserve-luminosity.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source colour image to tint."),
             // Default = Photoshop 'Warming Filter (85)' orange.
             Input::new("color".to_string(), Value::Color(Color { r: 0.925, g: 0.541, b: 0.0, a: 1.0 }), None, None)
@@ -61,19 +62,13 @@ impl OpImageAdjustmentPhotoFilter {
     /// then optionally rescale each pixel to preserve its luminosity.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let color_converted = convert_input(inputs, 1, ValueType::Color, &mut input_errors);
-        let density_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let preserve_converted = convert_input(inputs, 3, ValueType::Bool, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Color(color) = color_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(density) = density_converted.unwrap() else { unreachable!() };
-        let Value::Bool(preserve_luminosity) = preserve_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Color(color) = 1,
+            Decimal(density) = 2,
+            Bool(preserve_luminosity) = 3,
+        }
 
         let ch = data.channels() as usize;
         if ch < 3 {
@@ -90,7 +85,7 @@ impl OpImageAdjustmentPhotoFilter {
         let fb = 1.0 + density * (color.b - 1.0);
 
         let mut result = (*data).clone();
-        for pixel in result.pixels_mut() {
+        result.par_pixels_mut().for_each(|pixel| {
             let r = pixel[0];
             let g = pixel[1];
             let b = pixel[2];
@@ -100,8 +95,8 @@ impl OpImageAdjustmentPhotoFilter {
 
             if preserve_luminosity {
                 // Rescale so the tinted luma matches the original luma.
-                let l0 = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-                let l1 = 0.2126 * o[0] + 0.7152 * o[1] + 0.0722 * o[2];
+                let l0 = crate::luma::rec709(r, g, b);
+                let l1 = crate::luma::rec709(o[0], o[1], o[2]);
                 if l1 > 1e-6 {
                     let k = l0 / l1;
                     o[0] *= k;
@@ -114,7 +109,7 @@ impl OpImageAdjustmentPhotoFilter {
             pixel[1] = o[1];
             pixel[2] = o[2];
             // Alpha (pixel[3] on 4-channel) is left untouched.
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

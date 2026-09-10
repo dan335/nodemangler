@@ -18,9 +18,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -44,7 +45,7 @@ impl OpImageAdjustmentAnisotropicDiffusion {
     /// and per-step rate λ (≤ 0.25 for stability with a 4-neighborhood).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to smooth while preserving edges."),
             // number of diffusion iterations — more iterations = more smoothing
             Input::new("iterations".to_string(), Value::Integer(10), Some(InputSettings::Slider { range: (1.0, 100.0), step_by: Some(1.0), clamp_to_range: true }), None)
@@ -69,19 +70,13 @@ impl OpImageAdjustmentAnisotropicDiffusion {
     /// Runs anisotropic diffusion for the configured number of iterations.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let iter_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let kappa_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let lambda_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Integer(iterations) = iter_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(kappa) = kappa_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(lambda) = lambda_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(iterations) = 1,
+            Decimal(kappa) = 2,
+            Decimal(lambda) = 3,
+        }
 
         let iterations = iterations.max(1) as usize;
         let kappa = kappa.max(1e-6);

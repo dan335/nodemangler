@@ -8,14 +8,15 @@
 //! A heuristic edge-hue mask, not a physically modelled lens correction.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::operations::numbers::image::luma_values;
 use super::common::{hsl_to_rgb, rgb_to_hsl, smoothstep};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -47,7 +48,7 @@ fn sobel_magnitude(luma: &[f32], w: usize, h: usize) -> Vec<f32> {
         let sy = y.clamp(0, h as i32 - 1) as usize;
         luma[sy * w + sx]
     };
-    for y in 0..h {
+    out.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
         for x in 0..w {
             let xi = x as i32;
             let yi = y as i32;
@@ -59,9 +60,9 @@ fn sobel_magnitude(luma: &[f32], w: usize, h: usize) -> Vec<f32> {
             // Normalize by the max magnitude a single-axis kernel can produce
             // (4, for a full 0->1 luma step), then clamp to 1.
             let mag = ((gx / 4.0).powi(2) + (gy / 4.0).powi(2)).sqrt();
-            out[y * w + x] = mag.min(1.0);
+            row[x] = mag.min(1.0);
         }
-    }
+    });
     out
 }
 
@@ -82,7 +83,7 @@ impl OpImageAdjustmentDefringe {
     /// Creates the input ports: image, amount, edge threshold, and the two band toggles.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to defringe."),
             Input::new("amount".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Desaturation strength at qualifying edge pixels; 0 leaves the image unchanged."),
@@ -106,21 +107,14 @@ impl OpImageAdjustmentDefringe {
     /// Executes the defringe operation.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let amount_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let threshold_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let purple_converted = convert_input(inputs, 3, ValueType::Bool, &mut input_errors);
-        let green_converted = convert_input(inputs, 4, ValueType::Bool, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(threshold) = threshold_converted.unwrap() else { unreachable!() };
-        let Value::Bool(purple) = purple_converted.unwrap() else { unreachable!() };
-        let Value::Bool(green) = green_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(amount) = 1,
+            Decimal(threshold) = 2,
+            Bool(purple) = 3,
+            Bool(green) = 4,
+        }
 
         let amount = amount as f32;
         let threshold = threshold as f32;
@@ -141,15 +135,15 @@ impl OpImageAdjustmentDefringe {
         let luma = luma_values(&result);
         let edges = sobel_magnitude(&luma, wu, hu);
 
-        for y in 0..h {
-            for x in 0..w {
-                let g = edges[y as usize * wu + x as usize];
+        result
+            .par_pixels_mut()
+            .zip(edges.par_iter())
+            .for_each(|(px, &g)| {
                 if g <= threshold {
-                    continue;
+                    return;
                 }
                 let edge_w = smoothstep(threshold, threshold * 2.0 + 0.05, g);
 
-                let px = result.get_pixel_mut(x, y);
                 let (hue, s, l) = rgb_to_hsl(px[0], px[1], px[2]);
                 let mut band_w = 0.0f32;
                 if purple {
@@ -159,7 +153,7 @@ impl OpImageAdjustmentDefringe {
                     band_w = band_w.max(hue_band_weight(hue, GREEN_RANGE, BAND_MARGIN));
                 }
                 if band_w <= 0.0 {
-                    continue;
+                    return;
                 }
                 let ns = (s * (1.0 - amount * band_w * edge_w)).clamp(0.0, 1.0);
                 let (r, g2, b) = hsl_to_rgb(hue, ns, l);
@@ -167,8 +161,7 @@ impl OpImageAdjustmentDefringe {
                 px[1] = g2;
                 px[2] = b;
                 // Alpha (channel 3 on 4-channel images) is left untouched.
-            }
-        }
+            });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

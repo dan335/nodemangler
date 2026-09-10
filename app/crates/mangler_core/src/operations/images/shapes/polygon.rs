@@ -8,9 +8,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -86,24 +87,14 @@ impl OpImageShapePolygon {
     /// 0.0 = outside, with smooth anti-aliased edges.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let width_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let sides_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let radius_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let rotation_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut sides) = sides_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(radius) = radius_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(rotation) = rotation_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut width) = 0,
+            Integer(mut height) = 1,
+            Integer(mut sides) = 2,
+            Decimal(radius) = 3,
+            Decimal(rotation) = 4,
+        }
 
         // run node
         width = width.max(1);

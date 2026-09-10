@@ -8,11 +8,12 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
+use crate::convert_inputs;
 use crate::operations::{
-    OperationError, OperationResponse, OutputResponse, convert_input, default_image,
+    OperationError, OperationResponse, OutputResponse, default_image,
 };
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -22,7 +23,7 @@ use std::time::Instant;
 #[inline]
 fn mask_scalar(pixel: &[f32], ch: usize) -> f32 {
     if ch >= 3 {
-        0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2]
+        crate::luma::rec709(pixel[0], pixel[1], pixel[2])
     } else {
         pixel[0]
     }
@@ -111,32 +112,13 @@ impl OpImageMaskCombine {
     /// Combines the two mask images.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let a_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let b_converted = convert_input(inputs, 1, ValueType::Image, &mut input_errors);
-        let mode_converted = convert_input(inputs, 2, ValueType::Text, &mut input_errors);
-        let amount_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError {
-                input_errors,
-                node_error: None,
-            });
+        convert_inputs! { inputs;
+            Image(a) = 0,
+            Image(b) = 1,
+            Text(mode) = 2,
+            Decimal(amount) = 3,
         }
-
-        let Value::Image { data: a, change_id: _ } = a_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Image { data: b, change_id: _ } = b_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Text(mode) = mode_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Decimal(amount) = amount_converted.unwrap() else {
-            unreachable!()
-        };
         let amount = amount.clamp(0.0, 1.0);
         let mode = mode.to_ascii_lowercase();
 

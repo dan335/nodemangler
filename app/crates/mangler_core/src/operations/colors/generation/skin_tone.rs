@@ -12,9 +12,10 @@
 use crate::color::Color;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::f32::consts::TAU;
 use std::time::Instant;
@@ -115,27 +116,16 @@ impl OpColorGenerationSkinTone {
     /// Executes the operation, producing a skin tone color from random sampling or manual TUV.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let random_converted = convert_input(inputs, 0, ValueType::Bool, &mut input_errors);
-        let seed_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let r_square_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let t_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let u_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let v_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let alpha_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Bool(random) = 0,
+            Integer(seed) = 1,
+            Decimal(r_square) = 2,
+            Decimal(manual_t) = 3,
+            Decimal(manual_u) = 4,
+            Decimal(manual_v) = 5,
+            Decimal(alpha) = 6,
         }
-
-        let Value::Bool(random) = random_converted.unwrap() else { unreachable!() };
-        let Value::Integer(seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(r_square) = r_square_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(manual_t) = t_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(manual_u) = u_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(manual_v) = v_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(alpha) = alpha_converted.unwrap() else { unreachable!() };
 
         let (t, u, v) = if random {
             sample_sphere(seed, r_square)

@@ -7,7 +7,7 @@
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, image_input};
 use crate::operations::images::combine::{placement, placement_inputs, PLACEMENT_HELP};
 use crate::output::Output;
 use crate::value::{Value, ValueType};
@@ -30,9 +30,9 @@ impl OpImageCombineBlit {
 
     pub fn create_inputs() -> Vec<Input> {
         let mut inputs = vec![
-            Input::new("background".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("background")
                 .with_description("Base image the foreground is pasted onto; sets the output size."),
-            Input::new("foreground".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("foreground")
                 .with_description("Image alpha-composited on top of the background."),
             Input::new("position x".to_string(), Value::Integer(i32::default()), Some(InputSettings::DragValue { speed:None, clamp:None }), None)
                 .with_description("Horizontal pixel offset of the foreground's top-left within the background."),

@@ -56,11 +56,10 @@ pub mod perceptual_hash;
 /// - 3/4 channels: `0.299 R + 0.587 G + 0.114 B`; alpha ignored
 #[inline]
 pub(crate) fn pixel_luma(px: &[f32]) -> f32 {
-    match px.len() {
-        0 => 0.0,
-        1 | 2 => px[0],
-        _ => 0.299 * px[0] + 0.587 * px[1] + 0.114 * px[2],
-    }
+    // These nodes are the crate's Rec. 601 corner (see `crate::luma`): their
+    // published outputs are defined in terms of these weights, so they keep
+    // them while the image operations use Rec. 709.
+    crate::luma::rec601_px(px)
 }
 
 /// Expands a pixel slice of any channel count to `(r, g, b, a)`.

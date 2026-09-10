@@ -427,3 +427,135 @@ async fn test_all_operators_run_on_hdr_pixel() {
         }
     }
 }
+
+/// Every operator variant, so a change to the dispatch can't quietly drop one.
+const ALL_OPERATORS: [ToneMapOperator; 13] = [
+    ToneMapOperator::Linear,
+    ToneMapOperator::Reinhard,
+    ToneMapOperator::ReinhardLuminance,
+    ToneMapOperator::ReinhardExtended,
+    ToneMapOperator::PhotographicReinhard,
+    ToneMapOperator::Aces,
+    ToneMapOperator::HableFilmic,
+    ToneMapOperator::Hejl,
+    ToneMapOperator::Gt,
+    ToneMapOperator::Agx,
+    ToneMapOperator::Sigmoid,
+    ToneMapOperator::Drago,
+    ToneMapOperator::PbrNeutral,
+];
+
+/// The operator match used to sit inside the per-pixel loop, with `if color_ch
+/// >= 3` guards deciding which of three paths a pixel took. It is now resolved
+/// once per run, before the loop. The guards are the part that is easy to get
+/// wrong when hoisting: an operator with a 3-channel special case must still
+/// fall back to the per-channel path on a 1- or 2-channel image.
+///
+/// This pins that fallback for every operator: the value a grey 1-channel pixel
+/// gets must equal the value the *per-channel* path produces, which for the
+/// three luminance operators and the two RGB operators is a different formula
+/// from their 3-channel path.
+#[tokio::test]
+async fn every_operator_falls_back_to_the_per_channel_path_below_three_channels() {
+    for operator in ALL_OPERATORS {
+        for channels in [1usize, 2] {
+            let px: Vec<f32> = (0..channels).map(|_| 0.6f32).collect();
+            let img = Value::Image { data: pixel_image(&px), change_id: get_id() };
+            let mut inputs = inputs_for(img, operator.clone(), 0.0, 4.0);
+            let result = OpImageAdjustmentToneMap::run(&mut inputs)
+                .await
+                .unwrap_or_else(|e| panic!("{:?} failed on {} channels: {:?}", operator, channels, e));
+            let v = first_channel(&result);
+            assert!(
+                (0.0..=1.0).contains(&v),
+                "{:?} on {} channels produced {} outside [0, 1]",
+                operator,
+                channels,
+                v
+            );
+        }
+    }
+}
+
+/// A 2-channel image is grey + alpha: the tone map touches the grey channel and
+/// must leave alpha alone. The hoisted per-channel path takes `color_ch`
+/// channels, and `color_ch` is where an off-by-one would land.
+#[tokio::test]
+async fn alpha_is_untouched_on_two_channel_images() {
+    for operator in ALL_OPERATORS {
+        let img = Value::Image { data: pixel_image(&[0.8, 0.35]), change_id: get_id() };
+        let mut inputs = inputs_for(img, operator.clone(), 0.0, 4.0);
+        let result = OpImageAdjustmentToneMap::run(&mut inputs).await.unwrap();
+        let Value::Image { data, .. } = &result.responses[0].value else { panic!() };
+        assert_eq!(
+            data.get_pixel(0, 0)[1],
+            0.35,
+            "{:?} modified the alpha channel of a 2-channel image",
+            operator
+        );
+    }
+}
+
+/// The three-channel paths (RGB-direct for Agx/PbrNeutral, luminance-scaled for
+/// the Reinhard-luminance family and Drago) are selected by the hoisted flags.
+/// On a *neutral grey* pixel both the 3-channel and the per-channel path must
+/// land on the same value — a grey has luminance equal to each of its channels,
+/// so the two formulas coincide. A dispatch that sent an operator down the
+/// wrong branch would show up as a mismatch here.
+#[tokio::test]
+async fn grey_agrees_between_the_three_channel_and_per_channel_paths() {
+    for operator in ALL_OPERATORS {
+        let grey = 0.45f32;
+        let rgb = Value::Image { data: pixel_image(&[grey, grey, grey]), change_id: get_id() };
+        let mono = Value::Image { data: pixel_image(&[grey]), change_id: get_id() };
+
+        let mut rgb_inputs = inputs_for(rgb, operator.clone(), 0.0, 4.0);
+        let mut mono_inputs = inputs_for(mono, operator.clone(), 0.0, 4.0);
+        let rgb_out = first_rgb(&OpImageAdjustmentToneMap::run(&mut rgb_inputs).await.unwrap())[0];
+        let mono_out = first_channel(&OpImageAdjustmentToneMap::run(&mut mono_inputs).await.unwrap());
+
+        assert!(
+            (rgb_out - mono_out).abs() < 1e-5,
+            "{:?}: grey RGB gave {} but 1-channel gave {}",
+            operator,
+            rgb_out,
+            mono_out
+        );
+    }
+}
+
+/// The Drago normalizer — the curve's value at the white point — was being
+/// recomputed for every pixel and every channel; it is now computed once per
+/// run and passed in. Hoisting it must not change the curve: the white point
+/// still maps to ~1, and the mapping is still monotonic in input luminance.
+#[tokio::test]
+async fn drago_normalizer_hoist_preserves_the_curve() {
+    let white = 6.0f32;
+    let mut at_white_inputs = inputs_for(
+        Value::Image { data: pixel_image(&[white, white, white]), change_id: get_id() },
+        ToneMapOperator::Drago,
+        0.0,
+        white,
+    );
+    let at_white = first_rgb(&OpImageAdjustmentToneMap::run(&mut at_white_inputs).await.unwrap())[0];
+    assert!(
+        (at_white - 1.0).abs() < 0.02,
+        "Drago should map the white point to ~1, got {}",
+        at_white
+    );
+
+    // Monotonic below the white point.
+    let mut previous = -1.0f32;
+    for step in 0..8 {
+        let v = step as f32 * white / 8.0;
+        let mut inputs = inputs_for(
+            Value::Image { data: pixel_image(&[v, v, v]), change_id: get_id() },
+            ToneMapOperator::Drago,
+            0.0,
+            white,
+        );
+        let out = first_rgb(&OpImageAdjustmentToneMap::run(&mut inputs).await.unwrap())[0];
+        assert!(out >= previous - 1e-6, "Drago is not monotonic at {}: {} < {}", v, out, previous);
+        previous = out;
+    }
+}

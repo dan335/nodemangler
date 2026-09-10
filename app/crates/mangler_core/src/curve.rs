@@ -437,12 +437,12 @@ impl Curve {
                 let idx = y * w + x;
                 let d = dist_buf[idx];
                 let stroke_alpha =
-                    1.0 - smoothstep((r - edge) as f64, (r + edge) as f64, d as f64) as f32;
+                    1.0 - crate::math::smoothstep_f64((r - edge) as f64, (r + edge) as f64, d as f64) as f32;
                 let mut alpha = stroke_alpha;
                 if do_fill {
                     let signed = if inside[idx] { -d } else { d };
                     let fill_alpha =
-                        1.0 - smoothstep((-edge) as f64, edge as f64, signed as f64) as f32;
+                        1.0 - crate::math::smoothstep_f64((-edge) as f64, edge as f64, signed as f64) as f32;
                     alpha = alpha.max(fill_alpha);
                 }
                 row[x] = alpha.clamp(0.0, 1.0);
@@ -547,14 +547,6 @@ fn point_segment_distance(p: [f32; 2], a: [f32; 2], b: [f32; 2]) -> f32 {
     (ex * ex + ey * ey).sqrt()
 }
 
-/// Hermite smoothstep between two edges (matches the shape ops' local helper).
-fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
-    if edge0 == edge1 {
-        return if x < edge0 { 0.0 } else { 1.0 };
-    }
-    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
-}
 
 #[cfg(test)]
 #[path = "curve_tests.rs"]

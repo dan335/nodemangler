@@ -11,10 +11,11 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, image_input};
 use super::common::{hsl_to_rgb, rgb_to_hsl, smoothstep};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -65,7 +66,7 @@ impl OpImageAdjustmentHslMixer {
     /// insert.
     pub fn create_inputs() -> Vec<Input> {
         let mut inputs = vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source colour image to adjust."),
         ];
         for name in BAND_NAMES {
@@ -150,11 +151,14 @@ impl OpImageAdjustmentHslMixer {
         let half_widths = band_half_widths();
 
         let mut result = (*data).clone();
-        for pixel in result.pixels_mut() {
+        result.par_pixels_mut().for_each(|pixel| {
             let (h, s, l) = rgb_to_hsl(pixel[0], pixel[1], pixel[2]);
             if s <= 1e-4 {
-                // Achromatic: no hue to target, leave untouched.
-                continue;
+                // Achromatic: no hue to target, leave untouched. (`return` from
+                // the per-pixel closure, the parallel loop's equivalent of the
+                // `continue` this used to be; the inner band loop below keeps
+                // its own `continue`.)
+                return;
             }
 
             let mut hue_delta = 0.0f32;
@@ -179,7 +183,7 @@ impl OpImageAdjustmentHslMixer {
             pixel[1] = g;
             pixel[2] = b;
             // Alpha (channel 3 on 4-channel images) is left untouched.
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

@@ -7,9 +7,10 @@
 use crate::color::Color;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -57,22 +58,14 @@ impl OpColorGenerationRandomColor {
     /// within the provided min/max bounds. If max < min, the range collapses to min.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
         // convert inputs (index 0 is Trigger, no conversion needed for it)
-        let min_saturation_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let max_saturation_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let min_lightness_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let max_lightness_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Decimal(min_saturation) = min_saturation_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(max_saturation) = max_saturation_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(min_lightness) = min_lightness_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(max_lightness) = max_lightness_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Decimal(min_saturation) = 1,
+            Decimal(max_saturation) = 2,
+            Decimal(min_lightness) = 3,
+            Decimal(max_lightness) = 4,
+        }
 
         // Generate a random hue in [0, 360), then clamp saturation and lightness to their ranges
         let hue = fastrand::f32() * 360.0;

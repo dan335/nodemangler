@@ -6,9 +6,10 @@
 use crate::color::Color;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -51,19 +52,13 @@ impl OpColorInputXyy {
     /// Executes the operation, assembling a color from CIE xyY float channels.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let x_converted = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
-        let y_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let big_y_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let alpha_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Decimal(x) = x_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(y) = y_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(big_y) = big_y_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(alpha) = alpha_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Decimal(x) = 0,
+            Decimal(y) = 1,
+            Decimal(big_y) = 2,
+            Decimal(alpha) = 3,
+        }
 
         let color = Color::from_xyy(x, y, big_y, alpha);
 

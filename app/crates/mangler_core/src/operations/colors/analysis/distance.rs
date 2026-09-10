@@ -7,9 +7,10 @@
 use crate::color::Color;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -50,18 +51,12 @@ impl OpColorAnalysisDistance {
     /// Executes the distance computation, returning CIE76 Delta E and Euclidean RGB distance.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
         // Convert inputs to their expected types.
-        let a_converted = convert_input(inputs, 0, ValueType::Color, &mut input_errors);
-        let b_converted = convert_input(inputs, 1, ValueType::Color, &mut input_errors);
-
-        // Return early if any input failed conversion.
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // Unwrap the converted values.
-        let Value::Color(a) = a_converted.unwrap() else { unreachable!() };
-        let Value::Color(b) = b_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Color(a) = 0,
+            Color(b) = 1,
+        }
 
         // Convert both colors to Lab space for CIE76 Delta E computation.
         // to_lab() returns (L: 0-100, a: -128..128, b: -128..128, alpha: 0-1).

@@ -15,9 +15,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -41,7 +42,7 @@ impl OpImageAdjustmentCrossHatch {
     /// below which that layer's strokes become active.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image whose luminance drives the density of hatch strokes."),
             // Distance (in pixels) between successive hatch lines in a layer
             Input::new("spacing".to_string(), Value::Decimal(6.0), Some(InputSettings::Slider { range: (2.0, 32.0), step_by: Some(0.5), clamp_to_range: true }), None)
@@ -74,25 +75,16 @@ impl OpImageAdjustmentCrossHatch {
     /// Runs the cross-hatch filter.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let spacing_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let thickness_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let t1_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let t2_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let t3_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let t4_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(spacing) = spacing_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(thickness) = thickness_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(t1) = t1_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(t2) = t2_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(t3) = t3_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(t4) = t4_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(spacing) = 1,
+            Decimal(thickness) = 2,
+            Decimal(t1) = 3,
+            Decimal(t2) = 4,
+            Decimal(t3) = 5,
+            Decimal(t4) = 6,
+        }
 
         let (width, height) = data.dimensions();
         // Spacing and thickness are authored in reference pixels (at 1024px) and
@@ -129,7 +121,7 @@ impl OpImageAdjustmentCrossHatch {
             for x in 0..width {
                 let src = data.get_pixel(x, y);
                 let lum = if ch >= 3 {
-                    0.2126 * src[0] + 0.7152 * src[1] + 0.0722 * src[2]
+                    crate::luma::rec709(src[0], src[1], src[2])
                 } else {
                     src[0]
                 };

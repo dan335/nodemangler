@@ -5,12 +5,13 @@
 //! black and white.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -32,7 +33,7 @@ impl OpImageAdjustmentPosterize {
     /// Creates the input ports: image and number of quantization levels (2-256).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image whose colour channels will be quantised."),
             Input::new("levels".to_string(), Value::Integer(4), Some(InputSettings::DragValue { speed: None, clamp: Some((2.0, 256.0)) }), None)
                 .with_description("Number of discrete steps per channel; 2 gives pure black and white."),
@@ -50,18 +51,11 @@ impl OpImageAdjustmentPosterize {
     /// Executes the posterize operation. Quantizes each non-alpha channel to the specified number of levels.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let levels_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Integer(levels) = levels_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(levels) = 1,
+        }
 
         // run node — quantize each non-alpha channel
         let mut result = (*data).clone();
@@ -70,14 +64,14 @@ impl OpImageAdjustmentPosterize {
         let ch = result.channels() as usize;
         let color_ch = if ch == 2 || ch == 4 { ch - 1 } else { ch };
 
-        for pixel in result.pixels_mut() {
+        result.par_pixels_mut().for_each(|pixel| {
             for val in pixel.iter_mut().take(color_ch) {
                 // Round to nearest quantization step
                 let quantized = (*val * steps + 0.5).floor() / steps;
                 *val = quantized.clamp(0.0, 1.0);
             }
             // alpha unchanged
-        }
+        });
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

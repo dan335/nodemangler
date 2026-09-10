@@ -1,10 +1,10 @@
 //! Mirror operation that reflects image content across configurable axes.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -32,7 +32,7 @@ impl OpImageTransformMirror {
     /// Creates the default inputs: source image, mirror X/Y toggles, and X/Y offset positions.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to reflect."),
             Input::new("mirror x".to_string(), Value::Bool(true), None, None)
                 .with_description("Enable reflection across the vertical axis."),
@@ -56,21 +56,14 @@ impl OpImageTransformMirror {
     /// Executes the mirror operation by reflecting pixels across the configured axes.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let mirror_x_converted = convert_input(inputs, 1, ValueType::Bool, &mut input_errors);
-        let mirror_y_converted = convert_input(inputs, 2, ValueType::Bool, &mut input_errors);
-        let offset_x_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let offset_y_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data: src_data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Bool(mirror_x) = mirror_x_converted.unwrap() else { unreachable!() };
-        let Value::Bool(mirror_y) = mirror_y_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(offset_x) = offset_x_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(offset_y) = offset_y_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(src_data) = 0,
+            Bool(mirror_x) = 1,
+            Bool(mirror_y) = 2,
+            Decimal(offset_x) = 3,
+            Decimal(offset_y) = 4,
+        }
 
         let (w, h) = src_data.dimensions();
         let mut output = crate::float_image::FloatImage::new(w, h, src_data.channels());

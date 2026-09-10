@@ -5,10 +5,10 @@
 
 use crate::float_image::FloatImage;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -44,7 +44,7 @@ impl OpImageChannelSplit {
     }
 
     pub fn create_inputs() -> Vec<Input> {
-        vec![Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+        vec![image_input("image")
             .with_description("Source image to decompose into individual channel images.")]
     }
 
@@ -64,12 +64,10 @@ impl OpImageChannelSplit {
     /// Splits the input image into four 1-channel images (R, G, B, A).
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+        }
 
         let (width, height) = data.dimensions();
         let ch = data.channels() as usize;

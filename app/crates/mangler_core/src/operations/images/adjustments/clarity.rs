@@ -14,9 +14,12 @@
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
+use crate::operations::images::blur::blur::box_blur_planar_passes;
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -27,59 +30,6 @@ pub struct OpImageAdjustmentClarity {}
 
 /// Box-blurs a single-channel buffer with three separable moving-average passes.
 ///
-/// Three consecutive box blurs approximate a Gaussian of comparable radius while
-/// staying O(n) per pass (independent of the radius). Edges are handled by
-/// clamping sample indices to the valid range, so borders are extended rather
-/// than wrapped or darkened.
-///
-/// * `src` — source buffer, row-major, length `w * h`.
-/// * `w`, `h` — buffer dimensions in pixels.
-/// * `r` — blur radius in pixels (window width is `2 * r + 1`).
-fn box_blur(src: &[f32], w: usize, h: usize, r: i32) -> Vec<f32> {
-    // Nothing to blur for a degenerate radius; return a copy untouched.
-    if r < 1 || w == 0 || h == 0 {
-        return src.to_vec();
-    }
-
-    // Ping-pong between two buffers over three passes for a Gaussian-like kernel.
-    let mut a = src.to_vec();
-    let mut b = vec![0.0f32; w * h];
-
-    for _ in 0..3 {
-        // Horizontal pass: average each pixel's row neighbourhood into `b`.
-        for y in 0..h {
-            let row = y * w;
-            for x in 0..w {
-                let mut sum = 0.0f32;
-                let mut count = 0.0f32;
-                // Walk the horizontal window, clamping to the row bounds.
-                for dx in -r..=r {
-                    let sx = (x as i32 + dx).clamp(0, w as i32 - 1) as usize;
-                    sum += a[row + sx];
-                    count += 1.0;
-                }
-                b[row + x] = sum / count;
-            }
-        }
-        // Vertical pass: average each pixel's column neighbourhood back into `a`.
-        for y in 0..h {
-            for x in 0..w {
-                let mut sum = 0.0f32;
-                let mut count = 0.0f32;
-                // Walk the vertical window, clamping to the column bounds.
-                for dy in -r..=r {
-                    let sy = (y as i32 + dy).clamp(0, h as i32 - 1) as usize;
-                    sum += b[sy * w + x];
-                    count += 1.0;
-                }
-                a[y * w + x] = sum / count;
-            }
-        }
-    }
-
-    a
-}
-
 impl OpImageAdjustmentClarity {
     /// Returns the node metadata (name, description, help) for the clarity operation.
     pub fn settings() -> NodeSettings {
@@ -93,7 +43,7 @@ impl OpImageAdjustmentClarity {
     /// Creates the input ports: source image, signed amount, and blur radius.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to enhance."),
             Input::new("amount".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Local-contrast strength; positive adds midtone punch, negative softens, 0 leaves the image unchanged."),
@@ -113,20 +63,12 @@ impl OpImageAdjustmentClarity {
     /// Executes the clarity operation.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // Convert inputs.
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let amount_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let radius_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-
-        // Return if any conversion failed.
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // Extract values.
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(radius) = radius_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(amount) = 1,
+            Decimal(radius) = 2,
+        }
 
         let amount = amount as f32;
 
@@ -144,49 +86,42 @@ impl OpImageAdjustmentClarity {
         let mut result = (*data).clone();
         let (w, h) = result.dimensions();
         let ch = result.channels() as usize;
-        let wu = w as usize;
-        let hu = h as usize;
 
         // Radius is authored in reference pixels (at 1024px) and scaled to the
         // actual image so the effect looks the same at any resolution.
-        let r = scale_to_resolution(radius as f32, w, h).round().max(1.0) as i32;
+        let r = scale_to_resolution(radius as f32, w, h).round().max(1.0) as u32;
 
         // Build a per-pixel luma buffer. Colour images use Rec.709 luma; images
         // with fewer than three channels use channel 0 directly.
-        let mut luma = vec![0.0f32; wu * hu];
-        for y in 0..h {
-            for x in 0..w {
-                let px = result.get_pixel(x, y);
-                let l = if ch >= 3 {
-                    0.2126 * px[0] + 0.7152 * px[1] + 0.0722 * px[2]
-                } else {
-                    px[0]
-                };
-                luma[y as usize * wu + x as usize] = l;
-            }
-        }
+        let luma: Vec<f32> = result
+            .par_pixels()
+            .map(|px| if ch >= 3 { crate::luma::rec709(px[0], px[1], px[2]) } else { px[0] })
+            .collect();
 
         // Large-radius blur of the luma buffer approximates the local average.
-        let blurred = box_blur(&luma, wu, hu, r);
+        let blurred = box_blur_planar_passes(&luma, w, h, r, 3);
 
         // Apply the midtone-weighted unsharp mask, preserving colour by scaling.
-        for y in 0..h {
-            for x in 0..w {
-                let i = y as usize * wu + x as usize;
-                let l = luma[i];
+        // Each pixel depends only on its own luma and blurred luma, so the pass
+        // is run in parallel over the pixel slices rather than walking (x, y)
+        // through bounds-checked `get_pixel_mut`.
+        let color_n = if ch == 4 { 3 } else { ch };
+        result
+            .par_pixels_mut()
+            .zip(luma.par_iter())
+            .zip(blurred.par_iter())
+            .for_each(|((px, &l), &b)| {
                 // High-frequency detail (unsharp mask).
-                let detail = l - blurred[i];
+                let detail = l - b;
                 // Midtone weight: 1 at mid-grey, 0 at black/white; never negative.
-                let mid = (1.0 - (2.0 * l - 1.0).abs()).max(0.0);
+                let mid = (1.0f32 - (2.0 * l - 1.0).abs()).max(0.0);
                 // New luminance with the weighted detail added back.
                 let new_luma = l + amount * detail * mid;
 
-                let px = result.get_pixel_mut(x, y);
                 if ch >= 3 {
                     // Preserve hue: scale all colour channels by the luma ratio.
                     let scale = if l.abs() > 1e-5 { new_luma / l } else { 1.0 };
-                    let color_ch = if ch == 4 { 3 } else { ch };
-                    for c in 0..color_ch {
+                    for c in 0..color_n {
                         px[c] *= scale;
                     }
                     // Alpha (channel 3 for RGBA) is left untouched.
@@ -195,8 +130,7 @@ impl OpImageAdjustmentClarity {
                     px[0] = new_luma;
                     // For a 2-channel (luma+alpha) image, alpha in channel 1 is untouched.
                 }
-            }
-        }
+            });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

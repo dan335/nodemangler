@@ -47,7 +47,7 @@ pub(crate) fn guidance_map_to_grid(image: &crate::float_image::FloatImage, w: us
     let mut grid = vec![0.0_f64; w * h];
     for (i, pixel) in source.pixels().enumerate() {
         let v = if channels >= 3 {
-            0.2126 * pixel[0] as f64 + 0.7152 * pixel[1] as f64 + 0.0722 * pixel[2] as f64
+            crate::luma::rec709_f64(pixel[0] as f64, pixel[1] as f64, pixel[2] as f64)
         } else {
             pixel[0] as f64
         };

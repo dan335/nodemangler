@@ -12,10 +12,11 @@ use crate::get_id;
 use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, image_input};
 use super::common::{hsl_to_rgb, smoothstep};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -40,7 +41,7 @@ impl OpImageAdjustmentColorGrade {
     /// luminance), then blending and balance.
     pub fn create_inputs() -> Vec<Input> {
         let mut inputs = vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to color grade."),
         ];
         for name in RANGE_NAMES {
@@ -152,9 +153,9 @@ impl OpImageAdjustmentColorGrade {
         let pivot_hi = pivot + 0.25;
 
         let mut result = (*data).clone();
-        for pixel in result.pixels_mut() {
+        result.par_pixels_mut().for_each(|pixel| {
             let l = if color {
-                0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2]
+                crate::luma::rec709(pixel[0], pixel[1], pixel[2])
             } else {
                 pixel[0]
             };
@@ -196,7 +197,7 @@ impl OpImageAdjustmentColorGrade {
                 }
                 pixel[0] = v.clamp(0.0, 1.0);
             }
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

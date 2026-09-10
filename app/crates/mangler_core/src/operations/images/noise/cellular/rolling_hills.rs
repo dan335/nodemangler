@@ -14,9 +14,10 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::noise::voronoi_common::{cell_hash, wrap_cell};
 use crate::operations::images::tone_curve::{optional_lut, sample_lut, tone_curve_input};
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -80,31 +81,19 @@ impl OpImageNoiseRollingHills {
     /// cell so the pattern tiles exactly at the image edges.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let density_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let size_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let size_var_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let height_var_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let peakiness_converted = convert_input(inputs, 7, ValueType::Decimal, &mut input_errors);
-        let merge_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
-        let profile_converted = convert_input(inputs, 9, ValueType::Curve, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(density) = density_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(size) = size_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(size_variation) = size_var_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(height_variation) = height_var_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(peakiness) = peakiness_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(merge) = merge_converted.unwrap() else { unreachable!() };
-        let Value::Curve(profile) = profile_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut seed) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Decimal(density) = 3,
+            Decimal(size) = 4,
+            Decimal(size_variation) = 5,
+            Decimal(height_variation) = 6,
+            Decimal(peakiness) = 7,
+            Decimal(merge) = 8,
+            Curve(profile) = 9,
+        }
 
         width = width.max(4);
         height = height.max(4);

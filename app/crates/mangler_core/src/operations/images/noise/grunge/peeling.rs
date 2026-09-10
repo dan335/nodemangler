@@ -21,9 +21,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -130,27 +131,17 @@ impl OpImageNoisePeeling {
     /// 5. Shades a bright curl rim just inside the flake edge
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let scale_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let coverage_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let distortion_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let roughness_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let curl_converted = convert_input(inputs, 7, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(scale) = scale_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(coverage) = coverage_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(distortion) = distortion_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(roughness) = roughness_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(curl) = curl_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut seed) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Decimal(scale) = 3,
+            Decimal(coverage) = 4,
+            Decimal(distortion) = 5,
+            Decimal(roughness) = 6,
+            Decimal(curl) = 7,
+        }
 
         width = width.max(4);
         height = height.max(4);

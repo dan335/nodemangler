@@ -9,11 +9,12 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::adjustments::common::smoothstep;
+use crate::convert_inputs;
 use crate::operations::{
-    OperationError, OperationResponse, OutputResponse, convert_input, default_image,
+    OperationError, OperationResponse, OutputResponse, default_image,
 };
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::f32::consts::PI;
@@ -111,40 +112,15 @@ impl OpImageMaskLinearGradient {
     /// Generates the linear gradient mask.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let width_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let angle_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let position_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let softness_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let invert_converted = convert_input(inputs, 5, ValueType::Bool, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError {
-                input_errors,
-                node_error: None,
-            });
+        convert_inputs! { inputs;
+            Integer(mut width) = 0,
+            Integer(mut height) = 1,
+            Decimal(angle) = 2,
+            Decimal(position) = 3,
+            Decimal(softness) = 4,
+            Bool(invert) = 5,
         }
-
-        let Value::Integer(mut width) = width_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Integer(mut height) = height_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Decimal(angle) = angle_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Decimal(position) = position_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Decimal(softness) = softness_converted.unwrap() else {
-            unreachable!()
-        };
-        let Value::Bool(invert) = invert_converted.unwrap() else {
-            unreachable!()
-        };
 
         width = width.clamp(1, 10000);
         height = height.clamp(1, 10000);

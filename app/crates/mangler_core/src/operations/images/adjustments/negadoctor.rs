@@ -13,12 +13,13 @@
 
 use crate::color::Color;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -43,7 +44,7 @@ impl OpImageAdjustmentNegadoctor {
     /// Creates the input ports: image, film base colour, dynamic range, brightness.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Scanned negative image to invert."),
             // Default = a typical C-41 orange mask colour.
             Input::new("film base".to_string(), Value::Color(Color { r: 1.0, g: 0.55, b: 0.32, a: 1.0 }), None, None)
@@ -66,31 +67,25 @@ impl OpImageAdjustmentNegadoctor {
     /// Executes the negative inversion.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let base_converted = convert_input(inputs, 1, ValueType::Color, &mut input_errors);
-        let range_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let brightness_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Color(base) = base_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(dynamic_range) = range_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(brightness) = brightness_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Color(base) = 1,
+            Decimal(dynamic_range) = 2,
+            Decimal(brightness) = 3,
+        }
 
         let gamma = dynamic_range as f32;
         let gain = 2f32.powf(brightness as f32);
 
-        let base_luma = 0.2126 * base.r + 0.7152 * base.g + 0.0722 * base.b;
+        let base_luma = crate::luma::rec709(base.r, base.g, base.b);
 
         let mut result = (*data).clone();
         let ch = result.channels() as usize;
         let color_ch = if ch >= 3 { if ch == 4 { 3 } else { ch } } else { 1 };
         let base_components = [base.r, base.g, base.b];
 
-        for pixel in result.pixels_mut() {
+        result.par_pixels_mut().for_each(|pixel| {
             for c in 0..color_ch {
                 let base_c = if ch >= 3 { base_components[c] } else { base_luma };
                 let in_c = pixel[c];
@@ -99,7 +94,7 @@ impl OpImageAdjustmentNegadoctor {
                 pixel[c] = out_c;
             }
             // Alpha (last channel on 2/4-channel images) is left untouched.
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

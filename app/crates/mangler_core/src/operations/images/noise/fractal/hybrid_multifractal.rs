@@ -9,9 +9,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -121,28 +122,16 @@ impl OpImageNoiseHybridMultifractalNoise {
     /// Generates a hybrid multifractal noise image from the given inputs.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let octaves_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
-        let frequency_converted = convert_input(inputs, 4, ValueType::Integer, &mut input_errors);
-        let lacunarity_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let persistence_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Integer(octaves) = octaves_converted.unwrap() else { unreachable!() };
-        let Value::Integer(frequency) = frequency_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(lacunarity) = lacunarity_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(persistence) = persistence_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut seed) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Integer(octaves) = 3,
+            Integer(frequency) = 4,
+            Decimal(lacunarity) = 5,
+            Decimal(persistence) = 6,
+        }
 
         // run node
         width = width.max(1);

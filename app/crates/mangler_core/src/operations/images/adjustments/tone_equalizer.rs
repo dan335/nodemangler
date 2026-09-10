@@ -20,12 +20,14 @@
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::operations::images::filter::smoothing::guided::guided_filter_plane;
 use crate::operations::images::tone_curve::{flat_tone_curve, optional_lut_vs, sample_lut};
 use crate::operations::numbers::image::luma_values;
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -55,7 +57,7 @@ impl OpImageAdjustmentToneEqualizer {
     /// Creates the input ports: image, the zone curve, and the two mask controls.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to adjust."),
             // Same shape as `tone_curve_input`, but the untouched default is
             // the flat mid line (0 EV everywhere) rather than the identity
@@ -80,22 +82,13 @@ impl OpImageAdjustmentToneEqualizer {
     /// Executes the tone equalizer.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // Convert inputs.
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let curve_converted = convert_input(inputs, 1, ValueType::Curve, &mut input_errors);
-        let smoothing_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let detail_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-        // Return if any conversion failed.
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // Extract values.
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Curve(curve) = curve_converted.unwrap() else { unreachable!() };
-        let Value::Integer(smoothing) = smoothing_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(detail) = detail_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Curve(curve) = 1,
+            Integer(smoothing) = 2,
+            Decimal(detail) = 3,
+        }
 
         // The untouched flat default means 0 EV in every zone — pass the
         // original Arc through rather than paying for the mask.
@@ -135,7 +128,7 @@ impl OpImageAdjustmentToneEqualizer {
         let mask = guided_filter_plane(&zones, &zones, wu, hu, radius, eps);
 
         let mut result = (*data).clone();
-        for (i, px) in result.pixels_mut().enumerate() {
+        result.par_pixels_mut().enumerate().for_each(|(i, px)| {
             // LUT output is the decoded curve value in [0,1]; the flat default
             // decodes to 0.5, i.e. 0 EV.
             let gain_ev = (sample_lut(&lut, mask[i].clamp(0.0, 1.0)) - 0.5) * GAIN_EV_SPAN;
@@ -144,7 +137,7 @@ impl OpImageAdjustmentToneEqualizer {
                 *val = (*val * gain).clamp(0.0, 1.0);
             }
             // Alpha (last channel on 2/4-channel images) is left untouched.
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

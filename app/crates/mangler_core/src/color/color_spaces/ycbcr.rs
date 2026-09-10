@@ -8,10 +8,12 @@
 
 use crate::color::Color;
 
-// Rec. 709 luma coefficients.
-const KR: f32 = 0.2126;
-const KG: f32 = 0.7152;
-const KB: f32 = 0.0722;
+// BT.709 luma coefficients, taken from the crate's shared set (`crate::luma`)
+// rather than retyped: YCbCr needs the three weights individually, not just
+// their dot product, so it names them here but does not redefine them.
+const KR: f32 = crate::luma::REC709[0];
+const KG: f32 = crate::luma::REC709[1];
+const KB: f32 = crate::luma::REC709[2];
 
 impl Color {
     /// Creates an sRGB [`Color`] from full-range BT.709 YCbCr components.

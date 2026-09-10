@@ -6,13 +6,14 @@
 //! set to the same binary/ramp value, producing a grayscale mask.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use super::common::smoothstep;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -34,7 +35,7 @@ impl OpImageAdjustmentThreshold {
     /// Creates input ports: image, threshold level, and edge smoothness.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to binarize by luminance."),
             Input::new("threshold".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Luminance cutoff; pixels at or above this become white."),
@@ -54,25 +55,20 @@ impl OpImageAdjustmentThreshold {
     /// Executes the threshold, writing the binary/ramp value to all colour channels.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let threshold_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let smoothness_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(threshold) = threshold_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(smoothness) = smoothness_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(threshold) = 1,
+            Decimal(smoothness) = 2,
+        }
 
         let ch = data.channels();
         let color_ch = (if ch == 2 || ch == 4 { ch - 1 } else { ch }) as usize;
 
         let mut result = (*data).clone();
-        for pixel in result.pixels_mut() {
+        result.par_pixels_mut().for_each(|pixel| {
             let luma = if color_ch >= 3 {
-                0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2]
+                crate::luma::rec709(pixel[0], pixel[1], pixel[2])
             } else {
                 pixel[0]
             };
@@ -84,7 +80,7 @@ impl OpImageAdjustmentThreshold {
             for val in pixel.iter_mut().take(color_ch) {
                 *val = v;
             }
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

@@ -28,9 +28,10 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::tone_curve::{sample_lut, tone_curve_lut, TONE_LUT_SIZE};
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -139,9 +140,9 @@ impl OpImageSimulationCarveRiver {
                 .with_description("Output image width in pixels."),
             Input::new("height".to_string(), Value::Integer(512), Some(InputSettings::DragValue { clamp: Some((1.0, 4096.0)), speed: None }), None)
                 .with_description("Output image height in pixels."),
-            Input::new("height map".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("height map")
                 .with_description("Optional starting terrain to carve; when unconnected an internal fBm heightmap is generated from the seed."),
-            Input::new("river mask".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("river mask")
                 .with_description("Optional river-path mask (bright = river). Can come from the line, lightning, or veins nodes or any painted image; when unconnected the terrain passes through unchanged."),
             Input::new("mask threshold".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Brightness above which a mask pixel counts as river."),
@@ -184,39 +185,23 @@ impl OpImageSimulationCarveRiver {
     /// 5. Smooths the banks and normalizes the carved height + water depth
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let map_converted = convert_input(inputs, 3, ValueType::Image, &mut input_errors);
-        let mask_converted = convert_input(inputs, 4, ValueType::Image, &mut input_errors);
-        let threshold_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let carve_depth_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let river_width_converted = convert_input(inputs, 7, ValueType::Integer, &mut input_errors);
-        let valley_width_converted = convert_input(inputs, 8, ValueType::Integer, &mut input_errors);
-        let valley_profile_converted = convert_input(inputs, 9, ValueType::Curve, &mut input_errors);
-        let bank_smoothing_converted = convert_input(inputs, 10, ValueType::Integer, &mut input_errors);
-        let monotonic_converted = convert_input(inputs, 11, ValueType::Bool, &mut input_errors);
-        let octaves_converted = convert_input(inputs, 12, ValueType::Integer, &mut input_errors);
-        let frequency_converted = convert_input(inputs, 13, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Integer(mut seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Image { data: map_data, change_id: _ } = map_converted.unwrap() else { unreachable!() };
-        let Value::Image { data: mask_data, change_id: _ } = mask_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(threshold) = threshold_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(carve_depth) = carve_depth_converted.unwrap() else { unreachable!() };
-        let Value::Integer(river_width) = river_width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(valley_width) = valley_width_converted.unwrap() else { unreachable!() };
-        let Value::Curve(valley_profile) = valley_profile_converted.unwrap() else { unreachable!() };
-        let Value::Integer(bank_smoothing) = bank_smoothing_converted.unwrap() else { unreachable!() };
-        let Value::Bool(monotonic) = monotonic_converted.unwrap() else { unreachable!() };
-        let Value::Integer(octaves) = octaves_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(frequency) = frequency_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(mut seed) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Image(map_data) = 3,
+            Image(mask_data) = 4,
+            Decimal(threshold) = 5,
+            Decimal(carve_depth) = 6,
+            Integer(river_width) = 7,
+            Integer(valley_width) = 8,
+            Curve(valley_profile) = 9,
+            Integer(bank_smoothing) = 10,
+            Bool(monotonic) = 11,
+            Integer(octaves) = 12,
+            Decimal(frequency) = 13,
+        }
 
         // Clamp all parameters to their documented ranges.
         width = width.clamp(1, 4096);

@@ -8,9 +8,10 @@ use crate::curve::Curve;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::curves::common::linear_curve;
-use crate::operations::{convert_input, OperationError, OperationResponse, OutputResponse};
+use crate::convert_inputs;
+use crate::operations::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -153,29 +154,17 @@ impl OpCurveGeneratorWave {
     /// Generates the wave curve from the given inputs.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let sx_converted = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
-        let sy_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let ex_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let ey_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let shape_converted = convert_input(inputs, 4, ValueType::Text, &mut input_errors);
-        let cycles_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let amplitude_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let samples_converted = convert_input(inputs, 7, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Decimal(sx) = 0,
+            Decimal(sy) = 1,
+            Decimal(ex) = 2,
+            Decimal(ey) = 3,
+            Text(shape) = 4,
+            Decimal(cycles) = 5,
+            Decimal(amplitude) = 6,
+            Integer(samples_per_cycle) = 7,
         }
-
-        let Value::Decimal(sx) = sx_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(sy) = sy_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(ex) = ex_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(ey) = ey_converted.unwrap() else { unreachable!() };
-        let Value::Text(shape) = shape_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(cycles) = cycles_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(amplitude) = amplitude_converted.unwrap() else { unreachable!() };
-        let Value::Integer(samples_per_cycle) = samples_converted.unwrap() else { unreachable!() };
 
         let start = [sx as f64, sy as f64];
         let end = [ex as f64, ey as f64];

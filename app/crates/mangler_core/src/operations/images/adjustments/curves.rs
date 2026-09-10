@@ -8,12 +8,13 @@
 
 use crate::curve::Curve;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -49,7 +50,7 @@ impl OpImageAdjustmentCurves {
     /// curve per colour channel.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to apply the tone curve to."),
             Input::new("curve".to_string(), Value::Curve(Self::identity_curve()), Some(InputSettings::ToneCurve), None)
                 .with_description("The master tone curve, applied to every colour channel; edited in the box below, or connected from a curve node."),
@@ -72,24 +73,14 @@ impl OpImageAdjustmentCurves {
     /// the master curve (alpha untouched).
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let curve_converted = convert_input(inputs, 1, ValueType::Curve, &mut input_errors);
-        let red_converted = convert_input(inputs, 2, ValueType::Curve, &mut input_errors);
-        let green_converted = convert_input(inputs, 3, ValueType::Curve, &mut input_errors);
-        let blue_converted = convert_input(inputs, 4, ValueType::Curve, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::Curve(curve) = curve_converted.unwrap() else { unreachable!() };
-        let Value::Curve(red) = red_converted.unwrap() else { unreachable!() };
-        let Value::Curve(green) = green_converted.unwrap() else { unreachable!() };
-        let Value::Curve(blue) = blue_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Curve(curve) = 1,
+            Curve(red) = 2,
+            Curve(green) = 3,
+            Curve(blue) = 4,
+        }
 
         // Build a LUT once per touched curve; untouched (identity) curves skip
         // the remap entirely so a freshly dropped node is a true no-op.
@@ -111,7 +102,7 @@ impl OpImageAdjustmentCurves {
         }
 
         let mut result = (*data).clone();
-        for pixel in result.pixels_mut() {
+        result.par_pixels_mut().for_each(|pixel| {
             for (i, val) in pixel.iter_mut().take(color_ch).enumerate() {
                 // Per-channel curve first, then the master curve on top.
                 if use_channel_luts {
@@ -124,7 +115,7 @@ impl OpImageAdjustmentCurves {
                 }
             }
             // alpha unchanged
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

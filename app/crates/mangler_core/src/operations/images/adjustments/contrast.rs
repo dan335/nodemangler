@@ -4,12 +4,13 @@
 //! A factor of 1.0 is identity; values above 1.0 increase contrast, below 1.0 decrease.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -31,7 +32,7 @@ impl OpImageAdjustmentContrast {
     /// Creates the input ports: an image and an amount controlling contrast strength.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to adjust contrast on."),
             Input::new("amount".to_string(), Value::Decimal(1.0), Some(InputSettings::DragValue { speed: None, clamp: Some((0.0, 1000.0)) }), None)
                 .with_description("Contrast factor around 0.5; 1 is identity, >1 steepens, <1 flattens.")
@@ -50,30 +51,22 @@ impl OpImageAdjustmentContrast {
     /// For each non-alpha channel: `pixel[c] = (pixel[c] - 0.5) * factor + 0.5`
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let amount_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(amount) = 1,
+        }
 
         // run node — scale deviation from 0.5 for each non-alpha channel
         let mut result = (*data).clone();
         let ch = result.channels() as usize;
         let color_ch = if ch == 2 || ch == 4 { ch - 1 } else { ch };
 
-        for pixel in result.pixels_mut() {
+        result.par_pixels_mut().for_each(|pixel| {
             for val in pixel.iter_mut().take(color_ch) {
                 *val = (*val - 0.5) * amount + 0.5;
             }
-        }
+        });
 
         Ok(OperationResponse { 
             time: Instant::now().duration_since(start_time),

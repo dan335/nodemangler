@@ -8,12 +8,13 @@
 //! The result is left unclamped f32 (the pipeline works in unbounded float).
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -50,7 +51,7 @@ impl OpImageAdjustmentExposure {
     /// Creates the input ports: the source image, exposure (stops), offset, and gamma.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to expose."),
             // Exposure in photographic stops; applied multiplicatively as 2^exposure.
             Input::new("exposure".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-5.0, 5.0), step_by: Some(0.01), clamp_to_range: false }), None)
@@ -75,22 +76,13 @@ impl OpImageAdjustmentExposure {
     /// Executes the exposure operation: multiplicative exposure, additive offset, then gamma.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted    = convert_input(inputs, 0, ValueType::Image,   &mut input_errors);
-        let exposure_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let offset_converted   = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let gamma_converted    = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(exposure) = exposure_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(offset)   = offset_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(gamma)    = gamma_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(exposure) = 1,
+            Decimal(offset) = 2,
+            Decimal(gamma) = 3,
+        }
 
         // Pre-compute the constant factors used per pixel.
         let exposure_gain = 2f32.powf(exposure as f32); // 2^stops multiplicative gain
@@ -107,7 +99,7 @@ impl OpImageAdjustmentExposure {
         // Determine how many color channels to adjust (skip alpha if present)
         let color_ch = if ch == 2 || ch == 4 { ch - 1 } else { ch };
 
-        for pixel in result.pixels_mut() {
+        result.par_pixels_mut().for_each(|pixel| {
             for val in pixel.iter_mut().take(color_ch) {
                 // 1. exposure (multiplicative, in stops)
                 let mut v = *val * exposure_gain;
@@ -120,7 +112,7 @@ impl OpImageAdjustmentExposure {
                     v.max(0.0).powf(inv_gamma)
                 };
             }
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

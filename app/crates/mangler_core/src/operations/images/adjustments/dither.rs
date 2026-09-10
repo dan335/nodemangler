@@ -17,9 +17,11 @@
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -39,7 +41,7 @@ impl OpImageAdjustmentDither {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image whose channels will be dithered and quantised."),
             Input::new("levels".to_string(), Value::Integer(4), Some(InputSettings::DragValue { clamp: Some((2.0, 256.0)), speed: None }), None)
                 .with_description("Number of discrete output levels per channel; lower values posterise harder."),
@@ -60,19 +62,13 @@ impl OpImageAdjustmentDither {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let levels_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let pattern_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let strength_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Integer(levels) = levels_converted.unwrap() else { unreachable!() };
-        let Value::Integer(pattern) = pattern_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(strength) = strength_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(levels) = 1,
+            Integer(pattern) = 2,
+            Decimal(strength) = 3,
+        }
 
         let levels = (levels.max(2)) as f32;
         let steps = levels - 1.0;
@@ -81,25 +77,23 @@ impl OpImageAdjustmentDither {
         let mut result = (*data).clone();
         let ch = result.channels() as usize;
         let colour_ch = if ch == 2 || ch == 4 { ch - 1 } else { ch };
-        let (width, height) = result.dimensions();
 
-        for y in 0..height {
-            for x in 0..width {
-                // Threshold in [-0.5, 0.5], scaled by strength.
-                let base_threshold = match pattern {
-                    0 => bayer4(x as usize, y as usize),
-                    2 => white_noise(x, y),
-                    _ => bayer8(x as usize, y as usize),
-                };
-                let threshold = (base_threshold - 0.5) * strength / steps;
-                let px = result.get_pixel_mut(x, y);
-                for val in px.iter_mut().take(colour_ch) {
-                    let v = (*val + threshold).clamp(0.0, 1.0);
-                    // Round-to-nearest of v scaled by steps, then back to [0,1].
-                    *val = ((v * steps + 0.5).floor() / steps).clamp(0.0, 1.0);
-                }
+        // Ordered dithering, unlike error diffusion, has no dependency between
+        // pixels: the threshold is a pure function of (x, y).
+        result.par_enumerate_pixels_mut().for_each(|(x, y, px)| {
+            // Threshold in [-0.5, 0.5], scaled by strength.
+            let base_threshold = match pattern {
+                0 => bayer4(x as usize, y as usize),
+                2 => white_noise(x, y),
+                _ => bayer8(x as usize, y as usize),
+            };
+            let threshold = (base_threshold - 0.5) * strength / steps;
+            for val in px.iter_mut().take(colour_ch) {
+                let v = (*val + threshold).clamp(0.0, 1.0);
+                // Round-to-nearest of v scaled by steps, then back to [0,1].
+                *val = ((v * steps + 0.5).floor() / steps).clamp(0.0, 1.0);
             }
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

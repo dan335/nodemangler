@@ -5,9 +5,10 @@
 
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -54,19 +55,13 @@ impl OpTextTemplate {
     /// Converts the inputs and fills the template's placeholders in order.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let template_converted = convert_input(inputs, 0, ValueType::Text, &mut input_errors);
-        let a_converted = convert_input(inputs, 1, ValueType::Text, &mut input_errors);
-        let b_converted = convert_input(inputs, 2, ValueType::Text, &mut input_errors);
-        let c_converted = convert_input(inputs, 3, ValueType::Text, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Text(template) = template_converted.unwrap() else { unreachable!() };
-        let Value::Text(a) = a_converted.unwrap() else { unreachable!() };
-        let Value::Text(b) = b_converted.unwrap() else { unreachable!() };
-        let Value::Text(c) = c_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Text(template) = 0,
+            Text(a) = 1,
+            Text(b) = 2,
+            Text(c) = 3,
+        }
 
         let mut out = template;
         for v in [a, b, c] {

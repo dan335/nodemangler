@@ -34,11 +34,11 @@ use crate::operations::curves::common::{
     linear_curve, polyline_length, rdp_decimate, resample, MAX_OUTPUT_POINTS,
 };
 use crate::operations::images::simulation::{guidance_map_to_grid, is_unconnected};
+use crate::convert_inputs;
 use crate::operations::{
-    convert_input, default_image, OperationError, OperationResponse, OutputResponse,
-};
+    default_image, OperationError, OperationResponse, OutputResponse, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
@@ -168,11 +168,7 @@ impl Hasher for CellHasher {
 /// iterations allocate nothing.
 type CellMap = HashMap<(i32, i32), Vec<u32>, BuildHasherDefault<CellHasher>>;
 
-/// Hermite smoothstep of `x` clamped to [0,1].
-fn smoothstep01(x: f64) -> f64 {
-    let t = x.clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
-}
+use crate::math::smoothstep01;
 
 /// Signed curvature per point from the turning angle between adjacent
 /// segments, non-dimensionalized by the *local* channel width and
@@ -590,7 +586,7 @@ impl OpCurveSimulationMeander {
                 .with_description("Height of the raster outputs in pixels (the curve output is resolution-independent)."),
             Input::new("curve".to_string(), Value::Curve(Curve::default()), None, None)
                 .with_description("The initial river centerline; usually connected from a curve node."),
-            Input::new("erodibility".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("erodibility")
                 .with_description("Optional map scaling bank migration spatially: bright = mobile banks, dark = resistant. Uniform when unconnected."),
             Input::new("iterations".to_string(), Value::Integer(800), Some(InputSettings::DragValue { clamp: Some((0.0, 2000.0)), speed: None }), None)
                 .with_description("Simulation steps; step through to watch the river age. The default rate grows developed meanders in ~800 steps. 0 passes the curve through unchanged."),
@@ -640,45 +636,25 @@ impl OpCurveSimulationMeander {
     /// 4. Rasterizes the channel + oxbows and decimates the output curve
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let curve_converted = convert_input(inputs, 3, ValueType::Curve, &mut input_errors);
-        let erod_converted = convert_input(inputs, 4, ValueType::Image, &mut input_errors);
-        let iterations_converted = convert_input(inputs, 5, ValueType::Integer, &mut input_errors);
-        let rate_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-        let chan_width_converted = convert_input(inputs, 7, ValueType::Decimal, &mut input_errors);
-        let meander_scale_converted = convert_input(inputs, 8, ValueType::Decimal, &mut input_errors);
-        let upstream_converted = convert_input(inputs, 9, ValueType::Decimal, &mut input_errors);
-        let bend_widening_converted = convert_input(inputs, 10, ValueType::Decimal, &mut input_errors);
-        let width_noise_converted = convert_input(inputs, 11, ValueType::Decimal, &mut input_errors);
-        let wavelength_converted = convert_input(inputs, 12, ValueType::Decimal, &mut input_errors);
-        let cutoff_converted = convert_input(inputs, 13, ValueType::Decimal, &mut input_errors);
-        let init_wobble_converted = convert_input(inputs, 14, ValueType::Decimal, &mut input_errors);
-        let roughness_converted = convert_input(inputs, 15, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Integer(seed) = 0,
+            Integer(width) = 1,
+            Integer(height) = 2,
+            Curve(curve) = 3,
+            Image(erod_data) = 4,
+            Integer(iterations) = 5,
+            Decimal(migration_rate) = 6,
+            Decimal(channel_width) = 7,
+            Decimal(meander_scale) = 8,
+            Decimal(upstream_frac) = 9,
+            Decimal(bend_widening) = 10,
+            Decimal(width_noise) = 11,
+            Decimal(wavelength) = 12,
+            Decimal(cutoff) = 13,
+            Decimal(init_wobble) = 14,
+            Decimal(roughness) = 15,
         }
-
-        let Value::Integer(seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Integer(width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Curve(curve) = curve_converted.unwrap() else { unreachable!() };
-        let Value::Image { data: erod_data, .. } = erod_converted.unwrap() else { unreachable!() };
-        let Value::Integer(iterations) = iterations_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(migration_rate) = rate_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(channel_width) = chan_width_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(meander_scale) = meander_scale_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(upstream_frac) = upstream_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(bend_widening) = bend_widening_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(width_noise) = width_noise_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(wavelength) = wavelength_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(cutoff) = cutoff_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(init_wobble) = init_wobble_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(roughness) = roughness_converted.unwrap() else { unreachable!() };
 
         let w = width.clamp(1, 4096) as u32;
         let h = height.clamp(1, 4096) as u32;

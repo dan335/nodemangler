@@ -9,9 +9,10 @@ use crate::curve::Curve;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::curves::common::linear_curve;
-use crate::operations::{convert_input, OperationError, OperationResponse, OutputResponse};
+use crate::convert_inputs;
+use crate::operations::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -92,27 +93,16 @@ impl OpCurveGeneratorSpiral {
     /// Generates the spiral curve from the given inputs.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let cx_converted = convert_input(inputs, 0, ValueType::Decimal, &mut input_errors);
-        let cy_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let turns_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let inner_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let outer_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let rotation_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-        let ppt_converted = convert_input(inputs, 6, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Decimal(cx) = 0,
+            Decimal(cy) = 1,
+            Decimal(turns) = 2,
+            Decimal(inner_r) = 3,
+            Decimal(outer_r) = 4,
+            Decimal(rotation) = 5,
+            Integer(points_per_turn) = 6,
         }
-
-        let Value::Decimal(cx) = cx_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(cy) = cy_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(turns) = turns_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(inner_r) = inner_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(outer_r) = outer_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(rotation) = rotation_converted.unwrap() else { unreachable!() };
-        let Value::Integer(points_per_turn) = ppt_converted.unwrap() else { unreachable!() };
 
         let turns = (turns as f64).clamp(0.25, 20.0);
         let inner_r = (inner_r as f64).max(0.0);

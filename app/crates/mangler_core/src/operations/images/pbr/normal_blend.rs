@@ -8,9 +8,10 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::pbr::{normalize, pack_normal, unpack_normal};
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -30,9 +31,9 @@ impl OpImagePbrNormalBlend {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("a".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("a")
                 .with_description("First normal map, used fully when opacity is 0."),
-            Input::new("b".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("b")
                 .with_description("Second normal map, used fully when opacity is 1."),
             Input::new("opacity".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Interpolation factor between normal map A and B."),
@@ -48,17 +49,12 @@ impl OpImagePbrNormalBlend {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let a_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let b_converted = convert_input(inputs, 1, ValueType::Image, &mut input_errors);
-        let opacity_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data: a, change_id: _ } = a_converted.unwrap() else { unreachable!() };
-        let Value::Image { data: b, change_id: _ } = b_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(opacity) = opacity_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(a) = 0,
+            Image(b) = 1,
+            Decimal(opacity) = 2,
+        }
 
         let opacity = opacity.clamp(0.0, 1.0);
         let (width, height) = a.dimensions();

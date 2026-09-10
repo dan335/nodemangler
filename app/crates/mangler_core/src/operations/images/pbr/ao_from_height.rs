@@ -6,11 +6,11 @@
 
 use crate::float_image::FloatImage;
 use crate::get_id;
-use crate::value::ValueType;
 use rayon::prelude::*;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -28,7 +28,7 @@ impl OpImagePbrAoFromHeight {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Grayscale height map used as the source surface."),
             Input::new("radius".to_string(), Value::Integer(8), Some(InputSettings::DragValue { speed: None, clamp: Some((1.0, 64.0)) }), None)
                 .with_description("Sampling radius in pixels at a 1024px reference (scales with image size) that controls the scale of the occlusion."),
@@ -47,19 +47,13 @@ impl OpImagePbrAoFromHeight {
     /// Computes ambient occlusion from the input height map by radial sampling.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let radius_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let intensity_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let samples_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(intensity) = intensity_converted.unwrap() else { unreachable!() };
-        let Value::Integer(samples) = samples_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(radius) = 1,
+            Decimal(intensity) = 2,
+            Integer(samples) = 3,
+        }
 
         let width = data.width() as usize;
         let height = data.height() as usize;
@@ -73,7 +67,7 @@ impl OpImagePbrAoFromHeight {
         // Extract luminance as height values
         let mut heights: Vec<f32> = Vec::with_capacity(width * height);
         for pixel in data.pixels() {
-            let h = if ch >= 3 { 0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2] } else { pixel[0] };
+            let h = if ch >= 3 { crate::luma::rec709(pixel[0], pixel[1], pixel[2]) } else { pixel[0] };
             heights.push(h);
         }
 

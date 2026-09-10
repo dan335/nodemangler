@@ -597,12 +597,9 @@ pub(crate) fn per_channel_fn(mode: &BlendMode) -> fn(f32, f32) -> f32 {
     }
 }
 
-/// Linearly interpolates between `a` and `b` by factor `t`.
-///
-/// Returns `a` when `t == 0.0` and `b` when `t == 1.0`.
-pub(crate) fn lerp(a: f32, b: f32, t: f32) -> f32 {
-    a + t * (b - a)
-}
+/// Re-exported for the blend modes and their callers, which have imported
+/// `blend::lerp` since before `crate::math` existed.
+pub(crate) use crate::math::lerp;
 
 /// Interpolates between two hue angles (in degrees) along the shortest arc.
 ///

@@ -14,9 +14,10 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::pbr::{normalize, pack_normal, unpack_normal};
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -36,9 +37,9 @@ impl OpImagePbrNormalCombine {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("base".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("base")
                 .with_description("Base normal map that provides the overall surface shape."),
-            Input::new("detail".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("detail")
                 .with_description("Detail normal map layered over the base."),
             // 0 = Whiteout (default), 1 = RNM, 2 = Partial Derivative, 3 = Linear
             Input::new("mode".to_string(), Value::Integer(0), Some(InputSettings::Slider { range: (0.0, 3.0), step_by: Some(1.0), clamp_to_range: true }), None)
@@ -55,17 +56,12 @@ impl OpImagePbrNormalCombine {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let base_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let detail_converted = convert_input(inputs, 1, ValueType::Image, &mut input_errors);
-        let mode_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data: base, change_id: _ } = base_converted.unwrap() else { unreachable!() };
-        let Value::Image { data: detail, change_id: _ } = detail_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mode) = mode_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(base) = 0,
+            Image(detail) = 1,
+            Integer(mode) = 2,
+        }
 
         let (width, height) = base.dimensions();
         let mut output = FloatImage::new(width, height, 4);

@@ -7,9 +7,10 @@
 use crate::color::Color;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -59,24 +60,15 @@ impl OpColorAnalysisDominantHue {
     /// color and 1-based index of the maximum. Ties are broken by lowest index.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
         // Convert all five color inputs.
-        let c1 = convert_input(inputs, 0, ValueType::Color, &mut input_errors);
-        let c2 = convert_input(inputs, 1, ValueType::Color, &mut input_errors);
-        let c3 = convert_input(inputs, 2, ValueType::Color, &mut input_errors);
-        let c4 = convert_input(inputs, 3, ValueType::Color, &mut input_errors);
-        let c5 = convert_input(inputs, 4, ValueType::Color, &mut input_errors);
-
-        // Return early on conversion errors.
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // Unwrap all five colors.
-        let Value::Color(color1) = c1.unwrap() else { unreachable!() };
-        let Value::Color(color2) = c2.unwrap() else { unreachable!() };
-        let Value::Color(color3) = c3.unwrap() else { unreachable!() };
-        let Value::Color(color4) = c4.unwrap() else { unreachable!() };
-        let Value::Color(color5) = c5.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Color(color1) = 0,
+            Color(color2) = 1,
+            Color(color3) = 2,
+            Color(color4) = 3,
+            Color(color5) = 4,
+        }
 
         let colors = [color1, color2, color3, color4, color5];
 

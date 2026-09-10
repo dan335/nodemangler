@@ -12,9 +12,10 @@ use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::simulation::distance_field_labeled;
 use crate::operations::images::tone_curve::{optional_lut, sample_lut, tone_curve_input};
-use crate::operations::{convert_input, default_image, scale_to_resolution, OperationError, OperationResponse, OutputResponse};
+use crate::convert_inputs;
+use crate::operations::{default_image, scale_to_resolution, OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -72,27 +73,16 @@ impl OpImageShapeCurveDistanceField {
     /// Renders the distance field of the curve input into a grayscale image.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let curve_converted = convert_input(inputs, 0, ValueType::Curve, &mut input_errors);
-        let width_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let falloff_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let normalize_converted = convert_input(inputs, 4, ValueType::Bool, &mut input_errors);
-        let invert_converted = convert_input(inputs, 5, ValueType::Bool, &mut input_errors);
-        let profile_converted = convert_input(inputs, 6, ValueType::Curve, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Curve(curve) = 0,
+            Integer(mut width) = 1,
+            Integer(mut height) = 2,
+            Decimal(falloff) = 3,
+            Bool(normalize) = 4,
+            Bool(invert) = 5,
+            Curve(profile_curve) = 6,
         }
-
-        let Value::Curve(curve) = curve_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(falloff) = falloff_converted.unwrap() else { unreachable!() };
-        let Value::Bool(normalize) = normalize_converted.unwrap() else { unreachable!() };
-        let Value::Bool(invert) = invert_converted.unwrap() else { unreachable!() };
-        let Value::Curve(profile_curve) = profile_converted.unwrap() else { unreachable!() };
         let lut = optional_lut(&profile_curve);
 
         width = width.max(1);

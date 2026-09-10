@@ -78,6 +78,107 @@ pub fn convert_input(
     }
 }
 
+/// Convert and unpack an operation's inputs in one statement.
+///
+/// Every operation's `run` opened with the same four-part ritual: declare an
+/// error accumulator, call [`convert_input`] once per input, bail if anything
+/// failed to convert, then destructure each converted `Value` with a
+/// `let ... else { unreachable!() }`. That is two lines of boilerplate per
+/// input, and there were ~1,500 of them across ~420 files — including ~1,500
+/// hand-written `unreachable!()`s, each sound only because the conversion two
+/// steps above asked for exactly that variant. This macro is what keeps that
+/// invariant in one place.
+///
+/// ```ignore
+/// convert_inputs! { inputs;
+///     Image(data) = 0,
+///     Decimal(sigma) = 1,
+///     Integer(mut width) = 2,
+/// }
+/// // `data` is an `Arc<FloatImage>`, `sigma` an `f32`, `width` a `mut i32`.
+/// ```
+///
+/// Each entry reads like the `Value::` pattern it replaces: the variant names
+/// both the [`ValueType`] to convert to *and* the [`Value`] variant to unwrap,
+/// which is exactly why the two can no longer disagree. The binding is a
+/// pattern, so `mut` (and `_`) work as they did in the longhand.
+///
+/// `Image` is special-cased: `Value::Image` is a struct variant, and its
+/// `change_id` is discarded — no operation in the crate reads the incoming one,
+/// they all mint a fresh id for their output.
+///
+/// Errors from *all* inputs are collected before returning, so a node with two
+/// bad inputs still reports both, exactly as the longhand did.
+///
+/// This covers the common shape only. An operation that converts inputs inside
+/// a loop, or that adds its own validation errors to the same accumulator
+/// before bailing, still calls [`convert_input`] directly — that is what it is
+/// for, and contorting the macro to cover those would cost more than it saves.
+#[macro_export]
+macro_rules! convert_inputs {
+    ( $inputs:expr; $( $variant:ident ( $binding:pat_param ) = $index:expr ),* $(,)? ) => {
+        let ( $( $binding, )* ) = {
+            let mut input_errors: ::std::vec::Vec<(usize, ::std::string::String)> =
+                ::std::vec::Vec::new();
+            // Converted up front into a small buffer rather than straight into
+            // the bindings: every input must be *attempted* before the first
+            // failure returns, so a node with two bad inputs reports both.
+            let converted: ::std::vec::Vec<::std::option::Option<$crate::value::Value>> = ::std::vec![
+                $(
+                    $crate::operations::convert_input(
+                        $inputs,
+                        $index,
+                        $crate::value::ValueType::$variant,
+                        &mut input_errors,
+                    ),
+                )*
+            ];
+            if !input_errors.is_empty() {
+                return ::std::result::Result::Err($crate::operations::OperationError {
+                    input_errors,
+                    node_error: ::std::option::Option::None,
+                });
+            }
+            #[allow(unused_mut, unused_variables)]
+            let mut converted = converted.into_iter();
+            ( $( $crate::unwrap_converted!($variant, converted), )* )
+        };
+    };
+}
+
+/// Take the next converted value from [`convert_inputs!`]'s buffer and extract
+/// the inner value of the given variant.
+///
+/// Implementation detail of [`convert_inputs!`]; not meant to be called
+/// directly. Both `unreachable!`s are sound because the only caller passes the
+/// same variant it asked `convert_input` to convert to, and it has already
+/// returned if any conversion failed.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! unwrap_converted {
+    (Image, $iter:expr) => {{
+        let ::std::option::Option::Some($crate::value::Value::Image { data, .. }) =
+            $iter.next().flatten()
+        else {
+            unreachable!("convert_input to ValueType::Image yields Value::Image")
+        };
+        data
+    }};
+    ($variant:ident, $iter:expr) => {{
+        let ::std::option::Option::Some($crate::value::Value::$variant(inner)) =
+            $iter.next().flatten()
+        else {
+            unreachable!(concat!(
+                "convert_input to ValueType::",
+                stringify!($variant),
+                " yields Value::",
+                stringify!($variant),
+            ))
+        };
+        inner
+    }};
+}
+
 /// A node in the hierarchical operation menu tree.
 ///
 /// The GUI uses this to build the "Add Node" context menu with nested categories.
@@ -142,6 +243,27 @@ impl OperationListItem {
 /// Used as the default placeholder image for image-typed inputs.
 pub fn default_image() -> Arc<FloatImage> {
     Arc::new(FloatImage::from_pixel(1, 1, 4, &[1.0, 1.0, 1.0, 1.0]))
+}
+
+/// A standard image input: a `Value::Image` seeded with the 1x1
+/// [`default_image`] placeholder and a fresh change id, no widget settings.
+///
+/// This constructor was written out longhand at 142 sites (in four different
+/// spellings, differing only in whitespace) — it is what almost every image
+/// operation's first input looks like. Chain [`Input::with_description`] on
+/// the result as usual.
+///
+/// Use it for the plain case only. An image input that needs something else —
+/// widget settings, a link, a non-placeholder default — still calls
+/// [`Input::new`] directly, since hiding those behind extra parameters would
+/// cost more than it saves.
+pub fn image_input(name: &str) -> Input {
+    Input::new(
+        name.to_string(),
+        Value::Image { data: default_image(), change_id: crate::get_id() },
+        None,
+        None,
+    )
 }
 
 /// Reference resolution at which a resolution-independent spatial value equals

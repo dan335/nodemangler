@@ -11,10 +11,11 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::operations::images::tone_curve::{optional_lut, sample_lut, tone_curve_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -73,27 +74,15 @@ impl OpImageInputGradient {
     /// color `a` and the bottom row is fully color `b`.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let a_converted = convert_input(inputs, 0, ValueType::Color, &mut input_errors);
-        let b_converted = convert_input(inputs, 1, ValueType::Color, &mut input_errors);
-        let width_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let height_converted = convert_input(inputs, 3, ValueType::Integer, &mut input_errors);
-        let color_space_converted = convert_input(inputs, 4, ValueType::ColorSpace, &mut input_errors);
-        let easing_converted = convert_input(inputs, 5, ValueType::Curve, &mut input_errors);
-
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Color(a) = a_converted.unwrap() else { unreachable!() };
-        let Value::Color(b) = b_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut width) = width_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut height) = height_converted.unwrap() else { unreachable!() };
-        let Value::ColorSpace(color_space) = color_space_converted.unwrap() else { unreachable!() };
-        let Value::Curve(easing_curve) = easing_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Color(a) = 0,
+            Color(b) = 1,
+            Integer(mut width) = 2,
+            Integer(mut height) = 3,
+            ColorSpace(color_space) = 4,
+            Curve(easing_curve) = 5,
+        }
         // None while the easing curve is the untouched identity default —
         // rows then use the raw linear blend factor, bit-identical to the
         // pre-easing behaviour.

@@ -6,13 +6,14 @@
 //! the band (and grayscale inputs) are untouched.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use super::common::{hsl_to_rgb, rgb_to_hsl, smoothstep};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -34,7 +35,7 @@ impl OpImageAdjustmentSelectiveColor {
     /// Creates input ports: image, target hue, band width, and H/S/L deltas.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source colour image to selectively adjust."),
             Input::new("target hue".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(1.0), clamp_to_range: true }), None)
                 .with_description("Centre hue of the selection in degrees (0 red, 120 green, 240 blue)."),
@@ -60,23 +61,15 @@ impl OpImageAdjustmentSelectiveColor {
     /// Executes the selective colour adjustment over the targeted hue band.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let target_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let range_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let hue_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let sat_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let light_converted = convert_input(inputs, 5, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(target_hue) = target_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(range) = range_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(hue_shift) = hue_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(saturation) = sat_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(lightness) = light_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(target_hue) = 1,
+            Decimal(range) = 2,
+            Decimal(hue_shift) = 3,
+            Decimal(saturation) = 4,
+            Decimal(lightness) = 5,
+        }
 
         let ch = data.channels() as usize;
         if ch < 3 {
@@ -88,14 +81,17 @@ impl OpImageAdjustmentSelectiveColor {
 
         let range = range.max(1e-3);
         let mut result = (*data).clone();
-        for pixel in result.pixels_mut() {
+        result.par_pixels_mut().for_each(|pixel| {
             let (h, s, l) = rgb_to_hsl(pixel[0], pixel[1], pixel[2]);
             // Shortest angular distance on the 0-360 hue wheel.
             let mut diff = (h - target_hue).abs() % 360.0;
             if diff > 180.0 { diff = 360.0 - diff; }
             let weight = 1.0 - smoothstep(0.0, range, diff);
             if weight <= 0.0 {
-                continue;
+                // Outside the targeted hue band: leave this pixel untouched.
+                // (`return` from the per-pixel closure, the parallel loop's
+                // equivalent of the `continue` this used to be.)
+                return;
             }
             let nh = (h + weight * hue_shift * 180.0).rem_euclid(360.0);
             let ns = (s + weight * saturation).clamp(0.0, 1.0);
@@ -104,7 +100,7 @@ impl OpImageAdjustmentSelectiveColor {
             pixel[0] = r;
             pixel[1] = g;
             pixel[2] = b;
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

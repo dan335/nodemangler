@@ -6,9 +6,10 @@
 
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -53,19 +54,11 @@ impl OpNumberRandomInteger {
     /// Executes the node: generates a random integer in `[min, max)`.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let min_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let max_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Integer(minimum) = min_converted.unwrap() else { unreachable!() };
-        let Value::Integer(mut maximum) = max_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Integer(minimum) = 1,
+            Integer(mut maximum) = 2,
+        }
 
         // run node
         maximum = maximum.max(minimum.saturating_add(1));

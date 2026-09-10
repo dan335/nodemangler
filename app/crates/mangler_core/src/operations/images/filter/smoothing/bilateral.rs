@@ -12,10 +12,10 @@
 
 use crate::float_image::FloatImage;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -40,7 +40,7 @@ impl OpImageAdjustmentBilateral {
     /// Creates the input ports: image, radius, spatial sigma, and range (color) sigma.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to smooth while keeping edges crisp."),
             // radius of the square window in pixels (full window is (2r+1) x (2r+1))
             Input::new("radius".to_string(), Value::Integer(4), Some(InputSettings::Slider { range: (1.0, 16.0), step_by: Some(1.0), clamp_to_range: true }), None)
@@ -66,22 +66,13 @@ impl OpImageAdjustmentBilateral {
     /// average of its neighborhood using spatial * range Gaussian weights.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let radius_converted = convert_input(inputs, 1, ValueType::Integer, &mut input_errors);
-        let spatial_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let range_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Integer(radius) = radius_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(spatial_sigma) = spatial_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(range_sigma) = range_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Integer(radius) = 1,
+            Decimal(spatial_sigma) = 2,
+            Decimal(range_sigma) = 3,
+        }
 
         // clamp controls to valid ranges to avoid division-by-zero and negative widths
         // Radius and spatial sigma are authored in reference pixels (at 1024px)

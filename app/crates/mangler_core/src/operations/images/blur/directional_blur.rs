@@ -7,10 +7,10 @@
 use crate::curve::Curve;
 use crate::float_image::FloatImage;
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use rayon::prelude::*;
@@ -36,7 +36,7 @@ impl OpImageAdjustmentDirectionalBlur {
     /// (pixel spread), and an optional spatial path curve for curved smears.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to smear along a line."),
             Input::new("angle".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (0.0, 360.0), step_by: Some(1.0), clamp_to_range: true }), None)
                 .with_description("Direction of the blur line in degrees, measured counter-clockwise from +X. Ignored while a path is drawn."),
@@ -62,24 +62,14 @@ impl OpImageAdjustmentDirectionalBlur {
     /// FloatImage's bilinear interpolation.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let angle_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let samples_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let intensity_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let path_converted = convert_input(inputs, 4, ValueType::Curve, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(angle) = angle_converted.unwrap() else { unreachable!() };
-        let Value::Integer(samples) = samples_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(intensity) = intensity_converted.unwrap() else { unreachable!() };
-        let Value::Curve(path) = path_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(angle) = 1,
+            Integer(samples) = 2,
+            Decimal(intensity) = 3,
+            Curve(path) = 4,
+        }
 
         // run node
         let samples = samples.max(1) as u32;

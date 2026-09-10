@@ -15,11 +15,13 @@
 use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input, scale_to_resolution};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, scale_to_resolution, image_input};
 use crate::operations::images::adjustments::common::{rgb_to_ycbcr, ycbcr_to_rgb};
 use crate::operations::images::filter::smoothing::guided::{guide_stats, guided_filter_plane, guided_filter_plane_with_stats};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -60,7 +62,7 @@ impl OpImageAdjustmentDenoise {
     /// Creates the input ports: image, then the luma and chroma strength/radius pairs.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to denoise."),
             Input::new("luminance".to_string(), Value::Decimal(0.3), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Luminance denoise strength; higher smooths more detail (and risks a plastic look). 0 leaves luma untouched."),
@@ -84,24 +86,14 @@ impl OpImageAdjustmentDenoise {
     /// Executes the denoise operation.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // Convert inputs.
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let luma_strength_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let luma_radius_converted = convert_input(inputs, 2, ValueType::Integer, &mut input_errors);
-        let chroma_strength_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let chroma_radius_converted = convert_input(inputs, 4, ValueType::Integer, &mut input_errors);
-
-        // Return if any conversion failed.
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // Extract values.
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(luma_strength) = luma_strength_converted.unwrap() else { unreachable!() };
-        let Value::Integer(luma_radius) = luma_radius_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(chroma_strength) = chroma_strength_converted.unwrap() else { unreachable!() };
-        let Value::Integer(chroma_radius) = chroma_radius_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(luma_strength) = 1,
+            Integer(luma_radius) = 2,
+            Decimal(chroma_strength) = 3,
+            Integer(chroma_radius) = 4,
+        }
 
         let luma_strength = (luma_strength as f32).clamp(0.0, 1.0);
         let chroma_strength = (chroma_strength as f32).clamp(0.0, 1.0);
@@ -168,7 +160,7 @@ impl OpImageAdjustmentDenoise {
 
         // Recombine, leaving alpha exactly as it came in.
         let mut result = (*data).clone();
-        for (i, px) in result.pixels_mut().enumerate() {
+        result.par_pixels_mut().enumerate().for_each(|(i, px)| {
             if is_color {
                 let (r, g, b) = ycbcr_to_rgb(y_out[i], cb_out[i], cr_out[i]);
                 px[0] = r.clamp(0.0, 1.0);
@@ -179,7 +171,7 @@ impl OpImageAdjustmentDenoise {
                 px[0] = y_out[i].clamp(0.0, 1.0);
                 // Channel 1 on a gray+alpha image is alpha; untouched.
             }
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

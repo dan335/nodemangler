@@ -5,13 +5,14 @@
 //! to HSL, adds the rotation, and converts back. For 1-channel images, returns as-is.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use super::common::{hsl_to_rgb, rgb_to_hsl};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -33,7 +34,7 @@ impl OpImageAdjustmentHueRotate {
     /// Creates the input ports: an image and a normalized rotation amount (-1.0 to 1.0, mapped to -360..360 degrees).
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(),  Value::Image { data:default_image(), change_id:get_id() }, None, None)
+            image_input("image")
                 .with_description("Colour image whose hues will be rotated."),
             Input::new("amount".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: Some(0.01), clamp_to_range: true }), None)
                 .with_description("Hue shift normalised to [-1, 1], corresponding to -360 to 360 degrees.")
@@ -52,18 +53,11 @@ impl OpImageAdjustmentHueRotate {
     /// For 1-channel images (grayscale), returns as-is since there is no hue to rotate.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        // convert inputs
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let amount_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-
-        // return if error
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        // get values
-        let Value::Image{data, change_id:_} = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(amount) = 1,
+        }
 
         // run node
         let ch = data.channels() as usize;
@@ -80,7 +74,7 @@ impl OpImageAdjustmentHueRotate {
         let degrees = amount * 360.0;
         let mut result = (*data).clone();
 
-        for pixel in result.pixels_mut() {
+        result.par_pixels_mut().for_each(|pixel| {
             // Convert RGB to HSL
             let (h, s, l) = rgb_to_hsl(pixel[0], pixel[1], pixel[2]);
             // Rotate hue, wrapping around 0..360
@@ -91,7 +85,7 @@ impl OpImageAdjustmentHueRotate {
             pixel[1] = g;
             pixel[2] = b;
             // Alpha (if present) is unchanged
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

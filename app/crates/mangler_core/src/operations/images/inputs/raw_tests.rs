@@ -42,9 +42,10 @@ fn test_defaults_are_camera_faithful_and_memory_safe() {
 #[test]
 fn test_path_filter_is_raw_only() {
     let inputs = OpImageInputRaw::create_inputs();
-    let Some(InputSettings::Path { extension_filter, .. }) = &inputs[PATH].settings else {
+    let Some(InputSettings::Path(path_settings)) = &inputs[PATH].settings else {
         panic!("path input must use a Path picker");
     };
+    let extension_filter = &path_settings.extension_filter;
     assert!(!extension_filter.iter().any(|e| e == "png"));
     assert!(!extension_filter.iter().any(|e| e == "jpg"));
 

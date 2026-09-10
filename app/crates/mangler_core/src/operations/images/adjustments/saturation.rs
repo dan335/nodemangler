@@ -6,12 +6,13 @@
 //! luminance weights and leaves alpha untouched.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -33,7 +34,7 @@ impl OpImageAdjustmentSaturation {
     /// Creates input ports: source image and a saturation multiplier.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source colour image to saturate or desaturate."),
             Input::new("amount".to_string(), Value::Decimal(1.0), Some(InputSettings::Slider { range: (0.0, 3.0), step_by: Some(0.01), clamp_to_range: false }), None)
                 .with_description("Saturation multiplier; 0 grayscale, 1 identity, >1 more vivid."),
@@ -51,15 +52,11 @@ impl OpImageAdjustmentSaturation {
     /// Executes the saturation adjustment by lerping each colour channel toward luminance.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let amount_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(amount) = amount_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(amount) = 1,
+        }
 
         let ch = data.channels() as usize;
         if ch < 3 {
@@ -71,12 +68,12 @@ impl OpImageAdjustmentSaturation {
         }
 
         let mut result = (*data).clone();
-        for pixel in result.pixels_mut() {
-            let luma = 0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2];
+        result.par_pixels_mut().for_each(|pixel| {
+            let luma = crate::luma::rec709(pixel[0], pixel[1], pixel[2]);
             for val in pixel.iter_mut().take(3) {
                 *val = luma + (*val - luma) * amount;
             }
-        }
+        });
 
         Ok(OperationResponse {
             time: Instant::now().duration_since(start_time),

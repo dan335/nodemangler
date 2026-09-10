@@ -7,14 +7,14 @@
 //! `Linear` curve. The reverse of `rasterize curve`.
 
 use crate::curve::Curve;
-use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::curves::common::{linear_curve, rdp_decimate, MAX_OUTPUT_POINTS};
 use crate::operations::numbers::image::pixel_luma;
-use crate::operations::{convert_input, default_image, OperationError, OperationResponse, OutputResponse};
+use crate::convert_inputs;
+use crate::operations::{OperationError, OperationResponse, OutputResponse, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
@@ -268,7 +268,7 @@ impl OpCurveFromImageTraceContour {
     /// Creates the default inputs: image, threshold, tolerance.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("The image whose threshold boundary is traced."),
             Input::new("threshold".to_string(), Value::Decimal(0.5), Some(InputSettings::Slider { range: (0.0, 1.0), step_by: None, clamp_to_range: true }), None)
                 .with_description("Luminance cutoff; pixels at or above it count as inside the shape."),
@@ -288,19 +288,12 @@ impl OpCurveFromImageTraceContour {
     /// Traces the longest threshold contour of the input image into a curve.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let threshold_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let tolerance_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Image(image) = 0,
+            Decimal(threshold) = 1,
+            Decimal(tolerance) = 2,
         }
-
-        let Value::Image { data: image, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(threshold) = threshold_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(tolerance) = tolerance_converted.unwrap() else { unreachable!() };
 
         let w = image.width() as usize;
         let h = image.height() as usize;

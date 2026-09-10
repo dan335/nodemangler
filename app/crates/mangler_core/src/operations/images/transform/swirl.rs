@@ -4,10 +4,10 @@
 //! the effect radius, twisting the image into a spiral. Sampling is bilinear.
 
 use crate::get_id;
-use crate::value::ValueType;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
 use crate::value::Value;
 use crate::float_image::FloatImage;
@@ -33,7 +33,7 @@ impl OpImageTransformSwirl {
     /// Creates input ports: image, twist angle, and effect radius.
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to swirl."),
             Input::new("angle".to_string(), Value::Decimal(90.0), Some(InputSettings::Slider { range: (-720.0, 720.0), step_by: Some(1.0), clamp_to_range: false }), None)
                 .with_description("Maximum twist at the centre, in degrees."),
@@ -53,17 +53,12 @@ impl OpImageTransformSwirl {
     /// Executes the swirl by inverse-rotating each output pixel before sampling.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let angle_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let radius_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(angle_deg) = angle_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(radius) = radius_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(angle_deg) = 1,
+            Decimal(radius) = 2,
+        }
 
         let (w, h) = data.dimensions();
         let ch = data.channels() as usize;

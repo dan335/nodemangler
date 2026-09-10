@@ -12,9 +12,10 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::transform::transform::sample_bilinear;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{EdgeMode, Value, ValueType};
+use crate::value::{EdgeMode, Value};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -34,7 +35,7 @@ impl OpImageTransformLensDistortion {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Source image to distort."),
             Input::new("k1".to_string(), Value::Decimal(0.0), Some(InputSettings::Slider { range: (-1.0, 1.0), step_by: Some(0.01), clamp_to_range: false }), None)
                 .with_description("Quadratic (r²) distortion coefficient; negative = barrel, positive = pincushion."),
@@ -58,23 +59,15 @@ impl OpImageTransformLensDistortion {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let k1_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let k2_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let scale_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let edge_converted = convert_input(inputs, 4, ValueType::EdgeMode, &mut input_errors);
-        let fill_converted = convert_input(inputs, 5, ValueType::Color, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(k1) = k1_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(k2) = k2_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(scale) = scale_converted.unwrap() else { unreachable!() };
-        let Value::EdgeMode(edge) = edge_converted.unwrap() else { unreachable!() };
-        let Value::Color(fill) = fill_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Decimal(k1) = 1,
+            Decimal(k2) = 2,
+            Decimal(scale) = 3,
+            EdgeMode(edge) = 4,
+            Color(fill) = 5,
+        }
 
         // Degenerate params: no distortion, no zoom — passthrough.
         if k1 == 0.0 && k2 == 0.0 && scale == 1.0 {
@@ -88,7 +81,7 @@ impl OpImageTransformLensDistortion {
         let nch = data.channels() as usize;
 
         // Fill colour reduced to the source's channel layout (see transform.rs).
-        let luma = 0.2126 * fill.r + 0.7152 * fill.g + 0.0722 * fill.b;
+        let luma = crate::luma::rec709(fill.r, fill.g, fill.b);
         let mut fill_px: Vec<f32> = match nch {
             1 => vec![luma],
             2 => vec![luma, fill.a],

@@ -8,9 +8,10 @@ use crate::float_image::FloatImage;
 use crate::get_id;
 use crate::input::Input;
 use crate::node_settings::NodeSettings;
-use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, convert_input};
+use crate::convert_inputs;
+use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image, image_input};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -30,7 +31,7 @@ impl OpImagePbrNormalInvert {
 
     pub fn create_inputs() -> Vec<Input> {
         vec![
-            Input::new("image".to_string(), Value::Image { data: default_image(), change_id: get_id() }, None, None)
+            image_input("image")
                 .with_description("Normal map whose X and/or Y components will be flipped."),
             Input::new("invert x".to_string(), Value::Bool(false), None, None)
                 .with_description("Flips the red (X) channel to mirror normals horizontally."),
@@ -48,17 +49,12 @@ impl OpImagePbrNormalInvert {
 
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let image_converted = convert_input(inputs, 0, ValueType::Image, &mut input_errors);
-        let invert_x_converted = convert_input(inputs, 1, ValueType::Bool, &mut input_errors);
-        let invert_y_converted = convert_input(inputs, 2, ValueType::Bool, &mut input_errors);
-
-        if !input_errors.is_empty() { return Err(OperationError { input_errors, node_error: None }); }
-
-        let Value::Image { data, change_id: _ } = image_converted.unwrap() else { unreachable!() };
-        let Value::Bool(invert_x) = invert_x_converted.unwrap() else { unreachable!() };
-        let Value::Bool(invert_y) = invert_y_converted.unwrap() else { unreachable!() };
+        convert_inputs! { inputs;
+            Image(data) = 0,
+            Bool(invert_x) = 1,
+            Bool(invert_y) = 2,
+        }
 
         // Mirror each selected axis in packed space: v → 1 - v maps a signed
         // component n → -n after unpack. Alpha / z components are preserved.

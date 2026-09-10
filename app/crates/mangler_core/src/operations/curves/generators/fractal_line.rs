@@ -9,9 +9,10 @@ use crate::curve::Curve;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::curves::common::linear_curve;
-use crate::operations::{convert_input, OperationError, OperationResponse, OutputResponse};
+use crate::convert_inputs;
+use crate::operations::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -101,27 +102,16 @@ impl OpCurveGeneratorFractalLine {
     /// Generates the fractal line curve from the given inputs.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let seed_converted = convert_input(inputs, 0, ValueType::Integer, &mut input_errors);
-        let sx_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-        let sy_converted = convert_input(inputs, 2, ValueType::Decimal, &mut input_errors);
-        let ex_converted = convert_input(inputs, 3, ValueType::Decimal, &mut input_errors);
-        let ey_converted = convert_input(inputs, 4, ValueType::Decimal, &mut input_errors);
-        let detail_converted = convert_input(inputs, 5, ValueType::Integer, &mut input_errors);
-        let roughness_converted = convert_input(inputs, 6, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Integer(seed) = 0,
+            Decimal(sx) = 1,
+            Decimal(sy) = 2,
+            Decimal(ex) = 3,
+            Decimal(ey) = 4,
+            Integer(detail) = 5,
+            Decimal(roughness) = 6,
         }
-
-        let Value::Integer(seed) = seed_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(sx) = sx_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(sy) = sy_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(ex) = ex_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(ey) = ey_converted.unwrap() else { unreachable!() };
-        let Value::Integer(detail) = detail_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(roughness) = roughness_converted.unwrap() else { unreachable!() };
 
         let detail = detail.clamp(1, 10) as u32;
         let roughness = (roughness as f64).clamp(0.0, 1.0);

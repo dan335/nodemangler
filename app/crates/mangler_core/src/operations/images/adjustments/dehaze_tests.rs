@@ -144,3 +144,116 @@ async fn test_dehaze_1x1() {
     let result = OpImageAdjustmentDehaze::run(&mut inputs).await;
     assert!(result.is_ok(), "1x1 dehaze failed: {:?}", result.err());
 }
+
+/// The dark-channel min-filter was a hand-written O(r²) window scan; it now
+/// goes through the shared `separable_morphology` (van Herk running min),
+/// which is O(1) per pixel. Erosion *is* a min filter and min folds are
+/// order-independent, so the two agree exactly — not approximately. This pins
+/// that, since the shared helper is free to change its blocking strategy.
+#[test]
+fn the_separable_min_filter_matches_a_naive_window_scan() {
+    use crate::float_image::FloatImage;
+    use crate::operations::images::filter::morphology::erode::separable_morphology;
+
+    let (w, h) = (29usize, 19usize);
+    let src: Vec<f32> = (0..w * h)
+        .map(|i| ((i * 2654435761usize) % 997) as f32 / 997.0)
+        .collect();
+
+    for r in [1i32, 3, 8, 30] {
+        let plane = FloatImage::from_raw(w as u32, h as u32, 1, src.clone()).unwrap();
+        let fast = separable_morphology(&plane, r, f32::min);
+
+        // The naive clamped window scan this replaced.
+        let mut naive = vec![0.0f32; w * h];
+        for y in 0..h {
+            for x in 0..w {
+                let mut m = f32::INFINITY;
+                let y0 = (y as i32 - r).max(0) as usize;
+                let y1 = ((y as i32 + r) as usize).min(h - 1);
+                let x0 = (x as i32 - r).max(0) as usize;
+                let x1 = ((x as i32 + r) as usize).min(w - 1);
+                for yy in y0..=y1 {
+                    for xx in x0..=x1 {
+                        m = m.min(src[yy * w + xx]);
+                    }
+                }
+                naive[y * w + x] = m;
+            }
+        }
+
+        assert_eq!(
+            fast.as_raw(),
+            &naive[..],
+            "radius {r}: separable min filter disagrees with the naive window scan"
+        );
+    }
+}
+
+/// The atmospheric-light estimate averages the top 0.1% of pixels by
+/// dark-channel value. That used to sort every pixel index; it now partitions
+/// with `select_nth_unstable_by`, which is O(n). Both pick "a top-N set", so
+/// the node's output must be unchanged for an image with a clear haziest
+/// region — this exercises the whole path end to end rather than the helper.
+#[tokio::test]
+async fn dehaze_recovers_a_synthetic_hazy_image() {
+    use crate::float_image::FloatImage;
+    use std::sync::Arc;
+
+    // A dark gradient blended toward a bright uniform "airlight", strongest at
+    // the top — the shape the dark-channel prior is designed for.
+    let (w, h) = (64u32, 64u32);
+    let mut data = Vec::with_capacity((w * h * 3) as usize);
+    for y in 0..h {
+        for x in 0..w {
+            let scene = x as f32 / w as f32 * 0.4;
+            let haze = 1.0 - y as f32 / h as f32;
+            for _ in 0..3 {
+                data.push(scene * (1.0 - haze * 0.7) + 0.9 * haze * 0.7);
+            }
+        }
+    }
+    let image = Arc::new(FloatImage::from_raw(w, h, 3, data).unwrap());
+
+    let mut inputs = OpImageAdjustmentDehaze::create_inputs();
+    inputs[0].value = Value::Image { data: Arc::clone(&image), change_id: get_id() };
+    inputs[1].value = Value::Decimal(1.0);
+
+    let result = OpImageAdjustmentDehaze::run(&mut inputs).await.expect("dehaze runs");
+    let Value::Image { data: out, .. } = &result.responses[0].value else { panic!() };
+
+    assert_eq!(out.dimensions(), (w, h));
+    assert_eq!(out.channels(), 3);
+
+    // The hazy top should have been pulled down more than the clear bottom:
+    // that is the whole point of the transmission map.
+    let top_before = image.get_pixel(w / 2, 0)[0];
+    let top_after = out.get_pixel(w / 2, 0)[0];
+    let bottom_before = image.get_pixel(w / 2, h - 1)[0];
+    let bottom_after = out.get_pixel(w / 2, h - 1)[0];
+    assert!(
+        (top_before - top_after) > (bottom_before - bottom_after),
+        "the hazy end should be corrected more: top {top_before}->{top_after}, \
+         bottom {bottom_before}->{bottom_after}"
+    );
+}
+
+/// Every pixel's colour channels are rewritten in place now, rather than being
+/// copied out to a temporary `Vec` and written back. Alpha must still be
+/// untouched.
+#[tokio::test]
+async fn dehaze_leaves_alpha_alone() {
+    use crate::float_image::FloatImage;
+    use std::sync::Arc;
+
+    let image = Arc::new(FloatImage::from_pixel(8, 8, 4, &[0.6, 0.5, 0.55, 0.42]));
+    let mut inputs = OpImageAdjustmentDehaze::create_inputs();
+    inputs[0].value = Value::Image { data: image, change_id: get_id() };
+    inputs[1].value = Value::Decimal(0.8);
+
+    let result = OpImageAdjustmentDehaze::run(&mut inputs).await.unwrap();
+    let Value::Image { data: out, .. } = &result.responses[0].value else { panic!() };
+    for px in out.pixels() {
+        assert_eq!(px[3], 0.42, "alpha was modified");
+    }
+}

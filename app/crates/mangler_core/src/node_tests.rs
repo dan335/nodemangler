@@ -374,7 +374,7 @@ async fn test_subgraph_forwards_path_input() {
     let mut parent = make_subgraph_node();
     parent.node_type = NodeType::Subgraph {
         path: PathBuf::new(),
-        graph: Some(child_graph),
+        graph: Some(Box::new(child_graph)),
         last_mtime: None,
     };
     parent.inputs = vec![Input::new(

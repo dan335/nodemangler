@@ -15,9 +15,10 @@ use crate::operations::curves::common::{
     drop_closing_duplicate, flatten_f64, laplacian_smooth_once, linear_curve, rdp_decimate, resample, vertex_tangent,
     MAX_OUTPUT_POINTS,
 };
-use crate::operations::{convert_input, OperationError, OperationResponse, OutputResponse};
+use crate::convert_inputs;
+use crate::operations::{OperationError, OperationResponse, OutputResponse};
 use crate::output::Output;
-use crate::value::{Value, ValueType};
+use crate::value::Value;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -92,17 +93,11 @@ impl OpCurveModifyOffset {
     /// Offsets the curve from the given inputs.
     pub async fn run(inputs: &mut [Input]) -> Result<OperationResponse, OperationError> {
         let start_time = Instant::now();
-        let mut input_errors: Vec<(usize, String)> = vec![];
 
-        let curve_converted = convert_input(inputs, 0, ValueType::Curve, &mut input_errors);
-        let distance_converted = convert_input(inputs, 1, ValueType::Decimal, &mut input_errors);
-
-        if !input_errors.is_empty() {
-            return Err(OperationError { input_errors, node_error: None });
+        convert_inputs! { inputs;
+            Curve(curve) = 0,
+            Decimal(distance) = 1,
         }
-
-        let Value::Curve(curve) = curve_converted.unwrap() else { unreachable!() };
-        let Value::Decimal(distance) = distance_converted.unwrap() else { unreachable!() };
 
         let distance_norm = (distance as f64).clamp(-128.0, 128.0) / 1024.0;
 
