@@ -23,7 +23,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 arboard = "3.6"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
-glam = { version = "0.32", features = ["serde"] }
+glam = { version = "0.33", features = ["serde"] }
 reqwest = "0.13"
 fastrand = "2"
 noise = "0.9"
@@ -36,7 +36,7 @@ psd = "0.3.5"
 heif-oxide = "0.1.0"
 # Camera RAW decode (Canon CR3/CR2, Nikon NEF, Sony ARW, DNG, ...). Pure Rust.
 # Exact-pinned: rawler's API is explicitly not SemVer-stable.
-rawler = { version = "=0.7.2", optional = true }
+rawler = { version = "=0.8.0", optional = true }
 sanitize-filename = "0.6"
 
 [dev-dependencies]

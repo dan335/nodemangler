@@ -21,17 +21,17 @@ jpeg-decoder = "0.3"
 mangler_core = { path = "../mangler_core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-puffin = "0.19"
+puffin = "0.20"
 # In-egui file dialog (themed, non-blocking) rather than a native OS panel.
 # `information_view` is deliberately off: it pulls chrono + image-meta +
 # indexmap for a metadata side panel we do not show.
 egui-file-dialog = { version = "0.15", default-features = false, features = ["serde"] }
 time = "0.3"
-glam = "0.32"
+glam = "0.33"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 fastrand = "2.0"
 egui_extras = "0.36"
-dirs = "6"
+dirs = "7"
 rayon = "1"
 # Library-panel deletes go to the OS recycle bin (recoverable), never
 # straight to permanent removal.

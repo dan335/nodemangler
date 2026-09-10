@@ -105,6 +105,11 @@ pub(crate) fn steps_for(opts: &RawOptions) -> Vec<ProcessingStep> {
     if opts.demosaic {
         steps.push(ProcessingStep::Demosaic);
     }
+    // Fuji SuperCCD/EXR sensors record their photosites on a 45° diagonal
+    // lattice; without this the frame comes out rotated. rawler added it to the
+    // default pipeline in 0.8 and it is a no-op for every other sensor, so it
+    // is unconditional like the crops.
+    steps.push(ProcessingStep::FujiRotate);
     steps.push(ProcessingStep::CropActiveArea);
     if opts.white_balance != RawWhiteBalance::None {
         steps.push(ProcessingStep::WhiteBalance);

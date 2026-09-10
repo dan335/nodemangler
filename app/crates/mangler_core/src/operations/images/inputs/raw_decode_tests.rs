@@ -68,9 +68,10 @@ mod with_rawler {
     /// iterates the vector or merely tests membership.
     #[test]
     fn test_steps_always_in_canonical_order() {
-        const CANONICAL: [ProcessingStep; 7] = [
+        const CANONICAL: [ProcessingStep; 8] = [
             ProcessingStep::Rescale,
             ProcessingStep::Demosaic,
+            ProcessingStep::FujiRotate,
             ProcessingStep::CropActiveArea,
             ProcessingStep::WhiteBalance,
             ProcessingStep::Calibrate,
