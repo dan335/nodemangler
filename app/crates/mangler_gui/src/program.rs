@@ -143,6 +143,9 @@ pub struct Program {
     /// union of trees â€” `Program` cannot see the panel tree itself â€” and used
     /// to hint the user when viewing a node with nowhere to show it.
     pub has_preview_2d_panel: bool,
+    /// Set by `App` each frame: a file dialog is on screen, so this program's
+    /// modals must stand down (see `App::modals_suppressed`).
+    pub modals_suppressed: bool,
     /// Per-leaf 2D preview pan/zoom state, keyed by panel leaf id.
     viewers_2d: HashMap<LeafId, ImageViewer>,
     /// Per-leaf 3D preview state (arcball camera + material channel bindings).
@@ -336,6 +339,7 @@ impl Program {
                 load_warning: None,
                 file_conflict: None,
                 has_preview_2d_panel: false,
+                modals_suppressed: false,
                 viewers_2d: HashMap::new(),
                 gizmo_backdrop_prefer_viewed: HashMap::new(),
                 viewers_3d: HashMap::new(),
@@ -2062,6 +2066,12 @@ impl Program {
     /// safe "neither" answer, and the engine holds auto-saves until a
     /// `ResolveFileConflict` arrives, so staying open loses nothing.
     fn show_file_conflict_modal(&mut self, ui: &mut egui::Ui, theme: &Theme) {
+        // A conflict is raised by the auto-save watchdog, so it can land while
+        // the user is browsing in a file dialog. It keeps until they are done.
+        if self.modals_suppressed {
+            return;
+        }
+
         let Some(path) = self.file_conflict.clone() else {
             return;
         };

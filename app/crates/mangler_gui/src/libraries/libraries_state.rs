@@ -104,6 +104,9 @@ pub struct LibrariesState {
     pub view_style: LibraryViewStyle,
     /// The modal dialog currently open, if any.
     pub dialog: Option<LibraryDialog>,
+    /// Set by `App` each frame: a file dialog is on screen, so this panel's
+    /// dialogs must stand down (see `App::modals_suppressed`).
+    pub modals_suppressed: bool,
     /// Actions queued for `App` to perform; drained via `take_pending`.
     pending: Vec<LibraryAction>,
     /// Most recent disk-operation error, shown as a fading strip at the
@@ -155,6 +158,7 @@ impl LibrariesState {
             thumbs: LibraryThumbCache::spawn(ctx),
             view_style,
             dialog: None,
+            modals_suppressed: false,
             pending: Vec::new(),
             error: None,
             persist,

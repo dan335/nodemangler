@@ -68,17 +68,6 @@ pub struct App {
 enum PendingClose {
     /// The save/discard/cancel modal is up for this tab.
     Prompt { program_id: String },
-    /// The user chose save and the file dialog is up, waiting for them to
-    /// pick a path.
-    ///
-    /// The prompt modal must not render in this state. `egui::Modal` installs
-    /// a modal layer that blocks interaction with everything ordered below it,
-    /// and the file dialog is an ordinary window — drawn under a live prompt it
-    /// would be visible but completely dead to input.
-    ///
-    /// Unlike `AwaitingSave` this has deliberately no timeout: the user may
-    /// browse for as long as they like.
-    AwaitingPathChoice { program_id: String },
     /// The user chose save and picked a path; waiting for the engine's
     /// `SavedTo` ack before actually closing — closing aborts the engine
     /// task, which would race the write if we didn't wait for confirmation.
@@ -173,10 +162,16 @@ impl eframe::App for App {
             // borrow on `program` has ended.
             let mut panel_actions: Vec<PanelAction> = Vec::new();
 
+            // Modal suppression is app-wide, so it is stamped onto the two
+            // owners that render modals of their own before they draw.
+            let modals_suppressed = self.modals_suppressed();
+            self.libraries.modals_suppressed = modals_suppressed;
+
             if let Some(current_program) = &self.current_program {
                 let has_preview_2d_panel = self.has_preview_2d_panel();
                 if let Some(program) = self.programs.get_mut(current_program) {
                     program.has_preview_2d_panel = has_preview_2d_panel;
+                    program.modals_suppressed = modals_suppressed;
                     program.update(&ctx, ui);
                     // A dropped `.mangler.json` opens as a tab — queue it on the
                     // libraries action channel (drained below), the same path
@@ -357,6 +352,20 @@ impl eframe::App for App {
 
 impl App {
 
+    /// Whether app modals must stand down this frame.
+    ///
+    /// `egui::Modal` renders at `Order::Foreground` and registers a modal
+    /// layer, which outranks the file dialog's ordinary window. Any modal shown
+    /// while the dialog is up therefore covers it and blocks its input — so
+    /// while a pick is in flight, every modal in the app waits its turn.
+    ///
+    /// This has to be a rule the modals consult rather than something the
+    /// dialog enforces, because the ordering is decided by egui's layer system,
+    /// not by draw order.
+    fn modals_suppressed(&self) -> bool {
+        self.file_dialog.is_open()
+    }
+
     /// Routes a picked path to whoever asked for it — the single dispatch
     /// point for every file dialog in the app, and the mirror of the Libraries
     /// panel's `apply_dialog`.
@@ -390,7 +399,7 @@ impl App {
                 // resume someone else's close.
                 let closing_this_tab = matches!(
                     (&self.pending_close, &program_id),
-                    (Some(PendingClose::AwaitingPathChoice { program_id: p }), Some(id)) if p == id
+                    (Some(PendingClose::Prompt { program_id: p }), Some(id)) if p == id
                 );
                 if let (true, Some(id)) = (closing_this_tab, program_id) {
                     self.pending_close = Some(PendingClose::AwaitingSave {
@@ -485,6 +494,11 @@ impl App {
         let Some(message) = self.error_modal.clone() else {
             return;
         };
+        // Engine errors arrive on their own schedule, including while the user
+        // is browsing. The message keeps until the dialog is done.
+        if self.modals_suppressed() {
+            return;
+        }
 
         let mut dismissed = false;
         let modal = egui::Modal::new(egui::Id::new("app_error_modal")).show(ui.ctx(), |ui| {
@@ -557,7 +571,6 @@ impl App {
         let program_id = match &pending {
             PendingClose::Prompt { program_id } => program_id.clone(),
             PendingClose::AwaitingSave { program_id, .. } => program_id.clone(),
-            PendingClose::AwaitingPathChoice { program_id } => program_id.clone(),
         };
 
         // The tab vanished out from under the prompt (shouldn't happen —
@@ -567,17 +580,11 @@ impl App {
             return;
         }
 
-        // While the save dialog is up, render nothing: a modal layer here
-        // would leave that dialog visible but unclickable (see the variant's
-        // docs). If it closed without a pick the user cancelled it, so fall
-        // back to the prompt — the same "stay in Prompt" behaviour the
-        // blocking dialog had when it returned None.
-        if let PendingClose::AwaitingPathChoice { program_id } = &pending {
-            if !self.file_dialog.is_open() {
-                self.pending_close = Some(PendingClose::Prompt {
-                    program_id: program_id.clone(),
-                });
-            }
+        // The prompt's own "save" opens the file dialog, so without this the
+        // prompt would cover the dialog it just spawned. Standing down also
+        // gives cancel for free: the dialog closes, suppression lifts, and the
+        // prompt is simply there again on the next frame.
+        if self.modals_suppressed() {
             return;
         }
 
@@ -667,12 +674,12 @@ impl App {
                     default_dir,
                     default_stem: display_name.clone(),
                 },
-                Some(program_id.clone()),
+                Some(program_id),
             );
-            // The prompt stops rendering while the dialog is up, and
-            // `apply_file_pick` advances this to `AwaitingSave` on a pick.
-            // Cancelling comes back to `Prompt` (see show_close_prompt_modal).
-            self.pending_close = Some(PendingClose::AwaitingPathChoice { program_id });
+            // Stay in `Prompt`: the modal suppresses itself while the dialog
+            // is up, `apply_file_pick` advances to `AwaitingSave` on a pick,
+            // and a cancel needs no handling at all — the prompt reappears when
+            // the dialog closes.
         } else if chose_discard {
             self.pending_close = None;
             self.close_program(&program_id);

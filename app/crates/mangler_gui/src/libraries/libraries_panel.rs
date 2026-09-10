@@ -769,6 +769,10 @@ fn show_dialog(ui: &mut egui::Ui, state: &mut LibrariesState, colors: &ThemeValu
 
     let mut outcome = DialogOutcome::Open;
 
+    if state.modals_suppressed {
+        return;
+    }
+
     let modal = egui::Modal::new(egui::Id::new("library_dialog")).show(ui.ctx(), |ui| {
         ui.set_width(280.0);
 
