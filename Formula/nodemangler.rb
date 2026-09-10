@@ -2,22 +2,22 @@
 class Nodemangler < Formula
   desc "Node-based visual programming tool for image and color manipulation"
   homepage "https://nodemangler.com/"
-  version "1.0.14"
+  version "1.0.15"
   license any_of: ["MIT", "Apache-2.0"]
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/dan335/nodemangler/releases/download/v1.0.14/nodemangler-v1.0.14-macos-aarch64.tar.gz"
-      sha256 "f15614cfbb095e7a4d0cd71b85c53a5d9caaa6821d4bcb2b92be28e4959ea497"
+      url "https://github.com/dan335/nodemangler/releases/download/v1.0.15/nodemangler-v1.0.15-macos-aarch64.tar.gz"
+      sha256 "a6c15e3d5cb99b5b3c31e9e42bd0a7e880e5b3490cd7fee7ad661b2e5fc58cc5"
     else
-      url "https://github.com/dan335/nodemangler/releases/download/v1.0.14/nodemangler-v1.0.14-macos-x86_64.tar.gz"
-      sha256 "573cfc97c683b512b350bdde9c8d6de555c40564e99002eae9fd49cff6f4ba5d"
+      url "https://github.com/dan335/nodemangler/releases/download/v1.0.15/nodemangler-v1.0.15-macos-x86_64.tar.gz"
+      sha256 "212276f1d3fac089ddc4859450505cc9418aba732f42e411a28c626afcb47bb9"
     end
   end
 
   on_linux do
-    url "https://github.com/dan335/nodemangler/releases/download/v1.0.14/nodemangler-v1.0.14-linux-x86_64.tar.gz"
-    sha256 "2de27aab0834555a765a7423a9e8dd71a6362954248cb874d2936b5b04e7fa72"
+    url "https://github.com/dan335/nodemangler/releases/download/v1.0.15/nodemangler-v1.0.15-linux-x86_64.tar.gz"
+    sha256 "ad4e70e58791a37f2db7d49bc43554a4a4c3f36d0b46540ad3addb99ac336f28"
   end
 
   def install

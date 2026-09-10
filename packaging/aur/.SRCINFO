@@ -1,6 +1,6 @@
 pkgbase = nodemangler-bin
 	pkgdesc = Node-based visual programming tool for image and color manipulation
-	pkgver = 1.0.14
+	pkgver = 1.0.15
 	pkgrel = 1
 	url = https://nodemangler.com/
 	arch = x86_64
@@ -23,7 +23,7 @@ pkgbase = nodemangler-bin
 	conflicts = nodemangler
 	options = !strip
 	options = !debug
-	source = nodemangler-v1.0.14-linux-x86_64.tar.gz::https://github.com/dan335/nodemangler/releases/download/v1.0.14/nodemangler-v1.0.14-linux-x86_64.tar.gz
-	sha256sums = 2de27aab0834555a765a7423a9e8dd71a6362954248cb874d2936b5b04e7fa72
+	source = nodemangler-v1.0.15-linux-x86_64.tar.gz::https://github.com/dan335/nodemangler/releases/download/v1.0.15/nodemangler-v1.0.15-linux-x86_64.tar.gz
+	sha256sums = ad4e70e58791a37f2db7d49bc43554a4a4c3f36d0b46540ad3addb99ac336f28
 
 pkgname = nodemangler-bin
