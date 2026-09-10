@@ -8,6 +8,9 @@
 //! manipulation), shapes (vector shape generation), patterns (procedural
 //! patterns), and PBR (physically-based rendering maps).
 
+/// Serialized access to the OS clipboard, shared by both clipboard nodes.
+pub mod system_clipboard;
+
 /// Shared tone-curve helpers: LUT building/sampling for `InputSettings::ToneCurve` inputs.
 pub mod tone_curve;
 /// Image source operations: file, URL, clipboard, color fill, and gradient.

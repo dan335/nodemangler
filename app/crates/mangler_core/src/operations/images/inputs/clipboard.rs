@@ -28,10 +28,10 @@ use crate::get_id;
 use crate::input::{Input, InputSettings};
 use crate::node_settings::NodeSettings;
 use crate::operations::images::inputs::{decode_png_base64, encode_png_base64};
+use crate::operations::images::system_clipboard::with_clipboard;
 use crate::operations::{OperationResponse, OperationError, OutputResponse, default_image};
 use crate::output::Output;
 use crate::value::Value;
-use arboard::Clipboard;
 use image::{ImageBuffer, RgbaImage};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -133,8 +133,7 @@ impl OpImageInputClipboard {
 
 /// The system clipboard's current image, when it holds one.
 fn read_clipboard_image() -> Option<FloatImage> {
-    let mut clipboard = Clipboard::new().ok()?;
-    let image_bytes = clipboard.get_image().ok()?;
+    let image_bytes = with_clipboard(|clipboard| clipboard.get_image().ok())??;
     // Convert raw clipboard bytes into an RgbaImage buffer.
     let rgba: RgbaImage = ImageBuffer::from_raw(
         image_bytes.width.try_into().ok()?,

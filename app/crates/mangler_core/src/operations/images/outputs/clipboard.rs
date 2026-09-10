@@ -13,7 +13,8 @@ use crate::output::Output;
 use crate::value::{Value, ValueType};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
-use arboard::{Clipboard, ImageData};
+use arboard::ImageData;
+use crate::operations::images::system_clipboard::with_clipboard;
 
 use super::{save_gate_inputs, should_save_and_consume};
 
@@ -95,8 +96,8 @@ impl OpImageOutputClipboard {
             bytes: std::borrow::Cow::Borrowed(rgba8.as_flat_samples().samples)
         };
         
-        if let Ok(mut clipboard) = Clipboard::new() {
-            if clipboard.set_image(image_data).is_ok() {
+        if let Some(copied) = with_clipboard(|clipboard| clipboard.set_image(image_data).is_ok()) {
+            if copied {
                 Ok(OperationResponse { 
                     time: Instant::now().duration_since(start_time),
                     responses: vec![],
