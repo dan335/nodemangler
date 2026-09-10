@@ -14,11 +14,10 @@ Our side is done and generated: `scripts/update_manifests.sh` writes
       `AUR_SSH_PRIVATE_KEY` secret (Settings > Secrets and variables >
       Actions). Until that exists the `aur` job skips itself, so releases keep
       working in the meantime.
-- [ ] Cut a new release. The AUR package installs a desktop entry and icon
-      that only now ride along in the Linux archive, so it cannot point at
-      v1.0.11 or earlier — the first tag after this change is the first
-      publishable one. An unclaimed name clones as an empty repo, so that
-      first push is also what creates the package.
+- [x] Cut a new release carrying the desktop entry and icon in the Linux
+      archive — done in v1.0.12, so any tag from there on is publishable.
+      (An unclaimed name clones as an empty repo, so the first push the `aur`
+      job makes is also what creates the package.)
 - [ ] Confirm it landed: <https://aur.archlinux.org/packages/nodemangler-bin>
 
 ## Verify the package on an actual Arch box
@@ -49,15 +48,26 @@ already reaches Omarchy users through *Install > AUR* / `omarchy pkg add`.
 Not possible without an Arch Package Maintainer adopting us: the official
 `extra` repo. Route there is AUR first, votes and popularity second, ask third.
 
-## Follow-ups from the egui-phosphor update
+## Follow-ups from the egui 0.36 / file-dialog update
+
+egui 0.36 landed in v1.0.14, along with vendoring the Phosphor glyphs (which
+is what unblocked it) and replacing the native rfd dialogs with an in-egui
+picker. What is left:
 
 - [ ] `libgtk-3-dev` and `libssl-dev` in `.github/workflows/release.yml` look
       vestigial — there is no `gtk-sys` and no `openssl-sys` anywhere in
-      `Cargo.lock` (rfd 0.17 drives the XDG portal over zbus, reqwest 0.13
-      uses rustls). Try dropping them; needs a real Linux build to confirm.
-- [ ] Eyeball the phosphor icons once in the running GUI. Low risk — 0.13 still
-      registers the font under the `"phosphor"` key that `app.rs:835` unwraps,
-      and it compiles and tests clean — but it was never checked on screen.
-- [ ] Optional: egui 0.36.1 is out. That is a separate upgrade across
-      eframe / egui / egui_glow / epaint / egui_extras, and egui-phosphor 0.13
-      pins egui ^0.35, so it needs a 0.36-compatible phosphor release first.
+      `Cargo.lock`, and now that rfd is gone nothing wants a portal at all
+      (reqwest 0.13 uses rustls). Try dropping them; needs a real Linux build
+      to confirm.
+- [ ] Eyeball the vendored Phosphor icons once in the running GUI. Low risk —
+      `icons_tests.rs` asserts every codepoint resolves to a real glyph — but
+      they were never checked on screen.
+- [ ] `glow` is still pinned to 0.17 because `egui_glow` 0.36 requires ^0.17.
+      Revisit when egui moves to glow 0.18.
+
+## Follow-ups from the dependency refresh (2026-09-10)
+
+- [ ] `rawler` 0.8 added a Fuji-rotate step to its default develop pipeline and
+      `steps_for` now emits it. It is a no-op on every non-Fuji sensor, so the
+      guard tests cover the ordering but not the effect — worth one look at an
+      actual Fuji SuperCCD/EXR raw if a sample turns up.

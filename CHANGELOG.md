@@ -10,17 +10,64 @@ Rewire or re-export affected graphs after those releases.
 
 ## [Unreleased]
 
+### Changed
+
+- Dependency refresh: glam 0.33, dirs 7, puffin 0.20, rawler 0.8, and
+  semver-compatible bumps across the rest of the tree. rawler 0.8 adds a
+  Fuji-rotate step to its default develop pipeline, which camera raw decode now
+  follows — Fuji SuperCCD/EXR frames come out upright instead of rotated.
+
+### Fixed
+
+- Two clipboard nodes running at once could crash the app. Both nodes reach the
+  OS clipboard from the engine's worker threads, and the platform clipboard is
+  not prepared for concurrent use; every access is now serialized behind a
+  single lock.
+
+## [1.0.14] - 2026-09-10
+
+### Changed
+
+- Every file picker is now drawn inside the app instead of being a native OS
+  panel: it follows the current theme, and opening one no longer stalls the
+  window while the dialog is up.
+- Upgraded to egui 0.36.
+
+### Fixed
+
+- Dialogs and prompts no longer cover the file picker they opened. Saving from
+  the close-tab prompt used to leave "cancel" as the only way out; errors and
+  file-conflict prompts could also land on top mid-browse. All of them now
+  stand down while a picker is open and come back when it closes.
+
+## [1.0.13] - 2026-09-09
+
+### Added
+
+- The Node List is searchable, and its rows respond: a click adds the node to
+  the focused graph, hovering shows the node's description and help text, and
+  dragging still places it precisely, with a drop-target outline and a
+  zoom-correct ghost node while you drag.
+- An empty graph canvas now hints that Tab opens node search.
+
+## [1.0.12] - 2026-09-04
+
 ### Added
 
 - AUR package `nodemangler-bin`, generated alongside the other package
   manifests and pushed to the AUR on each release, so Arch and its derivatives
   (Omarchy, EndeavourOS, CachyOS) can install with `yay -S nodemangler-bin`.
   Linux archives now also carry the desktop entry and icon it installs.
+- Dropping an image in from Explorer/Finder also creates a `to file` node wired
+  to it, targeting the image's own folder with a unique `{stem}_{N}` name so
+  the source is never overwritten. Library drops stay a single node.
+- Optional aspect-ratio lock on the crop node.
 
 ### Changed
 
-- egui-phosphor comes from crates.io (0.13) instead of a git fork, which leaves
-  the dependency tree with no git sources at all.
+- `to file` passes its input image through as output 0, so the node's graph
+  preview shows the picture being saved rather than a path string. The file
+  path moved to output 1.
 
 ## [1.0.11] - 2026-08-14
 
@@ -304,7 +351,10 @@ format in both.
 - Dual MIT OR Apache-2.0 license.
 - Multi-OS release builds (Windows, Linux, macOS Apple Silicon + Intel).
 
-[Unreleased]: https://github.com/dan335/nodemangler/compare/v1.0.11...HEAD
+[Unreleased]: https://github.com/dan335/nodemangler/compare/v1.0.14...HEAD
+[1.0.14]: https://github.com/dan335/nodemangler/compare/v1.0.13...v1.0.14
+[1.0.13]: https://github.com/dan335/nodemangler/compare/v1.0.12...v1.0.13
+[1.0.12]: https://github.com/dan335/nodemangler/compare/v1.0.11...v1.0.12
 [1.0.11]: https://github.com/dan335/nodemangler/compare/v1.0.10...v1.0.11
 [1.0.10]: https://github.com/dan335/nodemangler/compare/v1.0.9...v1.0.10
 [1.0.9]: https://github.com/dan335/nodemangler/compare/v1.0.8...v1.0.9

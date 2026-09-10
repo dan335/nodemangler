@@ -10,7 +10,7 @@ Claude.
 
 ## Features
 
-- **443 nodes** across images, colors, curves, numbers, logic, and text — see the
+- **449 nodes** across images, colors, curves, numbers, logic, and text — see the
   full [Node Reference](#node-reference) below.
 - **Procedural generation** — 47 noise generators.
 - **14 color spaces** with conversion between them: sRGB, Linear RGB, HSL, HSV, HWB,
@@ -112,7 +112,7 @@ Each crate README goes into detail on that component.
 ## Node Reference
 
 Every node in the graph editor's Add Node menu, by category and subcategory
-(447 operation nodes, plus subgraph nodes for composing whole pipelines).
+(449 operation nodes, plus subgraph nodes for composing whole pipelines).
 
 ### Numbers (104)
 
