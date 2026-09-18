@@ -16,7 +16,7 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     file_dialog::FileDialogRequest,
     graph::graph_node::GraphNode,
-    settings::{histogram_widget, tone_curve_widget, section::{section_label, section_rule}},
+    settings::{expression, histogram_widget, tone_curve_widget, section::{section_label, section_rule}},
     themes::theme::Theme,
 };
 
@@ -1136,12 +1136,20 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                             // commits on Enter / blur, not per keystroke. Dragging
                             // still streams continuously — that path ignores this
                             // flag. Without this, typing "500" fires three
-                            // SetInputs (5, 50, 500) and each runs a full decode.
+                            // SetInputs (5, 50, 500) and each runs a full decode,
+                            // and a typed expression would commit its own
+                            // prefixes ("3.5*3" → 10.5) on the way to the answer.
                             // No .range(): typed values may exceed min/max as an
                             // explicit override. Dragging is re-clamped below so the
                             // drag interaction stays bounded as before.
+                            // custom_parser: the field accepts arithmetic
+                            // ("3.5*300" → 1050); see `expression.rs`. Rounded
+                            // rather than truncated because egui converts the
+                            // parsed f64 to i32 with a plain `as` cast, which
+                            // would make "7/2" land on 3 instead of 4.
                             let drag = egui::DragValue::new(&mut x)
-                                .update_while_editing(false);
+                                .update_while_editing(false)
+                                .custom_parser(|s| expression::evaluate(s).map(f64::round));
 
                             let response = ui.add(drag);
                             if response.dragged() {
@@ -1160,7 +1168,14 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         InputSettings::Slider { range, step_by: _, clamp_to_range: _ } => {
                             // SliderClamping::Never lets typed values exceed the range;
                             // the handle drag is still limited to the track.
-                            if ui.add(egui::Slider::new(&mut x, range.0 as i32..=range.1 as i32).clamping(egui::SliderClamping::Never)).changed() {
+                            // See the DragValue arm above for update_while_editing,
+                            // the rounding custom_parser, and why this compares
+                            // against the starting value rather than .changed().
+                            ui.add(egui::Slider::new(&mut x, range.0 as i32..=range.1 as i32)
+                                .clamping(egui::SliderClamping::Never)
+                                .update_while_editing(false)
+                                .custom_parser(|s| expression::evaluate(s).map(f64::round)));
+                            if x != a {
                                 change_value(tx_change_node, node_id, input_index, input, Value::Integer(x));
                             }
                         },
@@ -1178,13 +1193,16 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                 if let Some(input_type) = &input.settings {
                     match input_type {
                         InputSettings::DragValue { speed, clamp } => {
-                            // See Integer DragValue above for why update_while_editing(false)
-                            // and x-compare instead of response.changed().
+                            // See Integer DragValue above for why update_while_editing(false),
+                            // x-compare instead of response.changed(), and the
+                            // arithmetic custom_parser (no rounding here — a
+                            // Decimal input keeps the expression's exact value).
                             // No .range(): typed values may exceed min/max as an
                             // explicit override. Dragging is re-clamped below so the
                             // drag interaction stays bounded as before.
                             let mut drag = egui::DragValue::new(&mut x)
-                                .update_while_editing(false);
+                                .update_while_editing(false)
+                                .custom_parser(expression::evaluate);
 
                             if let Some(speed) = *speed {
                                 drag = drag.speed(speed);
@@ -1203,7 +1221,14 @@ fn input_value(ui: &mut egui::Ui, value: Value, input: &mut Input, input_index: 
                         InputSettings::Slider { range, step_by: _, clamp_to_range: _ } => {
                             // SliderClamping::Never lets typed values exceed the range;
                             // the handle drag is still limited to the track.
-                            if ui.add(egui::Slider::new(&mut x, range.0..=range.1).clamping(egui::SliderClamping::Never)).changed() {
+                            // See the Integer DragValue arm for update_while_editing,
+                            // the arithmetic custom_parser, and why this compares
+                            // against the starting value rather than .changed().
+                            ui.add(egui::Slider::new(&mut x, range.0..=range.1)
+                                .clamping(egui::SliderClamping::Never)
+                                .update_while_editing(false)
+                                .custom_parser(expression::evaluate));
+                            if x != a {
                                 change_value(tx_change_node, node_id, input_index, input, Value::Decimal(x));
                             }
                         },

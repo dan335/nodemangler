@@ -93,6 +93,17 @@ Four ways, all equivalent:
 The Node List's search box filters by node name *or* category, so typing `noise`
 or `blur` pulls up everything in those groups.
 
+### Setting values
+
+Every numeric field in the node settings panel — sliders and drag boxes alike —
+accepts arithmetic, not just a number. Click into one and type `3.5*300` to get
+`1050`, or `1920/3`, or `sqrt(2)*64`. Operators are `+ - * / % ^` with the usual
+precedence and parentheses; `pi`, `tau` and `e` are available, along with `sqrt`,
+`abs`, `min`, `max`, `pow`, `clamp`, `floor`, `ceil`, `round`, `trunc`, `ln`,
+`log`, `log2`, `log10`, `exp`, the trig functions (radians, with `rad`/`deg` to
+convert), and `atan2`. The result is evaluated when you press Enter or click
+away; anything that isn't a valid expression leaves the value untouched.
+
 See the [mangler_core README](app/crates/mangler_core/README.md) for the engine
 internals.
 
