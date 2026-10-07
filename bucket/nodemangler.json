@@ -1,11 +1,11 @@
 {
-    "version": "1.0.15",
+    "version": "1.0.16",
     "description": "Node-based visual programming tool for image and color manipulation",
     "homepage": "https://nodemangler.com/",
     "license": "MIT OR Apache-2.0",
-    "url": "https://github.com/dan335/nodemangler/releases/download/v1.0.15/nodemangler-v1.0.15-windows-x86_64.zip",
-    "hash": "0629c3958ed045bb2cff3449e28d38ce39597d21972bda456672d00e8c626d5f",
-    "extract_dir": "nodemangler-v1.0.15-windows-x86_64",
+    "url": "https://github.com/dan335/nodemangler/releases/download/v1.0.16/nodemangler-v1.0.16-windows-x86_64.zip",
+    "hash": "78ad1acb5df2372a713ea6bd49998b23ca90a24ac81c5c9c8ca34e544212cd90",
+    "extract_dir": "nodemangler-v1.0.16-windows-x86_64",
     "bin": [
         ["mangler_gui.exe", "nodemangler"],
         ["mangler_cli.exe", "mangle"]
