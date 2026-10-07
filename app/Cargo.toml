@@ -6,6 +6,9 @@ members = [
     "crates/mangler_cli",
     "crates/mangler_gui",
 ]
+# Patched dependency (see [patch.crates-io] below), not one of ours: keep it
+# out of `cargo test`/`cargo build` across the workspace.
+exclude = ["vendor"]
 
 # Shared metadata inherited by every crate (`version.workspace = true` etc.).
 # This is THE version number for the whole project — bump it here (or run
@@ -32,3 +35,8 @@ opt-level = 1
 # Enable high optimizations for dependencies (incl. Bevy), but not for our code:
 [profile.dev.package."*"]
 opt-level = 2
+
+# Wayland file drag-and-drop: a patched smithay-clipboard (egui-winit's Wayland
+# clipboard) that also accepts drops. See vendor/smithay-clipboard/README.md.
+[patch.crates-io]
+smithay-clipboard = { path = "vendor/smithay-clipboard" }

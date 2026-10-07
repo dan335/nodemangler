@@ -60,6 +60,9 @@ pub struct App {
     /// other blocking UI here), after everything else, so its dispatch can
     /// mutate `programs` / `libraries` free of rendering borrows.
     file_dialog: AppFileDialog,
+    /// Desktop file drops under Wayland, which winit doesn't report itself.
+    #[cfg(target_os = "linux")]
+    wayland_drops: crate::wayland_drop::WaylandDrops,
 }
 
 /// State of a tab close that couldn't complete immediately because the
@@ -321,6 +324,13 @@ impl eframe::App for App {
 
     fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
 
+    /// Feeds Wayland file drops in as ordinary `dropped_files`, so
+    /// `Program::update`'s drop handling serves every platform.
+    #[cfg(target_os = "linux")]
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        self.wayland_drops.inject(raw_input);
+    }
+
     fn auto_save_interval(&self) -> std::time::Duration {
         std::time::Duration::from_secs(30)
     }
@@ -484,6 +494,8 @@ impl App {
             pending_close: None,
             quit_requested: false,
             file_dialog: AppFileDialog::new(),
+            #[cfg(target_os = "linux")]
+            wayland_drops: crate::wayland_drop::WaylandDrops::install(&cc.egui_ctx),
         }
     }
 

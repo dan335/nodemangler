@@ -20,6 +20,8 @@ mod themes;
 #[cfg(all(test, feature = "ui-snapshots"))]
 mod ui_snapshots;
 mod view_window;
+#[cfg(target_os = "linux")]
+mod wayland_drop;
 use egui::Pos2;
 
 pub const PROFILE: bool = false;

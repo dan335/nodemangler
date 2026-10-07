@@ -49,6 +49,11 @@ egui_kittest = { version = "0.36", features = ["wgpu", "snapshot"], optional = t
 #   cargo test -p mangler_gui --features ui-snapshots -- --ignored --nocapture
 ui-snapshots = ["dep:egui_kittest"]
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# Already in the tree as egui-winit's Wayland clipboard; depended on directly
+# for the drag-and-drop hook our vendored patch adds (see `wayland_drop.rs`).
+smithay-clipboard = "0.7.3"
+
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.9", features = ["winuser", "windef"] }
 

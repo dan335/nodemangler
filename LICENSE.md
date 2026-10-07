@@ -60,6 +60,13 @@ codepoint constants in `mangler_gui/src/icons.rs` are vendored rather than
 pulled from the `egui-phosphor` crate, which pins a single egui minor version —
 see [res/LICENSE-Phosphor.txt](app/crates/mangler_gui/res/LICENSE-Phosphor.txt).
 
+## Vendored code
+
+`app/vendor/smithay-clipboard/` is a patched copy of
+[smithay-clipboard](https://github.com/smithay/smithay-clipboard) 0.7.3, which
+is **MIT** (see its [LICENSE](app/vendor/smithay-clipboard/LICENSE)). It adds
+Wayland drag-and-drop; see its README for why it is vendored.
+
 ## Contributing
 
 Unless you state otherwise, a contribution intentionally submitted for

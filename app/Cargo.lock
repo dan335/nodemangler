@@ -2972,6 +2972,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "smithay-clipboard",
  "time",
  "tokio",
  "trash",
@@ -5032,8 +5033,6 @@ dependencies = [
 [[package]]
 name = "smithay-clipboard"
 version = "0.7.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71704c03f739f7745053bde45fa203a46c58d25bc5c4efba1d9a60e9dba81226"
 dependencies = [
  "libc",
  "smithay-client-toolkit 0.20.0",
