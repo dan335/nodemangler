@@ -2104,9 +2104,9 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "heif-oxide"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e12acb6edcb3bb9227dc6a06dd375a221eafe397ae2de72a876d79313831e365"
+checksum = "1b701a7c7f05f731da7b78c4cb3da03255a17c73b6d412b37e09f62b9423c49f"
 dependencies = [
  "rust_h265",
  "thiserror 2.0.20",
@@ -4610,9 +4610,9 @@ checksum = "3582f63211428f83597b51b2ddb88e2a91a9d52d12831f9d08f5e624e8977422"
 
 [[package]]
 name = "rust_h265"
-version = "0.1.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dde60f5842f27ed06f1d84844cacd93d1a159f606365b30a5594c771e6b4eb17"
+checksum = "673f6ab280648836c8a4b2bdaf4877532b2715e3fdcf6e37a2f46ebed41c8cfd"
 
 [[package]]
 name = "rustc-demangle"
